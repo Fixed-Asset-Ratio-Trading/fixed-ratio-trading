@@ -1,0 +1,23 @@
+[package]
+name = "fixed-ratio-trading"
+version = "0.1.0"
+edition = "2021"
+description = "Fixed Ratio Trading Smart Contract for Solana"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+solana-program = "1.17"
+borsh = "0.10.3"
+thiserror = "1.0"
+spl-token = { version = "4.0", features = ["no-entrypoint"] }
+spl-associated-token-account = { version = "2.0", features = ["no-entrypoint"] }
