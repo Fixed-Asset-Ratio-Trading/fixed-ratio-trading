@@ -34,21 +34,25 @@ const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 // Add after the existing constants
 const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account for potential rent increases
 
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct RentRequirements {
+    pub last_update_slot: u64,
+    pub rent_per_byte_year: u64,
+    pub rent_exempt_minimum: u64,
     pub pool_state_rent: u64,
     pub token_vault_rent: u64,
     pub lp_mint_rent: u64,
-    pub last_update_slot: u64,
 }
 
 impl RentRequirements {
     pub fn new(rent: &Rent) -> Self {
         Self {
+            last_update_slot: 0,
+            rent_per_byte_year: rent.rent_per_byte_year(),
+            rent_exempt_minimum: rent.minimum_balance(0),
             pool_state_rent: rent.minimum_balance(PoolState::get_packed_len()),
             token_vault_rent: rent.minimum_balance(TokenAccount::LEN),
             lp_mint_rent: rent.minimum_balance(MintAccount::LEN),
-            last_update_slot: 0,
         }
     }
 
@@ -194,6 +198,12 @@ impl PoolError {
     }
 }
 
+impl From<PoolError> for ProgramError {
+    fn from(e: PoolError) -> Self {
+        ProgramError::Custom(e.error_code())
+    }
+}
+
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
@@ -235,7 +245,8 @@ pub fn process_instruction(
 }
 
 // Add helper function for rent-exempt checks
-fn check_rent_exempt(account: &AccountInfo, rent: &Rent, current_slot: u64) -> ProgramResult {
+fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent, current_slot: u64) -> ProgramResult {
+    // Check if the account is owned by the program
     if account.owner == program_id {
         // For program-owned accounts, use the new rent tracking mechanism
         ensure_rent_exempt(account, rent, current_slot)
@@ -270,11 +281,11 @@ fn process_initialize_pool(
     let lp_token_b_mint_account = next_account_info(account_info_iter)?;
     let token_a_vault_pda_account = next_account_info(account_info_iter)?;
     let token_b_vault_pda_account = next_account_info(account_info_iter)?;
-    let system_program_account = next_account_iter(account_info_iter)?;
-    let token_program_account = next_account_iter(account_info_iter)?;
-    let rent_sysvar_account = next_account_iter(account_info_iter)?;
+    let system_program_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock_sysvar = next_account_iter(account_info_iter)?;
+    let clock_sysvar = next_account_info(account_info_iter)?;
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     if !payer.is_signer {
@@ -641,11 +652,11 @@ fn process_deposit(
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, rent, clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for deposit");
@@ -780,10 +791,10 @@ fn process_deposit(
     // Update pool state liquidity
     if is_depositing_token_a {
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     } else {
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     }
     pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
@@ -833,11 +844,11 @@ fn process_withdraw(
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, rent, clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for withdraw");
@@ -986,10 +997,10 @@ fn process_withdraw(
     // Update pool state liquidity
     if is_withdrawing_token_a {
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_sub(lp_amount_to_burn)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     } else {
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(lp_amount_to_burn)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     }
     pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
@@ -1037,9 +1048,9 @@ fn process_swap(
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for swap");
@@ -1125,7 +1136,7 @@ fn process_swap(
             return Err(ProgramError::InvalidAccountData); // Or a more specific error
         }
         amount_in.checked_mul(pool_state_data.ratio_b_denominator)
-            .ok_or(ProgramError::Overflow)?
+            .ok_or(ProgramError::ArithmeticOverflow)?
             .checked_div(pool_state_data.ratio_a_numerator)
             .ok_or(ProgramError::ArithmeticOverflow)? // Using ArithmeticOverflow for division issues
     } else {
@@ -1135,7 +1146,7 @@ fn process_swap(
             return Err(ProgramError::InvalidAccountData);
         }
         amount_in.checked_mul(pool_state_data.ratio_a_numerator)
-            .ok_or(ProgramError::Overflow)?
+            .ok_or(ProgramError::ArithmeticOverflow)?
             .checked_div(pool_state_data.ratio_b_denominator)
             .ok_or(ProgramError::ArithmeticOverflow)?
     };
@@ -1216,14 +1227,14 @@ fn process_swap(
     // Update pool state liquidity
     if input_is_token_a {
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount_in)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(amount_out)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     } else {
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount_in)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_sub(amount_out)
-            .ok_or(ProgramError::Overflow)?;
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     }
     pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
     msg!("Pool liquidity updated after swap. Token A: {}, Token B: {}", 
