@@ -27,6 +27,9 @@ const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
 const PRIMARY_VAULT_SEED_PREFIX: &[u8] = b"primary_vault";
 const BASE_VAULT_SEED_PREFIX: &[u8] = b"base_vault";
 
+// Add constant for SPL Token Program ID
+const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -646,169 +649,17 @@ fn process_swap_primary_to_base(
     let system_program = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
-    // Verify swap fee
-    if user.lamports() < SWAP_FEE {
-        msg!("Insufficient SOL for swap fee");
-        return Err(ProgramError::InsufficientFunds);
+    // Verify user is a signer
+    if !user.is_signer {
+        msg!("User must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Get pool state data to access bump seed
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    if !pool_state_data.is_initialized {
-        msg!("Pool not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    // Validate user primary token account
-    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
-    if !user_primary_data.is_initialized {
-        msg!("User primary token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("User primary token account has wrong mint");
+    // Verify token program is the correct SPL token program
+    if token_program.key.to_string() != SPL_TOKEN_PROGRAM_ID {
+        msg!("Invalid token program");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_primary_data.owner != *user.key {
-        msg!("User primary token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate user base token account
-    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
-    if !user_base_data.is_initialized {
-        msg!("User base token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_base_data.mint != pool_state_data.base_token_mint {
-        msg!("User base token account has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_base_data.owner != *user.key {
-        msg!("User base token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate pool primary token vault
-    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
-    if !pool_primary_data.is_initialized {
-        msg!("Pool primary token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("Pool primary token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if pool_primary_data.owner != *pool_state.key {
-        msg!("Pool primary token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate pool base token vault
-    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
-    if !pool_base_data.is_initialized {
-        msg!("Pool base token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_base_data.mint != pool_state_data.base_token_mint {
-        msg!("Pool base token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if pool_base_data.owner != *pool_state.key {
-        msg!("Pool base token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Create seeds for pool state PDA
-    let pool_state_seeds = &[
-        POOL_STATE_SEED_PREFIX,
-        pool_state_data.primary_token_mint.as_ref(),
-        pool_state_data.base_token_mint.as_ref(),
-        &[pool_state_data.pool_authority_bump_seed],
-    ];
-
-    let base_amount = amount.checked_mul(pool_state_data.ratio)
-        .ok_or(ProgramError::Overflow)?;
-
-    // Verify pool has enough base tokens
-    if base_amount > pool_state_data.total_base_tokens {
-        msg!("Insufficient base tokens in pool");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Transfer primary tokens from user to pool
-    invoke(
-        &token_instruction::transfer(
-            token_program.key,
-            user_primary_token_account.key,
-            pool_primary_token_vault.key,
-            user.key,
-            &[],
-            amount,
-        )?,
-        &[
-            user_primary_token_account.clone(),
-            pool_primary_token_vault.clone(),
-            user.clone(),
-            token_program.clone(),
-        ],
-    )?;
-    msg!("Primary tokens transferred to pool");
-
-    // Transfer base tokens from pool to user using pool state PDA as authority
-    invoke_signed(
-        &token_instruction::transfer(
-            token_program.key,
-            pool_base_token_vault.key,
-            user_base_token_account.key,
-            pool_state.key, // Authority is the pool state PDA
-            &[],
-            base_amount,
-        )?,
-        &[
-            pool_base_token_vault.clone(),
-            user_base_token_account.clone(),
-            pool_state.clone(),
-            token_program.clone(),
-        ],
-        &[pool_state_seeds],
-    )?;
-    msg!("Base tokens transferred to user");
-
-    // Update pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_sub(base_amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
-    msg!("Pool state updated");
-
-    // Transfer swap fee to pool state PDA instead of program_id
-    invoke(
-        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
-        &[user.clone(), pool_state.clone(), system_program.clone()],
-    )?;
-    msg!("Swap fee transferred to pool state PDA");
-
-    Ok(())
-}
-
-fn process_swap_base_to_primary(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    amount: u64,
-) -> ProgramResult {
-    msg!("Processing Swap Base to Primary");
-    let account_info_iter = &mut accounts.iter();
-    let user = next_account_info(account_info_iter)?;
-    let pool_state = next_account_info(account_info_iter)?;
-    let user_primary_token_account = next_account_info(account_info_iter)?;
-    let user_base_token_account = next_account_info(account_info_iter)?;
-    let pool_primary_token_vault = next_account_info(account_info_iter)?;
-    let pool_base_token_vault = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
 
     // Verify swap fee
     if user.lamports() < SWAP_FEE {
@@ -897,6 +748,190 @@ fn process_swap_base_to_primary(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
+    // Calculate base amount with overflow check
+    let base_amount = amount.checked_mul(pool_state_data.ratio)
+        .ok_or(ProgramError::Overflow)?;
+
+    // Verify pool has enough base tokens
+    if base_amount > pool_state_data.total_base_tokens {
+        msg!("Insufficient base tokens in pool");
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Transfer primary tokens from user to pool
+    invoke(
+        &token_instruction::transfer(
+            token_program.key,
+            user_primary_token_account.key,
+            pool_primary_token_vault.key,
+            user.key,
+            &[],
+            amount,
+        )?,
+        &[
+            user_primary_token_account.clone(),
+            pool_primary_token_vault.clone(),
+            user.clone(),
+            token_program.clone(),
+        ],
+    )?;
+    msg!("Primary tokens transferred to pool");
+
+    // Transfer base tokens from pool to user using pool state PDA as authority
+    invoke_signed(
+        &token_instruction::transfer(
+            token_program.key,
+            pool_base_token_vault.key,
+            user_base_token_account.key,
+            pool_state.key, // Authority is the pool state PDA
+            &[],
+            base_amount,
+        )?,
+        &[
+            pool_base_token_vault.clone(),
+            user_base_token_account.clone(),
+            pool_state.clone(),
+            token_program.clone(),
+        ],
+        &[pool_state_seeds],
+    )?;
+    msg!("Base tokens transferred to user");
+
+    // Update pool state with overflow checks
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
+        .ok_or(ProgramError::Overflow)?;
+    pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_sub(base_amount)
+        .ok_or(ProgramError::Overflow)?;
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Pool state updated");
+
+    // Transfer swap fee to pool state PDA
+    invoke(
+        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
+        &[user.clone(), pool_state.clone(), system_program.clone()],
+    )?;
+    msg!("Swap fee transferred to pool state PDA");
+
+    Ok(())
+}
+
+fn process_swap_base_to_primary(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    amount: u64,
+) -> ProgramResult {
+    msg!("Processing Swap Base to Primary");
+    let account_info_iter = &mut accounts.iter();
+    let user = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+    let user_primary_token_account = next_account_info(account_info_iter)?;
+    let user_base_token_account = next_account_info(account_info_iter)?;
+    let pool_primary_token_vault = next_account_info(account_info_iter)?;
+    let pool_base_token_vault = next_account_info(account_info_iter)?;
+    let system_program = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+
+    // Verify user is a signer
+    if !user.is_signer {
+        msg!("User must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Verify token program is the correct SPL token program
+    if token_program.key.to_string() != SPL_TOKEN_PROGRAM_ID {
+        msg!("Invalid token program");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Verify swap fee
+    if user.lamports() < SWAP_FEE {
+        msg!("Insufficient SOL for swap fee");
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Get pool state data to access bump seed
+    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Validate ratio is not zero
+    if pool_state_data.ratio == 0 {
+        msg!("Pool ratio cannot be zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Validate user primary token account
+    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
+    if !user_primary_data.is_initialized {
+        msg!("User primary token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("User primary token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_primary_data.owner != *user.key {
+        msg!("User primary token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user base token account
+    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
+    if !user_base_data.is_initialized {
+        msg!("User base token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_base_data.mint != pool_state_data.base_token_mint {
+        msg!("User base token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_base_data.owner != *user.key {
+        msg!("User base token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool primary token vault
+    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
+    if !pool_primary_data.is_initialized {
+        msg!("Pool primary token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("Pool primary token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_primary_data.owner != *pool_state.key {
+        msg!("Pool primary token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool base token vault
+    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
+    if !pool_base_data.is_initialized {
+        msg!("Pool base token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_base_data.mint != pool_state_data.base_token_mint {
+        msg!("Pool base token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_base_data.owner != *pool_state.key {
+        msg!("Pool base token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Create seeds for pool state PDA
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.primary_token_mint.as_ref(),
+        pool_state_data.base_token_mint.as_ref(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
+    // Calculate primary amount with overflow check
     let primary_amount = amount.checked_div(pool_state_data.ratio)
         .ok_or(ProgramError::Overflow)?;
 
@@ -945,7 +980,7 @@ fn process_swap_base_to_primary(
     )?;
     msg!("Primary tokens transferred to user");
 
-    // Update pool state
+    // Update pool state with overflow checks
     let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
     pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_sub(primary_amount)
         .ok_or(ProgramError::Overflow)?;
@@ -954,7 +989,7 @@ fn process_swap_base_to_primary(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer swap fee to pool state PDA instead of program_id
+    // Transfer swap fee to pool state PDA
     invoke(
         &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
         &[user.clone(), pool_state.clone(), system_program.clone()],
