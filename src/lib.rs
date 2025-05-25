@@ -126,6 +126,7 @@ fn process_initialize_pool(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    // Verify the pool state PDA is derived correctly
     let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
         primary_token_mint_account.key.as_ref(),
@@ -138,6 +139,17 @@ fn process_initialize_pool(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // Check if pool state is already initialized
+    if pool_state_pda_account.data_len() > 0 {
+        if let Ok(pool_state_data) = PoolState::try_from_slice(&pool_state_pda_account.data.borrow()) {
+            if pool_state_data.is_initialized {
+                msg!("Pool state already initialized");
+                return Err(ProgramError::AccountAlreadyInitialized);
+            }
+        }
+    }
+
+    // Verify primary token vault PDA
     let primary_vault_pda_seeds = &[
         PRIMARY_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
@@ -149,6 +161,7 @@ fn process_initialize_pool(
         return Err(ProgramError::InvalidArgument);
     }
 
+    // Verify base token vault PDA
     let base_vault_pda_seeds = &[
         BASE_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
@@ -169,11 +182,13 @@ fn process_initialize_pool(
         msg!("Insufficient SOL for registration fee");
         return Err(ProgramError::InsufficientFunds);
     }
+
+    // Transfer registration fee to pool state PDA
     invoke(
-        &system_instruction::transfer(payer.key, program_id, REGISTRATION_FEE),
+        &system_instruction::transfer(payer.key, pool_state_pda_account.key, REGISTRATION_FEE),
         &[
             payer.clone(),
-            program_id,
+            pool_state_pda_account.clone(),
             system_program_account.clone(),
         ],
     )?;
@@ -234,21 +249,6 @@ fn process_initialize_pool(
         ],
         &[primary_vault_pda_seeds],
     )?;
-    invoke(
-        &token_instruction::initialize_account(
-            token_program_account.key,
-            primary_token_vault_pda_account.key,
-            primary_token_mint_account.key,
-            pool_state_pda_account.key,
-        )?,
-        &[
-            primary_token_vault_pda_account.clone(),
-            primary_token_mint_account.clone(),
-            pool_state_pda_account.clone(),
-            rent_sysvar_account.clone(),
-            token_program_account.clone(),
-        ]
-    )?;
     msg!("Primary Token Vault PDA initialized");
 
     msg!("Creating Base Token Vault PDA account");
@@ -268,7 +268,7 @@ fn process_initialize_pool(
         &[base_vault_pda_seeds],
     )?;
     msg!("Base Token Vault PDA account created. Initializing...");
-    invoke(
+    invoke_signed(
         &token_instruction::initialize_account(
             token_program_account.key,
             base_token_vault_pda_account.key,
@@ -281,7 +281,8 @@ fn process_initialize_pool(
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
-        ]
+        ],
+        &[base_vault_pda_seeds],
     )?;
     msg!("Base Token Vault PDA initialized");
 
