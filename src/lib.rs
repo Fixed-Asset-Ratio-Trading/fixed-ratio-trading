@@ -101,6 +101,13 @@ impl RentRequirements {
         (2 * self.lp_mint_rent) + // Two LP mints
         MINIMUM_RENT_BUFFER // Additional buffer
     }
+
+    pub fn get_packed_len() -> usize {
+        8 + // pool_state_rent
+        8 + // token_vault_rent
+        8 + // lp_mint_rent
+        8   // last_update_slot
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
@@ -142,6 +149,7 @@ pub enum FixedRatioInstruction {
     Swap {
         input_token_mint: Pubkey,
         amount_in: u64,
+        minimum_amount_out: u64,
     },
     WithdrawFees,
 }
@@ -263,8 +271,8 @@ pub fn process_instruction(
         FixedRatioInstruction::Withdraw { withdraw_token_mint, lp_amount_to_burn } => {
             process_withdraw(program_id, accounts, withdraw_token_mint, lp_amount_to_burn)
         }
-        FixedRatioInstruction::Swap { input_token_mint, amount_in } => {
-            process_swap(program_id, accounts, input_token_mint, amount_in)
+        FixedRatioInstruction::Swap { input_token_mint, amount_in, minimum_amount_out } => {
+            process_swap(program_id, accounts, input_token_mint, amount_in, minimum_amount_out)
         }
         FixedRatioInstruction::WithdrawFees => {
             process_withdraw_fees(program_id, accounts)
@@ -1047,10 +1055,10 @@ fn process_withdraw(
         &token_instruction::transfer(
             token_program_account.key,
             source_pool_vault_account.key,         // Pool's vault (source)
-            user_destination_token_account.key,    // User's output account (destination)
-            pool_state_account.key,                // Pool PDA is the authority over its vault
+            user_destination_token_account.key,      // User's output account (destination)
+            pool_state_account.key,                  // Pool PDA is the authority over its vault
             &[],
-            lp_amount_to_burn,                     // Amount of underlying token to transfer (equals LP burned)
+            lp_amount_to_burn,                        // Amount of underlying token to transfer (equals LP burned)
         )?,
         &[
             source_pool_vault_account.clone(),
@@ -1101,6 +1109,7 @@ fn process_swap(
     accounts: &[AccountInfo],
     input_token_mint_key: Pubkey,
     amount_in: u64,
+    minimum_amount_out: u64,
 ) -> ProgramResult {
     msg!("Processing Swap v2");
     let account_info_iter = &mut accounts.iter();
@@ -1235,6 +1244,16 @@ fn process_swap(
         }.into());
     }
 
+    // Check slippage protection
+    if amount_out < minimum_amount_out {
+        msg!("Slippage tolerance exceeded. Expected minimum: {}, Got: {}", minimum_amount_out, amount_out);
+        return Err(PoolError::InvalidSwapAmount {
+            amount: amount_out,
+            min_amount: minimum_amount_out,
+            max_amount: u64::MAX,
+        }.into());
+    }
+
     // Check pool liquidity for output token
     if input_is_token_a {
         // Output is Token B
@@ -1344,53 +1363,50 @@ fn process_withdraw_fees(
 ) -> ProgramResult {
     msg!("Processing WithdrawFees");
     let account_info_iter = &mut accounts.iter();
+
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
     let system_program = next_account_info(account_info_iter)?;
-    let rent_sysvar = next_account_info(account_info_iter)?; // Add rent sysvar account
 
+    // Verify owner is signer
     if !owner.is_signer {
         msg!("Owner must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Get pool state data to verify ownership
+    // Load and verify pool state
     let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    if !pool_state_data.is_initialized {
-        msg!("Pool not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    // Verify the caller is the pool owner
-    if owner.key != &pool_state_data.owner {
+    if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can withdraw fees");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Get the current balance of the pool state PDA
-    let fees = pool_state.lamports();
-    if fees == 0 {
-        msg!("No fees to withdraw");
+    // Calculate withdrawable amount
+    let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
+    let minimum_rent = rent.minimum_balance(pool_state.data_len());
+    let withdrawable_amount = pool_state.lamports().checked_sub(minimum_rent)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    if withdrawable_amount == 0 {
+        msg!("No fees available to withdraw");
         return Ok(());
     }
 
-    // Calculate minimum rent-exempt balance
-    let rent = &Rent::from_account_info(rent_sysvar)?;
-    let minimum_rent = rent.minimum_balance(pool_state.data_len());
-    
-    // Calculate maximum withdrawable amount (current balance minus minimum rent)
-    let withdrawable_amount = fees.checked_sub(minimum_rent)
-        .ok_or(ProgramError::InsufficientFunds)?;
+    // Get PDA seeds for signing
+    let pool_state_pda_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.token_a_mint.as_ref(),
+        pool_state_data.token_b_mint.as_ref(),
+        &pool_state_data.ratio_a_numerator.to_le_bytes(),
+        &pool_state_data.ratio_b_denominator.to_le_bytes(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
 
-    if withdrawable_amount == 0 {
-        msg!("Cannot withdraw fees - would leave account below rent-exempt threshold");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Transfer fees from pool state PDA to owner, leaving enough for rent
-    invoke(
+    // Transfer fees using invoke_signed
+    invoke_signed(
         &system_instruction::transfer(pool_state.key, owner.key, withdrawable_amount),
         &[pool_state.clone(), owner.clone(), system_program.clone()],
+        &[pool_state_pda_seeds],
     )?;
     msg!("Fees transferred to owner: {} lamports ({} lamports reserved for rent)", 
          withdrawable_amount, minimum_rent);
@@ -1451,9 +1467,6 @@ impl PoolState {
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
-        8 +  // pool_state_rent
-        8 +  // token_vault_rent
-        8 +  // lp_mint_rent
-        8    // last_update_slot
+        RentRequirements::get_packed_len() // rent_requirements
     }
 }
