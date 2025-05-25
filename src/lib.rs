@@ -10,6 +10,7 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
+    clock::Clock,
 };
 use spl_token::{
     instruction as token_instruction,
@@ -30,6 +31,53 @@ const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 // Add constant for SPL Token Program ID
 const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
+// Add after the existing constants
+const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account for potential rent increases
+
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub struct RentRequirements {
+    pub pool_state_rent: u64,
+    pub token_vault_rent: u64,
+    pub lp_mint_rent: u64,
+    pub last_update_slot: u64,
+}
+
+impl RentRequirements {
+    pub fn new(rent: &Rent) -> Self {
+        Self {
+            pool_state_rent: rent.minimum_balance(PoolState::get_packed_len()),
+            token_vault_rent: rent.minimum_balance(TokenAccount::LEN),
+            lp_mint_rent: rent.minimum_balance(MintAccount::LEN),
+            last_update_slot: 0,
+        }
+    }
+
+    pub fn update_if_needed(&mut self, rent: &Rent, current_slot: u64) -> bool {
+        // Update rent requirements if they've changed or if it's been a while
+        let needs_update = self.last_update_slot == 0 || 
+                          current_slot - self.last_update_slot > 1000 || // Update every ~1000 slots
+                          self.pool_state_rent != rent.minimum_balance(PoolState::get_packed_len()) ||
+                          self.token_vault_rent != rent.minimum_balance(TokenAccount::LEN) ||
+                          self.lp_mint_rent != rent.minimum_balance(MintAccount::LEN);
+
+        if needs_update {
+            self.pool_state_rent = rent.minimum_balance(PoolState::get_packed_len());
+            self.token_vault_rent = rent.minimum_balance(TokenAccount::LEN);
+            self.lp_mint_rent = rent.minimum_balance(MintAccount::LEN);
+            self.last_update_slot = current_slot;
+        }
+
+        needs_update
+    }
+
+    pub fn get_total_required_rent(&self) -> u64 {
+        self.pool_state_rent + 
+        (2 * self.token_vault_rent) + // Two token vaults
+        (2 * self.lp_mint_rent) + // Two LP mints
+        MINIMUM_RENT_BUFFER // Additional buffer
+    }
+}
+
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -47,6 +95,7 @@ pub struct PoolState {
     pub token_a_vault_bump_seed: u8,
     pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
+    pub rent_requirements: RentRequirements,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -112,6 +161,23 @@ pub fn process_instruction(
     }
 }
 
+// Add helper function for rent-exempt checks
+fn check_rent_exempt(account: &AccountInfo, rent: &Rent, current_slot: u64) -> ProgramResult {
+    if account.owner == program_id {
+        // For program-owned accounts, use the new rent tracking mechanism
+        ensure_rent_exempt(account, rent, current_slot)
+    } else {
+        // For other accounts, use the simple check
+        let minimum_balance = rent.minimum_balance(account.data_len());
+        if account.lamports() < minimum_balance {
+            msg!("Account {} below rent-exempt threshold. Required: {}, Current: {}", 
+                 account.key, minimum_balance, account.lamports());
+            return Err(ProgramError::InsufficientFunds);
+        }
+        Ok(())
+    }
+}
+
 fn process_initialize_pool(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -131,10 +197,12 @@ fn process_initialize_pool(
     let lp_token_b_mint_account = next_account_info(account_info_iter)?;
     let token_a_vault_pda_account = next_account_info(account_info_iter)?;
     let token_b_vault_pda_account = next_account_info(account_info_iter)?;
-    let system_program_account = next_account_info(account_info_iter)?;
-    let token_program_account = next_account_info(account_info_iter)?;
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let system_program_account = next_account_iter(account_info_iter)?;
+    let token_program_account = next_account_iter(account_info_iter)?;
+    let rent_sysvar_account = next_account_iter(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
+    let clock_sysvar = next_account_iter(account_info_iter)?;
+    let clock = &Clock::from_account_info(clock_sysvar)?;
 
     if !payer.is_signer {
         msg!("Payer must be a signer");
@@ -454,6 +522,12 @@ fn process_initialize_pool(
     pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
 
+    // Initialize rent requirements
+    let rent_requirements = RentRequirements::new(rent);
+    
+    // Update pool state data
+    pool_state_data.rent_requirements = rent_requirements;
+    
     pool_state_data.serialize(&mut *pool_state_pda_account.data.borrow_mut())?;
     msg!("Pool State PDA initialized with data: {:?}", pool_state_data);
 
@@ -483,6 +557,17 @@ fn process_deposit(
     
     let system_program_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+    let clock_sysvar = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(clock_sysvar)?;
+
+    // Check rent-exempt status for pool accounts
+    check_rent_exempt(pool_state_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, rent, clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for deposit");
@@ -664,6 +749,17 @@ fn process_withdraw(
     
     let system_program_account = next_account_info(account_info_iter)?;         // System program
     let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+    let clock_sysvar = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(clock_sysvar)?;
+
+    // Check rent-exempt status for pool accounts
+    check_rent_exempt(pool_state_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, rent, clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for withdraw");
@@ -857,6 +953,15 @@ fn process_swap(
     
     let system_program_account = next_account_info(account_info_iter)?;         // System program
     let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+    let clock_sysvar = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(clock_sysvar)?;
+
+    // Check rent-exempt status for pool accounts
+    check_rent_exempt(pool_state_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for swap");
@@ -1066,6 +1171,7 @@ fn process_withdraw_fees(
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
     let system_program = next_account_info(account_info_iter)?;
+    let rent_sysvar = next_account_info(account_info_iter)?; // Add rent sysvar account
 
     if !owner.is_signer {
         msg!("Owner must be a signer");
@@ -1092,12 +1198,52 @@ fn process_withdraw_fees(
         return Ok(());
     }
 
-    // Transfer fees from pool state PDA to owner
+    // Calculate minimum rent-exempt balance
+    let rent = &Rent::from_account_info(rent_sysvar)?;
+    let minimum_rent = rent.minimum_balance(pool_state.data_len());
+    
+    // Calculate maximum withdrawable amount (current balance minus minimum rent)
+    let withdrawable_amount = fees.checked_sub(minimum_rent)
+        .ok_or(ProgramError::InsufficientFunds)?;
+
+    if withdrawable_amount == 0 {
+        msg!("Cannot withdraw fees - would leave account below rent-exempt threshold");
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Transfer fees from pool state PDA to owner, leaving enough for rent
     invoke(
-        &system_instruction::transfer(pool_state.key, owner.key, fees),
+        &system_instruction::transfer(pool_state.key, owner.key, withdrawable_amount),
         &[pool_state.clone(), owner.clone(), system_program.clone()],
     )?;
-    msg!("Fees transferred to owner");
+    msg!("Fees transferred to owner: {} lamports ({} lamports reserved for rent)", 
+         withdrawable_amount, minimum_rent);
+
+    Ok(())
+}
+
+// Add helper function for rent management
+fn ensure_rent_exempt(
+    pool_state: &AccountInfo,
+    rent: &Rent,
+    current_slot: u64,
+) -> ProgramResult {
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    
+    // Update rent requirements if needed
+    if pool_state_data.rent_requirements.update_if_needed(rent, current_slot) {
+        pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    }
+
+    // Calculate total required rent
+    let total_required_rent = pool_state_data.rent_requirements.get_total_required_rent();
+    
+    // Check if we have enough balance
+    if pool_state.lamports() < total_required_rent {
+        msg!("Pool state account below required rent threshold. Required: {}, Current: {}", 
+             total_required_rent, pool_state.lamports());
+        return Err(ProgramError::InsufficientFunds);
+    }
 
     Ok(())
 }
@@ -1118,14 +1264,11 @@ impl PoolState {
         1 +  // pool_authority_bump_seed
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
-        1    // is_initialized
-        // = 253 bytes
-        // Let's recalculate:
-        // 7 * Pubkey = 7 * 32 = 224
-        // 4 * u64 = 4 * 8 = 32
-        // 3 * u8 = 3
-        // 1 * bool = 1
-        // Total = 224 + 32 + 3 + 1 = 260
+        1 +  // is_initialized
+        8 +  // pool_state_rent
+        8 +  // token_vault_rent
+        8 +  // lp_mint_rent
+        8    // last_update_slot
     }
 }
 
