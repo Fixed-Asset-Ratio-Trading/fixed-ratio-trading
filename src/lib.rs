@@ -335,6 +335,7 @@ fn process_deposit(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> ProgramResult {
+    msg!("Processing Deposit");
     let account_info_iter = &mut accounts.iter();
     let user = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
@@ -345,10 +346,28 @@ fn process_deposit(
     let system_program = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // Verify deposit fee
     if user.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("Insufficient SOL for deposit fee");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Get pool state data to access bump seed
+    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Create seeds for pool state PDA
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.primary_token_mint.as_ref(),
+        pool_state_data.base_token_mint.as_ref(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
+    // Transfer primary tokens from user to pool vault
     invoke(
         &token_instruction::transfer(
             token_program.key,
@@ -365,32 +384,41 @@ fn process_deposit(
             token_program.clone(),
         ],
     )?;
+    msg!("Primary tokens transferred to pool vault");
 
-    invoke(
+    // Mint LP tokens to user using pool state PDA as authority
+    invoke_signed(
         &token_instruction::mint_to(
             token_program.key,
             lp_token_mint.key,
             user_lp_token_account.key,
-            program_id,
+            pool_state.key, // Authority is the pool state PDA
             &[],
             amount,
         )?,
         &[
             lp_token_mint.clone(),
             user_lp_token_account.clone(),
+            pool_state.clone(),
             token_program.clone(),
         ],
+        &[pool_state_seeds],
     )?;
+    msg!("LP tokens minted to user");
 
+    // Update pool state
     let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
     pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Pool state updated");
 
+    // Transfer deposit fee
     invoke(
         &system_instruction::transfer(user.key, program_id, DEPOSIT_WITHDRAWAL_FEE),
         &[user.clone(), system_program.clone()],
     )?;
+    msg!("Deposit fee transferred");
 
     Ok(())
 }
@@ -400,6 +428,7 @@ fn process_withdraw(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> ProgramResult {
+    msg!("Processing Withdraw");
     let account_info_iter = &mut accounts.iter();
     let user = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
@@ -410,10 +439,28 @@ fn process_withdraw(
     let system_program = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // Verify withdrawal fee
     if user.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("Insufficient SOL for withdrawal fee");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Get pool state data to access bump seed
+    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Create seeds for pool state PDA
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.primary_token_mint.as_ref(),
+        pool_state_data.base_token_mint.as_ref(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
+    // Burn LP tokens from user
     invoke(
         &token_instruction::burn(
             token_program.key,
@@ -430,32 +477,41 @@ fn process_withdraw(
             token_program.clone(),
         ],
     )?;
+    msg!("LP tokens burned from user");
 
-    invoke(
+    // Transfer primary tokens from pool vault to user using pool state PDA as authority
+    invoke_signed(
         &token_instruction::transfer(
             token_program.key,
             pool_token_vault.key,
             user_token_account.key,
-            program_id,
+            pool_state.key, // Authority is the pool state PDA
             &[],
             amount,
         )?,
         &[
             pool_token_vault.clone(),
             user_token_account.clone(),
+            pool_state.clone(),
             token_program.clone(),
         ],
+        &[pool_state_seeds],
     )?;
+    msg!("Primary tokens transferred to user");
 
+    // Update pool state
     let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
     pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_sub(amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Pool state updated");
 
+    // Transfer withdrawal fee
     invoke(
         &system_instruction::transfer(user.key, program_id, DEPOSIT_WITHDRAWAL_FEE),
         &[user.clone(), system_program.clone()],
     )?;
+    msg!("Withdrawal fee transferred");
 
     Ok(())
 }
@@ -465,6 +521,7 @@ fn process_swap_primary_to_base(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> ProgramResult {
+    msg!("Processing Swap Primary to Base");
     let account_info_iter = &mut accounts.iter();
     let user = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
@@ -475,18 +532,37 @@ fn process_swap_primary_to_base(
     let system_program = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // Verify swap fee
     if user.lamports() < SWAP_FEE {
+        msg!("Insufficient SOL for swap fee");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Get pool state data to access bump seed
     let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Create seeds for pool state PDA
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.primary_token_mint.as_ref(),
+        pool_state_data.base_token_mint.as_ref(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
     let base_amount = amount.checked_mul(pool_state_data.ratio)
         .ok_or(ProgramError::Overflow)?;
 
+    // Verify pool has enough base tokens
     if base_amount > pool_state_data.total_base_tokens {
+        msg!("Insufficient base tokens in pool");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Transfer primary tokens from user to pool
     invoke(
         &token_instruction::transfer(
             token_program.key,
@@ -503,34 +579,43 @@ fn process_swap_primary_to_base(
             token_program.clone(),
         ],
     )?;
+    msg!("Primary tokens transferred to pool");
 
-    invoke(
+    // Transfer base tokens from pool to user using pool state PDA as authority
+    invoke_signed(
         &token_instruction::transfer(
             token_program.key,
             pool_base_token_vault.key,
             user_base_token_account.key,
-            program_id,
+            pool_state.key, // Authority is the pool state PDA
             &[],
             base_amount,
         )?,
         &[
             pool_base_token_vault.clone(),
             user_base_token_account.clone(),
+            pool_state.clone(),
             token_program.clone(),
         ],
+        &[pool_state_seeds],
     )?;
+    msg!("Base tokens transferred to user");
 
+    // Update pool state
     let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
     pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_sub(base_amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Pool state updated");
 
+    // Transfer swap fee
     invoke(
         &system_instruction::transfer(user.key, program_id, SWAP_FEE),
         &[user.clone(), system_program.clone()],
     )?;
+    msg!("Swap fee transferred");
 
     Ok(())
 }
@@ -540,6 +625,7 @@ fn process_swap_base_to_primary(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> ProgramResult {
+    msg!("Processing Swap Base to Primary");
     let account_info_iter = &mut accounts.iter();
     let user = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
@@ -550,18 +636,37 @@ fn process_swap_base_to_primary(
     let system_program = next_account_info(account_info_iter)?;
     let token_program = next_account_info(account_info_iter)?;
 
+    // Verify swap fee
     if user.lamports() < SWAP_FEE {
+        msg!("Insufficient SOL for swap fee");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Get pool state data to access bump seed
     let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Create seeds for pool state PDA
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.primary_token_mint.as_ref(),
+        pool_state_data.base_token_mint.as_ref(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
     let primary_amount = amount.checked_div(pool_state_data.ratio)
         .ok_or(ProgramError::Overflow)?;
 
+    // Verify pool has enough primary tokens
     if primary_amount > pool_state_data.total_primary_tokens {
+        msg!("Insufficient primary tokens in pool");
         return Err(ProgramError::InsufficientFunds);
     }
 
+    // Transfer base tokens from user to pool
     invoke(
         &token_instruction::transfer(
             token_program.key,
@@ -578,34 +683,43 @@ fn process_swap_base_to_primary(
             token_program.clone(),
         ],
     )?;
+    msg!("Base tokens transferred to pool");
 
-    invoke(
+    // Transfer primary tokens from pool to user using pool state PDA as authority
+    invoke_signed(
         &token_instruction::transfer(
             token_program.key,
             pool_primary_token_vault.key,
             user_primary_token_account.key,
-            program_id,
+            pool_state.key, // Authority is the pool state PDA
             &[],
             primary_amount,
         )?,
         &[
             pool_primary_token_vault.clone(),
             user_primary_token_account.clone(),
+            pool_state.clone(),
             token_program.clone(),
         ],
+        &[pool_state_seeds],
     )?;
+    msg!("Primary tokens transferred to user");
 
+    // Update pool state
     let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
     pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_sub(primary_amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_add(amount)
         .ok_or(ProgramError::Overflow)?;
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Pool state updated");
 
+    // Transfer swap fee
     invoke(
         &system_instruction::transfer(user.key, program_id, SWAP_FEE),
         &[user.clone(), system_program.clone()],
     )?;
+    msg!("Swap fee transferred");
 
     Ok(())
 }
