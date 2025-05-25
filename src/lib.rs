@@ -126,6 +126,12 @@ fn process_initialize_pool(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    // Validate ratio
+    if ratio == 0 {
+        msg!("Ratio cannot be zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+
     // Verify the pool state PDA is derived correctly
     let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
@@ -173,11 +179,6 @@ fn process_initialize_pool(
         return Err(ProgramError::InvalidArgument);
     }
     
-    if ratio == 0 {
-        msg!("Ratio cannot be zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-
     if payer.lamports() < REGISTRATION_FEE {
         msg!("Insufficient SOL for registration fee");
         return Err(ProgramError::InsufficientFunds);
@@ -470,7 +471,7 @@ fn process_deposit(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer deposit fee to pool state PDA instead of program_id
+    // Transfer deposit fee to pool state PDA
     invoke(
         &system_instruction::transfer(user.key, pool_state.key, DEPOSIT_WITHDRAWAL_FEE),
         &[user.clone(), pool_state.clone(), system_program.clone()],
@@ -820,6 +821,12 @@ fn process_swap_base_to_primary(
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Validate ratio is not zero
+    if pool_state_data.ratio == 0 {
+        msg!("Pool ratio cannot be zero");
+        return Err(ProgramError::InvalidArgument);
     }
 
     // Validate user primary token account
