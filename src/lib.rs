@@ -16,7 +16,6 @@ use spl_token::{
     instruction as token_instruction,
     state::{Account as TokenAccount, Mint as MintAccount},
 };
-use spl_associated_token_account::instruction as associated_token_instruction;
 
 // Constants for fees
 const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
@@ -29,7 +28,7 @@ const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
 const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
 // Add constant for SPL Token Program ID
-const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+// const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 // Add after the existing constants
 const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account for potential rent increases
@@ -37,7 +36,6 @@ const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct RentRequirements {
     pub last_update_slot: u64,
-    pub rent_per_byte_year: u64,
     pub rent_exempt_minimum: u64,
     pub pool_state_rent: u64,
     pub token_vault_rent: u64,
@@ -48,7 +46,6 @@ impl RentRequirements {
     pub fn new(rent: &Rent) -> Self {
         Self {
             last_update_slot: 0,
-            rent_per_byte_year: rent.rent_per_byte_year(),
             rent_exempt_minimum: rent.minimum_balance(0),
             pool_state_rent: rent.minimum_balance(PoolState::get_packed_len()),
             token_vault_rent: rent.minimum_balance(TokenAccount::LEN),
@@ -285,8 +282,7 @@ fn process_initialize_pool(
     let token_program_account = next_account_info(account_info_iter)?;
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock_sysvar = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(clock_sysvar)?;
+    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     if !payer.is_signer {
         return Err(PoolError::InvalidTokenAccount {
@@ -648,15 +644,14 @@ fn process_deposit(
     let token_program_account = next_account_info(account_info_iter)?;
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock_sysvar = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(clock_sysvar)?;
+    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, program_id, rent, _clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for deposit");
@@ -814,10 +809,10 @@ fn process_deposit(
 }
 
 fn process_withdraw(
-    _program_id: &Pubkey, // Not directly used unless for PDA derivation if not passed in accounts
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
-    withdraw_token_mint_key: Pubkey, // Key of the underlying token user wants to withdraw
-    lp_amount_to_burn: u64,         // Amount of LP tokens to burn (equals underlying amount out)
+    withdraw_token_mint_key: Pubkey,
+    lp_amount_to_burn: u64,
 ) -> ProgramResult {
     msg!("Processing Withdraw v2");
     let account_info_iter = &mut accounts.iter();
@@ -840,15 +835,14 @@ fn process_withdraw(
     let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock_sysvar = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(clock_sysvar)?;
+    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, program_id, rent, _clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for withdraw");
@@ -1020,10 +1014,10 @@ fn process_withdraw(
 }
 
 fn process_swap(
-    _program_id: &Pubkey, // Not directly used unless for PDA derivation if not passed in accounts
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
-    input_token_mint_key: Pubkey, // Mint of the token user is providing for the swap
-    amount_in: u64,               // Amount of the input token
+    input_token_mint_key: Pubkey,
+    amount_in: u64,
 ) -> ProgramResult {
     msg!("Processing Swap v2");
     let account_info_iter = &mut accounts.iter();
@@ -1044,13 +1038,12 @@ fn process_swap(
     let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock_sysvar = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(clock_sysvar)?;
+    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, _clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for swap");
@@ -1255,7 +1248,7 @@ fn process_swap(
 }
 
 fn process_withdraw_fees(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing WithdrawFees");
@@ -1363,16 +1356,5 @@ impl PoolState {
         8 +  // token_vault_rent
         8 +  // lp_mint_rent
         8    // last_update_slot
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
     }
 }
