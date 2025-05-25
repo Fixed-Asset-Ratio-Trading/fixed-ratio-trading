@@ -359,6 +359,62 @@ fn process_deposit(
         return Err(ProgramError::UninitializedAccount);
     }
 
+    // Validate LP token mint
+    let lp_mint_data = MintAccount::unpack_from_slice(&lp_token_mint.data.borrow())?;
+    if !lp_mint_data.is_initialized {
+        msg!("LP token mint not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if lp_token_mint.key != &pool_state_data.lp_token_mint {
+        msg!("Invalid LP token mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user token account
+    let user_token_data = TokenAccount::unpack_from_slice(&user_token_account.data.borrow())?;
+    if !user_token_data.is_initialized {
+        msg!("User token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_token_data.mint != pool_state_data.primary_token_mint {
+        msg!("User token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_token_data.owner != *user.key {
+        msg!("User token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool token vault
+    let pool_vault_data = TokenAccount::unpack_from_slice(&pool_token_vault.data.borrow())?;
+    if !pool_vault_data.is_initialized {
+        msg!("Pool token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_vault_data.mint != pool_state_data.primary_token_mint {
+        msg!("Pool token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_vault_data.owner != *pool_state.key {
+        msg!("Pool token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user LP token account
+    let user_lp_data = TokenAccount::unpack_from_slice(&user_lp_token_account.data.borrow())?;
+    if !user_lp_data.is_initialized {
+        msg!("User LP token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_lp_data.mint != pool_state_data.lp_token_mint {
+        msg!("User LP token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_lp_data.owner != *user.key {
+        msg!("User LP token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     // Create seeds for pool state PDA
     let pool_state_seeds = &[
         POOL_STATE_SEED_PREFIX,
@@ -452,6 +508,62 @@ fn process_withdraw(
         return Err(ProgramError::UninitializedAccount);
     }
 
+    // Validate LP token mint
+    let lp_mint_data = MintAccount::unpack_from_slice(&lp_token_mint.data.borrow())?;
+    if !lp_mint_data.is_initialized {
+        msg!("LP token mint not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if lp_token_mint.key != &pool_state_data.lp_token_mint {
+        msg!("Invalid LP token mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user token account
+    let user_token_data = TokenAccount::unpack_from_slice(&user_token_account.data.borrow())?;
+    if !user_token_data.is_initialized {
+        msg!("User token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_token_data.mint != pool_state_data.primary_token_mint {
+        msg!("User token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_token_data.owner != *user.key {
+        msg!("User token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool token vault
+    let pool_vault_data = TokenAccount::unpack_from_slice(&pool_token_vault.data.borrow())?;
+    if !pool_vault_data.is_initialized {
+        msg!("Pool token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_vault_data.mint != pool_state_data.primary_token_mint {
+        msg!("Pool token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_vault_data.owner != *pool_state.key {
+        msg!("Pool token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user LP token account
+    let user_lp_data = TokenAccount::unpack_from_slice(&user_lp_token_account.data.borrow())?;
+    if !user_lp_data.is_initialized {
+        msg!("User LP token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_lp_data.mint != pool_state_data.lp_token_mint {
+        msg!("User LP token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_lp_data.owner != *user.key {
+        msg!("User LP token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     // Create seeds for pool state PDA
     let pool_state_seeds = &[
         POOL_STATE_SEED_PREFIX,
@@ -543,6 +655,66 @@ fn process_swap_primary_to_base(
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Validate user primary token account
+    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
+    if !user_primary_data.is_initialized {
+        msg!("User primary token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("User primary token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_primary_data.owner != *user.key {
+        msg!("User primary token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user base token account
+    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
+    if !user_base_data.is_initialized {
+        msg!("User base token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_base_data.mint != pool_state_data.base_token_mint {
+        msg!("User base token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_base_data.owner != *user.key {
+        msg!("User base token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool primary token vault
+    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
+    if !pool_primary_data.is_initialized {
+        msg!("Pool primary token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("Pool primary token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_primary_data.owner != *pool_state.key {
+        msg!("Pool primary token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool base token vault
+    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
+    if !pool_base_data.is_initialized {
+        msg!("Pool base token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_base_data.mint != pool_state_data.base_token_mint {
+        msg!("Pool base token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_base_data.owner != *pool_state.key {
+        msg!("Pool base token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // Create seeds for pool state PDA
@@ -647,6 +819,66 @@ fn process_swap_base_to_primary(
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Validate user primary token account
+    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
+    if !user_primary_data.is_initialized {
+        msg!("User primary token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("User primary token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_primary_data.owner != *user.key {
+        msg!("User primary token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate user base token account
+    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
+    if !user_base_data.is_initialized {
+        msg!("User base token account not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if user_base_data.mint != pool_state_data.base_token_mint {
+        msg!("User base token account has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_base_data.owner != *user.key {
+        msg!("User base token account has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool primary token vault
+    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
+    if !pool_primary_data.is_initialized {
+        msg!("Pool primary token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_primary_data.mint != pool_state_data.primary_token_mint {
+        msg!("Pool primary token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_primary_data.owner != *pool_state.key {
+        msg!("Pool primary token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate pool base token vault
+    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
+    if !pool_base_data.is_initialized {
+        msg!("Pool base token vault not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    if pool_base_data.mint != pool_state_data.base_token_mint {
+        msg!("Pool base token vault has wrong mint");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if pool_base_data.owner != *pool_state.key {
+        msg!("Pool base token vault has wrong owner");
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // Create seeds for pool state PDA
