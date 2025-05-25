@@ -1,3 +1,27 @@
+/*
+MIT License
+
+Copyright (c) 2024 Davinci
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -201,8 +225,15 @@ impl From<PoolError> for ProgramError {
     }
 }
 
-entrypoint!(process_instruction);
-
+/// Entry point for Solana program instructions.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for the operation
+/// * `instruction_data` - The instruction data containing the operation to perform
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 pub fn process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -241,7 +272,16 @@ pub fn process_instruction(
     }
 }
 
-// Add helper function for rent-exempt checks
+/// Checks if an account is rent-exempt. For program-owned accounts, uses rent tracking; otherwise, checks minimum balance.
+///
+/// # Arguments
+/// * `account` - The account to check
+/// * `program_id` - The program ID
+/// * `rent` - The rent sysvar
+/// * `current_slot` - The current slot
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent, current_slot: u64) -> ProgramResult {
     // Check if the account is owned by the program
     if account.owner == program_id {
@@ -259,6 +299,18 @@ fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent, cu
     }
 }
 
+/// Initializes a new trading pool with specified token accounts and ratio parameters.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for pool initialization
+/// * `ratio_primary_per_base` - The ratio between primary and base tokens
+/// * `pool_authority_bump_seed` - Bump seed for pool authority PDA
+/// * `primary_token_vault_bump_seed` - Bump seed for primary token vault PDA
+/// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn process_initialize_pool(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -619,6 +671,16 @@ fn process_initialize_pool(
     Ok(())
 }
 
+/// Handles user deposits into the trading pool.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for deposit
+/// * `deposit_token_mint_key` - The mint of the token being deposited
+/// * `amount` - The amount to deposit
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn process_deposit(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -808,6 +870,16 @@ fn process_deposit(
     Ok(())
 }
 
+/// Handles user withdrawals from the trading pool.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for withdrawal
+/// * `withdraw_token_mint_key` - The mint of the token being withdrawn
+/// * `lp_amount_to_burn` - The amount of LP tokens to burn
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn process_withdraw(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -933,8 +1005,9 @@ fn process_withdraw(
             return Err(ProgramError::InsufficientFunds);
         }
     } else {
+        // Output is Token A
         if pool_state_data.total_token_b_liquidity < lp_amount_to_burn {
-            msg!("Insufficient token B liquidity in the pool for withdrawal.");
+            msg!("Insufficient Token A liquidity in the pool for swap output.");
             return Err(ProgramError::InsufficientFunds);
         }
     }
@@ -974,7 +1047,7 @@ fn process_withdraw(
         &token_instruction::transfer(
             token_program_account.key,
             source_pool_vault_account.key,         // Pool's vault (source)
-            user_destination_token_account.key,    // User's token account (destination)
+            user_destination_token_account.key,    // User's output account (destination)
             pool_state_account.key,                // Pool PDA is the authority over its vault
             &[],
             lp_amount_to_burn,                     // Amount of underlying token to transfer (equals LP burned)
@@ -1013,6 +1086,16 @@ fn process_withdraw(
     Ok(())
 }
 
+/// Handles token swaps within the trading pool.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for swap
+/// * `input_token_mint_key` - The mint of the input token
+/// * `amount_in` - The amount of input token to swap
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn process_swap(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1069,7 +1152,7 @@ fn process_swap(
     // Determine swap direction and relevant accounts
     let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
         if input_token_mint_key == pool_state_data.token_a_mint {
-            // Swapping Token A for Token B
+            // Swapping A for B
             if *pool_token_a_vault_account.key != pool_state_data.token_a_vault || 
                *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
                 msg!("Invalid pool vault accounts provided for A -> B swap.");
@@ -1077,7 +1160,7 @@ fn process_swap(
             }
             (pool_token_a_vault_account, pool_token_b_vault_account, pool_state_data.token_b_mint, true)
         } else if input_token_mint_key == pool_state_data.token_b_mint {
-            // Swapping Token B for Token A
+            // Swapping B for A
             if *pool_token_b_vault_account.key != pool_state_data.token_b_vault || 
                *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
                 msg!("Invalid pool vault accounts provided for B -> A swap.");
@@ -1247,6 +1330,14 @@ fn process_swap(
     Ok(())
 }
 
+/// Allows the pool owner to withdraw accumulated fees.
+///
+/// # Arguments
+/// * `_program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for fee withdrawal
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn process_withdraw_fees(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1307,7 +1398,15 @@ fn process_withdraw_fees(
     Ok(())
 }
 
-// Add helper function for rent management
+/// Ensures an account has enough lamports to be rent exempt.
+///
+/// # Arguments
+/// * `pool_state` - The pool state account
+/// * `rent` - The rent sysvar
+/// * `current_slot` - The current slot
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
 fn ensure_rent_exempt(
     pool_state: &AccountInfo,
     rent: &Rent,
