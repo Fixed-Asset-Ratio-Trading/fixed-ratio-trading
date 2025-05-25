@@ -23,49 +23,51 @@ const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 
 // PDA Seeds
-const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
-const PRIMARY_VAULT_SEED_PREFIX: &[u8] = b"primary_vault";
-const BASE_VAULT_SEED_PREFIX: &[u8] = b"base_vault";
+const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
+const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
+const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
 // Add constant for SPL Token Program ID
 const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolState {
     pub owner: Pubkey,
-    pub primary_token_mint: Pubkey,
-    pub base_token_mint: Pubkey,
-    pub primary_token_vault: Pubkey,
-    pub base_token_vault: Pubkey,
-    pub lp_token_mint: Pubkey,
-    pub ratio: u64,
-    pub total_primary_tokens: u64,
-    pub total_base_tokens: u64,
+    pub token_a_mint: Pubkey,
+    pub token_b_mint: Pubkey,
+    pub token_a_vault: Pubkey,
+    pub token_b_vault: Pubkey,
+    pub lp_token_a_mint: Pubkey,
+    pub lp_token_b_mint: Pubkey,
+    pub ratio_a_numerator: u64,
+    pub ratio_b_denominator: u64,
+    pub total_token_a_liquidity: u64,
+    pub total_token_b_liquidity: u64,
     pub pool_authority_bump_seed: u8,
-    pub primary_vault_bump_seed: u8,
-    pub base_vault_bump_seed: u8,
+    pub token_a_vault_bump_seed: u8,
+    pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum FixedRatioInstruction {
     InitializePool {
-        ratio: u64,
+        ratio_primary_per_base: u64,
         pool_authority_bump_seed: u8,
-        primary_vault_bump_seed: u8,
-        base_vault_bump_seed: u8,
+        primary_token_vault_bump_seed: u8,
+        base_token_vault_bump_seed: u8,
     },
     Deposit {
+        deposit_token_mint: Pubkey,
         amount: u64,
     },
     Withdraw {
-        amount: u64,
+        withdraw_token_mint: Pubkey,
+        lp_amount_to_burn: u64,
     },
-    SwapPrimaryToBase {
-        amount: u64,
-    },
-    SwapBaseToPrimary {
-        amount: u64,
+    Swap {
+        input_token_mint: Pubkey,
+        amount_in: u64,
     },
     WithdrawFees,
 }
@@ -80,20 +82,29 @@ pub fn process_instruction(
     let instruction = FixedRatioInstruction::try_from_slice(instruction_data)?;
     
     match instruction {
-        FixedRatioInstruction::InitializePool { ratio, pool_authority_bump_seed, primary_vault_bump_seed, base_vault_bump_seed } => {
-            process_initialize_pool(program_id, accounts, ratio, pool_authority_bump_seed, primary_vault_bump_seed, base_vault_bump_seed)
+        FixedRatioInstruction::InitializePool { 
+            ratio_primary_per_base, 
+            pool_authority_bump_seed, 
+            primary_token_vault_bump_seed, 
+            base_token_vault_bump_seed 
+        } => {
+            process_initialize_pool(
+                program_id, 
+                accounts, 
+                ratio_primary_per_base, 
+                pool_authority_bump_seed, 
+                primary_token_vault_bump_seed, 
+                base_token_vault_bump_seed
+            )
         }
-        FixedRatioInstruction::Deposit { amount } => {
-            process_deposit(program_id, accounts, amount)
+        FixedRatioInstruction::Deposit { deposit_token_mint, amount } => {
+            process_deposit(program_id, accounts, deposit_token_mint, amount)
         }
-        FixedRatioInstruction::Withdraw { amount } => {
-            process_withdraw(program_id, accounts, amount)
+        FixedRatioInstruction::Withdraw { withdraw_token_mint, lp_amount_to_burn } => {
+            process_withdraw(program_id, accounts, withdraw_token_mint, lp_amount_to_burn)
         }
-        FixedRatioInstruction::SwapPrimaryToBase { amount } => {
-            process_swap_primary_to_base(program_id, accounts, amount)
-        }
-        FixedRatioInstruction::SwapBaseToPrimary { amount } => {
-            process_swap_base_to_primary(program_id, accounts, amount)
+        FixedRatioInstruction::Swap { input_token_mint, amount_in } => {
+            process_swap(program_id, accounts, input_token_mint, amount_in)
         }
         FixedRatioInstruction::WithdrawFees => {
             process_withdraw_fees(program_id, accounts)
@@ -104,21 +115,22 @@ pub fn process_instruction(
 fn process_initialize_pool(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    ratio: u64,
+    ratio_primary_per_base: u64,
     pool_authority_bump_seed: u8,
-    primary_vault_bump_seed: u8,
-    base_vault_bump_seed: u8,
+    primary_token_vault_bump_seed: u8,
+    base_token_vault_bump_seed: u8,
 ) -> ProgramResult {
-    msg!("Processing InitializePool");
+    msg!("Processing InitializePool v2");
     let account_info_iter = &mut accounts.iter();
 
     let payer = next_account_info(account_info_iter)?;
     let pool_state_pda_account = next_account_info(account_info_iter)?;
     let primary_token_mint_account = next_account_info(account_info_iter)?;
     let base_token_mint_account = next_account_info(account_info_iter)?;
-    let primary_token_vault_pda_account = next_account_info(account_info_iter)?;
-    let base_token_vault_pda_account = next_account_info(account_info_iter)?;
-    let lp_token_mint_account = next_account_info(account_info_iter)?;
+    let lp_token_a_mint_account = next_account_info(account_info_iter)?;
+    let lp_token_b_mint_account = next_account_info(account_info_iter)?;
+    let token_a_vault_pda_account = next_account_info(account_info_iter)?;
+    let token_b_vault_pda_account = next_account_info(account_info_iter)?;
     let system_program_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
     let rent_sysvar_account = next_account_info(account_info_iter)?;
@@ -129,56 +141,115 @@ fn process_initialize_pool(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Validate ratio
-    if ratio == 0 {
+    if ratio_primary_per_base == 0 {
         msg!("Ratio cannot be zero");
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Verify the pool state PDA is derived correctly
+    // Token Normalization & Ratio Conversion
+    let (token_a_mint_key, token_b_mint_key,
+         ratio_a_numerator, ratio_b_denominator,
+         token_a_is_primary, _token_b_is_primary) =
+        if primary_token_mint_account.key.to_bytes() < base_token_mint_account.key.to_bytes() {
+            (primary_token_mint_account.key, base_token_mint_account.key,
+             ratio_primary_per_base, 1, 
+             true, false)
+        } else if primary_token_mint_account.key.to_bytes() > base_token_mint_account.key.to_bytes() {
+            (base_token_mint_account.key, primary_token_mint_account.key, 
+             1, ratio_primary_per_base, 
+             false, true)
+        } else {
+            msg!("Primary and Base token mints cannot be the same");
+            return Err(ProgramError::InvalidArgument);
+        };
+    
+    // Determine AccountInfo references for normalized mints
+    let token_a_mint_account_info_ref = if token_a_is_primary {
+        primary_token_mint_account
+    } else {
+        base_token_mint_account
+    };
+    let token_b_mint_account_info_ref = if token_a_is_primary {
+        base_token_mint_account
+    } else {
+        primary_token_mint_account
+    };
+
+    // Ensure mints are actually mints
+    if !primary_token_mint_account.owner.eq(&spl_token::id()) || primary_token_mint_account.data_len() != MintAccount::LEN {
+        msg!("Primary token mint account is not a valid mint account");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if !base_token_mint_account.owner.eq(&spl_token::id()) || base_token_mint_account.data_len() != MintAccount::LEN {
+        msg!("Base token mint account is not a valid mint account");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Verify the pool state PDA is derived correctly using normalized values
     let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
-        primary_token_mint_account.key.as_ref(),
-        base_token_mint_account.key.as_ref(),
+        token_a_mint_key.as_ref(),
+        token_b_mint_key.as_ref(),
+        &ratio_a_numerator.to_le_bytes(),
+        &ratio_b_denominator.to_le_bytes(),
         &[pool_authority_bump_seed],
     ];
     let expected_pool_state_pda = Pubkey::create_program_address(pool_state_pda_seeds, program_id)?;
     if *pool_state_pda_account.key != expected_pool_state_pda {
-        msg!("Invalid Pool State PDA address");
+        msg!("Invalid Pool State PDA address. Expected {}, got {}", expected_pool_state_pda, pool_state_pda_account.key);
         return Err(ProgramError::InvalidArgument);
     }
 
     // Check if pool state is already initialized
-    if pool_state_pda_account.data_len() > 0 {
-        if let Ok(pool_state_data) = PoolState::try_from_slice(&pool_state_pda_account.data.borrow()) {
-            if pool_state_data.is_initialized {
-                msg!("Pool state already initialized");
-                return Err(ProgramError::AccountAlreadyInitialized);
+    if pool_state_pda_account.data_len() > 0 && !pool_state_pda_account.data_is_empty() {
+         match PoolState::try_from_slice(&pool_state_pda_account.data.borrow()) {
+            Ok(pool_state_data) => {
+                if pool_state_data.is_initialized {
+                    msg!("Pool state already initialized");
+                    return Err(ProgramError::AccountAlreadyInitialized);
+                }
+            }
+            Err(_) => {
+                // If deserialization fails for a non-empty account, it might be corrupt or not what we expect.
+                // For safety, treat as an error if not zeroed. If it was zeroed, create_account will handle it.
+                // This check mainly prevents re-initialization over existing *valid* pool state.
+                let is_zeroed = pool_state_pda_account.data.borrow().iter().all(|&x| x == 0);
+                if !is_zeroed {
+                    msg!("Pool state account has data but is not a valid PoolState struct and not zeroed.");
+                    return Err(ProgramError::InvalidAccountData);
+                }
             }
         }
     }
 
-    // Verify primary token vault PDA
-    let primary_vault_pda_seeds = &[
-        PRIMARY_VAULT_SEED_PREFIX,
+    // Map input vault bump seeds to normalized token_a and token_b vault bump seeds
+    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_primary {
+        (primary_token_vault_bump_seed, base_token_vault_bump_seed)
+    } else {
+        (base_token_vault_bump_seed, primary_token_vault_bump_seed)
+    };
+
+    // Verify token_a_vault PDA
+    let token_a_vault_pda_seeds = &[
+        TOKEN_A_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
-        &[primary_vault_bump_seed],
+        &[token_a_vault_bump],
     ];
-    let expected_primary_vault_pda = Pubkey::create_program_address(primary_vault_pda_seeds, program_id)?;
-    if *primary_token_vault_pda_account.key != expected_primary_vault_pda {
-        msg!("Invalid Primary Token Vault PDA address");
+    let expected_token_a_vault_pda = Pubkey::create_program_address(token_a_vault_pda_seeds, program_id)?;
+    if *token_a_vault_pda_account.key != expected_token_a_vault_pda {
+        msg!("Invalid Token A Vault PDA address. Expected {}, got {}", expected_token_a_vault_pda, token_a_vault_pda_account.key);
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Verify base token vault PDA
-    let base_vault_pda_seeds = &[
-        BASE_VAULT_SEED_PREFIX,
+    // Verify token_b_vault PDA
+    let token_b_vault_pda_seeds = &[
+        TOKEN_B_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
-        &[base_vault_bump_seed],
+        &[token_b_vault_bump],
     ];
-    let expected_base_vault_pda = Pubkey::create_program_address(base_vault_pda_seeds, program_id)?;
-    if *base_token_vault_pda_account.key != expected_base_vault_pda {
-        msg!("Invalid Base Token Vault PDA address");
+    let expected_token_b_vault_pda = Pubkey::create_program_address(token_b_vault_pda_seeds, program_id)?;
+    if *token_b_vault_pda_account.key != expected_token_b_vault_pda {
+        msg!("Invalid Token B Vault PDA address. Expected {}, got {}", expected_token_b_vault_pda, token_b_vault_pda_account.key);
         return Err(ProgramError::InvalidArgument);
     }
     
@@ -187,7 +258,7 @@ fn process_initialize_pool(
         return Err(ProgramError::InsufficientFunds);
     }
 
-    // Transfer registration fee to pool state PDA
+    // Transfer registration fee to pool state PDA (this account will be created shortly)
     invoke(
         &system_instruction::transfer(payer.key, pool_state_pda_account.key, REGISTRATION_FEE),
         &[
@@ -196,11 +267,12 @@ fn process_initialize_pool(
             system_program_account.clone(),
         ],
     )?;
-    msg!("Registration fee transferred");
+    msg!("Registration fee transferred to pool state PDA (pending creation)");
 
+    // Create Pool State PDA account
     let pool_state_account_size = PoolState::get_packed_len();
     let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
-    msg!("Creating Pool State PDA account");
+    msg!("Creating Pool State PDA account: {}", pool_state_pda_account.key);
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
@@ -218,119 +290,172 @@ fn process_initialize_pool(
     )?;
     msg!("Pool State PDA account created");
 
+    // Create and Initialize LP Token A Mint
+    let rent_for_mint = rent.minimum_balance(MintAccount::LEN);
+    msg!("Creating LP Token A Mint account: {}", lp_token_a_mint_account.key);
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_a_mint_account.key,
+            rent_for_mint,
+            MintAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[
+            payer.clone(), 
+            lp_token_a_mint_account.clone(), 
+            system_program_account.clone()
+        ],
+    )?;
+    msg!("LP Token A Mint account created. Initializing...");
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_a_mint_account.key,
+            pool_state_pda_account.key,
+            None,
+            9,
+        )?,
+        &[
+            lp_token_a_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+            pool_state_pda_account.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+    msg!("LP Token A Mint initialized");
+
+    // Create and Initialize LP Token B Mint
+    msg!("Creating LP Token B Mint account: {}", lp_token_b_mint_account.key);
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_b_mint_account.key,
+            rent_for_mint,
+            MintAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[
+            payer.clone(), 
+            lp_token_b_mint_account.clone(), 
+            system_program_account.clone()
+        ],
+    )?;
+    msg!("LP Token B Mint account created. Initializing...");
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_b_mint_account.key,
+            pool_state_pda_account.key,
+            None,
+            9,
+        )?,
+        &[
+            lp_token_b_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+            pool_state_pda_account.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+    msg!("LP Token B Mint initialized");
+
+    // Create and Initialize Token A Vault PDA
     let vault_account_size = TokenAccount::LEN;
     let rent_for_vault = rent.minimum_balance(vault_account_size);
-    msg!("Creating Primary Token Vault PDA account");
+    msg!("Creating Token A Vault PDA account: {}", token_a_vault_pda_account.key);
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
-            primary_token_vault_pda_account.key,
+            token_a_vault_pda_account.key,
             rent_for_vault,
             vault_account_size as u64,
             token_program_account.key,
         ),
         &[
             payer.clone(),
-            primary_token_vault_pda_account.clone(),
+            token_a_vault_pda_account.clone(),
             system_program_account.clone(),
         ],
-        &[primary_vault_pda_seeds],
+        &[token_a_vault_pda_seeds],
     )?;
-    msg!("Primary Token Vault PDA account created. Initializing...");
+    msg!("Token A Vault PDA account created. Initializing...");
     invoke_signed(
         &token_instruction::initialize_account(
             token_program_account.key,
-            primary_token_vault_pda_account.key,
-            primary_token_mint_account.key,
+            token_a_vault_pda_account.key,
+            token_a_mint_account_info_ref.key,
             pool_state_pda_account.key,
         )?,
         &[
-            primary_token_vault_pda_account.clone(),
-            primary_token_mint_account.clone(),
+            token_a_vault_pda_account.clone(),
+            token_a_mint_account_info_ref.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
         ],
-        &[primary_vault_pda_seeds],
+        &[pool_state_pda_seeds],
     )?;
-    msg!("Primary Token Vault PDA initialized");
+    msg!("Token A Vault PDA initialized");
 
-    msg!("Creating Base Token Vault PDA account");
+    // Create and Initialize Token B Vault PDA
+    msg!("Creating Token B Vault PDA account: {}", token_b_vault_pda_account.key);
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
-            base_token_vault_pda_account.key,
+            token_b_vault_pda_account.key,
             rent_for_vault,
             vault_account_size as u64,
             token_program_account.key,
         ),
         &[
             payer.clone(),
-            base_token_vault_pda_account.clone(),
+            token_b_vault_pda_account.clone(),
             system_program_account.clone(),
         ],
-        &[base_vault_pda_seeds],
+        &[token_b_vault_pda_seeds],
     )?;
-    msg!("Base Token Vault PDA account created. Initializing...");
+    msg!("Token B Vault PDA account created. Initializing...");
     invoke_signed(
         &token_instruction::initialize_account(
             token_program_account.key,
-            base_token_vault_pda_account.key,
-            base_token_mint_account.key,
+            token_b_vault_pda_account.key,
+            token_b_mint_account_info_ref.key,
             pool_state_pda_account.key,
         )?,
         &[
-            base_token_vault_pda_account.clone(),
-            base_token_mint_account.clone(),
+            token_b_vault_pda_account.clone(),
+            token_b_mint_account_info_ref.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
         ],
-        &[base_vault_pda_seeds],
+        &[pool_state_pda_seeds],
     )?;
-    msg!("Base Token Vault PDA initialized");
-
-    msg!("Setting LP Token Mint Authority");
-    invoke_signed(
-        &token_instruction::set_authority(
-            token_program_account.key,
-            lp_token_mint_account.key,
-            Some(pool_state_pda_account.key),
-            token_instruction::AuthorityType::MintTokens,
-            payer.key,
-            &[payer.key],
-        )?,
-        &[
-            lp_token_mint_account.clone(),
-            payer.clone(),
-            token_program_account.clone(),
-        ],
-    )?;
-    msg!("LP Token Mint Authority set to Pool State PDA");
+    msg!("Token B Vault PDA initialized");
 
     msg!("Initializing Pool State data");
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state_pda_account.data.borrow())?;
-    if pool_state_data.is_initialized {
-        msg!("Pool already initialized");
-        return Err(ProgramError::AccountAlreadyInitialized);
-    }
-
+    let mut pool_state_data = PoolState::default();
+    
     pool_state_data.owner = *payer.key;
-    pool_state_data.primary_token_mint = *primary_token_mint_account.key;
-    pool_state_data.base_token_mint = *base_token_mint_account.key;
-    pool_state_data.primary_token_vault = *primary_token_vault_pda_account.key;
-    pool_state_data.base_token_vault = *base_token_vault_pda_account.key;
-    pool_state_data.lp_token_mint = *lp_token_mint_account.key;
-    pool_state_data.ratio = ratio;
-    pool_state_data.total_primary_tokens = 0;
-    pool_state_data.total_base_tokens = 0;
+    pool_state_data.token_a_mint = *token_a_mint_key;
+    pool_state_data.token_b_mint = *token_b_mint_key;
+    pool_state_data.token_a_vault = *token_a_vault_pda_account.key;
+    pool_state_data.token_b_vault = *token_b_vault_pda_account.key;
+    pool_state_data.lp_token_a_mint = *lp_token_a_mint_account.key;
+    pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
+    pool_state_data.ratio_a_numerator = ratio_a_numerator;
+    pool_state_data.ratio_b_denominator = ratio_b_denominator;
+    pool_state_data.total_token_a_liquidity = 0;
+    pool_state_data.total_token_b_liquidity = 0;
     pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;
-    pool_state_data.primary_vault_bump_seed = primary_vault_bump_seed;
-    pool_state_data.base_vault_bump_seed = base_vault_bump_seed;
+    pool_state_data.token_a_vault_bump_seed = token_a_vault_bump;
+    pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
 
     pool_state_data.serialize(&mut *pool_state_pda_account.data.borrow_mut())?;
-    msg!("Pool State PDA initialized with data");
+    msg!("Pool State PDA initialized with data: {:?}", pool_state_data);
 
     Ok(())
 }
@@ -338,663 +463,596 @@ fn process_initialize_pool(
 fn process_deposit(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    deposit_token_mint_key: Pubkey,
     amount: u64,
 ) -> ProgramResult {
-    msg!("Processing Deposit");
+    msg!("Processing Deposit v2");
     let account_info_iter = &mut accounts.iter();
-    let user = next_account_info(account_info_iter)?;
-    let pool_state = next_account_info(account_info_iter)?;
-    let user_token_account = next_account_info(account_info_iter)?;
-    let pool_token_vault = next_account_info(account_info_iter)?;
-    let lp_token_mint = next_account_info(account_info_iter)?;
-    let user_lp_token_account = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
 
-    // Verify deposit fee
-    if user.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("Insufficient SOL for deposit fee");
-        return Err(ProgramError::InsufficientFunds);
+    let user_signer = next_account_info(account_info_iter)?;
+    let user_source_token_account = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+    let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;
+    let token_b_mint_for_pda_seeds = next_account_info(account_info_iter)?;
+    
+    let pool_token_a_vault_account = next_account_info(account_info_iter)?;
+    let pool_token_b_vault_account = next_account_info(account_info_iter)?;
+    let lp_token_a_mint_account = next_account_info(account_info_iter)?;
+    let lp_token_b_mint_account = next_account_info(account_info_iter)?;
+    let user_destination_lp_token_account = next_account_info(account_info_iter)?;
+    
+    let system_program_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+
+    if !user_signer.is_signer {
+        msg!("User must be a signer for deposit");
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Get pool state data to access bump seed
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
 
-    // Validate LP token mint
-    let lp_mint_data = MintAccount::unpack_from_slice(&lp_token_mint.data.borrow())?;
-    if !lp_mint_data.is_initialized {
-        msg!("LP token mint not initialized");
-        return Err(ProgramError::UninitializedAccount);
+    // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
+    if *token_a_mint_for_pda_seeds.key != pool_state_data.token_a_mint {
+        msg!("Provided token_a_mint_for_pda_seeds does not match pool state");
+        return Err(ProgramError::InvalidAccountData);
     }
-    if lp_token_mint.key != &pool_state_data.lp_token_mint {
-        msg!("Invalid LP token mint");
+    if *token_b_mint_for_pda_seeds.key != pool_state_data.token_b_mint {
+        msg!("Provided token_b_mint_for_pda_seeds does not match pool state");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Validate user token account
-    let user_token_data = TokenAccount::unpack_from_slice(&user_token_account.data.borrow())?;
-    if !user_token_data.is_initialized {
-        msg!("User token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_token_data.mint != pool_state_data.primary_token_mint {
-        msg!("User token account has wrong mint");
+    // Determine which token (A or B) is being deposited and set target accounts
+    let (target_pool_vault_account, target_lp_mint_account, is_depositing_token_a) = 
+        if deposit_token_mint_key == pool_state_data.token_a_mint {
+            // Depositing Token A
+            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
+                msg!("Invalid pool_token_a_vault_account provided for token A deposit.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            if *lp_token_a_mint_account.key != pool_state_data.lp_token_a_mint {
+                msg!("Invalid lp_token_a_mint_account provided for token A deposit.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_a_vault_account, lp_token_a_mint_account, true)
+        } else if deposit_token_mint_key == pool_state_data.token_b_mint {
+            // Depositing Token B
+            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
+                msg!("Invalid pool_token_b_vault_account provided for token B deposit.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            if *lp_token_b_mint_account.key != pool_state_data.lp_token_b_mint {
+                msg!("Invalid lp_token_b_mint_account provided for token B deposit.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_b_vault_account, lp_token_b_mint_account, false)
+        } else {
+            msg!("Deposit token mint does not match either of the pool's tokens");
+            return Err(ProgramError::InvalidArgument);
+        };
+
+    // Validate user's source token account
+    let user_source_token_account_data = TokenAccount::unpack_from_slice(&user_source_token_account.data.borrow())?;
+    if user_source_token_account_data.mint != deposit_token_mint_key {
+        msg!("User source token account mint mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_token_data.owner != *user.key {
-        msg!("User token account has wrong owner");
+    if user_source_token_account_data.owner != *user_signer.key {
+        msg!("User source token account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
+    }
+    if user_source_token_account_data.amount < amount {
+        msg!("Insufficient funds in user source token account");
+        return Err(ProgramError::InsufficientFunds);
     }
 
-    // Validate pool token vault
-    let pool_vault_data = TokenAccount::unpack_from_slice(&pool_token_vault.data.borrow())?;
-    if !pool_vault_data.is_initialized {
-        msg!("Pool token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_vault_data.mint != pool_state_data.primary_token_mint {
-        msg!("Pool token vault has wrong mint");
+    // Validate user's destination LP token account
+    let user_dest_lp_token_account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
+    if user_dest_lp_token_account_data.mint != *target_lp_mint_account.key {
+        msg!("User destination LP token account mint mismatch with target LP mint");
         return Err(ProgramError::InvalidAccountData);
     }
-    if pool_vault_data.owner != *pool_state.key {
-        msg!("Pool token vault has wrong owner");
+    if user_dest_lp_token_account_data.owner != *user_signer.key {
+        msg!("User destination LP token account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Validate SPL Token Program ID
+    if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
+        msg!("Invalid SPL Token Program ID");
+        return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Validate user LP token account
-    let user_lp_data = TokenAccount::unpack_from_slice(&user_lp_token_account.data.borrow())?;
-    if !user_lp_data.is_initialized {
-        msg!("User LP token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_lp_data.mint != pool_state_data.lp_token_mint {
-        msg!("User LP token account has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_lp_data.owner != *user.key {
-        msg!("User LP token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    // Transfer tokens from user to pool vault
+    msg!("Transferring {} of token {} from user to pool", amount, deposit_token_mint_key);
+    invoke(
+        &token_instruction::transfer(
+            token_program_account.key,
+            user_source_token_account.key,
+            target_pool_vault_account.key,
+            user_signer.key,
+            &[],
+            amount,
+        )?,
+        &[
+            user_source_token_account.clone(),
+            target_pool_vault_account.clone(),
+            user_signer.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
 
-    // Create seeds for pool state PDA
-    let pool_state_seeds = &[
+    // Mint LP tokens to user
+    let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
-        pool_state_data.primary_token_mint.as_ref(),
-        pool_state_data.base_token_mint.as_ref(),
+        pool_state_data.token_a_mint.as_ref(),
+        pool_state_data.token_b_mint.as_ref(),
+        &pool_state_data.ratio_a_numerator.to_le_bytes(),
+        &pool_state_data.ratio_b_denominator.to_le_bytes(),
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    // Transfer primary tokens from user to pool vault
-    invoke(
-        &token_instruction::transfer(
-            token_program.key,
-            user_token_account.key,
-            pool_token_vault.key,
-            user.key,
-            &[],
-            amount,
-        )?,
-        &[
-            user_token_account.clone(),
-            pool_token_vault.clone(),
-            user.clone(),
-            token_program.clone(),
-        ],
-    )?;
-    msg!("Primary tokens transferred to pool vault");
-
-    // Mint LP tokens to user using pool state PDA as authority
+    msg!("Minting {} LP tokens for {} to user", amount, target_lp_mint_account.key);
     invoke_signed(
         &token_instruction::mint_to(
-            token_program.key,
-            lp_token_mint.key,
-            user_lp_token_account.key,
-            pool_state.key, // Authority is the pool state PDA
-            &[],
+            token_program_account.key,
+            target_lp_mint_account.key,
+            user_destination_lp_token_account.key,
+            pool_state_account.key,
+            &[], 
             amount,
         )?,
         &[
-            lp_token_mint.clone(),
-            user_lp_token_account.clone(),
-            pool_state.clone(),
-            token_program.clone(),
+            target_lp_mint_account.clone(),
+            user_destination_lp_token_account.clone(),
+            pool_state_account.clone(),
+            token_program_account.clone(),
         ],
-        &[pool_state_seeds],
+        &[pool_state_pda_seeds],
     )?;
-    msg!("LP tokens minted to user");
 
-    // Update pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
-    msg!("Pool state updated");
+    // Update pool state liquidity
+    if is_depositing_token_a {
+        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount)
+            .ok_or(ProgramError::Overflow)?;
+    } else {
+        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount)
+            .ok_or(ProgramError::Overflow)?;
+    }
+    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+    msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
     // Transfer deposit fee to pool state PDA
+    if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("Insufficient SOL for deposit fee after token transfer. User lamports: {}", user_signer.lamports());
+        return Err(ProgramError::InsufficientFunds); 
+    }
     invoke(
-        &system_instruction::transfer(user.key, pool_state.key, DEPOSIT_WITHDRAWAL_FEE),
-        &[user.clone(), pool_state.clone(), system_program.clone()],
+        &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
-    msg!("Deposit fee transferred to pool state PDA");
+    msg!("Deposit fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
 
     Ok(())
 }
 
 fn process_withdraw(
-    program_id: &Pubkey,
+    _program_id: &Pubkey, // Not directly used unless for PDA derivation if not passed in accounts
     accounts: &[AccountInfo],
-    amount: u64,
+    withdraw_token_mint_key: Pubkey, // Key of the underlying token user wants to withdraw
+    lp_amount_to_burn: u64,         // Amount of LP tokens to burn (equals underlying amount out)
 ) -> ProgramResult {
-    msg!("Processing Withdraw");
+    msg!("Processing Withdraw v2");
     let account_info_iter = &mut accounts.iter();
-    let user = next_account_info(account_info_iter)?;
-    let pool_state = next_account_info(account_info_iter)?;
-    let user_token_account = next_account_info(account_info_iter)?;
-    let pool_token_vault = next_account_info(account_info_iter)?;
-    let lp_token_mint = next_account_info(account_info_iter)?;
-    let user_lp_token_account = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
 
-    // Verify withdrawal fee
-    if user.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("Insufficient SOL for withdrawal fee");
-        return Err(ProgramError::InsufficientFunds);
+    let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
+    let user_source_lp_token_account = next_account_info(account_info_iter)?;   // User's LP token account (source of burn)
+    let user_destination_token_account = next_account_info(account_info_iter)?; // User's account for receiving underlying tokens
+    let pool_state_account = next_account_info(account_info_iter)?;              // Pool state PDA
+    
+    // Accounts needed for Pool State PDA seeds derivation for signing
+    let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_a_mint (must match pool_state_data.token_a_mint)
+    let token_b_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_b_mint (must match pool_state_data.token_b_mint)
+    
+    let pool_token_a_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token A
+    let pool_token_b_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token B
+    let lp_token_a_mint_account = next_account_info(account_info_iter)?;         // Pool's LP token A mint
+    let lp_token_b_mint_account = next_account_info(account_info_iter)?;         // Pool's LP token B mint
+    
+    let system_program_account = next_account_info(account_info_iter)?;         // System program
+    let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
+
+    if !user_signer.is_signer {
+        msg!("User must be a signer for withdraw");
+        return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Get pool state data to access bump seed
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
 
-    // Validate LP token mint
-    let lp_mint_data = MintAccount::unpack_from_slice(&lp_token_mint.data.borrow())?;
-    if !lp_mint_data.is_initialized {
-        msg!("LP token mint not initialized");
-        return Err(ProgramError::UninitializedAccount);
+    // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
+    if *token_a_mint_for_pda_seeds.key != pool_state_data.token_a_mint {
+        msg!("Provided token_a_mint_for_pda_seeds does not match pool state");
+        return Err(ProgramError::InvalidAccountData);
     }
-    if lp_token_mint.key != &pool_state_data.lp_token_mint {
-        msg!("Invalid LP token mint");
+    if *token_b_mint_for_pda_seeds.key != pool_state_data.token_b_mint {
+        msg!("Provided token_b_mint_for_pda_seeds does not match pool state");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Validate user token account
-    let user_token_data = TokenAccount::unpack_from_slice(&user_token_account.data.borrow())?;
-    if !user_token_data.is_initialized {
-        msg!("User token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_token_data.mint != pool_state_data.primary_token_mint {
-        msg!("User token account has wrong mint");
+    // Determine which token (A or B) is being withdrawn and set relevant accounts
+    let (source_pool_vault_account, source_lp_mint_account, is_withdrawing_token_a) = 
+        if withdraw_token_mint_key == pool_state_data.token_a_mint {
+            // Withdrawing Token A, so burning LP Token A
+            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
+                msg!("Invalid pool_token_a_vault_account provided for token A withdrawal.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            if *lp_token_a_mint_account.key != pool_state_data.lp_token_a_mint {
+                msg!("Invalid lp_token_a_mint_account provided for token A withdrawal.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_a_vault_account, lp_token_a_mint_account, true)
+        } else if withdraw_token_mint_key == pool_state_data.token_b_mint {
+            // Withdrawing Token B, so burning LP Token B
+            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
+                msg!("Invalid pool_token_b_vault_account provided for token B withdrawal.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            if *lp_token_b_mint_account.key != pool_state_data.lp_token_b_mint {
+                msg!("Invalid lp_token_b_mint_account provided for token B withdrawal.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_b_vault_account, lp_token_b_mint_account, false)
+        } else {
+            msg!("Withdraw token mint does not match either of the pool's tokens");
+            return Err(ProgramError::InvalidArgument);
+        };
+
+    // Validate user's source LP token account
+    let user_source_lp_token_account_data = TokenAccount::unpack_from_slice(&user_source_lp_token_account.data.borrow())?;
+    if user_source_lp_token_account_data.mint != *source_lp_mint_account.key {
+        msg!("User source LP token account mint mismatch with identified LP mint for withdrawal.");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_token_data.owner != *user.key {
-        msg!("User token account has wrong owner");
+    if user_source_lp_token_account_data.owner != *user_signer.key {
+        msg!("User source LP token account owner mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_source_lp_token_account_data.amount < lp_amount_to_burn {
+        msg!("Insufficient LP tokens in user source account");
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Validate user's destination token account (for underlying tokens)
+    let user_dest_token_account_data = TokenAccount::unpack_from_slice(&user_destination_token_account.data.borrow())?;
+    if user_dest_token_account_data.mint != withdraw_token_mint_key {
+        msg!("User destination token account mint mismatch with withdraw_token_mint_key");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_dest_token_account_data.owner != *user_signer.key {
+        msg!("User destination token account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Validate pool token vault
-    let pool_vault_data = TokenAccount::unpack_from_slice(&pool_token_vault.data.borrow())?;
-    if !pool_vault_data.is_initialized {
-        msg!("Pool token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
+    // Validate SPL Token Program ID
+    if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
+        msg!("Invalid SPL Token Program ID");
+        return Err(ProgramError::IncorrectProgramId);
     }
-    if pool_vault_data.mint != pool_state_data.primary_token_mint {
-        msg!("Pool token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
+    
+    // Check if pool has enough liquidity for the withdrawal
+    if is_withdrawing_token_a {
+        if pool_state_data.total_token_a_liquidity < lp_amount_to_burn {
+            msg!("Insufficient token A liquidity in the pool for withdrawal.");
+            return Err(ProgramError::InsufficientFunds);
+        }
+    } else {
+        if pool_state_data.total_token_b_liquidity < lp_amount_to_burn {
+            msg!("Insufficient token B liquidity in the pool for withdrawal.");
+            return Err(ProgramError::InsufficientFunds);
+        }
     }
-    if pool_vault_data.owner != *pool_state.key {
-        msg!("Pool token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate user LP token account
-    let user_lp_data = TokenAccount::unpack_from_slice(&user_lp_token_account.data.borrow())?;
-    if !user_lp_data.is_initialized {
-        msg!("User LP token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_lp_data.mint != pool_state_data.lp_token_mint {
-        msg!("User LP token account has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_lp_data.owner != *user.key {
-        msg!("User LP token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Create seeds for pool state PDA
-    let pool_state_seeds = &[
-        POOL_STATE_SEED_PREFIX,
-        pool_state_data.primary_token_mint.as_ref(),
-        pool_state_data.base_token_mint.as_ref(),
-        &[pool_state_data.pool_authority_bump_seed],
-    ];
 
     // Burn LP tokens from user
+    msg!("Burning {} LP tokens from account {}", lp_amount_to_burn, user_source_lp_token_account.key);
     invoke(
         &token_instruction::burn(
-            token_program.key,
-            user_lp_token_account.key,
-            lp_token_mint.key,
-            user.key,
+            token_program_account.key,
+            user_source_lp_token_account.key, // Account to burn from
+            source_lp_mint_account.key,       // Mint of the LP tokens being burned
+            user_signer.key,                  // Authority (owner of the LP token account)
             &[],
-            amount,
+            lp_amount_to_burn,
         )?,
         &[
-            user_lp_token_account.clone(),
-            lp_token_mint.clone(),
-            user.clone(),
-            token_program.clone(),
+            user_source_lp_token_account.clone(),
+            source_lp_mint_account.clone(),
+            user_signer.clone(),
+            token_program_account.clone(),
         ],
     )?;
-    msg!("LP tokens burned from user");
 
-    // Transfer primary tokens from pool vault to user using pool state PDA as authority
+    // Transfer underlying tokens from pool vault to user
+    let pool_state_pda_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.token_a_mint.as_ref(),
+        pool_state_data.token_b_mint.as_ref(),
+        &pool_state_data.ratio_a_numerator.to_le_bytes(),
+        &pool_state_data.ratio_b_denominator.to_le_bytes(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
+    msg!("Transferring {} of token {} from pool vault {} to user account {}", 
+           lp_amount_to_burn, withdraw_token_mint_key, source_pool_vault_account.key, user_destination_token_account.key);
     invoke_signed(
         &token_instruction::transfer(
-            token_program.key,
-            pool_token_vault.key,
-            user_token_account.key,
-            pool_state.key, // Authority is the pool state PDA
+            token_program_account.key,
+            source_pool_vault_account.key,         // Pool's vault (source)
+            user_destination_token_account.key,    // User's token account (destination)
+            pool_state_account.key,                // Pool PDA is the authority over its vault
             &[],
-            amount,
+            lp_amount_to_burn,                     // Amount of underlying token to transfer (equals LP burned)
         )?,
         &[
-            pool_token_vault.clone(),
-            user_token_account.clone(),
-            pool_state.clone(),
-            token_program.clone(),
+            source_pool_vault_account.clone(),
+            user_destination_token_account.clone(),
+            pool_state_account.clone(),
+            token_program_account.clone(),
         ],
-        &[pool_state_seeds],
+        &[pool_state_pda_seeds],
     )?;
-    msg!("Primary tokens transferred to user");
 
-    // Update pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_sub(amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
-    msg!("Pool state updated");
+    // Update pool state liquidity
+    if is_withdrawing_token_a {
+        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_sub(lp_amount_to_burn)
+            .ok_or(ProgramError::Overflow)?;
+    } else {
+        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(lp_amount_to_burn)
+            .ok_or(ProgramError::Overflow)?;
+    }
+    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+    msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
-    // Transfer withdrawal fee to pool state PDA instead of program_id
+    // Transfer withdrawal fee to pool state PDA
+    if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("Insufficient SOL for withdrawal fee. User lamports: {}", user_signer.lamports());
+        return Err(ProgramError::InsufficientFunds);
+    }
     invoke(
-        &system_instruction::transfer(user.key, pool_state.key, DEPOSIT_WITHDRAWAL_FEE),
-        &[user.clone(), pool_state.clone(), system_program.clone()],
+        &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
-    msg!("Withdrawal fee transferred to pool state PDA");
+    msg!("Withdrawal fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
 
     Ok(())
 }
 
-fn process_swap_primary_to_base(
-    program_id: &Pubkey,
+fn process_swap(
+    _program_id: &Pubkey, // Not directly used unless for PDA derivation if not passed in accounts
     accounts: &[AccountInfo],
-    amount: u64,
+    input_token_mint_key: Pubkey, // Mint of the token user is providing for the swap
+    amount_in: u64,               // Amount of the input token
 ) -> ProgramResult {
-    msg!("Processing Swap Primary to Base");
+    msg!("Processing Swap v2");
     let account_info_iter = &mut accounts.iter();
-    let user = next_account_info(account_info_iter)?;
-    let pool_state = next_account_info(account_info_iter)?;
-    let user_primary_token_account = next_account_info(account_info_iter)?;
-    let user_base_token_account = next_account_info(account_info_iter)?;
-    let pool_primary_token_vault = next_account_info(account_info_iter)?;
-    let pool_base_token_vault = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
 
-    // Verify user is a signer
-    if !user.is_signer {
-        msg!("User must be a signer");
+    let user_signer = next_account_info(account_info_iter)?;                     // User initiating the swap (signer)
+    let user_input_token_account = next_account_info(account_info_iter)?;      // User's token account for the input token
+    let user_output_token_account = next_account_info(account_info_iter)?;     // User's token account to receive the output token
+    let pool_state_account = next_account_info(account_info_iter)?;              // Pool state PDA
+
+    // Accounts needed for Pool State PDA seeds derivation for signing
+    let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_a_mint (must match pool_state_data.token_a_mint)
+    let token_b_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_b_mint (must match pool_state_data.token_b_mint)
+    
+    let pool_token_a_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token A
+    let pool_token_b_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token B
+    
+    let system_program_account = next_account_info(account_info_iter)?;         // System program
+    let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
+
+    if !user_signer.is_signer {
+        msg!("User must be a signer for swap");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify token program is the correct SPL token program
-    if token_program.key.to_string() != SPL_TOKEN_PROGRAM_ID {
-        msg!("Invalid token program");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Verify swap fee
-    if user.lamports() < SWAP_FEE {
-        msg!("Insufficient SOL for swap fee");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Get pool state data to access bump seed
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
 
-    // Validate ratio is not zero
-    if pool_state_data.ratio == 0 {
-        msg!("Pool ratio cannot be zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    // Validate user primary token account
-    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
-    if !user_primary_data.is_initialized {
-        msg!("User primary token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("User primary token account has wrong mint");
+    // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
+    if *token_a_mint_for_pda_seeds.key != pool_state_data.token_a_mint {
+        msg!("Provided token_a_mint_for_pda_seeds does not match pool state");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_primary_data.owner != *user.key {
-        msg!("User primary token account has wrong owner");
+    if *token_b_mint_for_pda_seeds.key != pool_state_data.token_b_mint {
+        msg!("Provided token_b_mint_for_pda_seeds does not match pool state");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Validate user base token account
-    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
-    if !user_base_data.is_initialized {
-        msg!("User base token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_base_data.mint != pool_state_data.base_token_mint {
-        msg!("User base token account has wrong mint");
+    // Determine swap direction and relevant accounts
+    let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
+        if input_token_mint_key == pool_state_data.token_a_mint {
+            // Swapping Token A for Token B
+            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault || 
+               *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
+                msg!("Invalid pool vault accounts provided for A -> B swap.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_a_vault_account, pool_token_b_vault_account, pool_state_data.token_b_mint, true)
+        } else if input_token_mint_key == pool_state_data.token_b_mint {
+            // Swapping Token B for Token A
+            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault || 
+               *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
+                msg!("Invalid pool vault accounts provided for B -> A swap.");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (pool_token_b_vault_account, pool_token_a_vault_account, pool_state_data.token_a_mint, false)
+        } else {
+            msg!("Input token mint does not match either of the pool's tokens");
+            return Err(ProgramError::InvalidArgument);
+        };
+
+    // Validate user's input token account
+    let user_input_token_account_data = TokenAccount::unpack_from_slice(&user_input_token_account.data.borrow())?;
+    if user_input_token_account_data.mint != input_token_mint_key {
+        msg!("User input token account mint mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_base_data.owner != *user.key {
-        msg!("User base token account has wrong owner");
+    if user_input_token_account_data.owner != *user_signer.key {
+        msg!("User input token account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
+    }
+    if user_input_token_account_data.amount < amount_in {
+        msg!("Insufficient funds in user input token account");
+        return Err(ProgramError::InsufficientFunds);
     }
 
-    // Validate pool primary token vault
-    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
-    if !pool_primary_data.is_initialized {
-        msg!("Pool primary token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("Pool primary token vault has wrong mint");
+    // Validate user's output token account
+    let user_output_token_account_data = TokenAccount::unpack_from_slice(&user_output_token_account.data.borrow())?;
+    if user_output_token_account_data.mint != output_token_mint_key {
+        msg!("User output token account mint mismatch with expected output token");
         return Err(ProgramError::InvalidAccountData);
     }
-    if pool_primary_data.owner != *pool_state.key {
-        msg!("Pool primary token vault has wrong owner");
+    if user_output_token_account_data.owner != *user_signer.key {
+        msg!("User output token account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Validate SPL Token Program ID
+    if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
+        msg!("Invalid SPL Token Program ID");
+        return Err(ProgramError::IncorrectProgramId);
     }
 
-    // Validate pool base token vault
-    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
-    if !pool_base_data.is_initialized {
-        msg!("Pool base token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_base_data.mint != pool_state_data.base_token_mint {
-        msg!("Pool base token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if pool_base_data.owner != *pool_state.key {
-        msg!("Pool base token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
+    // Calculate amount_out
+    let amount_out = if input_is_token_a {
+        // Swapping A for B: amount_out_B = (amount_in_A * ratio_B_denominator) / ratio_A_numerator
+        if pool_state_data.ratio_a_numerator == 0 {
+            msg!("Pool ratio_a_numerator is zero, cannot perform swap.");
+            return Err(ProgramError::InvalidAccountData); // Or a more specific error
+        }
+        amount_in.checked_mul(pool_state_data.ratio_b_denominator)
+            .ok_or(ProgramError::Overflow)?
+            .checked_div(pool_state_data.ratio_a_numerator)
+            .ok_or(ProgramError::ArithmeticOverflow)? // Using ArithmeticOverflow for division issues
+    } else {
+        // Swapping B for A: amount_out_A = (amount_in_B * ratio_A_numerator) / ratio_B_denominator
+        if pool_state_data.ratio_b_denominator == 0 {
+            msg!("Pool ratio_b_denominator is zero, cannot perform swap.");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        amount_in.checked_mul(pool_state_data.ratio_a_numerator)
+            .ok_or(ProgramError::Overflow)?
+            .checked_div(pool_state_data.ratio_b_denominator)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    };
+
+    if amount_out == 0 {
+        msg!("Calculated amount_out is zero. Swap not beneficial or too small.");
+        return Err(ProgramError::InvalidArgument); // Or a custom error like SwapAmountTooSmall
     }
 
-    // Create seeds for pool state PDA
-    let pool_state_seeds = &[
+    // Check pool liquidity for output token
+    if input_is_token_a {
+        // Output is Token B
+        if pool_state_data.total_token_b_liquidity < amount_out {
+            msg!("Insufficient Token B liquidity in the pool for swap output.");
+            return Err(ProgramError::InsufficientFunds);
+        }
+    } else {
+        // Output is Token A
+        if pool_state_data.total_token_a_liquidity < amount_out {
+            msg!("Insufficient Token A liquidity in the pool for swap output.");
+            return Err(ProgramError::InsufficientFunds);
+        }
+    }
+
+    // Transfer input tokens from user to pool vault
+    msg!("Transferring {} of input token {} from user to pool vault {}", 
+           amount_in, input_token_mint_key, input_pool_vault_acc.key);
+    invoke(
+        &token_instruction::transfer(
+            token_program_account.key,
+            user_input_token_account.key,
+            input_pool_vault_acc.key,
+            user_signer.key, // User is the authority over their input account
+            &[],
+            amount_in,
+        )?,
+        &[
+            user_input_token_account.clone(),
+            input_pool_vault_acc.clone(),
+            user_signer.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
+
+    // Transfer output tokens from pool vault to user
+    let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
-        pool_state_data.primary_token_mint.as_ref(),
-        pool_state_data.base_token_mint.as_ref(),
+        pool_state_data.token_a_mint.as_ref(),
+        pool_state_data.token_b_mint.as_ref(),
+        &pool_state_data.ratio_a_numerator.to_le_bytes(),
+        &pool_state_data.ratio_b_denominator.to_le_bytes(),
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    // Calculate base amount with overflow check
-    let base_amount = amount.checked_mul(pool_state_data.ratio)
-        .ok_or(ProgramError::Overflow)?;
-
-    // Verify pool has enough base tokens
-    if base_amount > pool_state_data.total_base_tokens {
-        msg!("Insufficient base tokens in pool");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Transfer primary tokens from user to pool
-    invoke(
-        &token_instruction::transfer(
-            token_program.key,
-            user_primary_token_account.key,
-            pool_primary_token_vault.key,
-            user.key,
-            &[],
-            amount,
-        )?,
-        &[
-            user_primary_token_account.clone(),
-            pool_primary_token_vault.clone(),
-            user.clone(),
-            token_program.clone(),
-        ],
-    )?;
-    msg!("Primary tokens transferred to pool");
-
-    // Transfer base tokens from pool to user using pool state PDA as authority
+    msg!("Transferring {} of output token {} from pool vault {} to user account {}", 
+           amount_out, output_token_mint_key, output_pool_vault_acc.key, user_output_token_account.key);
     invoke_signed(
         &token_instruction::transfer(
-            token_program.key,
-            pool_base_token_vault.key,
-            user_base_token_account.key,
-            pool_state.key, // Authority is the pool state PDA
+            token_program_account.key,
+            output_pool_vault_acc.key,          // Pool's output vault (source)
+            user_output_token_account.key,      // User's output account (destination)
+            pool_state_account.key,             // Pool PDA is the authority over its vault
             &[],
-            base_amount,
+            amount_out,
         )?,
         &[
-            pool_base_token_vault.clone(),
-            user_base_token_account.clone(),
-            pool_state.clone(),
-            token_program.clone(),
+            output_pool_vault_acc.clone(),
+            user_output_token_account.clone(),
+            pool_state_account.clone(),
+            token_program_account.clone(),
         ],
-        &[pool_state_seeds],
+        &[pool_state_pda_seeds],
     )?;
-    msg!("Base tokens transferred to user");
 
-    // Update pool state with overflow checks
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_add(amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_sub(base_amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
-    msg!("Pool state updated");
+    // Update pool state liquidity
+    if input_is_token_a {
+        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount_in)
+            .ok_or(ProgramError::Overflow)?;
+        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(amount_out)
+            .ok_or(ProgramError::Overflow)?;
+    } else {
+        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount_in)
+            .ok_or(ProgramError::Overflow)?;
+        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_sub(amount_out)
+            .ok_or(ProgramError::Overflow)?;
+    }
+    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+    msg!("Pool liquidity updated after swap. Token A: {}, Token B: {}", 
+           pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
     // Transfer swap fee to pool state PDA
-    invoke(
-        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
-        &[user.clone(), pool_state.clone(), system_program.clone()],
-    )?;
-    msg!("Swap fee transferred to pool state PDA");
-
-    Ok(())
-}
-
-fn process_swap_base_to_primary(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    amount: u64,
-) -> ProgramResult {
-    msg!("Processing Swap Base to Primary");
-    let account_info_iter = &mut accounts.iter();
-    let user = next_account_info(account_info_iter)?;
-    let pool_state = next_account_info(account_info_iter)?;
-    let user_primary_token_account = next_account_info(account_info_iter)?;
-    let user_base_token_account = next_account_info(account_info_iter)?;
-    let pool_primary_token_vault = next_account_info(account_info_iter)?;
-    let pool_base_token_vault = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
-
-    // Verify user is a signer
-    if !user.is_signer {
-        msg!("User must be a signer");
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    // Verify token program is the correct SPL token program
-    if token_program.key.to_string() != SPL_TOKEN_PROGRAM_ID {
-        msg!("Invalid token program");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Verify swap fee
-    if user.lamports() < SWAP_FEE {
-        msg!("Insufficient SOL for swap fee");
+    if user_signer.lamports() < SWAP_FEE {
+        msg!("Insufficient SOL for swap fee. User lamports: {}", user_signer.lamports());
         return Err(ProgramError::InsufficientFunds);
     }
-
-    // Get pool state data to access bump seed
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    if !pool_state_data.is_initialized {
-        msg!("Pool not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-
-    // Validate ratio is not zero
-    if pool_state_data.ratio == 0 {
-        msg!("Pool ratio cannot be zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    // Validate user primary token account
-    let user_primary_data = TokenAccount::unpack_from_slice(&user_primary_token_account.data.borrow())?;
-    if !user_primary_data.is_initialized {
-        msg!("User primary token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("User primary token account has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_primary_data.owner != *user.key {
-        msg!("User primary token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate user base token account
-    let user_base_data = TokenAccount::unpack_from_slice(&user_base_token_account.data.borrow())?;
-    if !user_base_data.is_initialized {
-        msg!("User base token account not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if user_base_data.mint != pool_state_data.base_token_mint {
-        msg!("User base token account has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_base_data.owner != *user.key {
-        msg!("User base token account has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate pool primary token vault
-    let pool_primary_data = TokenAccount::unpack_from_slice(&pool_primary_token_vault.data.borrow())?;
-    if !pool_primary_data.is_initialized {
-        msg!("Pool primary token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_primary_data.mint != pool_state_data.primary_token_mint {
-        msg!("Pool primary token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if pool_primary_data.owner != *pool_state.key {
-        msg!("Pool primary token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate pool base token vault
-    let pool_base_data = TokenAccount::unpack_from_slice(&pool_base_token_vault.data.borrow())?;
-    if !pool_base_data.is_initialized {
-        msg!("Pool base token vault not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    if pool_base_data.mint != pool_state_data.base_token_mint {
-        msg!("Pool base token vault has wrong mint");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if pool_base_data.owner != *pool_state.key {
-        msg!("Pool base token vault has wrong owner");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Create seeds for pool state PDA
-    let pool_state_seeds = &[
-        POOL_STATE_SEED_PREFIX,
-        pool_state_data.primary_token_mint.as_ref(),
-        pool_state_data.base_token_mint.as_ref(),
-        &[pool_state_data.pool_authority_bump_seed],
-    ];
-
-    // Calculate primary amount with overflow check
-    let primary_amount = amount.checked_div(pool_state_data.ratio)
-        .ok_or(ProgramError::Overflow)?;
-
-    // Verify pool has enough primary tokens
-    if primary_amount > pool_state_data.total_primary_tokens {
-        msg!("Insufficient primary tokens in pool");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Transfer base tokens from user to pool
     invoke(
-        &token_instruction::transfer(
-            token_program.key,
-            user_base_token_account.key,
-            pool_base_token_vault.key,
-            user.key,
-            &[],
-            amount,
-        )?,
-        &[
-            user_base_token_account.clone(),
-            pool_base_token_vault.clone(),
-            user.clone(),
-            token_program.clone(),
-        ],
+        &system_instruction::transfer(user_signer.key, pool_state_account.key, SWAP_FEE),
+        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
-    msg!("Base tokens transferred to pool");
-
-    // Transfer primary tokens from pool to user using pool state PDA as authority
-    invoke_signed(
-        &token_instruction::transfer(
-            token_program.key,
-            pool_primary_token_vault.key,
-            user_primary_token_account.key,
-            pool_state.key, // Authority is the pool state PDA
-            &[],
-            primary_amount,
-        )?,
-        &[
-            pool_primary_token_vault.clone(),
-            user_primary_token_account.clone(),
-            pool_state.clone(),
-            token_program.clone(),
-        ],
-        &[pool_state_seeds],
-    )?;
-    msg!("Primary tokens transferred to user");
-
-    // Update pool state with overflow checks
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
-    pool_state_data.total_primary_tokens = pool_state_data.total_primary_tokens.checked_sub(primary_amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.total_base_tokens = pool_state_data.total_base_tokens.checked_add(amount)
-        .ok_or(ProgramError::Overflow)?;
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
-    msg!("Pool state updated");
-
-    // Transfer swap fee to pool state PDA
-    invoke(
-        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
-        &[user.clone(), pool_state.clone(), system_program.clone()],
-    )?;
-    msg!("Swap fee transferred to pool state PDA");
+    msg!("Swap fee {} transferred to pool state PDA", SWAP_FEE);
 
     Ok(())
 }
@@ -1046,7 +1104,28 @@ fn process_withdraw_fees(
 
 impl PoolState {
     pub fn get_packed_len() -> usize {
-        (32 * 6) + (8 * 3) + (1 * 3) + 1
+        32 + // owner
+        32 + // token_a_mint
+        32 + // token_b_mint
+        32 + // token_a_vault
+        32 + // token_b_vault
+        32 + // lp_token_a_mint
+        32 + // lp_token_b_mint
+        8 +  // ratio_a_numerator
+        8 +  // ratio_b_denominator
+        8 +  // total_token_a_liquidity
+        8 +  // total_token_b_liquidity
+        1 +  // pool_authority_bump_seed
+        1 +  // token_a_vault_bump_seed
+        1 +  // token_b_vault_bump_seed
+        1    // is_initialized
+        // = 253 bytes
+        // Let's recalculate:
+        // 7 * Pubkey = 7 * 32 = 224
+        // 4 * u64 = 4 * 8 = 32
+        // 3 * u8 = 3
+        // 1 * bool = 1
+        // Total = 224 + 32 + 3 + 1 = 260
     }
 }
 

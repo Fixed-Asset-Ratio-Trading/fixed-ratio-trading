@@ -1,81 +1,143 @@
 # Fixed Ratio Trading Smart Contract (Solana)
 
-A Solana smart contract that enables trustless token swaps at a pre-determined, immutable exchange ratio between tokens.
+A Solana smart contract that enables trustless token swaps at a pre-determined, immutable exchange ratio between a pair of tokens. This version introduces a dual LP token model and token pair normalization.
 
 ## Features
 
-- Fixed Exchange Ratio: Each pool maintains an immutable ratio of base tokens per primary token
-- Bi-Directional Swaps: Trade in both directions (primary → base or base → primary) at the fixed ratio
-- PDA-Based Pool Accounts: Each pool is uniquely identified by a Program Derived Address
-- One-Sided Liquidity Provision: LPs deposit only the primary token and receive LP tokens
-- LP Token Redemption: Burn LP tokens to withdraw primary tokens from the pool
-- Flat Fee Structure: Fixed fees for registration, deposits, withdrawals, and swaps
+-   **Fixed Exchange Ratio**: Each pool maintains an immutable ratio between two tokens (Token A and Token B).
+-   **Token Pair Normalization**: Pools are uniquely identified by the pair of token mints and their ratio, regardless of the order in which the tokens are specified during initialization. Internally, tokens are normalized (e.g., by lexicographical order of their mint addresses) to prevent duplicate pools for the same pair and ratio.
+-   **Dual LP Token Model**:
+    -   Each liquidity pool issues two distinct LP tokens:
+        -   `LP-Token-A`: Represents a claim on Token A in the pool.
+        -   `LP-Token-B`: Represents a claim on Token B in the pool.
+-   **One-Sided Liquidity Provision**: Users can provide liquidity for *either* Token A or Token B individually and receive the corresponding LP token (`LP-Token-A` or `LP-Token-B`).
+-   **One-Sided Liquidity Withdrawal**: Users can burn *either* `LP-Token-A` to withdraw Token A, or `LP-Token-B` to withdraw Token B.
+-   **Bi-Directional Swaps**: Trade Token A for Token B, or Token B for Token A, at the pool's fixed ratio, utilizing the combined liquidity.
+-   **PDA-Based Pool Accounts**: Each unique pool (defined by normalized token pair and ratio) is managed by a Program Derived Address (PDA). Vaults and LP mints are also PDAs or controlled by the pool PDA.
+-   **Flat Fee Structure**: Fixed fees for pool registration, deposits, withdrawals, and swaps.
 
 ## Fee Structure
 
-- Registration Fee: 1.15 SOL (one-time)
-- Deposit/Withdrawal Fee: 0.0013 SOL
-- Swap Fee: 0.0000125 SOL
+-   Registration Fee: 1.15 SOL (one-time, paid when a new pool is created)
+-   Deposit/Withdrawal Fee: 0.0013 SOL (per transaction)
+-   Swap Fee: 0.0000125 SOL (per transaction)
 
 ## Instructions
 
-### Initialize Pool
-Creates a new trading pool with a fixed ratio between primary and base tokens.
+### 1. `InitializePool`
 
-### Deposit
-Deposit primary tokens into the pool and receive LP tokens.
+-   **Purpose**: Creates a new trading pool for a pair of tokens with a specified fixed exchange ratio.
+-   **Details**:
+    -   Takes two token mints (e.g., Primary Token, Base Token) and a ratio (e.g., X units of Primary per 1 unit of Base).
+    -   Normalizes the token pair (Token A, Token B) and the ratio (`ratio_A_numerator` : `ratio_B_denominator`).
+    -   Creates a unique Pool State PDA based on the normalized pair and ratio.
+    -   Creates two new SPL Token mints: `LP-Token-A` (for Token A liquidity) and `LP-Token-B` (for Token B liquidity). The Pool State PDA is the mint authority.
+    -   Creates two token vaults (for Token A and Token B), owned by the Pool State PDA.
+-   **Accounts Required**: Payer (signer), Pool State PDA (to be created), Primary Token Mint, Base Token Mint, LP Token A Mint (to be created), LP Token B Mint (to be created), Token A Vault PDA (to be created), Token B Vault PDA (to be created), System Program, Token Program, Rent Sysvar.
 
-### Withdraw
-Burn LP tokens to withdraw primary tokens from the pool.
+### 2. `Deposit`
 
-### Swap Primary to Base
-Swap primary tokens for base tokens at the fixed ratio.
+-   **Purpose**: Allows a user to deposit one of the pool's tokens (either Token A or Token B) and receive a corresponding amount of LP tokens for that specific token.
+-   **Details**:
+    -   User specifies the `deposit_token_mint` (must be one of the pool's `token_a_mint` or `token_b_mint`) and the `amount`.
+    -   The specified `amount` of the `deposit_token_mint` is transferred from the user to the pool's corresponding vault (Token A vault or Token B vault).
+    -   An equivalent `amount` of the corresponding LP tokens (`LP-Token-A` or `LP-Token-B`) is minted to the user. (1:1 minting for one-sided deposit).
+-   **Accounts Required**: User (signer), User's Source Token Account (for the token being deposited), Pool State PDA, Token A Mint (for PDA seed verification), Token B Mint (for PDA seed verification), Pool's Token A Vault, Pool's Token B Vault, LP Token A Mint, LP Token B Mint, User's Destination LP Token Account (for the corresponding LP token), System Program, Token Program.
 
-### Swap Base to Primary
-Swap base tokens for primary tokens at the fixed ratio.
+### 3. `Withdraw`
 
-### Withdraw Fees
-Contract owner can withdraw accumulated fees.
+-   **Purpose**: Allows a user to burn one type of LP token (`LP-Token-A` or `LP-Token-B`) and withdraw a corresponding amount of the underlying token (Token A or Token B) from the pool.
+-   **Details**:
+    -   User specifies the `withdraw_token_mint` (the underlying token they want to receive, either Token A or Token B) and the `lp_amount_to_burn`.
+    -   The specified `lp_amount_to_burn` of the corresponding LP tokens (`LP-Token-A` or `LP-Token-B`) is burned from the user's account.
+    -   An equivalent `lp_amount_to_burn` of the `withdraw_token_mint` is transferred from the pool's corresponding vault to the user.
+-   **Accounts Required**: User (signer), User's Source LP Token Account (for the LP token being burned), User's Destination Token Account (for the underlying token), Pool State PDA, Token A Mint (for PDA seed verification), Token B Mint (for PDA seed verification), Pool's Token A Vault, Pool's Token B Vault, LP Token A Mint, LP Token B Mint, System Program, Token Program.
 
-## Example Use Case
+### 4. `Swap`
+
+-   **Purpose**: Allows a user to swap a specified amount of one token from the pool (e.g., Token A) for an equivalent amount of the other token (e.g., Token B) based on the pool's fixed ratio.
+-   **Details**:
+    -   User specifies the `input_token_mint` (the token they are giving) and the `amount_in`.
+    -   The contract calculates the `amount_out` of the other token based on the pool's `ratio_A_numerator` and `ratio_B_denominator`.
+    -   `amount_in` is transferred from the user to the pool's vault for the input token.
+    -   `amount_out` is transferred from the pool's vault for the output token to the user.
+-   **Accounts Required**: User (signer), User's Input Token Account, User's Output Token Account, Pool State PDA, Token A Mint (for PDA seed verification), Token B Mint (for PDA seed verification), Pool's Token A Vault, Pool's Token B Vault, System Program, Token Program.
+
+### 5. `WithdrawFees`
+
+-   **Purpose**: Allows the designated owner of the pool (set during `InitializePool`) to withdraw accumulated SOL fees from the Pool State PDA.
+-   **Details**: Transfers the SOL balance of the Pool State PDA to the owner's account.
+-   **Accounts Required**: Owner (signer), Pool State PDA, System Program.
+
+## Example Use Case (Dual LP Model)
 
 **Scenario:**
+A pool is desired for USDC and MSOL with a fixed ratio where 1 MSOL = 150 USDC.
 
-Alice has issued MYT tokens with a guarantee of redemption at a value of 10 USDT tokens each, contingent upon her maintained collateral. To uphold this commitment and ensure the perpetual exchange of 1 MYT for 10 USDT, she has established a liquidity pool comprising USDT (Primary token) and MYT (base token) at a fixed ratio of 0.1. This means every 10 USDT in the pool will be worth 1 MYT token. In this pool, 10 USDT will be equivalent in value to 1 MYT token.
+**1. Pool Initialization (`InitializePool`):**
+*   **Creator**: Pays the registration fee (1.15 SOL).
+*   **Inputs**:
+    *   Primary Token Mint: MSOL Mint Address
+    *   Base Token Mint: USDC Mint Address
+    *   Ratio (Primary per Base): 1 MSOL per 150 USDC. (The contract will normalize this. If MSOL < USDC lexicographically, Token A becomes MSOL, Token B becomes USDC. Ratio A:B becomes 1 MSOL : 150 USDC. If USDC < MSOL, Token A becomes USDC, Token B becomes MSOL. Ratio A:B becomes 150 USDC : 1 MSOL).
+*   **Outcome**:
+    *   A new Pool State PDA is created, uniquely identifying this MSOL/USDC pool with the specified ratio.
+    *   Two LP Mints are created: `LP-MSOL-Mint` and `LP-USDC-Mint`.
+    *   Two Vaults are created: `MSOL-Vault` and `USDC-Vault`.
 
-**Steps:**
+**2. Alice's Liquidity Provision (One-Sided - MSOL) (`Deposit`):**
+*   Alice wants to provide 10 MSOL.
+*   She pays the deposit fee (0.0013 SOL).
+*   **Action**: Calls `Deposit` with `deposit_token_mint = MSOL-Mint-Address`, `amount = 10 MSOL`.
+*   **Outcome**:
+    *   10 MSOL transferred from Alice's MSOL account to the pool's `MSOL-Vault`.
+    *   Alice receives 10 `LP-MSOL` tokens from `LP-MSOL-Mint`.
+    *   Pool Liquidity: 10 MSOL, 0 USDC.
 
-1.  **Alice Creates the Pool (One-time action):**
-    *   A new pool for "USDT" (Primary) and "MYT" (Base) is created with a 10 USDT : 1 MYT ratio.
-    *   Alice (or the pool creator) pays the one-time registration fee of 1.15 SOL.
+**3. Bob's Liquidity Provision (One-Sided - USDC) (`Deposit`):**
+*   Bob wants to provide 3000 USDC.
+*   He pays the deposit fee (0.0013 SOL).
+*   **Action**: Calls `Deposit` with `deposit_token_mint = USDC-Mint-Address`, `amount = 3000 USDC`.
+*   **Outcome**:
+    *   3000 USDC transferred from Bob's USDC account to the pool's `USDC-Vault`.
+    *   Bob receives 3000 `LP-USDC` tokens from `LP-USDC-Mint`.
+    *   Pool Liquidity: 10 MSOL, 3000 USDC.
 
-2.  **Alice's (or anyone's) Liquidity Provision:**
-    *   Alice decides to deposit 100 USDT into the pool.
-    *   She pays a deposit fee of 0.0013 SOL.
-    *   Alice receives LP tokens representing her 100 USDT deposit. These LP tokens are a claim on the USDT reserves of the pool.
+**4. Charlie's Swap (USDC for MSOL) (`Swap`):**
+*   Charlie has 1500 USDC and wants MSOL. The pool ratio is 1 MSOL : 150 USDC.
+*   He pays the swap fee (0.0000125 SOL).
+*   **Action**: Calls `Swap` with `input_token_mint = USDC-Mint-Address`, `amount_in = 1500 USDC`.
+*   **Calculation**: `amount_out_MSOL = (1500 USDC / 150 USDC_per_MSOL) = 10 MSOL`.
+*   **Outcome**:
+    *   1500 USDC transferred from Charlie to the pool's `USDC-Vault`.
+    *   10 MSOL transferred from the pool's `MSOL-Vault` to Charlie.
+    *   Pool Liquidity: 0 MSOL (10 - 10), 4500 USDC (3000 + 1500).
 
-3.  **Bob's Swap (MYT to USDT):**
-    *   Bob wants to acquire USDT and has 1 MYT.
-    *   He interacts with the pool to swap his 1 MYT for USDT.
-    *   Bob pays a swap fee of 0.0000125 SOL.
-    *   The contract uses the 10:1 ratio. Bob provides 1 MYT to the pool.
-    *   Bob receives 10 USDT from the pool's USDT vault.
-    *   The pool now holds 90 USDT (100 - 10) and 1 MYT.
+**5. Alice's Withdrawal (MSOL) (`Withdraw`):**
+*   Alice wants to withdraw her MSOL liquidity. She has 10 `LP-MSOL` tokens.
+*   The pool now has 0 MSOL.
+*   **Action**: Alice calls `Withdraw` with `withdraw_token_mint = MSOL-Mint-Address`, `lp_amount_to_burn = 10 LP-MSOL`.
+*   **Outcome**:
+    *   This withdrawal will FAIL because the `MSOL-Vault` is empty (`pool_state_data.total_token_a_liquidity` for MSOL is 0). Alice cannot get her MSOL back until someone swaps USDC for MSOL, replenishing the MSOL vault.
+    *   This highlights the risk of one-sided liquidity: if the token you provided is heavily swapped out, you might not be able to withdraw it immediately.
 
-4.  **Alice's Withdrawal:**
-    *   Later, Alice decides to withdraw her liquidity.
-    *   She initiates a withdrawal by providing her LP tokens (representing her initial 100 USDT deposit).
-    *   Alice pays a withdrawal fee of 0.0013 SOL.
-    *   The contract burns her LP tokens.
-    *   Alice receives the remaining USDT from the pool that corresponds to her share. In this simplified case, if no other LPs exist and considering Bob's trade, she would receive 90 USDT. (Note: The exact amount depends on the total liquidity and her share, but for this example, she gets back the 90 USDT remaining from her initial deposit after Bob's trade).
+**6. Bob's Withdrawal (Partial USDC) (`Withdraw`):**
+*   Bob wants to withdraw 1000 USDC. He has 3000 `LP-USDC` tokens.
+*   Pool `USDC-Vault` has 4500 USDC.
+*   He pays the withdrawal fee (0.0013 SOL).
+*   **Action**: Bob calls `Withdraw` with `withdraw_token_mint = USDC-Mint-Address`, `lp_amount_to_burn = 1000 LP-USDC`.
+*   **Outcome**:
+    *   1000 `LP-USDC` tokens burned from Bob.
+    *   1000 USDC transferred from pool's `USDC-Vault` to Bob.
+    *   Bob now has 2000 `LP-USDC` tokens.
+    *   Pool Liquidity: 0 MSOL, 3500 USDC (4500 - 1000).
 
-5.  **Post-Alice's Withdrawal & Further Swaps:**
-    *   The pool now has 0 USDT (if Alice was the sole LP and withdrew everything she could) and 1 MYT (from Bob's swap).
-    *   No further MYT to USDT swaps can occur as the USDT vault is empty.
-    *   However, if someone wants MYT and the market value of MYT exceeds 10 USDT, they can swap 10 USDT for the 1 MYT held in the contract (assuming Alice did not withdraw the full 100 USDT, or other LPs exist).
-    *   If Alice had, for instance, LP tokens equivalent to 10 USDT still in the pool (perhaps from fees or a partial withdrawal), she could withdraw that remaining 10 USDT.
+**Simulating "Original" Balanced Liquidity Provision:**
+To provide liquidity similar to the previous single LP token model (where a user provides both tokens in ratio), a user would perform two separate `Deposit` operations:
+1.  Deposit Token A and receive `LP-Token-A`.
+2.  Deposit Token B (in the correct ratio to Token A) and receive `LP-Token-B`.
 
-**Important Note:** Once a token vault in the pool (e.g., the USDT vault) is empty, trades requiring that token as output cannot occur until new liquidity for that token is provided. Anyone (not just the initial creator) can deposit the primary token (USDT in this case) to receive LP tokens and enable further trades.
+Withdrawal would also require two separate `Withdraw` operations if they wish to get both tokens back.
 
 ## Building
 
@@ -91,8 +153,12 @@ cargo test-bpf
 
 ## Security Considerations
 
-- All operations are atomic
-- Overflow checks are implemented for all arithmetic operations
-- Fee collection is enforced for all operations
-- Pool state is protected by PDA ownership
-- Token transfers use SPL Token program for security 
+-   All operations aim to be atomic.
+-   Comprehensive overflow checks are implemented for arithmetic operations.
+-   Fee collection is enforced.
+-   Pool state and vaults are protected by PDA ownership and derivation logic.
+-   Token transfers rely on the security of the SPL Token program.
+-   **New Considerations for Dual LP Model**:
+    -   The 1:1 minting of LP tokens for one-sided deposits is simple but means LP token value is directly tied to the specific token deposited, not a share of the *overall* pool value in the same way as a traditional AMM LP token.
+    -   Users must understand that providing liquidity for one side (e.g., Token A) means their ability to withdraw Token A depends on Token A being present in the pool, which can be depleted by swaps.
+    -   The ratio is fixed, so there is no impermanent loss in the traditional sense, but liquidity can become imbalanced. 
