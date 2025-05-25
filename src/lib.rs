@@ -413,12 +413,12 @@ fn process_deposit(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer deposit fee
+    // Transfer deposit fee to pool state PDA instead of program_id
     invoke(
-        &system_instruction::transfer(user.key, program_id, DEPOSIT_WITHDRAWAL_FEE),
-        &[user.clone(), system_program.clone()],
+        &system_instruction::transfer(user.key, pool_state.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user.clone(), pool_state.clone(), system_program.clone()],
     )?;
-    msg!("Deposit fee transferred");
+    msg!("Deposit fee transferred to pool state PDA");
 
     Ok(())
 }
@@ -506,12 +506,12 @@ fn process_withdraw(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer withdrawal fee
+    // Transfer withdrawal fee to pool state PDA instead of program_id
     invoke(
-        &system_instruction::transfer(user.key, program_id, DEPOSIT_WITHDRAWAL_FEE),
-        &[user.clone(), system_program.clone()],
+        &system_instruction::transfer(user.key, pool_state.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user.clone(), pool_state.clone(), system_program.clone()],
     )?;
-    msg!("Withdrawal fee transferred");
+    msg!("Withdrawal fee transferred to pool state PDA");
 
     Ok(())
 }
@@ -610,12 +610,12 @@ fn process_swap_primary_to_base(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer swap fee
+    // Transfer swap fee to pool state PDA instead of program_id
     invoke(
-        &system_instruction::transfer(user.key, program_id, SWAP_FEE),
-        &[user.clone(), system_program.clone()],
+        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
+        &[user.clone(), pool_state.clone(), system_program.clone()],
     )?;
-    msg!("Swap fee transferred");
+    msg!("Swap fee transferred to pool state PDA");
 
     Ok(())
 }
@@ -714,12 +714,12 @@ fn process_swap_base_to_primary(
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     msg!("Pool state updated");
 
-    // Transfer swap fee
+    // Transfer swap fee to pool state PDA instead of program_id
     invoke(
-        &system_instruction::transfer(user.key, program_id, SWAP_FEE),
-        &[user.clone(), system_program.clone()],
+        &system_instruction::transfer(user.key, pool_state.key, SWAP_FEE),
+        &[user.clone(), pool_state.clone(), system_program.clone()],
     )?;
-    msg!("Swap fee transferred");
+    msg!("Swap fee transferred to pool state PDA");
 
     Ok(())
 }
@@ -728,19 +728,43 @@ fn process_withdraw_fees(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
+    msg!("Processing WithdrawFees");
     let account_info_iter = &mut accounts.iter();
     let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
     let system_program = next_account_info(account_info_iter)?;
 
-    if owner.key != program_id {
+    if !owner.is_signer {
+        msg!("Owner must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Get pool state data to verify ownership
+    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if !pool_state_data.is_initialized {
+        msg!("Pool not initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+
+    // Verify the caller is the pool owner
+    if owner.key != &pool_state_data.owner {
+        msg!("Only pool owner can withdraw fees");
         return Err(ProgramError::InvalidAccountData);
     }
 
-    let fees = program_id.lamports();
+    // Get the current balance of the pool state PDA
+    let fees = pool_state.lamports();
+    if fees == 0 {
+        msg!("No fees to withdraw");
+        return Ok(());
+    }
+
+    // Transfer fees from pool state PDA to owner
     invoke(
-        &system_instruction::transfer(program_id, owner.key, fees),
-        &[program_id.clone(), owner.clone()],
+        &system_instruction::transfer(pool_state.key, owner.key, fees),
+        &[pool_state.clone(), owner.clone(), system_program.clone()],
     )?;
+    msg!("Fees transferred to owner");
 
     Ok(())
 }
