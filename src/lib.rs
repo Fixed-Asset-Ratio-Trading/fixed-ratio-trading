@@ -121,6 +121,79 @@ pub enum FixedRatioInstruction {
     WithdrawFees,
 }
 
+pub enum PoolError {
+    InvalidTokenPair {
+        token_a: Pubkey,
+        token_b: Pubkey,
+        reason: String,
+    },
+    InvalidRatio {
+        ratio: u64,
+        min_ratio: u64,
+        max_ratio: u64,
+    },
+    InsufficientFunds {
+        required: u64,
+        available: u64,
+        account: Pubkey,
+    },
+    InvalidTokenAccount {
+        account: Pubkey,
+        reason: String,
+    },
+    InvalidSwapAmount {
+        amount: u64,
+        min_amount: u64,
+        max_amount: u64,
+    },
+    RentExemptError {
+        account: Pubkey,
+        required: u64,
+        available: u64,
+    },
+    // ... other error types with context
+}
+
+impl std::fmt::Display for PoolError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PoolError::InvalidTokenPair { token_a, token_b, reason } => {
+                write!(f, "Invalid token pair: {} and {}. Reason: {}", token_a, token_b, reason)
+            },
+            PoolError::InvalidRatio { ratio, min_ratio, max_ratio } => {
+                write!(f, "Invalid ratio: {}. Must be between {} and {}", ratio, min_ratio, max_ratio)
+            },
+            PoolError::InsufficientFunds { required, available, account } => {
+                write!(f, "Insufficient funds: Required {}, Available {}, Account {}", required, available, account)
+            },
+            PoolError::InvalidTokenAccount { account, reason } => {
+                write!(f, "Invalid token account: Account {}, Reason: {}", account, reason)
+            },
+            PoolError::InvalidSwapAmount { amount, min_amount, max_amount } => {
+                write!(f, "Invalid swap amount: {} is not between {} and {}", amount, min_amount, max_amount)
+            },
+            PoolError::RentExemptError { account, required, available } => {
+                write!(f, "Insufficient funds: Required {}, Available {}, Account {}", required, available, account)
+            },
+            // ... other error variants
+        }
+    }
+}
+
+impl PoolError {
+    pub fn error_code(&self) -> u32 {
+        match self {
+            PoolError::InvalidTokenPair { .. } => 1001,
+            PoolError::InvalidRatio { .. } => 1002,
+            PoolError::InsufficientFunds { .. } => 1003,
+            PoolError::InvalidTokenAccount { .. } => 1004,
+            PoolError::InvalidSwapAmount { .. } => 1005,
+            PoolError::RentExemptError { .. } => 1006,
+            // ... other error codes
+        }
+    }
+}
+
 entrypoint!(process_instruction);
 
 pub fn process_instruction(
@@ -205,13 +278,18 @@ fn process_initialize_pool(
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     if !payer.is_signer {
-        msg!("Payer must be a signer");
-        return Err(ProgramError::MissingRequiredSignature);
+        return Err(PoolError::InvalidTokenAccount {
+            account: *payer.key,
+            reason: "Payer must be a signer".to_string(),
+        }.into());
     }
 
     if ratio_primary_per_base == 0 {
-        msg!("Ratio cannot be zero");
-        return Err(ProgramError::InvalidArgument);
+        return Err(PoolError::InvalidRatio {
+            ratio: ratio_primary_per_base,
+            min_ratio: 1,
+            max_ratio: u64::MAX,
+        }.into());
     }
 
     // Token Normalization & Ratio Conversion
@@ -1063,8 +1141,11 @@ fn process_swap(
     };
 
     if amount_out == 0 {
-        msg!("Calculated amount_out is zero. Swap not beneficial or too small.");
-        return Err(ProgramError::InvalidArgument); // Or a custom error like SwapAmountTooSmall
+        return Err(PoolError::InvalidSwapAmount {
+            amount: amount_out,
+            min_amount: 1,
+            max_amount: u64::MAX,
+        }.into());
     }
 
     // Check pool liquidity for output token
@@ -1240,9 +1321,11 @@ fn ensure_rent_exempt(
     
     // Check if we have enough balance
     if pool_state.lamports() < total_required_rent {
-        msg!("Pool state account below required rent threshold. Required: {}, Current: {}", 
-             total_required_rent, pool_state.lamports());
-        return Err(ProgramError::InsufficientFunds);
+        return Err(PoolError::RentExemptError {
+            account: *pool_state.key,
+            required: total_required_rent,
+            available: pool_state.lamports(),
+        }.into());
     }
 
     Ok(())
