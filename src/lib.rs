@@ -25,7 +25,6 @@ SOFTWARE.
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
-    entrypoint,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -40,6 +39,7 @@ use spl_token::{
     instruction as token_instruction,
     state::{Account as TokenAccount, Mint as MintAccount},
 };
+use std::fmt;
 
 // Constants for fees
 const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
@@ -128,6 +128,11 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
+    // New security fields
+    pub max_withdrawal_percentage: u64,    // e.g., 10% = 1000
+    pub last_withdrawal_slot: u64,
+    pub withdrawal_cooldown: u64,          // e.g., 100 slots
+    pub is_paused: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -152,8 +157,14 @@ pub enum FixedRatioInstruction {
         minimum_amount_out: u64,
     },
     WithdrawFees,
+    UpdateSecurityParams {
+        max_withdrawal_percentage: Option<u64>,
+        withdrawal_cooldown: Option<u64>,
+        is_paused: Option<bool>,
+    },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PoolError {
     InvalidTokenPair {
         token_a: Pubkey,
@@ -184,11 +195,13 @@ pub enum PoolError {
         required: u64,
         available: u64,
     },
-    // ... other error types with context
+    WithdrawalTooLarge,
+    WithdrawalCooldown,
+    PoolPaused,
 }
 
-impl std::fmt::Display for PoolError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PoolError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             PoolError::InvalidTokenPair { token_a, token_b, reason } => {
                 write!(f, "Invalid token pair: {} and {}. Reason: {}", token_a, token_b, reason)
@@ -208,7 +221,9 @@ impl std::fmt::Display for PoolError {
             PoolError::RentExemptError { account, required, available } => {
                 write!(f, "Insufficient funds: Required {}, Available {}, Account {}", required, available, account)
             },
-            // ... other error variants
+            PoolError::WithdrawalTooLarge => write!(f, "Withdrawal amount exceeds maximum allowed percentage"),
+            PoolError::WithdrawalCooldown => write!(f, "Withdrawal is currently in cooldown period"),
+            PoolError::PoolPaused => write!(f, "Pool operations are currently paused"),
         }
     }
 }
@@ -222,7 +237,9 @@ impl PoolError {
             PoolError::InvalidTokenAccount { .. } => 1004,
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
-            // ... other error codes
+            PoolError::WithdrawalTooLarge => 1007,
+            PoolError::WithdrawalCooldown => 1008,
+            PoolError::PoolPaused => 1009,
         }
     }
 }
@@ -248,6 +265,19 @@ pub fn process_instruction(
     instruction_data: &[u8],
 ) -> ProgramResult {
     let instruction = FixedRatioInstruction::try_from_slice(instruction_data)?;
+    
+    // Check if pool is paused for all instructions except WithdrawFees and UpdateSecurityParams
+    if let FixedRatioInstruction::WithdrawFees | FixedRatioInstruction::UpdateSecurityParams { .. } = instruction {
+        // Skip pause check for fee withdrawal and security parameter updates
+    } else {
+        let account_info_iter = &mut accounts.iter();
+        let pool_state_account = next_account_info(account_info_iter)?;
+        let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+        
+        if pool_state_data.is_paused {
+            return Err(PoolError::PoolPaused.into());
+        }
+    }
     
     match instruction {
         FixedRatioInstruction::InitializePool { 
@@ -276,6 +306,19 @@ pub fn process_instruction(
         }
         FixedRatioInstruction::WithdrawFees => {
             process_withdraw_fees(program_id, accounts)
+        }
+        FixedRatioInstruction::UpdateSecurityParams { 
+            max_withdrawal_percentage, 
+            withdrawal_cooldown, 
+            is_paused 
+        } => {
+            process_update_security_params(
+                program_id,
+                accounts,
+                max_withdrawal_percentage,
+                withdrawal_cooldown,
+                is_paused
+            )
         }
     }
 }
@@ -667,6 +710,12 @@ fn process_initialize_pool(
     pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
 
+    // Initialize security parameters
+    pool_state_data.max_withdrawal_percentage = 1000; // 10%
+    pool_state_data.last_withdrawal_slot = 0;
+    pool_state_data.withdrawal_cooldown = 100; // 100 slots
+    pool_state_data.is_paused = false;
+
     // Initialize rent requirements
     let rent_requirements = RentRequirements::new(rent);
     
@@ -946,7 +995,7 @@ fn process_withdraw(
     }
 
     // Determine which token (A or B) is being withdrawn and set relevant accounts
-    let (source_pool_vault_account, source_lp_mint_account, is_withdrawing_token_a) = 
+    let (source_pool_vault_acc, source_lp_mint_account, is_withdrawing_token_a) = 
         if withdraw_token_mint_key == pool_state_data.token_a_mint {
             // Withdrawing Token A, so burning LP Token A
             if *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
@@ -988,6 +1037,38 @@ fn process_withdraw(
         msg!("Insufficient LP tokens in user source account");
         return Err(ProgramError::InsufficientFunds);
     }
+
+    // Check withdrawal cooldown
+    let current_slot = _clock.slot;
+    if current_slot.checked_sub(pool_state_data.last_withdrawal_slot)
+        .ok_or(ProgramError::ArithmeticOverflow)? < pool_state_data.withdrawal_cooldown {
+        msg!("Withdrawal is currently in cooldown period");
+        return Err(PoolError::WithdrawalCooldown.into());
+    }
+
+    // Check maximum withdrawal limit
+    let max_withdrawal = if is_withdrawing_token_a {
+        pool_state_data.total_token_a_liquidity
+            .checked_mul(pool_state_data.max_withdrawal_percentage)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(10000)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    } else {
+        pool_state_data.total_token_b_liquidity
+            .checked_mul(pool_state_data.max_withdrawal_percentage)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(10000)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    };
+
+    if lp_amount_to_burn > max_withdrawal {
+        msg!("Withdrawal amount {} exceeds maximum allowed {} ({}% of total liquidity)", 
+             lp_amount_to_burn, max_withdrawal, pool_state_data.max_withdrawal_percentage / 100);
+        return Err(PoolError::WithdrawalTooLarge.into());
+    }
+
+    // Update last withdrawal slot
+    pool_state_data.last_withdrawal_slot = current_slot;
 
     // Validate user's destination token account (for underlying tokens)
     let user_dest_token_account_data = TokenAccount::unpack_from_slice(&user_destination_token_account.data.borrow())?;
@@ -1050,18 +1131,18 @@ fn process_withdraw(
     ];
 
     msg!("Transferring {} of token {} from pool vault {} to user account {}", 
-           lp_amount_to_burn, withdraw_token_mint_key, source_pool_vault_account.key, user_destination_token_account.key);
+           lp_amount_to_burn, withdraw_token_mint_key, source_pool_vault_acc.key, user_destination_token_account.key);
     invoke_signed(
         &token_instruction::transfer(
             token_program_account.key,
-            source_pool_vault_account.key,         // Pool's vault (source)
+            source_pool_vault_acc.key,          // Pool's vault (source)
             user_destination_token_account.key,      // User's output account (destination)
-            pool_state_account.key,                  // Pool PDA is the authority over its vault
+            pool_state_account.key,             // Pool PDA is the authority over its vault
             &[],
             lp_amount_to_burn,                        // Amount of underlying token to transfer (equals LP burned)
         )?,
         &[
-            source_pool_vault_account.clone(),
+            source_pool_vault_acc.clone(),
             user_destination_token_account.clone(),
             pool_state_account.clone(),
             token_program_account.clone(),
@@ -1450,6 +1531,67 @@ fn ensure_rent_exempt(
     Ok(())
 }
 
+/// Updates the pool's security parameters.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for the update
+/// * `max_withdrawal_percentage` - Optional new maximum withdrawal percentage (e.g., 1000 for 10%)
+/// * `withdrawal_cooldown` - Optional new withdrawal cooldown in slots
+/// * `is_paused` - Optional new pause state
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_update_security_params(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    max_withdrawal_percentage: Option<u64>,
+    withdrawal_cooldown: Option<u64>,
+    is_paused: Option<bool>,
+) -> ProgramResult {
+    msg!("Processing UpdateSecurityParams");
+    let account_info_iter = &mut accounts.iter();
+
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can update security parameters");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Update parameters if provided
+    if let Some(percentage) = max_withdrawal_percentage {
+        if percentage > 10000 {
+            msg!("Maximum withdrawal percentage cannot exceed 100%");
+            return Err(ProgramError::InvalidArgument);
+        }
+        pool_state_data.max_withdrawal_percentage = percentage;
+    }
+
+    if let Some(cooldown) = withdrawal_cooldown {
+        pool_state_data.withdrawal_cooldown = cooldown;
+    }
+
+    if let Some(paused) = is_paused {
+        pool_state_data.is_paused = paused;
+    }
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    msg!("Security parameters updated successfully");
+
+    Ok(())
+}
+
 impl PoolState {
     pub fn get_packed_len() -> usize {
         32 + // owner
@@ -1467,6 +1609,10 @@ impl PoolState {
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
-        RentRequirements::get_packed_len() // rent_requirements
+        RentRequirements::get_packed_len() + // rent_requirements
+        8 +  // max_withdrawal_percentage
+        8 +  // last_withdrawal_slot
+        8 +  // withdrawal_cooldown
+        1    // is_paused
     }
 }
