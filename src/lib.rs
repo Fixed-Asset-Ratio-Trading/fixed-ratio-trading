@@ -47,9 +47,9 @@ const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 
 // PDA Seeds
-const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
-const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
-const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
+pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
+pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
+pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
 // Add constant for SPL Token Program ID
 // const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";

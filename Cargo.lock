@@ -1373,6 +1373,7 @@ dependencies = [
 name = "fixed-ratio-trading"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "borsh 0.10.4",
  "solana-program",
  "solana-program-test",
@@ -1380,6 +1381,7 @@ dependencies = [
  "spl-associated-token-account",
  "spl-token",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
