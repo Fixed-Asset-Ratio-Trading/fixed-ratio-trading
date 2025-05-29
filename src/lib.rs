@@ -55,7 +55,7 @@ pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 // const SPL_TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 // Add after the existing constants
-const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account for potential rent increases
+pub const MINIMUM_RENT_BUFFER: u64 = 1000; // Additional buffer for rent to account for potential rent increases
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct RentRequirements {
@@ -333,7 +333,7 @@ pub fn process_instruction(
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error code
-fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent, current_slot: u64) -> ProgramResult {
+pub fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent, current_slot: u64) -> ProgramResult {
     // Check if the account is owned by the program
     if account.owner == program_id {
         // For program-owned accounts, use the new rent tracking mechanism

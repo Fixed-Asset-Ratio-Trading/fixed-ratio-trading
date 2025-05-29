@@ -20,6 +20,7 @@ use bincode;
 
 // Import your contract's instruction enum and PoolState struct
 use fixed_ratio_trading::{FixedRatioInstruction, PoolState};
+use fixed_ratio_trading::{RentRequirements, PoolError, MINIMUM_RENT_BUFFER, check_rent_exempt};
 
 // Helper function to create a token mint
 async fn create_token_mint<'a>(
