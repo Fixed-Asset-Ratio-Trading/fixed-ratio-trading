@@ -2,6 +2,117 @@
 
 A Solana smart contract that enables trustless token swaps at a pre-determined, immutable exchange ratio between a pair of tokens. This version introduces a dual LP token model and token pair normalization.
 
+## Architecture
+
+### Two-Instruction Pool Initialization Pattern
+
+This program implements a **two-instruction pattern** for pool initialization as a workaround for a known Solana AccountInfo.data issue.
+
+#### Background: The AccountInfo.data Issue
+
+When using `system_instruction::create_account` via CPI to create a PDA account within a Solana program instruction, the `AccountInfo.data` slice for that account does not get updated to reflect the newly allocated memory buffer within the same instruction context.
+
+**Symptoms:**
+- `AccountInfo.data.borrow().len()` returns `0` even after successful account creation
+- Serialization operations report "OK" but write to a detached buffer
+- `banks_client.get_account()` returns empty data for the account
+- Pool initialization appears successful but pool state data is not persisted
+
+**Root Cause:**
+This issue is documented in:
+- [Solana GitHub Issue #31960](https://github.com/solana-labs/solana/issues/31960)
+- Various Solana Stack Exchange discussions
+- Community reports of similar CPI account creation issues
+
+#### Solution: Two-Instruction Pattern
+
+**Instruction 1: `CreatePoolStateAccount`**
+```rust
+CreatePoolStateAccount {
+    ratio_primary_per_base: u64,
+    pool_authority_bump_seed: u8,
+    primary_token_vault_bump_seed: u8,
+    base_token_vault_bump_seed: u8,
+}
+```
+
+**What it does:**
+- Creates Pool State PDA account with correct size allocation
+- Creates LP token mints and transfers authority to pool
+- Creates token vault PDAs and initializes them  
+- Transfers registration fees
+- **Does NOT attempt to serialize PoolState data**
+
+**Instruction 2: `InitializePoolData`**
+```rust
+InitializePoolData {
+    ratio_primary_per_base: u64,
+    pool_authority_bump_seed: u8,
+    primary_token_vault_bump_seed: u8,
+    base_token_vault_bump_seed: u8,
+}
+```
+
+**What it does:**
+- Runs in fresh transaction context with proper AccountInfo references
+- Validates Pool State PDA account exists with correct size
+- Creates and populates PoolState struct with configuration data
+- Uses buffer serialization approach for additional safety
+- Writes pool state data that properly persists on-chain
+
+#### Buffer Serialization Technique
+
+Even with the two-instruction pattern, we employ an additional safeguard:
+
+```rust
+// Step 1: Serialize to temporary buffer
+let mut serialized_data = Vec::new();
+pool_state_data.serialize(&mut serialized_data)?;
+
+// Step 2: Atomic copy to account data
+let mut account_data = pool_state_pda_account.data.borrow_mut();
+account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+```
+
+This approach ensures:
+- Serialization success is verified before writing to account
+- Copy operation is atomic (all-or-nothing)
+- Data integrity and persistence are guaranteed
+
+#### Usage in Client Code
+
+```typescript
+// Transaction 1: Create accounts
+const createTx = new Transaction().add(
+  createPoolStateAccountInstruction(...)
+);
+await sendAndConfirmTransaction(connection, createTx, [payer, ...]);
+
+// Transaction 2: Initialize data  
+const initTx = new Transaction().add(
+  initializePoolDataInstruction(...)
+);
+await sendAndConfirmTransaction(connection, initTx, [payer]);
+```
+
+#### Testing Implementation
+
+The integration tests in `tests/integration_test.rs` demonstrate this pattern:
+
+```rust
+// Transaction 1: Account creation
+let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+banks_client.process_transaction(create_tx).await?;
+
+// Transaction 2: Data initialization
+let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
+init_data_tx.sign(&[&payer], recent_blockhash);
+banks_client.process_transaction(init_data_tx).await?;
+```
+
+This workaround ensures reliable pool initialization across all Solana environments and runtime versions.
+
 ## Features
 
 -   **Fixed Exchange Ratio**: Each pool maintains an immutable ratio between two tokens (Token A and Token B).

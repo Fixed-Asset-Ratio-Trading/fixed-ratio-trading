@@ -1,4 +1,9 @@
 #!/bin/bash
+#filename run_integration_tests.sh
+# This bash script is for running the solana-program-test code intergration_test.rs in the tests folder
+# It will start a local validator, airdrop SOL to the default wallet, and run the tests
+# It will then stop the validator and exit with the test result
+# quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD is the program ID for the fixed-ratio-trading program
 
 # Start the Solana test validator in the background
 solana-test-validator &
