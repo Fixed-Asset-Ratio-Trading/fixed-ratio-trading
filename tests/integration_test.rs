@@ -402,6 +402,253 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     Ok(())
 }
 
+#[tokio::test]
+async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and token mints
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp2 = Keypair::new();
+    let lp_token_b_mint_kp2 = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create token mints
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    // First pool: ratio 1:2
+    let ratio_primary_per_base_instr_arg1 = 2u64;
+
+    // Normalize tokens and ratio for first pool
+    let (
+        prog_token_a_mint_key, 
+        prog_token_b_mint_key,
+        prog_ratio_a_num1, 
+        prog_ratio_b_den1,
+        token_a_is_primary
+    ) = if primary_mint_kp.pubkey().to_bytes() < base_mint_kp.pubkey().to_bytes() {
+        (primary_mint_kp.pubkey(), base_mint_kp.pubkey(), ratio_primary_per_base_instr_arg1, 1u64, true)
+    } else {
+        (base_mint_kp.pubkey(), primary_mint_kp.pubkey(), 1u64, ratio_primary_per_base_instr_arg1, false)
+    };
+
+    // Derive PDAs for first pool
+    let (pool_state_pda_for_accounts1, pool_auth_bump_for_instr1) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            prog_token_a_mint_key.as_ref(),
+            prog_token_b_mint_key.as_ref(),
+            &prog_ratio_a_num1.to_le_bytes(),
+            &prog_ratio_b_den1.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts1, actual_prog_token_a_vault_bump1) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts1.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts1, actual_prog_token_b_vault_bump1) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts1.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    let (primary_vault_bump_for_instr1, base_vault_bump_for_instr1) = if token_a_is_primary {
+        (actual_prog_token_a_vault_bump1, actual_prog_token_b_vault_bump1)
+    } else {
+        (actual_prog_token_b_vault_bump1, actual_prog_token_a_vault_bump1)
+    };
+
+    // Create first pool
+    let create_ix1 = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts1, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts1, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts1, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg1,
+            pool_authority_bump_seed: pool_auth_bump_for_instr1,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr1,
+            base_token_vault_bump_seed: base_vault_bump_for_instr1,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx1 = Transaction::new_with_payer(&[create_ix1], Some(&payer.pubkey()));
+    let signers_for_create_tx1 = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx1.sign(&signers_for_create_tx1[..], recent_blockhash);
+    banks_client.process_transaction(create_tx1).await?;
+
+    let init_data_ix1 = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts1, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), false),
+            AccountMeta::new(token_a_vault_pda_for_accounts1, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts1, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::InitializePoolData {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg1,
+            pool_authority_bump_seed: pool_auth_bump_for_instr1,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr1,
+            base_token_vault_bump_seed: base_vault_bump_for_instr1,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut init_data_tx1 = Transaction::new_with_payer(&[init_data_ix1], Some(&payer.pubkey()));
+    init_data_tx1.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(init_data_tx1).await?;
+
+    // Second pool: ratio 1:10
+    let ratio_primary_per_base_instr_arg2 = 10u64;
+
+    // Normalize tokens and ratio for second pool
+    let (
+        prog_ratio_a_num2, 
+        prog_ratio_b_den2
+    ) = if token_a_is_primary {
+        (ratio_primary_per_base_instr_arg2, 1u64)
+    } else {
+        (1u64, ratio_primary_per_base_instr_arg2)
+    };
+
+    // Derive PDAs for second pool
+    let (pool_state_pda_for_accounts2, pool_auth_bump_for_instr2) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            prog_token_a_mint_key.as_ref(),
+            prog_token_b_mint_key.as_ref(),
+            &prog_ratio_a_num2.to_le_bytes(),
+            &prog_ratio_b_den2.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts2, actual_prog_token_a_vault_bump2) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts2.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts2, actual_prog_token_b_vault_bump2) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts2.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    let (primary_vault_bump_for_instr2, base_vault_bump_for_instr2) = if token_a_is_primary {
+        (actual_prog_token_a_vault_bump2, actual_prog_token_b_vault_bump2)
+    } else {
+        (actual_prog_token_b_vault_bump2, actual_prog_token_a_vault_bump2)
+    };
+
+    // Create second pool
+    let create_ix2 = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts2, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp2.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp2.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts2, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts2, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg2,
+            pool_authority_bump_seed: pool_auth_bump_for_instr2,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr2,
+            base_token_vault_bump_seed: base_vault_bump_for_instr2,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&payer.pubkey()));
+    let signers_for_create_tx2 = [&payer, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
+    create_tx2.sign(&signers_for_create_tx2[..], recent_blockhash);
+    banks_client.process_transaction(create_tx2).await?;
+
+    let init_data_ix2 = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts2, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp2.pubkey(), false),
+            AccountMeta::new(lp_token_b_mint_kp2.pubkey(), false),
+            AccountMeta::new(token_a_vault_pda_for_accounts2, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts2, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::InitializePoolData {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg2,
+            pool_authority_bump_seed: pool_auth_bump_for_instr2,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr2,
+            base_token_vault_bump_seed: base_vault_bump_for_instr2,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut init_data_tx2 = Transaction::new_with_payer(&[init_data_ix2], Some(&payer.pubkey()));
+    init_data_tx2.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(init_data_tx2).await?;
+
+    // Verify both pools exist and have correct ratios
+    let pool_state_account_data1 = banks_client.get_account(pool_state_pda_for_accounts1).await?.unwrap();
+    let pool_state1 = PoolState::try_from_slice(&pool_state_account_data1.data).unwrap();
+    assert!(pool_state1.is_initialized);
+    assert_eq!(pool_state1.ratio_a_numerator, prog_ratio_a_num1);
+    assert_eq!(pool_state1.ratio_b_denominator, prog_ratio_b_den1);
+
+    let pool_state_account_data2 = banks_client.get_account(pool_state_pda_for_accounts2).await?.unwrap();
+    let pool_state2 = PoolState::try_from_slice(&pool_state_account_data2.data).unwrap();
+    assert!(pool_state2.is_initialized);
+    assert_eq!(pool_state2.ratio_a_numerator, prog_ratio_a_num2);
+    assert_eq!(pool_state2.ratio_b_denominator, prog_ratio_b_den2);
+
+    // Verify the pools have different PDAs
+    assert_ne!(pool_state_pda_for_accounts1, pool_state_pda_for_accounts2);
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod unit_tests {
     use super::*;
