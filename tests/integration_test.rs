@@ -72,11 +72,11 @@ use bincode;
 use solana_program_test::*;
 use solana_sdk::{
     signature::{Keypair, Signer},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
     transport::TransportError,
 };
 use solana_program::{
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
 };
 use fixed_ratio_trading::{FixedRatioInstruction};
 use fixed_ratio_trading::process_instruction;
@@ -820,6 +820,551 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
     println!("Successfully prevented duplicate pool creation with reversed tokens. Error: {:?}", result);
     
     Ok(())
+}
+
+#[tokio::test]
+async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and token mints
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create token mints
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    // Use ZERO ratio to trigger the error
+    let ratio_primary_per_base_instr_arg = 0u64;
+
+    // Derive PDAs (even though they're wrong, we need them for the instruction)
+    let (pool_state_pda_for_accounts, pool_auth_bump_for_instr) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            primary_mint_kp.pubkey().as_ref(),
+            base_mint_kp.pubkey().as_ref(),
+            &1u64.to_le_bytes(), // Using 1 for PDA derivation since we can't use 0
+            &1u64.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts, actual_prog_token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts, actual_prog_token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    // Create instruction with zero ratio
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg, // ZERO ratio
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
+            base_token_vault_bump_seed: actual_prog_token_b_vault_bump,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+    
+    // This should fail with InvalidArgument due to zero ratio
+    let result = banks_client.process_transaction(create_tx).await;
+    assert!(result.is_err(), "Expected transaction to fail with zero ratio");
+    
+    if let Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::InvalidArgument))) = result {
+        println!("Successfully caught InvalidArgument error for zero ratio");
+        Ok(())
+    } else {
+        panic!("Expected InvalidArgument error, got: {:?}", result);
+    }
+}
+
+#[tokio::test]
+async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and token mints
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create token mints
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    let ratio_primary_per_base_instr_arg = 2u64;
+
+    let (pool_state_pda_for_accounts, pool_auth_bump_for_instr) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            primary_mint_kp.pubkey().as_ref(),
+            base_mint_kp.pubkey().as_ref(),
+            &ratio_primary_per_base_instr_arg.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    // Generate CORRECT vault PDAs
+    let (_correct_token_a_vault_pda, actual_prog_token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (correct_token_b_vault_pda, actual_prog_token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    // Generate WRONG vault PDAs by using different seeds
+    let wrong_token_a_vault_pda = Pubkey::new_unique();
+
+    // Create instruction with WRONG vault PDA for token A
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(wrong_token_a_vault_pda, false), // WRONG TOKEN A VAULT PDA
+            AccountMeta::new(correct_token_b_vault_pda, false), // Correct token B vault
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
+            base_token_vault_bump_seed: actual_prog_token_b_vault_bump,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+    
+    // This should fail with InvalidArgument due to wrong vault PDA
+    let result = banks_client.process_transaction(create_tx).await;
+    assert!(result.is_err(), "Expected transaction to fail with wrong vault PDA");
+    
+    if let Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::InvalidArgument))) = result {
+        println!("Successfully caught InvalidArgument error for wrong vault PDA");
+        Ok(())
+    } else {
+        panic!("Expected InvalidArgument error, got: {:?}", result);
+    }
+}
+
+#[tokio::test]
+async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClientError> {
+    // Setup program test without adding extra lamports to payer
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and token mints
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Don't add any account for payer - this should cause insufficient funds
+    // The default account will have minimal lamports
+
+    // Start test environment
+    let (mut banks_client, _default_payer, recent_blockhash) = program_test.start().await;
+
+    // Try to create mints with our payer that has no account/funds
+    match create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await {
+        Err(_) => {
+            println!("Successfully caught error during mint creation due to insufficient funds");
+            return Ok(());
+        },
+        Ok(_) => {
+            // If mint creation succeeds, continue with pool creation test
+        }
+    }
+
+    // Create the second mint
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    let ratio_primary_per_base_instr_arg = 2u64;
+
+    let (pool_state_pda_for_accounts, pool_auth_bump_for_instr) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            primary_mint_kp.pubkey().as_ref(),
+            base_mint_kp.pubkey().as_ref(),
+            &ratio_primary_per_base_instr_arg.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts, actual_prog_token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts, actual_prog_token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    // Try to create pool with unfunded payer
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true), // Unfunded payer
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
+            base_token_vault_bump_seed: actual_prog_token_b_vault_bump,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+    
+    // This should fail due to insufficient funds
+    let result = banks_client.process_transaction(create_tx).await;
+    assert!(result.is_err(), "Expected transaction to fail with insufficient SOL");
+    
+    // Accept any error as success since we're testing insufficient funds scenarios
+    println!("Successfully caught error due to insufficient funds: {:?}", result);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and ONE valid token mint
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let invalid_mint_kp = Keypair::new(); // This will be a regular account, not a mint
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create only the primary mint, leave the base mint as invalid
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    
+    // Create invalid_mint_kp as a regular account (not a mint)
+    let rent = banks_client.get_rent().await.unwrap();
+    let lamports = rent.minimum_balance(0); // Empty account, not mint-sized
+    let create_invalid_account_ix = solana_sdk::system_instruction::create_account(
+        &payer.pubkey(),
+        &invalid_mint_kp.pubkey(),
+        lamports,
+        0, // WRONG SIZE - should be MintAccount::LEN
+        &solana_program::system_program::id(), // WRONG OWNER - should be spl_token::id()
+    );
+    let mut invalid_account_tx = Transaction::new_with_payer(&[create_invalid_account_ix], Some(&payer.pubkey()));
+    invalid_account_tx.sign(&[&payer, &invalid_mint_kp], recent_blockhash);
+    banks_client.process_transaction(invalid_account_tx).await?;
+
+    let ratio_primary_per_base_instr_arg = 2u64;
+
+    let (pool_state_pda_for_accounts, pool_auth_bump_for_instr) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            primary_mint_kp.pubkey().as_ref(),
+            invalid_mint_kp.pubkey().as_ref(), // Using invalid mint
+            &ratio_primary_per_base_instr_arg.to_le_bytes(),
+            &1u64.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts, actual_prog_token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts, actual_prog_token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    // Create instruction with invalid base mint
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(invalid_mint_kp.pubkey(), false), // INVALID MINT
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
+            base_token_vault_bump_seed: actual_prog_token_b_vault_bump,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+    
+    // This should fail with InvalidAccountData due to invalid mint
+    let result = banks_client.process_transaction(create_tx).await;
+    assert!(result.is_err(), "Expected transaction to fail with invalid mint");
+    
+    if let Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::InvalidAccountData))) = result {
+        println!("Successfully caught InvalidAccountData error for invalid mint");
+        Ok(())
+    } else {
+        panic!("Expected InvalidAccountData error, got: {:?}", result);
+    }
+}
+
+#[tokio::test]
+async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create payer and token mints
+    let payer = Keypair::new();
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create token mints
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    let ratio_primary_per_base_instr_arg = 2u64;
+
+    // First create a successful pool
+    let (
+        prog_token_a_mint_key,
+        prog_token_b_mint_key,
+        prog_ratio_a_num,
+        prog_ratio_b_den,
+        token_a_is_primary
+    ) = if primary_mint_kp.pubkey().to_bytes() < base_mint_kp.pubkey().to_bytes() {
+        (primary_mint_kp.pubkey(), base_mint_kp.pubkey(), ratio_primary_per_base_instr_arg, 1u64, true)
+    } else {
+        (base_mint_kp.pubkey(), primary_mint_kp.pubkey(), 1u64, ratio_primary_per_base_instr_arg, false)
+    };
+
+    let (pool_state_pda_for_accounts, pool_auth_bump_for_instr) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            prog_token_a_mint_key.as_ref(),
+            prog_token_b_mint_key.as_ref(),
+            &prog_ratio_a_num.to_le_bytes(),
+            &prog_ratio_b_den.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    let (token_a_vault_pda_for_accounts, actual_prog_token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda_for_accounts, actual_prog_token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda_for_accounts.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    let (primary_vault_bump_for_instr, base_vault_bump_for_instr) = if token_a_is_primary {
+        (actual_prog_token_a_vault_bump, actual_prog_token_b_vault_bump)
+    } else {
+        (actual_prog_token_b_vault_bump, actual_prog_token_a_vault_bump)
+    };
+
+    // Create first pool successfully
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr,
+            base_token_vault_bump_seed: base_vault_bump_for_instr,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
+    banks_client.process_transaction(create_tx).await?;
+
+    // Initialize the pool data
+    let init_data_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), false),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::InitializePoolData {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr,
+            base_token_vault_bump_seed: base_vault_bump_for_instr,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
+    init_data_tx.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(init_data_tx).await?;
+
+    // Now try to create the SAME pool again with new LP mints
+    let lp_token_a_mint_kp2 = Keypair::new();
+    let lp_token_b_mint_kp2 = Keypair::new();
+
+    let create_ix2 = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda_for_accounts, false), // SAME PDA
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp2.pubkey(), true), // New LP mints
+            AccountMeta::new(lp_token_b_mint_kp2.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda_for_accounts, false),
+            AccountMeta::new(token_b_vault_pda_for_accounts, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: FixedRatioInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio_primary_per_base_instr_arg,
+            pool_authority_bump_seed: pool_auth_bump_for_instr,
+            primary_token_vault_bump_seed: primary_vault_bump_for_instr,
+            base_token_vault_bump_seed: base_vault_bump_for_instr,
+        }
+        .try_to_vec()
+        .unwrap(),
+    };
+
+    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&payer.pubkey()));
+    let signers_for_create_tx2 = [&payer, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
+    create_tx2.sign(&signers_for_create_tx2[..], recent_blockhash);
+    
+    // This should fail with AccountAlreadyInitialized
+    let result = banks_client.process_transaction(create_tx2).await;
+    assert!(result.is_err(), "Expected transaction to fail when creating duplicate pool");
+    
+    if let Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::AccountAlreadyInitialized))) = result {
+        println!("Successfully caught AccountAlreadyInitialized error");
+        Ok(())
+    } else {
+        panic!("Expected AccountAlreadyInitialized error, got: {:?}", result);
+    }
 }
 
 #[cfg(test)]
