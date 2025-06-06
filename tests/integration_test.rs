@@ -83,7 +83,7 @@ use fixed_ratio_trading::process_instruction;
 use fixed_ratio_trading::ID as PROGRAM_ID;
 
 // Import your contract's instruction enum and PoolState struct
-use fixed_ratio_trading::{RentRequirements, PoolError, MINIMUM_RENT_BUFFER, check_rent_exempt};
+use fixed_ratio_trading::{RentRequirements, PoolError, MINIMUM_RENT_BUFFER, check_rent_exempt, DelegateManagement};
 use fixed_ratio_trading::PoolState;
 
 // Helper function to create a token mint
@@ -1510,6 +1510,17 @@ mod unit_tests {
         assert_eq!(PoolError::WithdrawalTooLarge.error_code(), 1007);
         assert_eq!(PoolError::WithdrawalCooldown.error_code(), 1008);
         assert_eq!(PoolError::PoolPaused.error_code(), 1009);
+        assert_eq!(PoolError::DelegateLimitExceeded.error_code(), 1010);
+        
+        let error = PoolError::DelegateAlreadyExists {
+            delegate: Pubkey::new_unique(),
+        };
+        assert_eq!(error.error_code(), 1011);
+        
+        let error = PoolError::DelegateNotFound {
+            delegate: Pubkey::new_unique(),
+        };
+        assert_eq!(error.error_code(), 1012);
     }
 
     #[test]
@@ -1544,6 +1555,20 @@ mod unit_tests {
 
         let error = PoolError::PoolPaused;
         assert_eq!(format!("{}", error), "Pool operations are currently paused");
+
+        let error = PoolError::DelegateLimitExceeded;
+        assert_eq!(format!("{}", error), "Delegate limit exceeded");
+
+        let delegate_key = Pubkey::new_unique();
+        let error = PoolError::DelegateAlreadyExists { delegate: delegate_key };
+        let display_str = format!("{}", error);
+        assert!(display_str.contains(&delegate_key.to_string()));
+        assert!(display_str.contains("Delegate already exists"));
+
+        let error = PoolError::DelegateNotFound { delegate: delegate_key };
+        let display_str = format!("{}", error);
+        assert!(display_str.contains(&delegate_key.to_string()));
+        assert!(display_str.contains("Delegate not found"));
     }
 
     #[test]
@@ -1570,6 +1595,22 @@ mod unit_tests {
         let error = PoolError::WithdrawalTooLarge;
         let program_error: ProgramError = error.into();
         assert_eq!(program_error, ProgramError::Custom(1007));
+
+        let error = PoolError::DelegateLimitExceeded;
+        let program_error: ProgramError = error.into();
+        assert_eq!(program_error, ProgramError::Custom(1010));
+
+        let error = PoolError::DelegateAlreadyExists {
+            delegate: Pubkey::new_unique(),
+        };
+        let program_error: ProgramError = error.into();
+        assert_eq!(program_error, ProgramError::Custom(1011));
+
+        let error = PoolError::DelegateNotFound {
+            delegate: Pubkey::new_unique(),
+        };
+        let program_error: ProgramError = error.into();
+        assert_eq!(program_error, ProgramError::Custom(1012));
     }
 
     #[test]
@@ -1595,7 +1636,12 @@ mod unit_tests {
             8 +  // max_withdrawal_percentage
             8 +  // last_withdrawal_slot
             8 +  // withdrawal_cooldown
-            1;   // is_paused
+            1 +  // is_paused
+            DelegateManagement::get_packed_len() + // delegate_management
+            8 +  // collected_fees_token_a
+            8 +  // collected_fees_token_b
+            8 +  // total_fees_withdrawn_token_a
+            8;   // total_fees_withdrawn_token_b
 
         assert_eq!(PoolState::get_packed_len(), expected_size);
     }
