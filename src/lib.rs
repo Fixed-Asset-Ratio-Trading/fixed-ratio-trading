@@ -55,6 +55,12 @@ const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 
+// Delegate system constants
+const MAX_DELEGATES: usize = 3;
+const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
+const DAILY_WITHDRAWAL_LIMIT_PERCENTAGE: u64 = 1500; // 15% in basis points (15% = 1500/10000)
+const SECONDS_PER_DAY: u64 = 86_400;
+
 // PDA Seeds
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
 pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
@@ -143,6 +149,13 @@ pub struct PoolState {
     pub last_withdrawal_slot: u64,
     pub withdrawal_cooldown: u64,          // e.g., 100 slots
     pub is_paused: bool,
+    // Delegate management system
+    pub delegate_management: DelegateManagement,
+    // Fee collection tracking
+    pub collected_fees_token_a: u64,
+    pub collected_fees_token_b: u64,
+    pub total_fees_withdrawn_token_a: u64,
+    pub total_fees_withdrawn_token_b: u64,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -219,6 +232,20 @@ pub enum FixedRatioInstruction {
         withdrawal_cooldown: Option<u64>,
         is_paused: Option<bool>,
     },
+    /// Delegate Management Instructions
+    AddDelegate {
+        delegate: Pubkey,
+    },
+    RemoveDelegate {
+        delegate: Pubkey,
+    },
+    /// Fee withdrawal by delegates
+    WithdrawFeesToDelegate {
+        token_mint: Pubkey,
+        amount: u64,
+    },
+    /// Get withdrawal history (for transparency)
+    GetWithdrawalHistory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -255,6 +282,9 @@ pub enum PoolError {
     WithdrawalTooLarge,
     WithdrawalCooldown,
     PoolPaused,
+    DelegateLimitExceeded,
+    DelegateAlreadyExists { delegate: Pubkey },
+    DelegateNotFound { delegate: Pubkey },
 }
 
 impl fmt::Display for PoolError {
@@ -281,6 +311,9 @@ impl fmt::Display for PoolError {
             PoolError::WithdrawalTooLarge => write!(f, "Withdrawal amount exceeds maximum allowed percentage"),
             PoolError::WithdrawalCooldown => write!(f, "Withdrawal is currently in cooldown period"),
             PoolError::PoolPaused => write!(f, "Pool operations are currently paused"),
+            PoolError::DelegateLimitExceeded => write!(f, "Delegate limit exceeded"),
+            PoolError::DelegateAlreadyExists { delegate } => write!(f, "Delegate already exists: {}", delegate),
+            PoolError::DelegateNotFound { delegate } => write!(f, "Delegate not found: {}", delegate),
         }
     }
 }
@@ -297,6 +330,9 @@ impl PoolError {
             PoolError::WithdrawalTooLarge => 1007,
             PoolError::WithdrawalCooldown => 1008,
             PoolError::PoolPaused => 1009,
+            PoolError::DelegateLimitExceeded => 1010,
+            PoolError::DelegateAlreadyExists { .. } => 1011,
+            PoolError::DelegateNotFound { .. } => 1012,
         }
     }
 }
@@ -419,6 +455,22 @@ pub fn process_instruction(
                 withdrawal_cooldown,
                 is_paused
             )
+        }
+        FixedRatioInstruction::AddDelegate { delegate } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_add_delegate");
+            process_add_delegate(program_id, accounts, delegate)
+        }
+        FixedRatioInstruction::RemoveDelegate { delegate } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_remove_delegate");
+            process_remove_delegate(program_id, accounts, delegate)
+        }
+        FixedRatioInstruction::WithdrawFeesToDelegate { token_mint, amount } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_withdraw_fees_to_delegate");
+            process_withdraw_fees_to_delegate(program_id, accounts, token_mint, amount)
+        }
+        FixedRatioInstruction::GetWithdrawalHistory => {
+            msg!("DEBUG: process_instruction: Dispatching to process_get_withdrawal_history");
+            process_get_withdrawal_history(program_id, accounts)
         }
     }
 }
@@ -1039,6 +1091,16 @@ fn process_initialize_pool_data(
     // Initialize rent requirements
     let rent_requirements = RentRequirements::new(rent);
     pool_state_data.rent_requirements = rent_requirements;
+
+    // Initialize delegate management system (owner is first delegate)
+    let current_slot = 0; // Will be updated when clock is available
+    pool_state_data.delegate_management = DelegateManagement::new(*payer.key, current_slot);
+    
+    // Initialize fee tracking
+    pool_state_data.collected_fees_token_a = 0;
+    pool_state_data.collected_fees_token_b = 0;
+    pool_state_data.total_fees_withdrawn_token_a = 0;
+    pool_state_data.total_fees_withdrawn_token_b = 0;
     
     // BUFFER SERIALIZATION WORKAROUND:
     // Instead of directly serializing to AccountInfo.data.borrow_mut(), we use a two-step process:
@@ -1689,6 +1751,22 @@ fn process_swap(
         }.into());
     }
 
+    // Calculate and collect trading fees (0.3% of input amount)
+    let trading_fee_numerator = 30u64;   // 0.3%
+    let trading_fee_denominator = 10000u64;
+    let fee_amount = amount_in
+        .checked_mul(trading_fee_numerator)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(trading_fee_denominator)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    let amount_after_fee = amount_in
+        .checked_sub(fee_amount)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    msg!("Swap calculation: Input: {}, Fee: {}, After fee: {}, Output: {}", 
+         amount_in, fee_amount, amount_after_fee, amount_out);
+
     // Check pool liquidity for output token
     if input_is_token_a {
         // Output is Token B
@@ -1704,7 +1782,7 @@ fn process_swap(
         }
     }
 
-    // Transfer input tokens from user to pool vault
+    // Transfer input tokens from user to pool vault (including fee)
     msg!("Transferring {} of input token {} from user to pool vault {}", 
            amount_in, input_token_mint_key, input_pool_vault_acc.key);
     invoke(
@@ -1754,21 +1832,31 @@ fn process_swap(
         &[pool_state_pda_seeds],
     )?;
 
-    // Update pool state liquidity
+    // Update pool state liquidity and fee tracking
     if input_is_token_a {
-        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount_in)
+        // Add input tokens (minus fee) to liquidity, track fee separately
+        pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount_after_fee)
             .ok_or(ProgramError::ArithmeticOverflow)?;
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(amount_out)
             .ok_or(ProgramError::ArithmeticOverflow)?;
+        // Track collected fee
+        pool_state_data.collected_fees_token_a = pool_state_data.collected_fees_token_a.checked_add(fee_amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
     } else {
-        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount_in)
+        // Add input tokens (minus fee) to liquidity, track fee separately
+        pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount_after_fee)
             .ok_or(ProgramError::ArithmeticOverflow)?;
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_sub(amount_out)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        // Track collected fee
+        pool_state_data.collected_fees_token_b = pool_state_data.collected_fees_token_b.checked_add(fee_amount)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
     pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
     msg!("Pool liquidity updated after swap. Token A: {}, Token B: {}", 
            pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
+    msg!("Fees collected - Token A: {}, Token B: {}", 
+           pool_state_data.collected_fees_token_a, pool_state_data.collected_fees_token_b);
 
     // Transfer swap fee to pool state PDA
     if user_signer.lamports() < SWAP_FEE {
@@ -1967,6 +2055,491 @@ impl PoolState {
         8 +  // max_withdrawal_percentage
         8 +  // last_withdrawal_slot
         8 +  // withdrawal_cooldown
-        1    // is_paused
+        1 +  // is_paused
+        DelegateManagement::get_packed_len() + // delegate_management
+        8 +  // collected_fees_token_a
+        8 +  // collected_fees_token_b
+        8 +  // total_fees_withdrawn_token_a
+        8    // total_fees_withdrawn_token_b
     }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, Copy)]
+pub struct WithdrawalRecord {
+    pub delegate: Pubkey,
+    pub token_mint: Pubkey,
+    pub amount: u64,
+    pub timestamp: i64,
+    pub slot: u64,
+}
+
+impl WithdrawalRecord {
+    pub fn new(delegate: Pubkey, token_mint: Pubkey, amount: u64, timestamp: i64, slot: u64) -> Self {
+        Self {
+            delegate,
+            token_mint,
+            amount,
+            timestamp,
+            slot,
+        }
+    }
+
+    pub fn get_packed_len() -> usize {
+        32 + // delegate
+        32 + // token_mint
+        8 +  // amount
+        8 +  // timestamp
+        8    // slot
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
+pub struct DelegateManagement {
+    pub delegates: [Pubkey; MAX_DELEGATES],
+    pub delegate_count: u8,
+    pub last_delegate_change_slot: u64,
+    pub daily_withdrawal_limits: [u64; 2], // [token_a_limit, token_b_limit]
+    pub daily_withdrawn_amounts: [u64; 2], // [token_a_withdrawn, token_b_withdrawn]
+    pub last_withdrawal_reset_day: u64, // Days since epoch
+    pub withdrawal_history: [WithdrawalRecord; 10], // Last 10 withdrawals
+    pub withdrawal_history_index: u8,
+}
+
+impl DelegateManagement {
+    pub fn new(owner: Pubkey, current_slot: u64) -> Self {
+        let mut delegates = [Pubkey::default(); MAX_DELEGATES];
+        delegates[0] = owner; // Owner is the first delegate
+        
+        Self {
+            delegates,
+            delegate_count: 1,
+            last_delegate_change_slot: current_slot,
+            daily_withdrawal_limits: [0, 0], // Will be calculated based on pool balance
+            daily_withdrawn_amounts: [0, 0],
+            last_withdrawal_reset_day: current_slot / (SECONDS_PER_DAY * 1000 / 400), // Approximate
+            withdrawal_history: [WithdrawalRecord::default(); 10],
+            withdrawal_history_index: 0,
+        }
+    }
+
+    pub fn is_delegate(&self, pubkey: &Pubkey) -> bool {
+        for i in 0..self.delegate_count as usize {
+            if self.delegates[i] == *pubkey {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn add_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
+        if self.delegate_count as usize >= MAX_DELEGATES {
+            return Err(PoolError::DelegateLimitExceeded);
+        }
+
+        // Check if already a delegate
+        if self.is_delegate(&delegate) {
+            return Err(PoolError::DelegateAlreadyExists { delegate });
+        }
+
+        self.delegates[self.delegate_count as usize] = delegate;
+        self.delegate_count += 1;
+        Ok(())
+    }
+
+    pub fn remove_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
+        let mut found_index = None;
+        for i in 0..self.delegate_count as usize {
+            if self.delegates[i] == delegate {
+                found_index = Some(i);
+                break;
+            }
+        }
+
+        if let Some(index) = found_index {
+            // Shift remaining delegates
+            for i in index..(self.delegate_count as usize - 1) {
+                self.delegates[i] = self.delegates[i + 1];
+            }
+            self.delegates[self.delegate_count as usize - 1] = Pubkey::default();
+            self.delegate_count -= 1;
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate })
+        }
+    }
+
+    pub fn add_withdrawal_record(&mut self, record: WithdrawalRecord) {
+        let index = self.withdrawal_history_index as usize;
+        self.withdrawal_history[index] = record;
+        self.withdrawal_history_index = (self.withdrawal_history_index + 1) % 10;
+    }
+
+    pub fn reset_daily_limits_if_needed(&mut self, current_slot: u64) {
+        let current_day = current_slot / (SECONDS_PER_DAY * 1000 / 400);
+        if current_day > self.last_withdrawal_reset_day {
+            self.daily_withdrawn_amounts = [0, 0];
+            self.last_withdrawal_reset_day = current_day;
+        }
+    }
+
+    pub fn get_packed_len() -> usize {
+        (32 * MAX_DELEGATES) + // delegates array
+        1 +  // delegate_count
+        8 +  // last_delegate_change_slot
+        (8 * 2) + // daily_withdrawal_limits
+        (8 * 2) + // daily_withdrawn_amounts
+        8 +  // last_withdrawal_reset_day
+        (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
+        1    // withdrawal_history_index
+    }
+}
+
+/// Allows the pool owner to add a new delegate.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for adding a delegate
+/// * `delegate` - The public key of the new delegate
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_add_delegate(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    delegate: Pubkey,
+) -> ProgramResult {
+    msg!("Processing AddDelegate for: {}", delegate);
+    let account_info_iter = &mut accounts.iter();
+
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to add delegate");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can add delegates");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check cooldown period
+    let current_slot = clock.slot;
+    if current_slot < pool_state_data.delegate_management.last_delegate_change_slot + DELEGATE_CHANGE_COOLDOWN_SLOTS {
+        msg!("Delegate change cooldown period not elapsed. Current slot: {}, Last change: {}, Required wait: {}", 
+             current_slot, 
+             pool_state_data.delegate_management.last_delegate_change_slot,
+             DELEGATE_CHANGE_COOLDOWN_SLOTS);
+        return Err(PoolError::WithdrawalCooldown.into());
+    }
+
+    // Add the delegate
+    pool_state_data.delegate_management.add_delegate(delegate)?;
+    pool_state_data.delegate_management.last_delegate_change_slot = current_slot;
+
+    // Update daily withdrawal limits based on current pool balance
+    update_daily_withdrawal_limits(&mut pool_state_data, pool_state)?;
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    
+    // Log the change for transparency
+    msg!("Delegate added successfully: {}. Total delegates: {}", 
+         delegate, pool_state_data.delegate_management.delegate_count);
+
+    Ok(())
+}
+
+/// Allows the pool owner to remove a delegate.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for removing a delegate
+/// * `delegate` - The public key of the delegate to remove
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_remove_delegate(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    delegate: Pubkey,
+) -> ProgramResult {
+    msg!("Processing RemoveDelegate for: {}", delegate);
+    let account_info_iter = &mut accounts.iter();
+
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to remove delegate");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can remove delegates");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check cooldown period
+    let current_slot = clock.slot;
+    if current_slot < pool_state_data.delegate_management.last_delegate_change_slot + DELEGATE_CHANGE_COOLDOWN_SLOTS {
+        msg!("Delegate change cooldown period not elapsed");
+        return Err(PoolError::WithdrawalCooldown.into());
+    }
+
+    // Remove the delegate
+    pool_state_data.delegate_management.remove_delegate(delegate)?;
+    pool_state_data.delegate_management.last_delegate_change_slot = current_slot;
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    
+    // Log the change for transparency
+    msg!("Delegate removed successfully: {}. Remaining delegates: {}", 
+         delegate, pool_state_data.delegate_management.delegate_count);
+
+    Ok(())
+}
+
+/// Allows delegates to withdraw collected fees.
+///
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for fee withdrawal
+/// * `token_mint` - The mint of the token to withdraw
+/// * `amount` - The amount to withdraw
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_withdraw_fees_to_delegate(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_mint: Pubkey,
+    amount: u64,
+) -> ProgramResult {
+    msg!("Processing WithdrawFeesToDelegate for token: {}, amount: {}", token_mint, amount);
+    let account_info_iter = &mut accounts.iter();
+
+    let delegate = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+    let token_vault = next_account_info(account_info_iter)?;
+    let delegate_token_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+    let rent_sysvar = next_account_info(account_info_iter)?;
+    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
+
+    // Verify delegate is signer
+    if !delegate.is_signer {
+        msg!("Delegate must be a signer for fee withdrawal");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    
+    // Verify pool is not paused
+    if pool_state_data.is_paused {
+        msg!("Fee withdrawals are paused");
+        return Err(PoolError::PoolPaused.into());
+    }
+
+    // Verify caller is a delegate
+    if !pool_state_data.delegate_management.is_delegate(delegate.key) {
+        msg!("Caller is not an authorized delegate: {}", delegate.key);
+        return Err(PoolError::DelegateNotFound { delegate: *delegate.key }.into());
+    }
+
+    // Reset daily limits if needed
+    pool_state_data.delegate_management.reset_daily_limits_if_needed(clock.slot);
+
+    // Determine token index (0 for token_a, 1 for token_b)
+    let (token_index, vault_key, collected_fees) = if token_mint == pool_state_data.token_a_mint {
+        (0, pool_state_data.token_a_vault, pool_state_data.collected_fees_token_a)
+    } else if token_mint == pool_state_data.token_b_mint {
+        (1, pool_state_data.token_b_vault, pool_state_data.collected_fees_token_b)
+    } else {
+        msg!("Invalid token mint for withdrawal: {}", token_mint);
+        return Err(ProgramError::InvalidArgument);
+    };
+
+    // Verify vault account
+    if *token_vault.key != vault_key {
+        msg!("Invalid token vault provided");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Update daily withdrawal limits
+    update_daily_withdrawal_limits(&mut pool_state_data, pool_state)?;
+
+    // Check daily withdrawal limit
+    let already_withdrawn = pool_state_data.delegate_management.daily_withdrawn_amounts[token_index];
+    let daily_limit = pool_state_data.delegate_management.daily_withdrawal_limits[token_index];
+    
+    if already_withdrawn + amount > daily_limit {
+        msg!("Daily withdrawal limit exceeded. Limit: {}, Already withdrawn: {}, Requested: {}", 
+             daily_limit, already_withdrawn, amount);
+        return Err(PoolError::WithdrawalTooLarge.into());
+    }
+
+    // Check if enough fees collected
+    if amount > collected_fees {
+        msg!("Insufficient collected fees. Available: {}, Requested: {}", collected_fees, amount);
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    // Check rent exempt requirements
+    let rent = &Rent::from_account_info(rent_sysvar)?;
+    check_rent_exempt(pool_state, program_id, rent, clock.slot)?;
+
+    // Transfer fees to delegate
+    let pool_state_pda_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state_data.token_a_mint.as_ref(),
+        pool_state_data.token_b_mint.as_ref(),
+        &pool_state_data.ratio_a_numerator.to_le_bytes(),
+        &pool_state_data.ratio_b_denominator.to_le_bytes(),
+        &[pool_state_data.pool_authority_bump_seed],
+    ];
+
+    invoke_signed(
+        &token_instruction::transfer(
+            token_program.key,
+            token_vault.key,
+            delegate_token_account.key,
+            pool_state.key,
+            &[],
+            amount,
+        )?,
+        &[
+            token_vault.clone(),
+            delegate_token_account.clone(),
+            pool_state.clone(),
+            token_program.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+
+    // Update pool state
+    if token_index == 0 {
+        pool_state_data.collected_fees_token_a = pool_state_data.collected_fees_token_a
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        pool_state_data.total_fees_withdrawn_token_a = pool_state_data.total_fees_withdrawn_token_a
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+    } else {
+        pool_state_data.collected_fees_token_b = pool_state_data.collected_fees_token_b
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        pool_state_data.total_fees_withdrawn_token_b = pool_state_data.total_fees_withdrawn_token_b
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+    }
+
+    // Update daily withdrawal tracking
+    pool_state_data.delegate_management.daily_withdrawn_amounts[token_index] = 
+        pool_state_data.delegate_management.daily_withdrawn_amounts[token_index]
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    // Add withdrawal record
+    let withdrawal_record = WithdrawalRecord::new(
+        *delegate.key,
+        token_mint,
+        amount,
+        clock.unix_timestamp,
+        clock.slot,
+    );
+    pool_state_data.delegate_management.add_withdrawal_record(withdrawal_record);
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+
+    // Log the withdrawal for transparency
+    msg!("Fee withdrawal completed: Delegate: {}, Token: {}, Amount: {}, Timestamp: {}", 
+         delegate.key, token_mint, amount, clock.unix_timestamp);
+
+    Ok(())
+}
+
+/// Returns withdrawal history for transparency.
+///
+/// # Arguments
+/// * `_program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for getting withdrawal history
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_get_withdrawal_history(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("Processing GetWithdrawalHistory");
+    let account_info_iter = &mut accounts.iter();
+
+    let pool_state = next_account_info(account_info_iter)?;
+
+    // Load pool state
+    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+
+    // Log withdrawal history for transparency
+    msg!("Withdrawal History (last 10 withdrawals):");
+    for (i, record) in pool_state_data.delegate_management.withdrawal_history.iter().enumerate() {
+        if record.delegate != Pubkey::default() {
+            msg!("Record {}: Delegate: {}, Token: {}, Amount: {}, Timestamp: {}, Slot: {}", 
+                 i, record.delegate, record.token_mint, record.amount, record.timestamp, record.slot);
+        }
+    }
+
+    msg!("Total fees withdrawn - Token A: {}, Token B: {}", 
+         pool_state_data.total_fees_withdrawn_token_a,
+         pool_state_data.total_fees_withdrawn_token_b);
+
+    msg!("Current delegates ({}):", pool_state_data.delegate_management.delegate_count);
+    for i in 0..pool_state_data.delegate_management.delegate_count as usize {
+        msg!("Delegate {}: {}", i, pool_state_data.delegate_management.delegates[i]);
+    }
+
+    Ok(())
+}
+
+/// Updates daily withdrawal limits based on current pool balance.
+///
+/// # Arguments
+/// * `pool_state_data` - Mutable reference to pool state data
+/// * `pool_state_account` - Pool state account info for balance checking
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn update_daily_withdrawal_limits(
+    pool_state_data: &mut PoolState,
+    pool_state_account: &AccountInfo,
+) -> ProgramResult {
+    // Calculate withdrawal limits as 15% of token vault balances
+    let token_a_limit = pool_state_data.total_token_a_liquidity
+        .checked_mul(DAILY_WITHDRAWAL_LIMIT_PERCENTAGE)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(10000)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    let token_b_limit = pool_state_data.total_token_b_liquidity
+        .checked_mul(DAILY_WITHDRAWAL_LIMIT_PERCENTAGE)
+        .ok_or(ProgramError::ArithmeticOverflow)?
+        .checked_div(10000)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    pool_state_data.delegate_management.daily_withdrawal_limits = [token_a_limit, token_b_limit];
+
+    msg!("Updated daily withdrawal limits - Token A: {}, Token B: {}", token_a_limit, token_b_limit);
+
+    Ok(())
 }
