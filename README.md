@@ -199,8 +199,8 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Details**:
     -   Only the pool owner can add delegates
     -   Maximum of 3 delegates allowed at any time
-    -   24-hour cooldown period enforced between delegate changes
     -   Pool owner is automatically set as the first delegate upon pool creation
+    -   **No cooldown period** - delegates can be added immediately
 -   **Accounts Required**: Owner (signer), Pool State PDA, Clock Sysvar.
 
 ### 9. `RemoveDelegate`
@@ -208,7 +208,7 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Purpose**: Allows the pool owner to remove an existing delegate.
 -   **Details**:
     -   Only the pool owner can remove delegates
-    -   24-hour cooldown period enforced between delegate changes
+    -   **No cooldown period** - delegates can be removed immediately
     -   Cannot remove all delegates (at least one must remain)
 -   **Accounts Required**: Owner (signer), Pool State PDA, Clock Sysvar.
 
@@ -217,7 +217,7 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Purpose**: Allows authorized delegates to withdraw collected trading fees from the pool.
 -   **Details**:
     -   Only authorized delegates can call this instruction
-    -   Daily withdrawal limits capped at 15% of total pool balance per token
+    -   **No daily withdrawal limits** - delegates can withdraw up to the total collected fees
     -   Blocked when pool is paused
     -   All withdrawals are logged with timestamp and delegate information
     -   Separate tracking of collected fees vs. pool liquidity
@@ -237,18 +237,17 @@ This workaround ensures reliable pool initialization across all Solana environme
 
 ### Overview
 
-The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal system that allows authorized delegates to withdraw trading fees collected from swaps. This system is designed with multiple security layers and full transparency.
+The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal system that allows authorized delegates to withdraw trading fees collected from swaps. This system prioritizes flexibility while maintaining transparency and basic security controls.
 
 ### Key Features
 
 #### **Multi-Delegate Support**
 - **Up to 3 delegates** can be assigned by the pool owner
 - **Pool owner is automatically** the first delegate upon pool creation
-- **Flexible delegate management** with add/remove capabilities
+- **Flexible delegate management** with immediate add/remove capabilities
 
 #### **Security Controls**
-- **24-hour cooldown period** between delegate changes (216,000 slots)
-- **Daily withdrawal limits** capped at 15% of total pool balance per token
+- **No withdrawal limits** - delegates can withdraw up to the total collected fees
 - **Pause protection** - all withdrawals blocked when pool is paused
 - **Owner-only delegate management** with signature verification
 
@@ -256,7 +255,7 @@ The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal sy
 - **0.3% trading fee** automatically collected on all swaps
 - **Separate fee tracking** from pool liquidity
 - **Real-time fee accumulation** during trading activity
-- **Withdrawal limits based on collected fees and daily caps**
+- **Withdrawal limits based only on collected fees**
 
 #### **Transparency & Auditing**
 - **All operations logged publicly** with timestamp and slot information
@@ -264,37 +263,32 @@ The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal sy
 - **Total withdrawal tracking** for full accountability
 - **Public access to withdrawal history** via `GetWithdrawalHistory`
 
-#### **Daily Limits & Reset**
-- **15% daily limit** calculated as percentage of total token balances
-- **Automatic daily reset** based on slot time progression
-- **Per-token tracking** (separate limits for Token A and Token B)
-- **Real-time limit updates** based on current pool liquidity
+#### **Immediate Operations**
+- **No cooldown periods** for adding or removing delegates
+- **No daily withdrawal limits** beyond available collected fees
+- **Immediate access** to delegate functions upon assignment
 
 ### Usage Workflow
 
 1. **Pool Creation**: Owner becomes first delegate automatically
-2. **Delegate Addition**: Owner adds up to 2 additional delegates (24h cooldown)
+2. **Delegate Addition**: Owner adds up to 2 additional delegates (immediate effect)
 3. **Fee Collection**: 0.3% fees collected automatically during swaps
-4. **Fee Withdrawal**: Authorized delegates withdraw within daily limits
+4. **Fee Withdrawal**: Authorized delegates withdraw any amount up to collected fees
 5. **Transparency**: All operations logged and publicly accessible
 
 ### Security Considerations
 
 #### **Strong Protections**
 - ✅ Owner-only delegate management with signature verification
-- ✅ 24-hour cooldown prevents rapid delegate changes
-- ✅ Daily withdrawal limits prevent fund drainage
 - ✅ Pause functionality halts all withdrawals in emergencies
 - ✅ Comprehensive logging ensures full transparency
 - ✅ Rent-exempt checks prevent account closure attacks
+- ✅ Fee segregation from pool liquidity
 
-#### **Potential Risks & Mitigations**
-- ⚠️ **Owner Key Compromise**: If compromised, attacker can add malicious delegates
-  - *Mitigation*: Consider multi-sig for owner operations
-- ⚠️ **Delegate Collusion**: Multiple delegates could coordinate rapid withdrawals
-  - *Mitigation*: Daily limits and pause functionality provide protection
-- ⚠️ **Emergency Situations**: Cannot revoke delegates immediately due to cooldown
-  - *Mitigation*: Pause functionality stops all withdrawals instantly
+#### **Important Notes**
+- ⚠️ **No Daily Limits**: Delegates can withdraw all collected fees immediately
+- ⚠️ **No Cooldown Periods**: Delegates can be added/removed instantly
+- ⚠️ **Trust-Based Model**: System relies on careful delegate selection by pool owner
 
 ### Integration for Rewards Contracts
 
@@ -303,10 +297,10 @@ This system provides a foundation for future rewards contracts:
 1. **Rewards contract can be assigned as a delegate**
 2. **Read on-chain trade data from transaction logs**
 3. **Calculate rewards based on LP token staking activity**
-4. **Withdraw collected fees within daily limits**
+4. **Withdraw collected fees as needed**
 5. **Distribute rewards to staked LP token holders**
 
-The design enables clean separation of concerns while maintaining security and transparency.
+The design enables clean separation of concerns while maintaining transparency.
 
 ## Example Use Case (Dual LP Model)
 
@@ -404,10 +398,8 @@ cargo test-bpf
 
 ### Delegate Withdrawal System Security
 
-#### **Robust Security Features**
--   **Multi-layered Access Control**: Only pool owner can manage delegates, only delegates can withdraw fees
--   **Time-based Protections**: 24-hour cooldown between delegate changes prevents rapid manipulation
--   **Daily Withdrawal Limits**: 15% cap on daily withdrawals prevents fund drainage
+#### **Security Features**
+-   **Owner-Only Delegate Management**: Only pool owner can add/remove delegates
 -   **Emergency Controls**: Pause functionality immediately halts all withdrawals
 -   **Comprehensive Auditing**: All operations logged with timestamps and delegate identification
 -   **Separation of Concerns**: Trading fees tracked separately from pool liquidity
@@ -415,20 +407,20 @@ cargo test-bpf
 
 #### **Access Control Hierarchy**
 1. **Pool Owner**: Can add/remove delegates, update security parameters, pause operations
-2. **Authorized Delegates**: Can withdraw collected fees within daily limits
+2. **Authorized Delegates**: Can withdraw collected fees without limits
 3. **General Users**: Can trade and provide liquidity normally
 
 #### **Fee Collection Security**
 -   **Automatic Collection**: 0.3% trading fee collected on every swap transaction
 -   **Segregated Tracking**: Fees tracked separately from pool liquidity
--   **Limit Enforcement**: Withdrawals cannot exceed collected fees or daily limits
+-   **Limit Enforcement**: Withdrawals cannot exceed collected fees
 -   **Real-time Validation**: All fee calculations use checked arithmetic operations
 
 #### **Withdrawal Controls**
--   **Daily Reset Mechanism**: Limits automatically reset based on slot progression
--   **Per-token Limits**: Separate withdrawal tracking for Token A and Token B
+-   **No Daily Limits**: Delegates can withdraw all available collected fees
 -   **Pause Protection**: All withdrawals blocked when pool is paused
 -   **Balance Verification**: Cannot withdraw more than available collected fees
+-   **Immediate Access**: No cooldown periods for withdrawals
 
 #### **Transparency & Accountability**
 -   **On-chain History**: Last 10 withdrawal transactions stored on blockchain
@@ -436,34 +428,27 @@ cargo test-bpf
 -   **Complete Logging**: All delegate changes and withdrawals logged with full details
 -   **Immutable Records**: All operations recorded in Solana transaction logs
 
-#### **Risk Mitigation Strategies**
--   **Cooldown Periods**: Prevent rapid delegate changes and manipulation
--   **Multiple Validation Layers**: Each operation verified through multiple security checks
--   **Emergency Pause**: Owner can immediately halt all withdrawals if needed
--   **Limited Delegate Count**: Maximum 3 delegates reduces coordination attack surface
--   **Owner Privilege Separation**: Critical functions require owner signature verification
+#### **Trust Model**
+-   **Owner Responsibility**: Pool owners must carefully select trustworthy delegates
+-   **Immediate Impact**: Delegate changes and withdrawals take effect immediately
+-   **Emergency Controls**: Pause functionality provides rapid response capability
+-   **Transparency**: Full audit trail available for monitoring delegate behavior
 
-#### **Potential Attack Vectors & Defenses**
+#### **Potential Risks & Mitigations**
 1. **Owner Key Compromise**: 
    - *Risk*: Attacker could add malicious delegates
-   - *Defense*: 24-hour cooldown, daily limits, pause functionality, consider multi-sig
-2. **Delegate Collusion**: 
-   - *Risk*: Multiple delegates coordinate rapid withdrawals
-   - *Defense*: Daily limits, pause functionality, withdrawal history tracking
-3. **Flash Loan Attacks**: 
-   - *Risk*: Manipulate pool to increase withdrawal limits
-   - *Defense*: Limits based on actual liquidity, not borrowed funds
-4. **Reentrancy**: 
-   - *Risk*: Multiple calls to withdrawal function
-   - *Defense*: Solana's account-based model prevents traditional reentrancy
-5. **Time Manipulation**: 
-   - *Risk*: Exploit slot time for limit resets
-   - *Defense*: Conservative slot-to-time conversion, blockchain time immutability
+   - *Mitigation*: Pause functionality, comprehensive logging, consider multi-sig
+2. **Delegate Misconduct**: 
+   - *Risk*: Authorized delegates could withdraw all fees
+   - *Mitigation*: Careful delegate selection, withdrawal history tracking, pause capability
+3. **Rapid Withdrawal**: 
+   - *Risk*: All fees withdrawn immediately by delegates
+   - *Mitigation*: Only collected fees can be withdrawn, emergency pause available
 
 #### **Recommended Security Practices**
 -   **Multi-signature Implementation**: Use multi-sig for pool owner operations
--   **Regular Monitoring**: Monitor withdrawal patterns and delegate activity
 -   **Delegate Vetting**: Carefully select and verify delegate addresses
+-   **Regular Monitoring**: Monitor withdrawal patterns and delegate activity
 -   **Emergency Procedures**: Establish clear protocols for using pause functionality
 -   **Audit Trail Review**: Regularly review withdrawal history for anomalies
 -   **Key Management**: Secure storage and backup of owner keys 

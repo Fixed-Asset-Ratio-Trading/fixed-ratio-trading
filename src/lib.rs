@@ -58,8 +58,6 @@ const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 // Delegate system constants
 const MAX_DELEGATES: usize = 3;
 const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
-const DAILY_WITHDRAWAL_LIMIT_PERCENTAGE: u64 = 1500; // 15% in basis points (15% = 1500/10000)
-const SECONDS_PER_DAY: u64 = 86_400;
 
 // PDA Seeds
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
@@ -2098,9 +2096,6 @@ pub struct DelegateManagement {
     pub delegates: [Pubkey; MAX_DELEGATES],
     pub delegate_count: u8,
     pub last_delegate_change_slot: u64,
-    pub daily_withdrawal_limits: [u64; 2], // [token_a_limit, token_b_limit]
-    pub daily_withdrawn_amounts: [u64; 2], // [token_a_withdrawn, token_b_withdrawn]
-    pub last_withdrawal_reset_day: u64, // Days since epoch
     pub withdrawal_history: [WithdrawalRecord; 10], // Last 10 withdrawals
     pub withdrawal_history_index: u8,
 }
@@ -2114,9 +2109,6 @@ impl DelegateManagement {
             delegates,
             delegate_count: 1,
             last_delegate_change_slot: current_slot,
-            daily_withdrawal_limits: [0, 0], // Will be calculated based on pool balance
-            daily_withdrawn_amounts: [0, 0],
-            last_withdrawal_reset_day: current_slot / (SECONDS_PER_DAY * 1000 / 400), // Approximate
             withdrawal_history: [WithdrawalRecord::default(); 10],
             withdrawal_history_index: 0,
         }
@@ -2174,21 +2166,10 @@ impl DelegateManagement {
         self.withdrawal_history_index = (self.withdrawal_history_index + 1) % 10;
     }
 
-    pub fn reset_daily_limits_if_needed(&mut self, current_slot: u64) {
-        let current_day = current_slot / (SECONDS_PER_DAY * 1000 / 400);
-        if current_day > self.last_withdrawal_reset_day {
-            self.daily_withdrawn_amounts = [0, 0];
-            self.last_withdrawal_reset_day = current_day;
-        }
-    }
-
     pub fn get_packed_len() -> usize {
         (32 * MAX_DELEGATES) + // delegates array
         1 +  // delegate_count
         8 +  // last_delegate_change_slot
-        (8 * 2) + // daily_withdrawal_limits
-        (8 * 2) + // daily_withdrawn_amounts
-        8 +  // last_withdrawal_reset_day
         (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
         1    // withdrawal_history_index
     }
@@ -2228,22 +2209,9 @@ fn process_add_delegate(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Check cooldown period
-    let current_slot = clock.slot;
-    if current_slot < pool_state_data.delegate_management.last_delegate_change_slot + DELEGATE_CHANGE_COOLDOWN_SLOTS {
-        msg!("Delegate change cooldown period not elapsed. Current slot: {}, Last change: {}, Required wait: {}", 
-             current_slot, 
-             pool_state_data.delegate_management.last_delegate_change_slot,
-             DELEGATE_CHANGE_COOLDOWN_SLOTS);
-        return Err(PoolError::WithdrawalCooldown.into());
-    }
-
     // Add the delegate
     pool_state_data.delegate_management.add_delegate(delegate)?;
-    pool_state_data.delegate_management.last_delegate_change_slot = current_slot;
-
-    // Update daily withdrawal limits based on current pool balance
-    update_daily_withdrawal_limits(&mut pool_state_data, pool_state)?;
+    pool_state_data.delegate_management.last_delegate_change_slot = clock.slot;
 
     // Save updated state
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
@@ -2289,16 +2257,9 @@ fn process_remove_delegate(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Check cooldown period
-    let current_slot = clock.slot;
-    if current_slot < pool_state_data.delegate_management.last_delegate_change_slot + DELEGATE_CHANGE_COOLDOWN_SLOTS {
-        msg!("Delegate change cooldown period not elapsed");
-        return Err(PoolError::WithdrawalCooldown.into());
-    }
-
     // Remove the delegate
     pool_state_data.delegate_management.remove_delegate(delegate)?;
-    pool_state_data.delegate_management.last_delegate_change_slot = current_slot;
+    pool_state_data.delegate_management.last_delegate_change_slot = clock.slot;
 
     // Save updated state
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
@@ -2358,9 +2319,6 @@ fn process_withdraw_fees_to_delegate(
         return Err(PoolError::DelegateNotFound { delegate: *delegate.key }.into());
     }
 
-    // Reset daily limits if needed
-    pool_state_data.delegate_management.reset_daily_limits_if_needed(clock.slot);
-
     // Determine token index (0 for token_a, 1 for token_b)
     let (token_index, vault_key, collected_fees) = if token_mint == pool_state_data.token_a_mint {
         (0, pool_state_data.token_a_vault, pool_state_data.collected_fees_token_a)
@@ -2375,19 +2333,6 @@ fn process_withdraw_fees_to_delegate(
     if *token_vault.key != vault_key {
         msg!("Invalid token vault provided");
         return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Update daily withdrawal limits
-    update_daily_withdrawal_limits(&mut pool_state_data, pool_state)?;
-
-    // Check daily withdrawal limit
-    let already_withdrawn = pool_state_data.delegate_management.daily_withdrawn_amounts[token_index];
-    let daily_limit = pool_state_data.delegate_management.daily_withdrawal_limits[token_index];
-    
-    if already_withdrawn + amount > daily_limit {
-        msg!("Daily withdrawal limit exceeded. Limit: {}, Already withdrawn: {}, Requested: {}", 
-             daily_limit, already_withdrawn, amount);
-        return Err(PoolError::WithdrawalTooLarge.into());
     }
 
     // Check if enough fees collected
@@ -2444,12 +2389,6 @@ fn process_withdraw_fees_to_delegate(
             .checked_add(amount)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
-
-    // Update daily withdrawal tracking
-    pool_state_data.delegate_management.daily_withdrawn_amounts[token_index] = 
-        pool_state_data.delegate_management.daily_withdrawn_amounts[token_index]
-            .checked_add(amount)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
 
     // Add withdrawal record
     let withdrawal_record = WithdrawalRecord::new(
@@ -2508,38 +2447,6 @@ fn process_get_withdrawal_history(
     for i in 0..pool_state_data.delegate_management.delegate_count as usize {
         msg!("Delegate {}: {}", i, pool_state_data.delegate_management.delegates[i]);
     }
-
-    Ok(())
-}
-
-/// Updates daily withdrawal limits based on current pool balance.
-///
-/// # Arguments
-/// * `pool_state_data` - Mutable reference to pool state data
-/// * `pool_state_account` - Pool state account info for balance checking
-///
-/// # Returns
-/// * `ProgramResult` - Success or error code
-fn update_daily_withdrawal_limits(
-    pool_state_data: &mut PoolState,
-    pool_state_account: &AccountInfo,
-) -> ProgramResult {
-    // Calculate withdrawal limits as 15% of token vault balances
-    let token_a_limit = pool_state_data.total_token_a_liquidity
-        .checked_mul(DAILY_WITHDRAWAL_LIMIT_PERCENTAGE)
-        .ok_or(ProgramError::ArithmeticOverflow)?
-        .checked_div(10000)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-
-    let token_b_limit = pool_state_data.total_token_b_liquidity
-        .checked_mul(DAILY_WITHDRAWAL_LIMIT_PERCENTAGE)
-        .ok_or(ProgramError::ArithmeticOverflow)?
-        .checked_div(10000)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-
-    pool_state_data.delegate_management.daily_withdrawal_limits = [token_a_limit, token_b_limit];
-
-    msg!("Updated daily withdrawal limits - Token A: {}, Token B: {}", token_a_limit, token_b_limit);
 
     Ok(())
 }
