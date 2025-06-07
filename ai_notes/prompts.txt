@@ -11,3 +11,12 @@ and no invalid or forged tokens can be used to drain the pool.
 Reviewing the code is there any rent that must be paid and how is
 that handled for long term operations?
 =====================================================================
+Verify that a success test for process_create_pool_state_account 
+function is working where Token A and Token B are created with a 
+ratio of 1:2 and all its LP tokens are created?
+=====================================================================
+Create a test that causes the fixed Ratio program to fail if Token B 
+is primary and Token A is based on a respective ratio or 2:1 
+(in reverse to the success test) and the error states the ratio 
+already exists.
+
