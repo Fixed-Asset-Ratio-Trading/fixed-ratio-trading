@@ -55,6 +55,10 @@ const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 
+// Swap fee configuration constants
+const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50; // 0.5% maximum
+const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000; // 1 basis point = 0.01%
+
 // Delegate system constants
 const MAX_DELEGATES: usize = 3;
 const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
@@ -154,6 +158,8 @@ pub struct PoolState {
     pub collected_fees_token_b: u64,
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
+    // Swap fee configuration
+    pub swap_fee_basis_points: u64, // Fee in basis points (0-50, representing 0%-0.5%)
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -241,6 +247,10 @@ pub enum FixedRatioInstruction {
     WithdrawFeesToDelegate {
         token_mint: Pubkey,
         amount: u64,
+    },
+    /// Set swap fee configuration (owner only, max 0.5%)
+    SetSwapFee {
+        fee_basis_points: u64, // Fee in basis points (0-50)
     },
     /// Get withdrawal history (for transparency)
     GetWithdrawalHistory,
@@ -465,6 +475,10 @@ pub fn process_instruction(
         FixedRatioInstruction::WithdrawFeesToDelegate { token_mint, amount } => {
             msg!("DEBUG: process_instruction: Dispatching to process_withdraw_fees_to_delegate");
             process_withdraw_fees_to_delegate(program_id, accounts, token_mint, amount)
+        }
+        FixedRatioInstruction::SetSwapFee { fee_basis_points } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_set_swap_fee");
+            process_set_swap_fee(program_id, accounts, fee_basis_points)
         }
         FixedRatioInstruction::GetWithdrawalHistory => {
             msg!("DEBUG: process_instruction: Dispatching to process_get_withdrawal_history");
@@ -1099,6 +1113,9 @@ fn process_initialize_pool_data(
     pool_state_data.collected_fees_token_b = 0;
     pool_state_data.total_fees_withdrawn_token_a = 0;
     pool_state_data.total_fees_withdrawn_token_b = 0;
+    
+    // Initialize swap fee to 0% as per requirements
+    pool_state_data.swap_fee_basis_points = 0;
     
     // BUFFER SERIALIZATION WORKAROUND:
     // Instead of directly serializing to AccountInfo.data.borrow_mut(), we use a two-step process:
@@ -1749,21 +1766,23 @@ fn process_swap(
         }.into());
     }
 
-    // Calculate and collect trading fees (0.3% of input amount)
-    let trading_fee_numerator = 30u64;   // 0.3%
-    let trading_fee_denominator = 10000u64;
-    let fee_amount = amount_in
-        .checked_mul(trading_fee_numerator)
-        .ok_or(ProgramError::ArithmeticOverflow)?
-        .checked_div(trading_fee_denominator)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    // Calculate and collect trading fees using configurable rate
+    let fee_amount = if pool_state_data.swap_fee_basis_points == 0 {
+        0u64 // No fee if set to 0%
+    } else {
+        amount_in
+            .checked_mul(pool_state_data.swap_fee_basis_points)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+            .checked_div(FEE_BASIS_POINTS_DENOMINATOR)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    };
     
     let amount_after_fee = amount_in
         .checked_sub(fee_amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
-    msg!("Swap calculation: Input: {}, Fee: {}, After fee: {}, Output: {}", 
-         amount_in, fee_amount, amount_after_fee, amount_out);
+    msg!("Swap calculation: Input: {}, Fee: {} ({:.2}% rate), After fee: {}, Output: {}", 
+         amount_in, fee_amount, pool_state_data.swap_fee_basis_points as f64 / 100.0, amount_after_fee, amount_out);
 
     // Check pool liquidity for output token
     if input_is_token_a {
@@ -2058,7 +2077,8 @@ impl PoolState {
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
-        8    // total_fees_withdrawn_token_b
+        8 +  // total_fees_withdrawn_token_b
+        8    // swap_fee_basis_points
     }
 }
 
@@ -2447,6 +2467,61 @@ fn process_get_withdrawal_history(
     for i in 0..pool_state_data.delegate_management.delegate_count as usize {
         msg!("Delegate {}: {}", i, pool_state_data.delegate_management.delegates[i]);
     }
+
+    Ok(())
+}
+
+/// Allows the pool owner to set the swap fee configuration.
+///
+/// # Arguments
+/// * `_program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for setting swap fee
+/// * `fee_basis_points` - The fee in basis points (0-50, max 0.5%)
+///
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_set_swap_fee(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    fee_basis_points: u64,
+) -> ProgramResult {
+    msg!("Processing SetSwapFee: {} basis points", fee_basis_points);
+    let account_info_iter = &mut accounts.iter();
+
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to set swap fee");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can set swap fees");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Validate fee is within allowed range (0-50 basis points = 0%-0.5%)
+    if fee_basis_points > MAX_SWAP_FEE_BASIS_POINTS {
+        msg!("Swap fee {} basis points exceeds maximum of {} basis points (0.5%)", 
+             fee_basis_points, MAX_SWAP_FEE_BASIS_POINTS);
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Update swap fee
+    let old_fee = pool_state_data.swap_fee_basis_points;
+    pool_state_data.swap_fee_basis_points = fee_basis_points;
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    
+    // Log the change for transparency
+    msg!("Swap fee updated: {} -> {} basis points ({:.2}% -> {:.2}%)", 
+         old_fee, fee_basis_points,
+         old_fee as f64 / 100.0, fee_basis_points as f64 / 100.0);
 
     Ok(())
 }

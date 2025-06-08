@@ -132,7 +132,7 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   Registration Fee: 1.15 SOL (one-time, paid when a new pool is created)
 -   Deposit/Withdrawal Fee: 0.0013 SOL (per transaction)
 -   Swap Fee: 0.0000125 SOL (per transaction)
--   **Trading Fee: 0.3% of input amount** (collected on swaps, withdrawable by delegates)
+-   **Trading Fee: Configurable by pool owner (0%-0.5%, starts at 0%)** (collected on swaps, withdrawable by delegates)
 
 ## Instructions
 
@@ -173,7 +173,7 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Purpose**: Allows a user to swap a specified amount of one token from the pool (e.g., Token A) for an equivalent amount of the other token (e.g., Token B) based on the pool's fixed ratio.
 -   **Details**:
     -   User specifies the `input_token_mint` (the token they are giving) and the `amount_in`.
-    -   **0.3% trading fee is deducted from the input amount** and tracked separately for delegate withdrawal.
+    -   **Configurable trading fee (0%-0.5%, set by pool owner) is deducted from the input amount** and tracked separately for delegate withdrawal.
     -   The contract calculates the `amount_out` of the other token based on the pool's `ratio_A_numerator` and `ratio_B_denominator`.
     -   `amount_in` is transferred from the user to the pool's vault for the input token.
     -   `amount_out` is transferred from the pool's vault for the output token to the user.
@@ -233,6 +233,19 @@ This workaround ensures reliable pool initialization across all Solana environme
     -   Lists current active delegates
 -   **Accounts Required**: Pool State PDA.
 
+### 12. `SetSwapFee`
+
+-   **Purpose**: Allows the pool owner to configure the swap fee rate (applied to the input token amount during swaps).
+-   **Details**:
+    -   Only the pool owner can set the swap fee
+    -   Fee is specified in basis points (e.g., 30 = 0.30%)
+    -   **Maximum allowed fee: 50 basis points (0.5%)**
+    -   **Fee starts at 0 basis points (0%) when pool is created**
+    -   Fee is applied to the input token during swaps (Token A when swapping A→B, Token B when swapping B→A)
+    -   Collected fees are tracked separately and can be withdrawn by authorized delegates
+    -   All fee changes are logged for transparency
+-   **Accounts Required**: Owner (signer), Pool State PDA.
+
 ## Delegate Withdrawal System
 
 ### Overview
@@ -252,7 +265,7 @@ The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal sy
 - **Owner-only delegate management** with signature verification
 
 #### **Fee Collection & Tracking**
-- **0.3% trading fee** automatically collected on all swaps
+- **Configurable trading fee (0%-0.5%, set by pool owner)** automatically collected on all swaps
 - **Separate fee tracking** from pool liquidity
 - **Real-time fee accumulation** during trading activity
 - **Withdrawal limits based only on collected fees**
@@ -270,11 +283,12 @@ The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal sy
 
 ### Usage Workflow
 
-1. **Pool Creation**: Owner becomes first delegate automatically
-2. **Delegate Addition**: Owner adds up to 2 additional delegates (immediate effect)
-3. **Fee Collection**: 0.3% fees collected automatically during swaps
-4. **Fee Withdrawal**: Authorized delegates withdraw any amount up to collected fees
-5. **Transparency**: All operations logged and publicly accessible
+1. **Pool Creation**: Owner becomes first delegate automatically, swap fee starts at 0%
+2. **Fee Configuration**: Owner sets desired swap fee (0%-0.5%) using SetSwapFee instruction
+3. **Delegate Addition**: Owner adds up to 2 additional delegates (immediate effect)
+4. **Fee Collection**: Configurable trading fees collected automatically during swaps
+5. **Fee Withdrawal**: Authorized delegates withdraw any amount up to collected fees
+6. **Transparency**: All operations logged and publicly accessible
 
 ### Security Considerations
 
@@ -411,7 +425,7 @@ cargo test-bpf
 3. **General Users**: Can trade and provide liquidity normally
 
 #### **Fee Collection Security**
--   **Automatic Collection**: 0.3% trading fee collected on every swap transaction
+-   **Automatic Collection**: Configurable trading fee (0%-0.5%) collected on every swap transaction
 -   **Segregated Tracking**: Fees tracked separately from pool liquidity
 -   **Limit Enforcement**: Withdrawals cannot exceed collected fees
 -   **Real-time Validation**: All fee calculations use checked arithmetic operations

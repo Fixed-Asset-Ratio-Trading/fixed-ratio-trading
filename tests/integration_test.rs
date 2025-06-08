@@ -1634,7 +1634,8 @@ mod unit_tests {
             8 +  // collected_fees_token_a
             8 +  // collected_fees_token_b
             8 +  // total_fees_withdrawn_token_a
-            8;   // total_fees_withdrawn_token_b
+            8 +  // total_fees_withdrawn_token_b
+            8;   // swap_fee_basis_points
 
         assert_eq!(PoolState::get_packed_len(), expected_size);
     }
