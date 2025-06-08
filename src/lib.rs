@@ -61,7 +61,7 @@ const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000; // 1 basis point = 0.01%
 
 // Delegate system constants
 const MAX_DELEGATES: usize = 3;
-const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
+// REMOVED: const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
 
 // PDA Seeds
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
@@ -146,19 +146,12 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
-    // New security fields
-    pub max_withdrawal_percentage: u64,    // e.g., 10% = 1000
-    pub last_withdrawal_slot: u64,
-    pub withdrawal_cooldown: u64,          // e.g., 100 slots
     pub is_paused: bool,
-    // Delegate management system
     pub delegate_management: DelegateManagement,
-    // Fee collection tracking
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
-    // Swap fee configuration
     pub swap_fee_basis_points: u64, // Fee in basis points (0-50, representing 0%-0.5%)
 }
 
@@ -1095,9 +1088,6 @@ fn process_initialize_pool_data(
     pool_state_data.is_initialized = true;
 
     // Initialize security parameters
-    pool_state_data.max_withdrawal_percentage = 1000; // 10%
-    pool_state_data.last_withdrawal_slot = 0;
-    pool_state_data.withdrawal_cooldown = 100; // 100 slots
     pool_state_data.is_paused = false;
 
     // Initialize rent requirements
@@ -1468,38 +1458,6 @@ fn process_withdraw(
         msg!("Insufficient LP tokens in user source account");
         return Err(ProgramError::InsufficientFunds);
     }
-
-    // Check withdrawal cooldown
-    let current_slot = _clock.slot;
-    if current_slot.checked_sub(pool_state_data.last_withdrawal_slot)
-        .ok_or(ProgramError::ArithmeticOverflow)? < pool_state_data.withdrawal_cooldown {
-        msg!("Withdrawal is currently in cooldown period");
-        return Err(PoolError::WithdrawalCooldown.into());
-    }
-
-    // Check maximum withdrawal limit
-    let max_withdrawal = if is_withdrawing_token_a {
-        pool_state_data.total_token_a_liquidity
-            .checked_mul(pool_state_data.max_withdrawal_percentage)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-            .checked_div(10000)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-    } else {
-        pool_state_data.total_token_b_liquidity
-            .checked_mul(pool_state_data.max_withdrawal_percentage)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-            .checked_div(10000)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-    };
-
-    if lp_amount_to_burn > max_withdrawal {
-        msg!("Withdrawal amount {} exceeds maximum allowed {} ({}% of total liquidity)", 
-             lp_amount_to_burn, max_withdrawal, pool_state_data.max_withdrawal_percentage / 100);
-        return Err(PoolError::WithdrawalTooLarge.into());
-    }
-
-    // Update last withdrawal slot
-    pool_state_data.last_withdrawal_slot = current_slot;
 
     // Validate user's destination token account (for underlying tokens)
     let user_dest_token_account_data = TokenAccount::unpack_from_slice(&user_destination_token_account.data.borrow())?;
@@ -2004,8 +1962,8 @@ fn ensure_rent_exempt(
 fn process_update_security_params(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
-    max_withdrawal_percentage: Option<u64>,
-    withdrawal_cooldown: Option<u64>,
+    _max_withdrawal_percentage: Option<u64>,
+    _withdrawal_cooldown: Option<u64>,
     is_paused: Option<bool>,
 ) -> ProgramResult {
     msg!("Processing UpdateSecurityParams");
@@ -2027,19 +1985,7 @@ fn process_update_security_params(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Update parameters if provided
-    if let Some(percentage) = max_withdrawal_percentage {
-        if percentage > 10000 {
-            msg!("Maximum withdrawal percentage cannot exceed 100%");
-            return Err(ProgramError::InvalidArgument);
-        }
-        pool_state_data.max_withdrawal_percentage = percentage;
-    }
-
-    if let Some(cooldown) = withdrawal_cooldown {
-        pool_state_data.withdrawal_cooldown = cooldown;
-    }
-
+    // Only update is_paused if provided
     if let Some(paused) = is_paused {
         pool_state_data.is_paused = paused;
     }
@@ -2069,9 +2015,6 @@ impl PoolState {
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
-        8 +  // max_withdrawal_percentage
-        8 +  // last_withdrawal_slot
-        8 +  // withdrawal_cooldown
         1 +  // is_paused
         DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
@@ -2115,20 +2058,18 @@ impl WithdrawalRecord {
 pub struct DelegateManagement {
     pub delegates: [Pubkey; MAX_DELEGATES],
     pub delegate_count: u8,
-    pub last_delegate_change_slot: u64,
     pub withdrawal_history: [WithdrawalRecord; 10], // Last 10 withdrawals
     pub withdrawal_history_index: u8,
 }
 
 impl DelegateManagement {
-    pub fn new(owner: Pubkey, current_slot: u64) -> Self {
+    pub fn new(owner: Pubkey, _current_slot: u64) -> Self {
         let mut delegates = [Pubkey::default(); MAX_DELEGATES];
         delegates[0] = owner; // Owner is the first delegate
         
         Self {
             delegates,
             delegate_count: 1,
-            last_delegate_change_slot: current_slot,
             withdrawal_history: [WithdrawalRecord::default(); 10],
             withdrawal_history_index: 0,
         }
@@ -2189,7 +2130,6 @@ impl DelegateManagement {
     pub fn get_packed_len() -> usize {
         (32 * MAX_DELEGATES) + // delegates array
         1 +  // delegate_count
-        8 +  // last_delegate_change_slot
         (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
         1    // withdrawal_history_index
     }
@@ -2214,7 +2154,6 @@ fn process_add_delegate(
 
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Verify owner is signer
     if !owner.is_signer {
@@ -2231,8 +2170,7 @@ fn process_add_delegate(
 
     // Add the delegate
     pool_state_data.delegate_management.add_delegate(delegate)?;
-    pool_state_data.delegate_management.last_delegate_change_slot = clock.slot;
-
+    
     // Save updated state
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     
@@ -2262,7 +2200,6 @@ fn process_remove_delegate(
 
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
-    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Verify owner is signer
     if !owner.is_signer {
@@ -2279,8 +2216,7 @@ fn process_remove_delegate(
 
     // Remove the delegate
     pool_state_data.delegate_management.remove_delegate(delegate)?;
-    pool_state_data.delegate_management.last_delegate_change_slot = clock.slot;
-
+    
     // Save updated state
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
     

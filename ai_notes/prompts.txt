@@ -19,4 +19,7 @@ Create a test that causes the fixed Ratio program to fail if Token B
 is primary and Token A is based on a respective ratio or 2:1 
 (in reverse to the success test) and the error states the ratio 
 already exists.
+=====================================================================
+Verify that there are only 3 delegates that can withdraw swap fees 
+(tokens traded) and solana fees (use of contract fees)?
 
