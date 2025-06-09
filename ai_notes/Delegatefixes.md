@@ -1,6 +1,5 @@
 	•	The Only the delegates can withdraw sol not the owner.
-	•	Remoeve the 24 hour cooldown for delegates.
-	•	Implement a withdraw request method for delegates only.
+	•	Implement a withdrawal request method for delegates only.
 	•	Withdraw request must provide how much and what token.
 	•	Actual withdrawals can occur after an adjustable timeframe.
 	•	Withdrawal wait time can be 5 minutes to 72 hours.
