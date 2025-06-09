@@ -153,6 +153,8 @@ pub struct PoolState {
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
     pub swap_fee_basis_points: u64, // Fee in basis points (0-50, representing 0%-0.5%)
+    pub collected_sol_fees: u64, // Track collected SOL fees
+    pub total_sol_fees_withdrawn: u64, // Track total SOL fees withdrawn
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
@@ -238,7 +240,7 @@ pub enum FixedRatioInstruction {
     },
     /// Fee withdrawal by delegates
     WithdrawFeesToDelegate {
-        token_mint: Pubkey,
+        token_mint: Pubkey, // Use Pubkey::default() for SOL withdrawals
         amount: u64,
     },
     /// Set swap fee configuration (owner only, max 0.5%)
@@ -2021,7 +2023,9 @@ impl PoolState {
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
         8 +  // total_fees_withdrawn_token_b
-        8    // swap_fee_basis_points
+        8 +  // swap_fee_basis_points
+        8 +  // collected_sol_fees
+        8    // total_sol_fees_withdrawn
     }
 }
 
@@ -2248,9 +2252,7 @@ fn process_withdraw_fees_to_delegate(
 
     let delegate = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
-    let token_vault = next_account_info(account_info_iter)?;
-    let delegate_token_account = next_account_info(account_info_iter)?;
-    let token_program = next_account_info(account_info_iter)?;
+    let system_program = next_account_info(account_info_iter)?;
     let rent_sysvar = next_account_info(account_info_iter)?;
     let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
@@ -2274,6 +2276,76 @@ fn process_withdraw_fees_to_delegate(
         msg!("Caller is not an authorized delegate: {}", delegate.key);
         return Err(PoolError::DelegateNotFound { delegate: *delegate.key }.into());
     }
+
+    // Handle SOL withdrawal
+    if token_mint == Pubkey::default() {
+        // Check if enough SOL fees collected
+        if amount > pool_state_data.collected_sol_fees {
+            msg!("Insufficient collected SOL fees. Available: {}, Requested: {}", 
+                 pool_state_data.collected_sol_fees, amount);
+            return Err(ProgramError::InsufficientFunds);
+        }
+
+        // Check rent exempt requirements
+        let rent = &Rent::from_account_info(rent_sysvar)?;
+        check_rent_exempt(pool_state, program_id, rent, clock.slot)?;
+
+        // Calculate minimum balance to maintain rent exemption
+        let minimum_balance = rent.minimum_balance(pool_state.data_len());
+        if pool_state.lamports() < amount + minimum_balance {
+            msg!("Insufficient SOL balance. Required: {}, Available: {}", 
+                 amount + minimum_balance, pool_state.lamports());
+            return Err(ProgramError::InsufficientFunds);
+        }
+
+        // Transfer SOL to delegate
+        let pool_state_pda_seeds = &[
+            POOL_STATE_SEED_PREFIX,
+            pool_state_data.token_a_mint.as_ref(),
+            pool_state_data.token_b_mint.as_ref(),
+            &pool_state_data.ratio_a_numerator.to_le_bytes(),
+            &pool_state_data.ratio_b_denominator.to_le_bytes(),
+            &[pool_state_data.pool_authority_bump_seed],
+        ];
+
+        invoke_signed(
+            &system_instruction::transfer(pool_state.key, delegate.key, amount),
+            &[pool_state.clone(), delegate.clone(), system_program.clone()],
+            &[pool_state_pda_seeds],
+        )?;
+
+        // Update pool state
+        pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        pool_state_data.total_sol_fees_withdrawn = pool_state_data.total_sol_fees_withdrawn
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+
+        // Add withdrawal record
+        let withdrawal_record = WithdrawalRecord::new(
+            *delegate.key,
+            token_mint,
+            amount,
+            clock.unix_timestamp,
+            clock.slot,
+        );
+        pool_state_data.delegate_management.add_withdrawal_record(withdrawal_record);
+
+        // Save updated state
+        pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+
+        // Log the withdrawal for transparency
+        msg!("SOL fee withdrawal completed: Delegate: {}, Amount: {}, Timestamp: {}", 
+             delegate.key, amount, clock.unix_timestamp);
+
+        return Ok(());
+    }
+
+    // Handle SPL token withdrawal
+    let token_vault = next_account_info(account_info_iter)?;
+    let delegate_token_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
 
     // Determine token index (0 for token_a, 1 for token_b)
     let (token_index, vault_key, collected_fees) = if token_mint == pool_state_data.token_a_mint {

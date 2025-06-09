@@ -217,11 +217,15 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Purpose**: Allows authorized delegates to withdraw collected trading fees from the pool.
 -   **Details**:
     -   Only authorized delegates can call this instruction
+    -   Can withdraw both SPL token fees and SOL fees
+    -   For SOL withdrawals, use `Pubkey::default()` as the token mint
     -   **No daily withdrawal limits** - delegates can withdraw up to the total collected fees
     -   Blocked when pool is paused
     -   All withdrawals are logged with timestamp and delegate information
     -   Separate tracking of collected fees vs. pool liquidity
--   **Accounts Required**: Delegate (signer), Pool State PDA, Token Vault, Delegate Token Account, Token Program, Rent Sysvar, Clock Sysvar.
+-   **Accounts Required**: 
+    - For SPL token withdrawals: Delegate (signer), Pool State PDA, Token Vault, Delegate Token Account, Token Program, Rent Sysvar, Clock Sysvar
+    - For SOL withdrawals: Delegate (signer), Pool State PDA, System Program, Rent Sysvar, Clock Sysvar
 
 ### 11. `GetWithdrawalHistory`
 
@@ -229,7 +233,7 @@ This workaround ensures reliable pool initialization across all Solana environme
 -   **Details**:
     -   Logs the last 10 withdrawal transactions
     -   Shows delegate addresses, amounts, timestamps, and slot numbers
-    -   Displays total fees withdrawn by token type
+    -   Displays total fees withdrawn by token type (Token A, Token B, and SOL)
     -   Lists current active delegates
 -   **Accounts Required**: Pool State PDA.
 
@@ -256,30 +260,22 @@ The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal sy
 
 #### **Multi-Delegate Support**
 - **Up to 3 delegates** can be assigned by the pool owner
-- **Pool owner is automatically** the first delegate upon pool creation
-- **Flexible delegate management** with immediate add/remove capabilities
+- **Owner is automatically** the first delegate upon pool creation
+- **Add/Remove delegate functions** with proper authorization checks
 
-#### **Security Controls**
-- **No withdrawal limits** - delegates can withdraw up to the total collected fees
-- **Pause protection** - all withdrawals blocked when pool is paused
-- **Owner-only delegate management** with signature verification
+#### **Fee Collection & Withdrawal**
+- **Trading fees** collected in both SPL tokens and SOL
+- **Separate tracking** for each token type's collected fees
+- **Delegate withdrawals** for both SPL tokens and SOL
+- **No withdrawal limits** - delegates can withdraw all available fees
+- **Transparent logging** of all withdrawals
 
-#### **Fee Collection & Tracking**
-- **Configurable trading fee (0%-0.5%, set by pool owner)** automatically collected on all swaps
-- **Separate fee tracking** from pool liquidity
-- **Real-time fee accumulation** during trading activity
-- **Withdrawal limits based only on collected fees**
-
-#### **Transparency & Auditing**
-- **All operations logged publicly** with timestamp and slot information
-- **Withdrawal history tracking** (last 10 transactions stored on-chain)
-- **Total withdrawal tracking** for full accountability
-- **Public access to withdrawal history** via `GetWithdrawalHistory`
-
-#### **Immediate Operations**
-- **No cooldown periods** for adding or removing delegates
-- **No daily withdrawal limits** beyond available collected fees
-- **Immediate access** to delegate functions upon assignment
+#### **Security Features**
+- **Owner-only delegate management**
+- **Pause functionality** for emergency stops
+- **Rent-exempt validation** for all accounts
+- **Comprehensive withdrawal history**
+- **Proper PDA authority checks**
 
 ### Usage Workflow
 
