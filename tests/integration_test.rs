@@ -73,7 +73,7 @@ use solana_sdk::{
 use solana_program::{
     instruction::{AccountMeta, Instruction, InstructionError},
 };
-use fixed_ratio_trading::{FixedRatioInstruction};
+use fixed_ratio_trading::{PoolInstruction};
 use fixed_ratio_trading::process_instruction;
 use fixed_ratio_trading::ID as PROGRAM_ID;
 
@@ -308,7 +308,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -346,7 +346,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -481,7 +481,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg1,
             pool_authority_bump_seed: pool_auth_bump_for_instr1,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr1,
@@ -511,7 +511,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg1,
             pool_authority_bump_seed: pool_auth_bump_for_instr1,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr1,
@@ -581,7 +581,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg2,
             pool_authority_bump_seed: pool_auth_bump_for_instr2,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr2,
@@ -611,7 +611,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg2,
             pool_authority_bump_seed: pool_auth_bump_for_instr2,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr2,
@@ -726,7 +726,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -756,7 +756,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -791,7 +791,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg, // Same 2:1 ratio
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -880,7 +880,7 @@ async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg, // ZERO ratio
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
@@ -971,7 +971,7 @@ async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClient
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
@@ -1071,7 +1071,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
@@ -1168,7 +1168,7 @@ async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientErr
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: actual_prog_token_a_vault_bump,
@@ -1274,7 +1274,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -1304,7 +1304,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -1336,7 +1336,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump_for_instr,
             primary_token_vault_bump_seed: primary_vault_bump_for_instr,
@@ -1626,16 +1626,15 @@ mod unit_tests {
             1 +  // token_b_vault_bump_seed
             1 +  // is_initialized
             RentRequirements::get_packed_len() + // rent_requirements
-            8 +  // max_withdrawal_percentage
-            8 +  // last_withdrawal_slot
-            8 +  // withdrawal_cooldown
             1 +  // is_paused
             DelegateManagement::get_packed_len() + // delegate_management
             8 +  // collected_fees_token_a
             8 +  // collected_fees_token_b
             8 +  // total_fees_withdrawn_token_a
             8 +  // total_fees_withdrawn_token_b
-            8;   // swap_fee_basis_points
+            8 +  // swap_fee_basis_points
+            8 +  // collected_sol_fees
+            8;   // total_sol_fees_withdrawn
 
         assert_eq!(PoolState::get_packed_len(), expected_size);
     }
@@ -1787,7 +1786,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::CreatePoolStateAccount {
+        data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump,
             primary_token_vault_bump_seed: primary_vault_bump,
@@ -1816,7 +1815,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
             AccountMeta::new_readonly(spl_token::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
-        data: FixedRatioInstruction::InitializePoolData {
+        data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio_primary_per_base_instr_arg,
             pool_authority_bump_seed: pool_auth_bump,
             primary_token_vault_bump_seed: primary_vault_bump,
@@ -1949,7 +1948,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: FixedRatioInstruction::Swap {
+        data: PoolInstruction::Swap {
             input_token_mint: prog_token_b_mint_key,
             amount_in: swap_amount,
             minimum_amount_out,
@@ -1998,7 +1997,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: FixedRatioInstruction::Swap {
+        data: PoolInstruction::Swap {
             input_token_mint: prog_token_b_mint_key,
             amount_in: large_swap_amount,
             minimum_amount_out: minimum_amount_out_large,
