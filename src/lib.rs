@@ -380,15 +380,105 @@ impl From<PoolError> for ProgramError {
     }
 }
 
-/// Entry point for Solana program instructions.
+/// Main entry point for the fixed-ratio trading pool Solana program.
+///
+/// This function serves as the central dispatcher for all pool operations, routing incoming
+/// instructions to their appropriate handler functions. It implements global security checks,
+/// instruction deserialization, pause state validation, and comprehensive error handling.
+/// Every interaction with the pool program flows through this entry point.
+///
+/// # Purpose
+/// - Central instruction routing and dispatch for all pool operations
+/// - Global security enforcement including pause state validation
+/// - Instruction deserialization with comprehensive error handling
+/// - Audit logging for all program interactions
+/// - Standardized error handling and program result management
+///
+/// # How it works
+/// 1. **Instruction Deserialization**: Converts raw instruction data into typed `PoolInstruction` enum
+/// 2. **Global Pause Check**: Validates pool pause state for user operations (skips owner/management functions)
+/// 3. **Instruction Dispatch**: Routes each instruction type to its specific handler function:
+///    - `CreatePoolStateAccount` → `process_create_pool_state_account`
+///    - `InitializePoolData` → `process_initialize_pool_data`
+///    - `Deposit` → `process_deposit`
+///    - `Withdraw` → `process_withdraw`
+///    - `Swap` → `process_swap`
+///    - `WithdrawFees` → `process_withdraw_fees`
+///    - `UpdateSecurityParams` → `process_update_security_params`
+///    - `AddDelegate` → `process_add_delegate`
+///    - `RemoveDelegate` → `process_remove_delegate`
+///    - `WithdrawFeesToDelegate` → `process_withdraw_fees_to_delegate`
+///    - `SetSwapFee` → `process_set_swap_fee`
+///    - `GetWithdrawalHistory` → `process_get_withdrawal_history`
+///    - `RequestFeeWithdrawal` → `process_request_fee_withdrawal`
+///    - `CancelWithdrawalRequest` → `process_cancel_withdrawal_request`
+///    - `SetDelegateWaitTime` → `process_set_delegate_wait_time`
+/// 4. **Error Propagation**: Handles and propagates errors from handler functions
+/// 5. **Logging**: Provides comprehensive debug logging for troubleshooting
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for the operation
-/// * `instruction_data` - The instruction data containing the operation to perform
+/// * `program_id` - The program ID for PDA validation and program identification
+/// * `accounts` - Array of accounts provided by the client for the specific operation
+/// * `instruction_data` - Serialized instruction data containing the operation type and parameters
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Global Security Features
+/// ## Pause State Enforcement
+/// - **Protected Operations**: All user operations (deposit, withdraw, swap) are blocked when paused
+/// - **Allowed Operations**: Owner and management functions remain accessible during pause:
+///   - `WithdrawFees`, `UpdateSecurityParams`, `CreatePoolStateAccount`, `InitializePoolData`
+/// - **Emergency Control**: Enables immediate halt of trading during security incidents
+///
+/// ## Instruction Validation
+/// - **Type Safety**: All instructions must deserialize to valid `PoolInstruction` types
+/// - **Parameter Validation**: Each handler performs specific parameter validation
+/// - **Account Verification**: Comprehensive account ownership and structure validation
+///
+/// # Error Handling
+/// The function handles several categories of errors:
+/// - **Deserialization Errors**: Invalid or corrupted instruction data
+/// - **Pause State Violations**: User operations attempted while pool is paused
+/// - **Handler Function Errors**: Specific errors from individual operation handlers
+///
+/// # Supported Instructions
+/// ## Pool Management
+/// - `CreatePoolStateAccount`: Initial pool creation (Step 1)
+/// - `InitializePoolData`: Pool data initialization (Step 2)
+/// - `UpdateSecurityParams`: Security parameter updates
+///
+/// ## User Operations
+/// - `Deposit`: Add liquidity to receive LP tokens
+/// - `Withdraw`: Remove liquidity by burning LP tokens  
+/// - `Swap`: Exchange tokens at fixed ratio
+///
+/// ## Fee Management
+/// - `WithdrawFees`: Owner withdraws accumulated SOL fees
+/// - `SetSwapFee`: Configure trading fee rates (0-0.5%)
+///
+/// ## Delegate System
+/// - `AddDelegate`: Add authorized fee withdrawal delegates
+/// - `RemoveDelegate`: Remove delegates
+/// - `WithdrawFeesToDelegate`: Execute delegate fee withdrawals
+/// - `RequestFeeWithdrawal`: Request time-delayed fee withdrawal
+/// - `CancelWithdrawalRequest`: Cancel pending withdrawal requests
+/// - `SetDelegateWaitTime`: Configure delegate-specific wait times
+///
+/// ## Transparency & Auditing
+/// - `GetWithdrawalHistory`: Retrieve withdrawal audit trail
+///
+/// # Example Usage
+/// ```ignore
+/// // Called by Solana runtime for each transaction
+/// let result = process_instruction(
+///     &program_id,
+///     &instruction_accounts,
+///     &serialized_instruction_data,
+/// );
+/// ```
+///
+/// # Error Types
+/// - Instruction deserialization failures → `ProgramError::InvalidInstructionData`
+/// - Pause state violations → `PoolError::PoolPaused`
+/// - Handler-specific errors → Various `ProgramError` and `PoolError` types
 pub fn process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1393,16 +1483,75 @@ fn process_deposit(
     Ok(())
 }
 
-/// Handles user withdrawals from the trading pool.
+/// Handles user withdrawals from the fixed-ratio trading pool.
+///
+/// This function allows users to withdraw their underlying tokens from the pool by burning
+/// their LP (Liquidity Provider) tokens. The withdrawal is processed at a 1:1 ratio between
+/// LP tokens burned and underlying tokens received, maintaining the pool's fixed ratio structure.
+/// The function includes slippage protection, fee collection, and comprehensive validation.
+///
+/// # Purpose
+/// - Enables users to exit their liquidity positions by burning LP tokens
+/// - Maintains pool's fixed ratio by reducing both LP supply and underlying token reserves
+/// - Collects withdrawal fees to fund pool operations and rent exemption
+/// - Provides audit trail and security checks for all withdrawal operations
+///
+/// # How it works
+/// 1. Validates the user is authorized (signed the transaction)
+/// 2. Verifies all provided accounts match expected pool structure
+/// 3. Confirms rent-exempt status for all pool accounts
+/// 4. Determines withdrawal direction (Token A or Token B) based on withdraw_token_mint_key
+/// 5. Validates user has sufficient LP tokens to burn
+/// 6. Checks pool has sufficient underlying token liquidity for withdrawal
+/// 7. Burns LP tokens from user's LP token account
+/// 8. Transfers underlying tokens from pool vault to user's destination account
+/// 9. Updates pool state liquidity counters
+/// 10. Collects withdrawal fee in SOL to maintain pool operations
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for withdrawal
-/// * `withdraw_token_mint_key` - The mint of the token being withdrawn
-/// * `lp_amount_to_burn` - The amount of LP tokens to burn
+/// * `program_id` - The program ID for PDA validation and authority checks
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - User account (must be signer)
+///   - `accounts[1]` - User's LP token account (source of tokens to burn)
+///   - `accounts[2]` - User's destination token account (receives underlying tokens)
+///   - `accounts[3]` - Pool state PDA account (writable)
+///   - `accounts[4]` - Token A mint account (for PDA seed verification)
+///   - `accounts[5]` - Token B mint account (for PDA seed verification)
+///   - `accounts[6]` - Pool's Token A vault account (writable)
+///   - `accounts[7]` - Pool's Token B vault account (writable)
+///   - `accounts[8]` - LP Token A mint account (writable if withdrawing Token A)
+///   - `accounts[9]` - LP Token B mint account (writable if withdrawing Token B)
+///   - `accounts[10]` - System program
+///   - `accounts[11]` - SPL Token program
+///   - `accounts[12]` - Rent sysvar (for rent calculations)
+///   - `accounts[13]` - Clock sysvar (for timestamp validation)
+/// * `withdraw_token_mint_key` - The mint address of the token to withdraw (must be either pool's Token A or Token B)
+/// * `lp_amount_to_burn` - The amount of LP tokens to burn (1:1 ratio with underlying tokens received)
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - User: Must be signer and owner of LP token account
+/// - LP token account: Must contain sufficient tokens and be owned by user
+/// - Destination account: Must be owned by user and match withdraw token mint
+/// - Pool accounts: Must maintain rent-exempt status throughout operation
+///
+/// # Fees
+/// - Withdrawal fee: Fixed SOL amount (DEPOSIT_WITHDRAWAL_FEE) transferred to pool state PDA
+/// - Purpose: Maintains pool rent exemption and funds ongoing operations
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - User didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Account validation failures
+/// - `ProgramError::InsufficientFunds` - Insufficient LP tokens or pool liquidity
+/// - `PoolError::PoolPaused` - Pool operations are paused
+///
+/// # Example Usage
+/// ```ignore
+/// // Withdraw 1000 Token A by burning 1000 LP Token A
+/// let instruction = PoolInstruction::Withdraw {
+///     withdraw_token_mint: token_a_mint_pubkey,
+///     lp_amount_to_burn: 1000,
+/// };
+/// ```
 fn process_withdraw(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1618,7 +1767,88 @@ fn process_withdraw(
 /// * `amount_in` - The amount of input token to swap
 ///
 /// # Returns
-/// * `ProgramResult` - Success or error code
+/// Processes token swaps within the fixed-ratio trading pool.
+///
+/// This function enables users to swap between the pool's two tokens (Token A ↔ Token B)
+/// at a predetermined fixed ratio. The swap maintains the pool's mathematical invariant while
+/// collecting configurable trading fees. It provides slippage protection, liquidity validation,
+/// and comprehensive security checks for all trading operations.
+///
+/// # Purpose
+/// - Facilitates decentralized token trading at fixed exchange rates
+/// - Maintains pool's fixed ratio invariant through mathematical precision
+/// - Collects configurable trading fees (0-0.5%) for pool sustainability
+/// - Provides slippage protection through minimum output requirements
+/// - Supports bidirectional trading (A→B and B→A) with consistent pricing
+///
+/// # How it works
+/// 1. Validates user authorization and all account structures
+/// 2. Verifies rent-exempt status for pool accounts
+/// 3. Determines swap direction (A→B or B→A) based on input token mint
+/// 4. Validates user's input/output token accounts for correct ownership and balances
+/// 5. Calculates exact output amount using fixed ratio formula:
+///    - A→B: output_B = (input_A × ratio_B_denominator) ÷ ratio_A_numerator
+///    - B→A: output_A = (input_B × ratio_A_numerator) ÷ ratio_B_denominator
+/// 6. Applies configurable swap fee (deducted from input amount)
+/// 7. Validates slippage protection (output ≥ minimum_amount_out)
+/// 8. Checks pool has sufficient liquidity for output token
+/// 9. Transfers input tokens (including fee) from user to pool vault
+/// 10. Transfers calculated output tokens from pool vault to user
+/// 11. Updates pool liquidity counters and fee tracking
+/// 12. Collects SOL swap fee for pool operations
+///
+/// # Arguments
+/// * `program_id` - The program ID for PDA validation and CPI authority
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - User account (must be signer)
+///   - `accounts[1]` - User's input token account (source of tokens being swapped)
+///   - `accounts[2]` - User's output token account (receives swapped tokens)
+///   - `accounts[3]` - Pool state PDA account (writable)
+///   - `accounts[4]` - Token A mint account (for PDA seed verification)
+///   - `accounts[5]` - Token B mint account (for PDA seed verification)
+///   - `accounts[6]` - Pool's Token A vault account (writable)
+///   - `accounts[7]` - Pool's Token B vault account (writable)
+///   - `accounts[8]` - System program
+///   - `accounts[9]` - SPL Token program
+///   - `accounts[10]` - Rent sysvar (for rent calculations)
+///   - `accounts[11]` - Clock sysvar (for timestamp validation)
+/// * `input_token_mint_key` - The mint address of the token being swapped in (must be pool's Token A or Token B)
+/// * `amount_in` - The amount of input tokens to swap (includes trading fee)
+/// * `minimum_amount_out` - Minimum acceptable output tokens (slippage protection)
+///
+/// # Account Requirements
+/// - User: Must be signer and owner of both input and output token accounts
+/// - Input account: Must contain sufficient tokens and match input_token_mint_key
+/// - Output account: Must be owned by user and match the opposite token mint
+/// - Pool vaults: Must maintain sufficient liquidity for the swap
+///
+/// # Trading Fees
+/// - Swap fee: Configurable rate (0-50 basis points = 0%-0.5%) applied to input amount
+/// - SOL fee: Fixed amount (SWAP_FEE) for pool operations and rent exemption
+/// - Fee collection: Trading fees stored in pool state for delegate withdrawal
+///
+/// # Mathematical Formula
+/// Fixed ratio swaps use precise integer arithmetic:
+/// - For A→B: `output_B = (amount_in_after_fee × ratio_B_denominator) ÷ ratio_A_numerator`
+/// - For B→A: `output_A = (amount_in_after_fee × ratio_A_numerator) ÷ ratio_B_denominator`
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - User didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Account validation failures
+/// - `ProgramError::InsufficientFunds` - Insufficient input tokens or pool liquidity
+/// - `PoolError::InvalidSwapAmount` - Slippage tolerance exceeded or zero output
+/// - `PoolError::PoolPaused` - Pool trading is paused
+///
+/// # Example Usage
+/// ```ignore
+/// // Swap 1000 Token A for Token B with 1% slippage tolerance
+/// let expected_output = 2000; // Based on 1:2 ratio
+/// let instruction = PoolInstruction::Swap {
+///     input_token_mint: token_a_mint_pubkey,
+///     amount_in: 1000,
+///     minimum_amount_out: expected_output * 99 / 100, // 1% slippage
+/// };
+/// ```
 fn process_swap(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1892,14 +2122,67 @@ fn process_swap(
     Ok(())
 }
 
-/// Allows the pool owner to withdraw accumulated fees.
+/// Allows the pool owner to withdraw accumulated SOL fees from the pool state PDA.
+///
+/// This function enables the designated pool owner to extract accumulated SOL fees that have
+/// been collected from various pool operations (swaps, deposits, withdrawals). It maintains
+/// the pool's rent-exempt status by preserving the minimum required balance while transferring
+/// any excess SOL to the owner. This is a key revenue mechanism for pool operators.
+///
+/// # Purpose
+/// - Provides revenue extraction mechanism for pool owners
+/// - Maintains pool's rent-exempt status during fee withdrawal
+/// - Enables monetization of pool operations through collected SOL fees
+/// - Ensures long-term pool sustainability by preserving operational funds
+///
+/// # How it works
+/// 1. Validates the caller is the designated pool owner and signed the transaction
+/// 2. Loads pool state data to verify ownership and calculate available fees
+/// 3. Calculates the minimum rent-exempt balance required for the pool state PDA
+/// 4. Determines withdrawable amount (total balance - rent-exempt minimum)
+/// 5. If withdrawable amount > 0, transfers SOL from pool PDA to owner
+/// 6. Uses invoke_signed with pool's PDA seeds for authorized transfer
+/// 7. Logs withdrawal details for transparency and audit purposes
 ///
 /// # Arguments
-/// * `_program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for fee withdrawal
+/// * `_program_id` - The program ID (currently unused, reserved for future validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (source of SOL fees)
+///   - `accounts[2]` - System program (for SOL transfer instructions)
+///   - `accounts[3]` - Rent sysvar (for rent-exempt calculations)
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Owner: Must be signer and match the owner field in pool state data
+/// - Pool state: Must be the valid pool state PDA with sufficient SOL balance
+/// - System program: Standard Solana system program for SOL transfers
+///
+/// # Fee Calculation
+/// - Available fees = Total pool state balance - Rent-exempt minimum
+/// - Rent-exempt minimum calculated using current rent rates and account size
+/// - Zero fees available indicates all SOL is reserved for rent exemption
+///
+/// # Security Features
+/// - **Ownership validation**: Only the designated pool owner can withdraw fees
+/// - **Rent protection**: Always maintains minimum balance for rent exemption
+/// - **PDA signing**: Uses proper PDA seeds for authorized pool transfers
+/// - **Transparency**: Logs all fee withdrawals for audit trail
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+/// - `ProgramError::ArithmeticOverflow` - Mathematical calculation errors
+///
+/// # Example Usage
+/// ```ignore
+/// // Pool owner withdraws accumulated SOL fees
+/// let instruction = PoolInstruction::WithdrawFees;
+/// // Transfers: pool_balance - rent_minimum → owner_account
+/// ```
+///
+/// # Note
+/// This function only handles SOL fees. For SPL token fee withdrawals, use the
+/// delegate withdrawal system through `WithdrawFeesToDelegate`.
 fn process_withdraw_fees(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -1993,17 +2276,83 @@ fn ensure_rent_exempt(
     Ok(())
 }
 
-/// Updates the pool's security parameters.
+/// Updates the pool's security parameters to manage operational risk and compliance.
+///
+/// This function allows the pool owner to modify critical security settings that control
+/// pool operations. Currently focused on pause/unpause functionality, with extensibility
+/// for future security parameters like withdrawal limits and cooldown periods. This provides
+/// emergency controls and operational flexibility for pool management.
+///
+/// # Purpose
+/// - Provides emergency stop capability through pause functionality
+/// - Enables dynamic security policy adjustments based on market conditions
+/// - Allows compliance with regulatory requirements or protocol upgrades
+/// - Maintains operational control for pool owners while protecting user funds
+/// - Supports future expansion of security features and risk management
+///
+/// # How it works
+/// 1. Validates the caller is the designated pool owner and signed the transaction
+/// 2. Loads current pool state data to verify ownership permissions
+/// 3. Applies any provided security parameter updates:
+///    - `is_paused`: Immediately enables/disables pool operations
+///    - `max_withdrawal_percentage`: Reserved for future withdrawal limit controls
+///    - `withdrawal_cooldown`: Reserved for future time-based withdrawal restrictions
+/// 4. Serializes updated pool state back to on-chain storage
+/// 5. Logs changes for transparency and audit compliance
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for the update
-/// * `max_withdrawal_percentage` - Optional new maximum withdrawal percentage (e.g., 1000 for 10%)
-/// * `withdrawal_cooldown` - Optional new withdrawal cooldown in slots
-/// * `is_paused` - Optional new pause state
+/// * `_program_id` - The program ID (currently unused, reserved for future validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (writable for parameter updates)
+/// * `_max_withdrawal_percentage` - Reserved for future use. Maximum percentage of pool liquidity withdrawable in single transaction (e.g., 1000 = 10%)
+/// * `_withdrawal_cooldown` - Reserved for future use. Minimum time delay in slots between successive withdrawals
+/// * `is_paused` - Optional boolean to pause/unpause all pool operations (except owner functions)
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Owner: Must be signer and match the owner field in pool state data
+/// - Pool state: Must be writable for parameter updates
+///
+/// # Pause Functionality
+/// When `is_paused = true`:
+/// - Blocks all user operations: deposits, withdrawals, swaps
+/// - Allows owner operations: fee withdrawals, security updates, delegate management
+/// - Provides emergency stop for security incidents or maintenance
+/// - Can be reversed by setting `is_paused = false`
+///
+/// # Security Features
+/// - **Owner-only access**: Only designated pool owner can modify security parameters
+/// - **Selective enforcement**: Pause affects user operations but preserves owner controls
+/// - **Immediate effect**: Parameter changes take effect in the same transaction
+/// - **Audit trail**: All parameter changes are logged for transparency
+///
+/// # Future Extensions
+/// The reserved parameters enable future security enhancements:
+/// - Withdrawal limits to prevent liquidity drain attacks
+/// - Cooldown periods to limit high-frequency trading exploitation
+/// - Rate limiting for various operations
+/// - Dynamic fee adjustments based on market conditions
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+///
+/// # Example Usage
+/// ```ignore
+/// // Emergency pause all pool operations
+/// let instruction = PoolInstruction::UpdateSecurityParams {
+///     max_withdrawal_percentage: None, // No change
+///     withdrawal_cooldown: None,       // No change
+///     is_paused: Some(true),          // Pause operations
+/// };
+///
+/// // Resume normal operations
+/// let instruction = PoolInstruction::UpdateSecurityParams {
+///     max_withdrawal_percentage: None,
+///     withdrawal_cooldown: None,
+///     is_paused: Some(false),         // Unpause operations
+/// };
+/// ```
 fn process_update_security_params(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
