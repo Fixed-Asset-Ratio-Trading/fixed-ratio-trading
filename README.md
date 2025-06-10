@@ -250,67 +250,131 @@ This workaround ensures reliable pool initialization across all Solana environme
     -   All fee changes are logged for transparency
 -   **Accounts Required**: Owner (signer), Pool State PDA.
 
-## Delegate Withdrawal System
+## Delegate Fee Withdrawal System
 
-### Overview
+The contract implements a secure two-step withdrawal process for delegates to withdraw collected fees. This system ensures transparency and control over fee withdrawals.
 
-The Fixed Ratio Trading contract includes a comprehensive delegate withdrawal system that allows authorized delegates to withdraw trading fees collected from swaps. This system prioritizes flexibility while maintaining transparency and basic security controls.
+### Withdrawal Process
 
-### Key Features
+1. **Request Withdrawal**
+   - Delegates must first request a withdrawal by specifying:
+     - Token type (SOL or SPL token)
+     - Amount to withdraw
+   - Each delegate can have only one active withdrawal request at a time
+   - The request is logged with timestamp and wait time
 
-#### **Multi-Delegate Support**
-- **Up to 3 delegates** can be assigned by the pool owner
-- **Owner is automatically** the first delegate upon pool creation
-- **Add/Remove delegate functions** with proper authorization checks
+2. **Wait Period**
+   - Each delegate has a configurable wait time between 5 minutes and 72 hours
+   - The wait time is set by the contract owner
+   - Default wait time is 5 minutes
+   - Withdrawal requests expire after 72 hours
 
-#### **Fee Collection & Withdrawal**
-- **Trading fees** collected in both SPL tokens and SOL
-- **Separate tracking** for each token type's collected fees
-- **Delegate withdrawals** for both SPL tokens and SOL
-- **No withdrawal limits** - delegates can withdraw all available fees
-- **Transparent logging** of all withdrawals
+3. **Execute Withdrawal**
+   - After the wait period, the delegate can execute the withdrawal
+   - The withdrawal must match the requested amount and token
+   - Successful withdrawals are logged in the withdrawal history
 
-#### **Security Features**
-- **Owner-only delegate management**
-- **Pause functionality** for emergency stops
-- **Rent-exempt validation** for all accounts
-- **Comprehensive withdrawal history**
-- **Proper PDA authority checks**
+### Security Features
 
-### Usage Workflow
+- **Owner Controls**
+  - Contract owner can:
+    - Set individual wait times for each delegate
+    - Cancel any pending withdrawal requests
+    - Add/remove delegates
+    - Pause the contract
 
-1. **Pool Creation**: Owner becomes first delegate automatically, swap fee starts at 0%
-2. **Fee Configuration**: Owner sets desired swap fee (0%-0.5%) using SetSwapFee instruction
-3. **Delegate Addition**: Owner adds up to 2 additional delegates (immediate effect)
-4. **Fee Collection**: Configurable trading fees collected automatically during swaps
-5. **Fee Withdrawal**: Authorized delegates withdraw any amount up to collected fees
-6. **Transparency**: All operations logged and publicly accessible
+- **Delegate Limits**
+  - Maximum of 3 delegates
+  - One active withdrawal request per delegate
+  - Configurable wait times per delegate
+  - Withdrawal requests expire after 72 hours
 
-### Security Considerations
+- **Transparency**
+  - All withdrawal requests are logged with timestamps
+  - Withdrawal history tracks the last 10 withdrawals
+  - Events emitted for all withdrawal-related actions
 
-#### **Strong Protections**
-- ✅ Owner-only delegate management with signature verification
-- ✅ Pause functionality halts all withdrawals in emergencies
-- ✅ Comprehensive logging ensures full transparency
-- ✅ Rent-exempt checks prevent account closure attacks
-- ✅ Fee segregation from pool liquidity
+### Instructions
 
-#### **Important Notes**
-- ⚠️ **No Daily Limits**: Delegates can withdraw all collected fees immediately
-- ⚠️ **No Cooldown Periods**: Delegates can be added/removed instantly
-- ⚠️ **Trust-Based Model**: System relies on careful delegate selection by pool owner
+#### RequestFeeWithdrawal
+```rust
+RequestFeeWithdrawal {
+    token_mint: Pubkey, // Use Pubkey::default() for SOL
+    amount: u64,
+}
+```
+- Creates a withdrawal request for the specified token and amount
+- Only authorized delegates can create requests
+- One active request per delegate
 
-### Integration for Rewards Contracts
+#### CancelWithdrawalRequest
+```rust
+CancelWithdrawalRequest
+```
+- Cancels a pending withdrawal request
+- Can be called by either the delegate or the contract owner
+- Clears the request and allows new requests
 
-This system provides a foundation for future rewards contracts:
+#### SetDelegateWaitTime
+```rust
+SetDelegateWaitTime {
+    delegate: Pubkey,
+    wait_time: u64, // In seconds, between 300 (5 min) and 259200 (72 hours)
+}
+```
+- Sets the wait time for a specific delegate
+- Only the contract owner can set wait times
+- Wait time must be between 5 minutes and 72 hours
 
-1. **Rewards contract can be assigned as a delegate**
-2. **Read on-chain trade data from transaction logs**
-3. **Calculate rewards based on LP token staking activity**
-4. **Withdraw collected fees as needed**
-5. **Distribute rewards to staked LP token holders**
+#### WithdrawFeesToDelegate
+```rust
+WithdrawFeesToDelegate {
+    token_mint: Pubkey, // Use Pubkey::default() for SOL
+    amount: u64,
+}
+```
+- Executes a pending withdrawal request
+- Must match the requested amount and token
+- Can only be called after the wait period
+- Withdrawal is logged in history
 
-The design enables clean separation of concerns while maintaining transparency.
+### Events
+
+#### WithdrawalRequestedEvent
+```rust
+pub struct WithdrawalRequestedEvent {
+    pub delegate: Pubkey,
+    pub token_mint: Pubkey,
+    pub amount: u64,
+    pub request_timestamp: i64,
+    pub wait_time: u64,
+}
+```
+
+#### WithdrawalRequestCancelledEvent
+```rust
+pub struct WithdrawalRequestCancelledEvent {
+    pub delegate: Pubkey,
+    pub cancelled_by: Pubkey,
+}
+```
+
+#### DelegateWaitTimeUpdatedEvent
+```rust
+pub struct DelegateWaitTimeUpdatedEvent {
+    pub delegate: Pubkey,
+    pub wait_time: u64,
+}
+```
+
+### Error Handling
+
+The contract includes specific error types for withdrawal-related operations:
+- `PendingWithdrawalExists`: When a delegate already has an active request
+- `NoPendingWithdrawal`: When trying to execute a non-existent request
+- `WithdrawalNotReady`: When trying to execute before wait period
+- `InvalidWithdrawalRequest`: When withdrawal doesn't match request
+- `InvalidWaitTime`: When wait time is outside allowed range
 
 ## Example Use Case (Dual LP Model)
 

@@ -61,7 +61,8 @@ const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000; // 1 basis point = 0.01%
 
 // Delegate system constants
 const MAX_DELEGATES: usize = 3;
-// REMOVED: const DELEGATE_CHANGE_COOLDOWN_SLOTS: u64 = 216_000; // Approximately 24 hours at 400ms slots
+const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300; // 5 minutes in seconds
+const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200; // 72 hours in seconds
 
 // PDA Seeds
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
@@ -158,7 +159,7 @@ pub struct PoolState {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub enum FixedRatioInstruction {
+pub enum PoolInstruction {
     /// WORKAROUND FOR SOLANA ACCOUNTINFO.DATA ISSUE:
     /// 
     /// The following two instructions implement a workaround for a known issue in Solana
@@ -240,7 +241,7 @@ pub enum FixedRatioInstruction {
     },
     /// Fee withdrawal by delegates
     WithdrawFeesToDelegate {
-        token_mint: Pubkey, // Use Pubkey::default() for SOL withdrawals
+        token_mint: Pubkey,
         amount: u64,
     },
     /// Set swap fee configuration (owner only, max 0.5%)
@@ -249,6 +250,15 @@ pub enum FixedRatioInstruction {
     },
     /// Get withdrawal history (for transparency)
     GetWithdrawalHistory,
+    RequestFeeWithdrawal {
+        token_mint: Pubkey,
+        amount: u64,
+    },
+    CancelWithdrawalRequest,
+    SetDelegateWaitTime {
+        delegate: Pubkey,
+        wait_time: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -288,6 +298,14 @@ pub enum PoolError {
     DelegateLimitExceeded,
     DelegateAlreadyExists { delegate: Pubkey },
     DelegateNotFound { delegate: Pubkey },
+    InvalidWaitTime { wait_time: u64 },
+    PendingWithdrawalExists,
+    NoPendingWithdrawal,
+    UnauthorizedDelegate,
+    InsufficientFees,
+    InvalidWithdrawalRequest,
+    WithdrawalNotReady,
+    Unauthorized,
 }
 
 impl fmt::Display for PoolError {
@@ -317,6 +335,14 @@ impl fmt::Display for PoolError {
             PoolError::DelegateLimitExceeded => write!(f, "Delegate limit exceeded"),
             PoolError::DelegateAlreadyExists { delegate } => write!(f, "Delegate already exists: {}", delegate),
             PoolError::DelegateNotFound { delegate } => write!(f, "Delegate not found: {}", delegate),
+            PoolError::InvalidWaitTime { wait_time } => write!(f, "Invalid wait time: {} seconds", wait_time),
+            PoolError::PendingWithdrawalExists => write!(f, "Pending withdrawal request exists"),
+            PoolError::NoPendingWithdrawal => write!(f, "No pending withdrawal request"),
+            PoolError::UnauthorizedDelegate => write!(f, "Unauthorized delegate"),
+            PoolError::InsufficientFees => write!(f, "Insufficient fees"),
+            PoolError::InvalidWithdrawalRequest => write!(f, "Invalid withdrawal request"),
+            PoolError::WithdrawalNotReady => write!(f, "Withdrawal not ready"),
+            PoolError::Unauthorized => write!(f, "Unauthorized"),
         }
     }
 }
@@ -336,6 +362,14 @@ impl PoolError {
             PoolError::DelegateLimitExceeded => 1010,
             PoolError::DelegateAlreadyExists { .. } => 1011,
             PoolError::DelegateNotFound { .. } => 1012,
+            PoolError::InvalidWaitTime { .. } => 1013,
+            PoolError::PendingWithdrawalExists => 1014,
+            PoolError::NoPendingWithdrawal => 1015,
+            PoolError::UnauthorizedDelegate => 1016,
+            PoolError::InsufficientFees => 1017,
+            PoolError::InvalidWithdrawalRequest => 1018,
+            PoolError::WithdrawalNotReady => 1019,
+            PoolError::Unauthorized => 1020,
         }
     }
 }
@@ -361,7 +395,7 @@ pub fn process_instruction(
     instruction_data: &[u8],
 ) -> ProgramResult {
     msg!("DEBUG: process_instruction: Entered. Program ID: {}, Instruction data len: {}", program_id, instruction_data.len());
-    let instruction = match FixedRatioInstruction::try_from_slice(instruction_data) {
+    let instruction = match PoolInstruction::try_from_slice(instruction_data) {
         Ok(instr) => {
             msg!("DEBUG: process_instruction: Successfully deserialized instruction.");
             instr
@@ -373,10 +407,10 @@ pub fn process_instruction(
     };
     
     // Check if pool is paused for all instructions except WithdrawFees, UpdateSecurityParams, CreatePoolStateAccount, and InitializePoolData
-    if let FixedRatioInstruction::WithdrawFees 
-        | FixedRatioInstruction::UpdateSecurityParams { .. }
-        | FixedRatioInstruction::CreatePoolStateAccount { .. }
-        | FixedRatioInstruction::InitializePoolData { .. } = instruction {
+    if let PoolInstruction::WithdrawFees 
+        | PoolInstruction::UpdateSecurityParams { .. }
+        | PoolInstruction::CreatePoolStateAccount { .. }
+        | PoolInstruction::InitializePoolData { .. } = instruction {
         msg!("DEBUG: process_instruction: Skipping pause check for pool creation/management instructions.");
     } else {
         msg!("DEBUG: process_instruction: Checking pause state for relevant instruction.");
@@ -397,7 +431,7 @@ pub fn process_instruction(
     }
     
     match instruction {
-        FixedRatioInstruction::CreatePoolStateAccount { 
+        PoolInstruction::CreatePoolStateAccount { 
             ratio_primary_per_base, 
             pool_authority_bump_seed, 
             primary_token_vault_bump_seed, 
@@ -413,7 +447,7 @@ pub fn process_instruction(
                 base_token_vault_bump_seed
             )
         }
-        FixedRatioInstruction::InitializePoolData { 
+        PoolInstruction::InitializePoolData { 
             ratio_primary_per_base, 
             pool_authority_bump_seed, 
             primary_token_vault_bump_seed, 
@@ -429,23 +463,23 @@ pub fn process_instruction(
                 base_token_vault_bump_seed
             )
         }
-        FixedRatioInstruction::Deposit { deposit_token_mint, amount } => {
+        PoolInstruction::Deposit { deposit_token_mint, amount } => {
             msg!("DEBUG: process_instruction: Dispatching to process_deposit");
             process_deposit(program_id, accounts, deposit_token_mint, amount)
         }
-        FixedRatioInstruction::Withdraw { withdraw_token_mint, lp_amount_to_burn } => {
+        PoolInstruction::Withdraw { withdraw_token_mint, lp_amount_to_burn } => {
             msg!("DEBUG: process_instruction: Dispatching to process_withdraw");
             process_withdraw(program_id, accounts, withdraw_token_mint, lp_amount_to_burn)
         }
-        FixedRatioInstruction::Swap { input_token_mint, amount_in, minimum_amount_out } => {
+        PoolInstruction::Swap { input_token_mint, amount_in, minimum_amount_out } => {
             msg!("DEBUG: process_instruction: Dispatching to process_swap");
             process_swap(program_id, accounts, input_token_mint, amount_in, minimum_amount_out)
         }
-        FixedRatioInstruction::WithdrawFees => {
+        PoolInstruction::WithdrawFees => {
             msg!("DEBUG: process_instruction: Dispatching to process_withdraw_fees");
             process_withdraw_fees(program_id, accounts)
         }
-        FixedRatioInstruction::UpdateSecurityParams { 
+        PoolInstruction::UpdateSecurityParams { 
             max_withdrawal_percentage, 
             withdrawal_cooldown, 
             is_paused 
@@ -459,25 +493,34 @@ pub fn process_instruction(
                 is_paused
             )
         }
-        FixedRatioInstruction::AddDelegate { delegate } => {
+        PoolInstruction::AddDelegate { delegate } => {
             msg!("DEBUG: process_instruction: Dispatching to process_add_delegate");
             process_add_delegate(program_id, accounts, delegate)
         }
-        FixedRatioInstruction::RemoveDelegate { delegate } => {
+        PoolInstruction::RemoveDelegate { delegate } => {
             msg!("DEBUG: process_instruction: Dispatching to process_remove_delegate");
             process_remove_delegate(program_id, accounts, delegate)
         }
-        FixedRatioInstruction::WithdrawFeesToDelegate { token_mint, amount } => {
+        PoolInstruction::WithdrawFeesToDelegate { token_mint, amount } => {
             msg!("DEBUG: process_instruction: Dispatching to process_withdraw_fees_to_delegate");
             process_withdraw_fees_to_delegate(program_id, accounts, token_mint, amount)
         }
-        FixedRatioInstruction::SetSwapFee { fee_basis_points } => {
+        PoolInstruction::SetSwapFee { fee_basis_points } => {
             msg!("DEBUG: process_instruction: Dispatching to process_set_swap_fee");
             process_set_swap_fee(program_id, accounts, fee_basis_points)
         }
-        FixedRatioInstruction::GetWithdrawalHistory => {
+        PoolInstruction::GetWithdrawalHistory => {
             msg!("DEBUG: process_instruction: Dispatching to process_get_withdrawal_history");
             process_get_withdrawal_history(program_id, accounts)
+        }
+        PoolInstruction::RequestFeeWithdrawal { token_mint, amount } => {
+            process_request_fee_withdrawal(program_id, accounts, token_mint, amount)
+        }
+        PoolInstruction::CancelWithdrawalRequest => {
+            process_cancel_withdrawal_request(program_id, accounts)
+        }
+        PoolInstruction::SetDelegateWaitTime { delegate, wait_time } => {
+            process_set_delegate_wait_time(program_id, accounts, delegate, wait_time)
         }
     }
 }
@@ -2064,6 +2107,8 @@ pub struct DelegateManagement {
     pub delegate_count: u8,
     pub withdrawal_history: [WithdrawalRecord; 10], // Last 10 withdrawals
     pub withdrawal_history_index: u8,
+    pub withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES], // One request per delegate
+    pub delegate_wait_times: [u64; MAX_DELEGATES], // Wait time in seconds for each delegate
 }
 
 impl DelegateManagement {
@@ -2076,16 +2121,22 @@ impl DelegateManagement {
             delegate_count: 1,
             withdrawal_history: [WithdrawalRecord::default(); 10],
             withdrawal_history_index: 0,
+            withdrawal_requests: [WithdrawalRequest::default(); MAX_DELEGATES],
+            delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time
         }
     }
 
-    pub fn is_delegate(&self, pubkey: &Pubkey) -> bool {
+    pub fn get_delegate_index(&self, pubkey: &Pubkey) -> Option<usize> {
         for i in 0..self.delegate_count as usize {
             if self.delegates[i] == *pubkey {
-                return true;
+                return Some(i);
             }
         }
-        false
+        None
+    }
+
+    pub fn is_delegate(&self, pubkey: &Pubkey) -> bool {
+        self.get_delegate_index(pubkey).is_some()
     }
 
     pub fn add_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
@@ -2116,8 +2167,12 @@ impl DelegateManagement {
             // Shift remaining delegates
             for i in index..(self.delegate_count as usize - 1) {
                 self.delegates[i] = self.delegates[i + 1];
+                self.withdrawal_requests[i] = self.withdrawal_requests[i + 1];
+                self.delegate_wait_times[i] = self.delegate_wait_times[i + 1];
             }
             self.delegates[self.delegate_count as usize - 1] = Pubkey::default();
+            self.withdrawal_requests[self.delegate_count as usize - 1] = WithdrawalRequest::default();
+            self.delegate_wait_times[self.delegate_count as usize - 1] = MIN_WITHDRAWAL_WAIT_TIME;
             self.delegate_count -= 1;
             Ok(())
         } else {
@@ -2135,19 +2190,120 @@ impl DelegateManagement {
         (32 * MAX_DELEGATES) + // delegates array
         1 +  // delegate_count
         (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
-        1    // withdrawal_history_index
+        1 +  // withdrawal_history_index
+        (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests
+        (8 * MAX_DELEGATES) // delegate_wait_times
+    }
+
+    pub fn set_delegate_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), PoolError> {
+        if wait_time < MIN_WITHDRAWAL_WAIT_TIME || wait_time > MAX_WITHDRAWAL_WAIT_TIME {
+            return Err(PoolError::InvalidWaitTime { wait_time });
+        }
+
+        if let Some(index) = self.get_delegate_index(delegate) {
+            self.delegate_wait_times[index] = wait_time;
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+
+    pub fn get_delegate_wait_time(&self, delegate: &Pubkey) -> Option<u64> {
+        self.get_delegate_index(delegate).map(|index| self.delegate_wait_times[index])
+    }
+
+    pub fn create_withdrawal_request(&mut self, delegate: &Pubkey, token_mint: Pubkey, amount: u64, timestamp: i64, slot: u64) -> Result<(), PoolError> {
+        if let Some(index) = self.get_delegate_index(delegate) {
+            // Check if there's already a pending request
+            if self.withdrawal_requests[index].delegate != Pubkey::default() {
+                return Err(PoolError::PendingWithdrawalExists);
+            }
+
+            let wait_time = self.delegate_wait_times[index];
+            self.withdrawal_requests[index] = WithdrawalRequest::new(
+                *delegate,
+                token_mint,
+                amount,
+                timestamp,
+                slot,
+                wait_time,
+            );
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+
+    pub fn cancel_withdrawal_request(&mut self, delegate: &Pubkey) -> Result<(), PoolError> {
+        if let Some(index) = self.get_delegate_index(delegate) {
+            self.withdrawal_requests[index] = WithdrawalRequest::default();
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+
+    pub fn get_withdrawal_request(&self, delegate: &Pubkey) -> Option<&WithdrawalRequest> {
+        self.get_delegate_index(delegate).map(|index| &self.withdrawal_requests[index])
+    }
+
+    pub fn is_withdrawal_ready(&self, delegate: &Pubkey, current_timestamp: i64) -> Result<bool, PoolError> {
+        if let Some(request) = self.get_withdrawal_request(delegate) {
+            if request.delegate == Pubkey::default() {
+                return Err(PoolError::NoPendingWithdrawal);
+            }
+
+            let elapsed_time = current_timestamp - request.request_timestamp;
+            Ok(elapsed_time >= request.wait_time as i64)
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
     }
 }
 
-/// Allows the pool owner to add a new delegate.
+/// Allows the pool owner to add delegates for fee withdrawals.
+///
+/// This function enables the pool owner to authorize up to 3 delegates who can withdraw
+/// trading fees collected by the contract. Each delegate will have configurable wait times
+/// for withdrawal requests and can withdraw both SOL and SPL token fees.
+///
+/// # Purpose
+/// - Enables delegation of fee withdrawal authority to trusted parties
+/// - Supports multi-signature-like governance for fee management
+/// - Allows for separation of pool management and fee collection duties
+/// - Facilitates integration with external reward distribution systems
+///
+/// # How it works
+/// 1. Verifies the caller is the pool owner (signature required)
+/// 2. Checks that the delegate limit (3) hasn't been exceeded
+/// 3. Ensures the delegate isn't already authorized
+/// 4. Adds the delegate to the authorized list with default wait time (5 minutes)
+/// 5. Updates the pool state and logs the operation
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for adding a delegate
-/// * `delegate` - The public key of the new delegate
+/// * `_program_id` - The program ID of the contract (not used in validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer)
+///   - `accounts[1]` - Pool state PDA account (writable)
+/// * `delegate` - The public key of the delegate to add
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Pool owner: Must be signer and match the pool's owner field
+/// - Pool state: Must be owned by the program and writable
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign the transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+/// - `PoolError::DelegateLimitExceeded` - Already have 3 delegates
+/// - `PoolError::DelegateAlreadyExists` - Delegate is already authorized
+///
+/// # Example Usage
+/// ```ignore
+/// // Add a delegate for automated fee collection
+/// let instruction = PoolInstruction::AddDelegate {
+///     delegate: reward_distributor_pubkey,
+/// };
+/// ```
 fn process_add_delegate(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -2185,15 +2341,49 @@ fn process_add_delegate(
     Ok(())
 }
 
-/// Allows the pool owner to remove a delegate.
+/// Allows the pool owner to remove delegates from fee withdrawal authorization.
+///
+/// This function enables the pool owner to revoke fee withdrawal authority from a delegate.
+/// When a delegate is removed, any pending withdrawal requests they have are automatically
+/// cancelled, and they lose access to withdraw fees immediately.
+///
+/// # Purpose
+/// - Revokes fee withdrawal authority from delegates
+/// - Provides immediate security response for compromised delegates
+/// - Manages delegate lifecycle and permissions
+/// - Maintains control over fee distribution access
+///
+/// # How it works
+/// 1. Verifies the caller is the pool owner (signature required)
+/// 2. Checks that the delegate exists in the authorized list
+/// 3. Removes the delegate and shifts remaining delegates in the array
+/// 4. Cancels any pending withdrawal requests for the removed delegate
+/// 5. Updates delegate wait times array accordingly
+/// 6. Updates the pool state and logs the operation
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for removing a delegate
+/// * `_program_id` - The program ID of the contract (not used in validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer)
+///   - `accounts[1]` - Pool state PDA account (writable)
 /// * `delegate` - The public key of the delegate to remove
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Pool owner: Must be signer and match the pool's owner field
+/// - Pool state: Must be owned by the program and writable
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign the transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+/// - `PoolError::DelegateNotFound` - Delegate is not in the authorized list
+///
+/// # Example Usage
+/// ```ignore
+/// // Remove a compromised delegate
+/// let instruction = PoolInstruction::RemoveDelegate {
+///     delegate: compromised_delegate_pubkey,
+/// };
+/// ```
 fn process_remove_delegate(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -2231,16 +2421,80 @@ fn process_remove_delegate(
     Ok(())
 }
 
-/// Allows delegates to withdraw collected fees.
+/// Executes fee withdrawals for authorized delegates (Step 2 of two-step process).
+///
+/// This function allows authorized delegates to execute previously requested fee withdrawals
+/// after the required wait time has elapsed. It supports withdrawing both SOL and SPL token
+/// fees collected from trading activities. This is the second step of a two-step withdrawal
+/// process that enhances security through time-delayed execution.
+///
+/// # Purpose
+/// - Executes time-delayed fee withdrawals for delegates
+/// - Supports both SOL and SPL token fee withdrawals
+/// - Maintains audit trail of all withdrawal activities
+/// - Ensures rent-exempt status is preserved during SOL withdrawals
+/// - Provides secure fee distribution mechanism
+///
+/// # How it works
+/// 1. Verifies the delegate is authorized and signed the transaction
+/// 2. Checks that the pool is not paused
+/// 3. Validates that a withdrawal request exists and wait time has elapsed
+/// 4. Confirms the withdrawal request matches the current parameters
+/// 5. For SOL withdrawals:
+///    - Verifies sufficient collected SOL fees
+///    - Ensures pool maintains rent-exempt status
+///    - Transfers SOL directly from pool state PDA to delegate
+/// 6. For SPL token withdrawals:
+///    - Validates token vault and delegate token accounts
+///    - Transfers tokens from vault to delegate's token account
+/// 7. Updates fee tracking counters and withdrawal history
+/// 8. Clears the withdrawal request to allow new requests
 ///
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for fee withdrawal
-/// * `token_mint` - The mint of the token to withdraw
-/// * `amount` - The amount to withdraw
+/// * `program_id` - The program ID for PDA validation and CPI authority
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Delegate account (must be signer and authorized)
+///   - `accounts[1]` - Pool state PDA account (writable)
+///   - `accounts[2]` - System program (for SOL transfers)
+///   - `accounts[3]` - Rent sysvar (for rent calculations)
+///   - `accounts[4]` - Clock sysvar (for timestamp validation)
+///   - For SPL token withdrawals only:
+///     - `accounts[5]` - Token vault account (writable)
+///     - `accounts[6]` - Delegate's token account (writable)
+///     - `accounts[7]` - Token program
+/// * `token_mint` - The mint of the token to withdraw (use Pubkey::default() for SOL)
+/// * `amount` - The amount to withdraw (in lamports for SOL, token units for SPL)
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Delegate: Must be signer and in the authorized delegates list
+/// - Pool state: Must be owned by the program and writable
+/// - For SOL: Must maintain rent-exempt balance after withdrawal
+/// - For SPL tokens: Token accounts must match the expected mint and owner
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Delegate didn't sign
+/// - `PoolError::PoolPaused` - Pool operations are paused
+/// - `PoolError::UnauthorizedDelegate` - Caller is not an authorized delegate
+/// - `PoolError::WithdrawalNotReady` - Wait time hasn't elapsed
+/// - `PoolError::NoPendingWithdrawal` - No withdrawal request exists
+/// - `PoolError::InvalidWithdrawalRequest` - Request doesn't match parameters
+/// - `ProgramError::InsufficientFunds` - Not enough fees collected or SOL balance
+/// - `ProgramError::InvalidAccountData` - Invalid token vault or accounts
+///
+/// # Example Usage
+/// ```ignore
+/// // Execute SOL fee withdrawal (after wait time)
+/// let instruction = PoolInstruction::WithdrawFeesToDelegate {
+///     token_mint: Pubkey::default(), // SOL
+///     amount: 1_000_000, // 0.001 SOL
+/// };
+///
+/// // Execute SPL token fee withdrawal
+/// let instruction = PoolInstruction::WithdrawFeesToDelegate {
+///     token_mint: usdc_mint_pubkey,
+///     amount: 1_000_000, // 1 USDC (6 decimals)
+/// };
+/// ```
 fn process_withdraw_fees_to_delegate(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -2274,7 +2528,25 @@ fn process_withdraw_fees_to_delegate(
     // Verify caller is a delegate
     if !pool_state_data.delegate_management.is_delegate(delegate.key) {
         msg!("Caller is not an authorized delegate: {}", delegate.key);
-        return Err(PoolError::DelegateNotFound { delegate: *delegate.key }.into());
+        return Err(PoolError::UnauthorizedDelegate.into());
+    }
+
+    // Two-step withdrawal verification
+    // Check if withdrawal request exists and is ready
+    if !pool_state_data.delegate_management.is_withdrawal_ready(delegate.key, clock.unix_timestamp)? {
+        msg!("Withdrawal not ready for delegate: {}", delegate.key);
+        return Err(PoolError::WithdrawalNotReady.into());
+    }
+
+    // Get withdrawal request
+    let request = pool_state_data.delegate_management.get_withdrawal_request(delegate.key)
+        .ok_or(PoolError::NoPendingWithdrawal)?;
+
+    // Verify request matches current withdrawal
+    if request.token_mint != token_mint || request.amount != amount {
+        msg!("Withdrawal request mismatch: requested token={}, amount={}, actual token={}, amount={}", 
+             request.token_mint, request.amount, token_mint, amount);
+        return Err(PoolError::InvalidWithdrawalRequest.into());
     }
 
     // Handle SOL withdrawal
@@ -2331,6 +2603,9 @@ fn process_withdraw_fees_to_delegate(
             clock.slot,
         );
         pool_state_data.delegate_management.add_withdrawal_record(withdrawal_record);
+
+        // Clear withdrawal request after successful withdrawal
+        pool_state_data.delegate_management.cancel_withdrawal_request(delegate.key)?;
 
         // Save updated state
         pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
@@ -2428,6 +2703,9 @@ fn process_withdraw_fees_to_delegate(
     );
     pool_state_data.delegate_management.add_withdrawal_record(withdrawal_record);
 
+    // Clear withdrawal request after successful withdrawal
+    pool_state_data.delegate_management.cancel_withdrawal_request(delegate.key)?;
+
     // Save updated state
     pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
 
@@ -2438,14 +2716,67 @@ fn process_withdraw_fees_to_delegate(
     Ok(())
 }
 
-/// Returns withdrawal history for transparency.
+/// Retrieves and logs withdrawal history for transparency and auditing.
+///
+/// This function provides read-only access to the withdrawal history, showing the last 10
+/// fee withdrawals made by delegates. It also displays current delegate information and
+/// aggregate fee withdrawal statistics. This function is essential for transparency,
+/// auditing, and monitoring of fee distribution activities.
+///
+/// # Purpose
+/// - Provides transparency into fee withdrawal activities
+/// - Enables auditing of delegate fee withdrawals
+/// - Shows current delegate authorization status
+/// - Displays aggregate withdrawal statistics
+/// - Supports monitoring and compliance requirements
+///
+/// # How it works
+/// 1. Loads the pool state to access withdrawal history
+/// 2. Iterates through the last 10 withdrawal records
+/// 3. Logs each withdrawal with delegate, token, amount, and timestamp
+/// 4. Displays total fees withdrawn by token type
+/// 5. Shows current authorized delegates and their count
+/// 6. All information is logged to the transaction logs for transparency
 ///
 /// # Arguments
-/// * `_program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for getting withdrawal history
+/// * `_program_id` - The program ID of the contract (not used for validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool state PDA account (read-only)
 ///
-/// # Returns
-/// * `ProgramResult` - Success or error code
+/// # Account Requirements
+/// - Pool state: Must be readable (no signature or write access required)
+///
+/// # Information Displayed
+/// - **Withdrawal History**: Last 10 withdrawals with full details
+/// - **Delegate Info**: Public key of each withdrawal's delegate
+/// - **Token Info**: Token mint address (Pubkey::default() for SOL)
+/// - **Amount**: Withdrawal amount in token-specific units
+/// - **Timestamp**: Unix timestamp of the withdrawal
+/// - **Slot**: Solana slot number when withdrawal occurred
+/// - **Aggregate Stats**: Total fees withdrawn per token type
+/// - **Current Delegates**: List of all currently authorized delegates
+///
+/// # Errors
+/// - `ProgramError::InvalidAccountData` - Pool state account data is corrupted
+///
+/// # Example Usage
+/// ```ignore
+/// // Query withdrawal history for auditing
+/// let instruction = PoolInstruction::GetWithdrawalHistory;
+/// 
+/// // Results logged to transaction logs:
+/// // "Withdrawal History (last 10 withdrawals):"
+/// // "Record 0: Delegate: ABC..., Token: DEF..., Amount: 1000000, Timestamp: 1234567890, Slot: 98765"
+/// // "Total fees withdrawn - Token A: 5000000, Token B: 3000000"
+/// // "Current delegates (3): GHI..., JKL..., MNO..."
+/// ```
+///
+/// # Use Cases
+/// - **Auditing**: Review all recent fee withdrawals
+/// - **Monitoring**: Track delegate withdrawal patterns
+/// - **Compliance**: Verify fee distribution activities
+/// - **Analytics**: Analyze fee collection and distribution
+/// - **Debugging**: Investigate withdrawal-related issues
 fn process_get_withdrawal_history(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -2530,6 +2861,385 @@ fn process_set_swap_fee(
     msg!("Swap fee updated: {} -> {} basis points ({:.2}% -> {:.2}%)", 
          old_fee, fee_basis_points,
          old_fee as f64 / 100.0, fee_basis_points as f64 / 100.0);
+
+    Ok(())
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, Copy)]
+pub struct WithdrawalRequest {
+    pub delegate: Pubkey,
+    pub token_mint: Pubkey,
+    pub amount: u64,
+    pub request_timestamp: i64,
+    pub request_slot: u64,
+    pub wait_time: u64, // Wait time in seconds
+}
+
+impl WithdrawalRequest {
+    pub fn new(delegate: Pubkey, token_mint: Pubkey, amount: u64, request_timestamp: i64, request_slot: u64, wait_time: u64) -> Self {
+        Self {
+            delegate,
+            token_mint,
+            amount,
+            request_timestamp,
+            request_slot,
+            wait_time,
+        }
+    }
+
+    pub fn get_packed_len() -> usize {
+        32 + // delegate
+        32 + // token_mint
+        8 +  // amount
+        8 +  // request_timestamp
+        8 +  // request_slot
+        8    // wait_time
+    }
+}
+
+/// Creates a fee withdrawal request for authorized delegates (Step 1 of two-step process).
+///
+/// This function allows authorized delegates to request fee withdrawals with a time delay
+/// for enhanced security. Delegates must specify the token type and amount they wish to
+/// withdraw. Each delegate can have only one active withdrawal request at a time, and the
+/// request must wait for a configurable period (5 minutes to 72 hours) before execution.
+///
+/// # Purpose
+/// - Initiates the two-step withdrawal process for enhanced security
+/// - Allows delegates to request both SOL and SPL token fee withdrawals
+/// - Implements time-delayed execution to prevent immediate unauthorized access
+/// - Provides transparency through logged withdrawal requests
+/// - Prevents multiple concurrent requests per delegate
+///
+/// # How it works
+/// 1. Verifies the delegate is authorized and signed the transaction
+/// 2. Checks that the pool is not paused
+/// 3. Ensures the delegate doesn't have a pending withdrawal request
+/// 4. Creates a withdrawal request with current timestamp and delegate's wait time
+/// 5. Stores the request in the pool state for later execution
+/// 6. Logs the request details for transparency
+///
+/// # Arguments
+/// * `program_id` - The program ID for account ownership validation
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool state PDA account (writable)
+///   - `accounts[1]` - Delegate account (must be signer and authorized)
+///   - `accounts[2]` - Clock sysvar (for timestamp)
+/// * `token_mint` - The mint of the token to withdraw (use Pubkey::default() for SOL)
+/// * `amount` - The amount to withdraw (in lamports for SOL, token units for SPL)
+///
+/// # Account Requirements
+/// - Pool state: Must be owned by the program and writable
+/// - Delegate: Must be signer and in the authorized delegates list
+/// - Clock: System clock sysvar for timestamp validation
+///
+/// # Errors
+/// - `ProgramError::IncorrectProgramId` - Pool state not owned by program
+/// - `ProgramError::MissingRequiredSignature` - Delegate didn't sign
+/// - `PoolError::PoolPaused` - Pool operations are paused
+/// - `PoolError::UnauthorizedDelegate` - Caller is not an authorized delegate
+/// - `PoolError::PendingWithdrawalExists` - Delegate already has a pending request
+///
+/// # Example Usage
+/// ```ignore
+/// // Request SOL fee withdrawal
+/// let instruction = PoolInstruction::RequestFeeWithdrawal {
+///     token_mint: Pubkey::default(), // SOL
+///     amount: 1_000_000, // 0.001 SOL
+/// };
+///
+/// // Request SPL token fee withdrawal
+/// let instruction = PoolInstruction::RequestFeeWithdrawal {
+///     token_mint: usdc_mint_pubkey,
+///     amount: 1_000_000, // 1 USDC (6 decimals)
+/// };
+/// ```
+///
+/// # Security Features
+/// - **Time Delay**: Configurable wait time prevents immediate execution
+/// - **Single Request**: Only one active request per delegate
+/// - **Authorization**: Only authorized delegates can create requests
+/// - **Pause Protection**: Requests blocked when pool is paused
+/// - **Audit Trail**: All requests logged for transparency
+pub fn process_request_fee_withdrawal(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_mint: Pubkey,
+    amount: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_info = next_account_info(account_info_iter)?;
+    let delegate_info = next_account_info(account_info_iter)?;
+    let clock_info = next_account_info(account_info_iter)?;
+
+    // Verify pool state account
+    if pool_state_info.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify delegate is signer
+    if !delegate_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load pool state
+    let mut pool_state = PoolState::try_from_slice(&pool_state_info.data.borrow())?;
+
+    // Check if pool is paused
+    if pool_state.is_paused {
+        return Err(PoolError::PoolPaused.into());
+    }
+
+    // Verify delegate is authorized
+    if !pool_state.delegate_management.is_delegate(delegate_info.key) {
+        return Err(PoolError::UnauthorizedDelegate.into());
+    }
+
+    // Get current timestamp
+    let clock = Clock::from_account_info(clock_info)?;
+    let current_timestamp = clock.unix_timestamp;
+
+    // Create withdrawal request
+    pool_state.delegate_management.create_withdrawal_request(
+        delegate_info.key,
+        token_mint,
+        amount,
+        current_timestamp,
+        clock.slot,
+    )?;
+
+    // Save updated pool state
+    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+
+    // Log the withdrawal request
+    msg!("Withdrawal requested: delegate={}, token_mint={}, amount={}, timestamp={}", 
+         delegate_info.key, token_mint, amount, current_timestamp);
+
+    Ok(())
+}
+
+/// Cancels a pending fee withdrawal request.
+///
+/// This function allows either the pool owner or the requesting delegate to cancel a
+/// pending withdrawal request before it becomes executable. This provides flexibility
+/// for delegates to change their minds and emergency intervention capability for the
+/// pool owner in case of security concerns.
+///
+/// # Purpose
+/// - Provides flexibility for delegates to cancel their own requests
+/// - Enables pool owner emergency intervention for security
+/// - Allows correction of erroneous withdrawal requests
+/// - Resets delegate status to allow new withdrawal requests
+/// - Maintains control and security over the withdrawal process
+///
+/// # How it works
+/// 1. Verifies the caller is either the pool owner or the requesting delegate
+/// 2. Checks that the pool is not paused (for normal operations)
+/// 3. Clears the withdrawal request from the delegate's slot
+/// 4. Allows the delegate to create a new withdrawal request immediately
+/// 5. Logs the cancellation details for transparency
+///
+/// # Arguments
+/// * `program_id` - The program ID for account ownership validation
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool state PDA account (writable)
+///   - `accounts[1]` - Canceler account (must be signer - owner or delegate)
+///   - `accounts[2]` - Delegate account (whose request is being cancelled)
+///
+/// # Account Requirements
+/// - Pool state: Must be owned by the program and writable
+/// - Canceler: Must be signer and either the pool owner or the delegate
+/// - Delegate: The account whose withdrawal request is being cancelled
+///
+/// # Authorization Rules
+/// - **Pool Owner**: Can cancel any delegate's withdrawal request
+/// - **Delegate**: Can only cancel their own withdrawal request
+/// - **Others**: Cannot cancel withdrawal requests
+///
+/// # Errors
+/// - `ProgramError::IncorrectProgramId` - Pool state not owned by program
+/// - `ProgramError::MissingRequiredSignature` - Canceler didn't sign
+/// - `PoolError::PoolPaused` - Pool operations are paused
+/// - `PoolError::Unauthorized` - Caller is neither owner nor the delegate
+/// - `PoolError::DelegateNotFound` - Delegate is not in authorized list
+///
+/// # Example Usage
+/// ```ignore
+/// // Delegate cancels their own request
+/// let instruction = PoolInstruction::CancelWithdrawalRequest;
+/// // Accounts: [pool_state, delegate_signer, delegate_signer]
+///
+/// // Owner cancels any delegate's request (emergency)
+/// let instruction = PoolInstruction::CancelWithdrawalRequest;
+/// // Accounts: [pool_state, owner_signer, target_delegate]
+/// ```
+///
+/// # Use Cases
+/// - **Self-Cancellation**: Delegate changes mind about withdrawal
+/// - **Error Correction**: Fix incorrect amount or token type
+/// - **Security Response**: Owner cancels suspicious requests
+/// - **Emergency Control**: Immediate intervention capability
+/// - **Process Reset**: Clear state to allow new requests
+pub fn process_cancel_withdrawal_request(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_info = next_account_info(account_info_iter)?;
+    let canceler_info = next_account_info(account_info_iter)?;
+    let delegate_info = next_account_info(account_info_iter)?;
+
+    // Verify pool state account
+    if pool_state_info.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify canceler is signer
+    if !canceler_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load pool state
+    let mut pool_state = PoolState::try_from_slice(&pool_state_info.data.borrow())?;
+
+    // Check if pool is paused
+    if pool_state.is_paused {
+        return Err(PoolError::PoolPaused.into());
+    }
+
+    // Verify canceler is either the owner or the delegate
+    if *canceler_info.key != pool_state.owner && *canceler_info.key != *delegate_info.key {
+        return Err(PoolError::Unauthorized.into());
+    }
+
+    // Cancel withdrawal request
+    pool_state.delegate_management.cancel_withdrawal_request(delegate_info.key)?;
+
+    // Save updated pool state
+    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+
+    // Log the cancellation
+    msg!("Withdrawal request cancelled: delegate={}, cancelled_by={}", 
+         delegate_info.key, canceler_info.key);
+
+    Ok(())
+}
+
+/// Sets the withdrawal wait time for a specific delegate.
+///
+/// This function allows the pool owner to configure individual wait times for each
+/// delegate, providing fine-grained control over the security level for different
+/// delegates. Wait times can range from 5 minutes to 72 hours, allowing for flexible
+/// security policies based on delegate trust levels and roles.
+///
+/// # Purpose
+/// - Configures individual security policies for each delegate
+/// - Allows differentiated trust levels based on delegate roles
+/// - Provides dynamic security adjustment capabilities
+/// - Enables risk-based withdrawal controls
+/// - Supports governance and security best practices
+///
+/// # How it works
+/// 1. Verifies the caller is the pool owner (signature required)
+/// 2. Validates the wait time is within allowed bounds (5 min - 72 hours)
+/// 3. Confirms the target is an authorized delegate
+/// 4. Updates the delegate's wait time in the pool state
+/// 5. Logs the change for transparency and auditing
+///
+/// # Arguments
+/// * `program_id` - The program ID for account ownership validation
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool state PDA account (writable)
+///   - `accounts[1]` - Pool owner account (must be signer)
+/// * `delegate` - The public key of the delegate whose wait time is being set
+/// * `wait_time` - The wait time in seconds (300 to 259,200 seconds)
+///
+/// # Account Requirements
+/// - Pool state: Must be owned by the program and writable
+/// - Owner: Must be signer and match the pool's owner field
+///
+/// # Wait Time Constraints
+/// - **Minimum**: 300 seconds (5 minutes)
+/// - **Maximum**: 259,200 seconds (72 hours)
+/// - **Default**: 300 seconds (applied when delegate is first added)
+/// - **Granularity**: 1 second
+///
+/// # Errors
+/// - `ProgramError::IncorrectProgramId` - Pool state not owned by program
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign
+/// - `PoolError::Unauthorized` - Caller is not the pool owner
+/// - `PoolError::DelegateNotFound` - Target is not an authorized delegate
+/// - `PoolError::InvalidWaitTime` - Wait time outside allowed range
+///
+/// # Example Usage
+/// ```ignore
+/// // Set short wait time for trusted delegate (5 minutes)
+/// let instruction = PoolInstruction::SetDelegateWaitTime {
+///     delegate: trusted_delegate_pubkey,
+///     wait_time: 300, // 5 minutes
+/// };
+///
+/// // Set longer wait time for less trusted delegate (24 hours)
+/// let instruction = PoolInstruction::SetDelegateWaitTime {
+///     delegate: external_delegate_pubkey,
+///     wait_time: 86400, // 24 hours
+/// };
+///
+/// // Set maximum wait time for high-security scenarios (72 hours)
+/// let instruction = PoolInstruction::SetDelegateWaitTime {
+///     delegate: high_security_delegate_pubkey,
+///     wait_time: 259200, // 72 hours
+/// };
+/// ```
+///
+/// # Security Considerations
+/// - **Risk-Based**: Higher wait times for higher-risk delegates
+/// - **Role-Based**: Different wait times for different delegate roles
+/// - **Dynamic**: Can be adjusted based on changing security needs
+/// - **Immediate Effect**: New wait time applies to future requests
+/// - **Existing Requests**: Pending requests use their original wait time
+///
+/// # Common Wait Time Strategies
+/// - **Automated Systems**: 5-15 minutes for trusted automated processes
+/// - **Trusted Partners**: 1-6 hours for known and trusted entities
+/// - **External Delegates**: 12-24 hours for external or less trusted delegates
+/// - **High-Value Operations**: 48-72 hours for maximum security scenarios
+pub fn process_set_delegate_wait_time(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    delegate: Pubkey,
+    wait_time: u64,
+) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_info = next_account_info(account_info_iter)?;
+    let owner_info = next_account_info(account_info_iter)?;
+
+    // Verify pool state account
+    if pool_state_info.owner != program_id {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Verify owner is signer
+    if !owner_info.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load pool state
+    let mut pool_state = PoolState::try_from_slice(&pool_state_info.data.borrow())?;
+
+    // Verify caller is owner
+    if *owner_info.key != pool_state.owner {
+        return Err(PoolError::Unauthorized.into());
+    }
+
+    // Set delegate wait time
+    pool_state.delegate_management.set_delegate_wait_time(&delegate, wait_time)?;
+
+    // Save updated pool state
+    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+
+    // Log the wait time update
+    msg!("Delegate wait time updated: delegate={}, wait_time={}", delegate, wait_time);
 
     Ok(())
 }
