@@ -39,27 +39,37 @@ SOFTWARE.
 //! 
 //! ## Example Usage
 //! 
-//! ```rust
+//! ```rust,no_run
 //! use fixed_ratio_trading::client_sdk::*;
+//! use solana_sdk::pubkey::Pubkey;
 //! 
 //! // Create a new pool with 2:1 ratio (USDC:SOL)
+//! let program_id = Pubkey::new_unique();
 //! let pool_client = PoolClient::new(program_id);
 //! let pool_config = PoolConfig {
-//!     primary_token_mint: usdc_mint,
-//!     base_token_mint: sol_mint,
+//!     primary_token_mint: Pubkey::new_unique(),
+//!     base_token_mint: Pubkey::new_unique(),
 //!     ratio_primary_per_base: 2,
 //! };
 //! 
-//! // Get pool creation instruction (single atomic operation)
-//! let create_ix = pool_client.create_pool_instruction(&payer, &pool_config)?;
+//! // Get pool creation instruction (single atomic operation) 
+//! let payer = Pubkey::new_unique();
+//! let lp_a = Pubkey::new_unique();
+//! let lp_b = Pubkey::new_unique();
+//! let create_ix = pool_client.create_pool_instruction(&payer, &pool_config, &lp_a, &lp_b).unwrap();
 //! 
 //! // Add liquidity to the pool
+//! let user = Pubkey::new_unique();
+//! let user_account = Pubkey::new_unique(); 
+//! let lp_account = Pubkey::new_unique();
 //! let deposit_ix = pool_client.deposit_instruction(
 //!     &user,
 //!     &pool_config,
-//!     &usdc_mint,
+//!     &pool_config.primary_token_mint,
 //!     1000000, // 1 USDC
-//! )?;
+//!     &user_account,
+//!     &lp_account,
+//! ).unwrap();
 //! ```
 
 use borsh::BorshSerialize;
@@ -100,9 +110,14 @@ impl PoolConfig {
     /// * `ratio_primary_per_base` - How many primary tokens equal one base token
     /// 
     /// # Example
-    /// ```rust
+    /// ```rust,no_run
+    /// use solana_sdk::pubkey::Pubkey;
+    /// use fixed_ratio_trading::client_sdk::PoolConfig;
+    /// 
     /// // 1000 USDC per 1 SOL pool
-    /// let config = PoolConfig::new(usdc_mint, sol_mint, 1000);
+    /// let usdc_mint = Pubkey::new_unique();
+    /// let sol_mint = Pubkey::new_unique();
+    /// let config = PoolConfig::new(usdc_mint, sol_mint, 1000).unwrap();
     /// ```
     pub fn new(
         primary_token_mint: Pubkey,

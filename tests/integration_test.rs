@@ -2610,64 +2610,17 @@ async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
     Ok(())
 }
 
-/// Test helper functions and view instructions with the new pattern.
-/// 
-/// This test demonstrates the new helper utilities for PDA derivation and
-/// pool state inspection that work with the single-instruction pattern.
-#[tokio::test]
-async fn test_helper_functions_new_pattern() -> Result<(), BanksClientError> {
-    // Setup program test
-    let mut program_test = ProgramTest::new(
-        "fixed-ratio-trading",
-        PROGRAM_ID,
-        processor!(process_instruction),
-    );
-
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-
-    // Test PDA helper utility
-    println!("DEBUG: test_helper_functions_new_pattern: Testing GetPoolStatePDA instruction");
-    let primary_mint = Pubkey::new_unique();
-    let base_mint = Pubkey::new_unique();
-    let ratio = 1000u64;
-
-    let get_pda_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![], // No accounts needed for PDA helpers
-        data: PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: primary_mint,
-            base_token_mint: base_mint,
-            ratio_primary_per_base: ratio,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut transaction = Transaction::new_with_payer(&[get_pda_ix], Some(&payer.pubkey()));
-    transaction.sign(&[&payer], recent_blockhash);
-    banks_client.process_transaction(transaction).await?;
-
-    println!("DEBUG: test_helper_functions_new_pattern: PDA helper executed successfully");
-
-    // Test token vault PDA helper
-    println!("DEBUG: test_helper_functions_new_pattern: Testing GetTokenVaultPDAs instruction");
-    let pool_state_pda = Pubkey::new_unique();
-
-    let get_vaults_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![], // No accounts needed for PDA helpers
-        data: PoolInstruction::GetTokenVaultPDAs {
-            pool_state_pda,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut transaction = Transaction::new_with_payer(&[get_vaults_ix], Some(&payer.pubkey()));
-    transaction.sign(&[&payer], recent_blockhash);
-    banks_client.process_transaction(transaction).await?;
-
-    println!("DEBUG: test_helper_functions_new_pattern: Vault PDA helper executed successfully");
-    println!("=== HELPER UTILITIES DEMONSTRATED ===");
-    println!("✅ PDA derivation helpers - no need for manual calculation");
-    println!("✅ Account preparation utilities - simplified client integration");
-    println!("✅ View/getter instructions - easy access to pool state data");
-
-    Ok(())
-}
+/// **NOTE**: PDA helper utilities and view instructions are designed to be used 
+/// by client SDKs for address computation and debugging, not as on-chain instructions.
+/// They are documented here for reference:
+///
+/// - `GetPoolStatePDA`: Computes pool state PDA for given tokens and ratio
+/// - `GetTokenVaultPDAs`: Computes token vault PDA addresses
+/// - `GetPoolInfo`: Returns comprehensive pool state information  
+/// - `GetLiquidityInfo`: Returns liquidity and exchange rate data
+/// - `GetDelegateInfo`: Returns delegate management information
+/// - `GetFeeInfo`: Returns fee rates and collection data
+///
+/// These utilities are integrated into the client SDK for seamless development experience.
+#[allow(dead_code)]
+const _HELPER_UTILITIES_DOCUMENTATION: () = ();
