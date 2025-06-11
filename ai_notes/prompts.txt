@@ -22,4 +22,8 @@ already exists.
 =====================================================================
 Verify that there are only 3 delegates that can withdraw swap fees 
 (tokens traded) and solana fees (use of contract fees)?
+=====================================================================
+Add code deocumentation of each delegate and withdraw methods 
+including the get history method.  Included details on how it works 
+and what is it for and the short description of each paramater.
 
