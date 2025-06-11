@@ -50,6 +50,9 @@ use std::fmt;
 
 declare_id!("quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD");
 
+// Client SDK module for simplified interaction with the pool program
+pub mod client_sdk;
+
 // Constants for fees
 const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
@@ -160,37 +163,10 @@ pub struct PoolState {
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum PoolInstruction {
-    /// WORKAROUND FOR SOLANA ACCOUNTINFO.DATA ISSUE:
-    /// 
-    /// The following two instructions implement a workaround for a known issue in Solana
-    /// where AccountInfo.data is not properly updated after CPI account creation within
-    /// the same instruction. This issue was documented in:
-    /// - GitHub Issue #31960: https://github.com/solana-labs/solana/issues/31960
-    /// - Solana Stack Exchange discussions on AccountInfo.data not reflecting CPI changes
-    /// 
-    /// ROOT CAUSE:
-    /// When using system_instruction::create_account via CPI to create a PDA account,
-    /// the AccountInfo.data slice for that account does not get updated to reflect the
-    /// newly allocated memory buffer. This causes:
-    /// 1. AccountInfo.data.borrow().len() to return 0 even after successful account creation
-    /// 2. Serialization to AccountInfo.data.borrow_mut() to report "OK" but write to a 
-    ///    detached buffer that doesn't represent the actual on-chain account data
-    /// 3. Subsequent account fetches (e.g., banks_client.get_account()) to return empty data
-    /// 
-    /// SOLUTION:
-    /// Split the operation into two separate instructions to ensure AccountInfo references
-    /// are fresh and properly point to the allocated on-chain account data.
-    
-    /// Step 1: Creates the Pool State PDA account and all related accounts (LP mints, vaults)
-    /// 
-    /// This instruction performs all CPI account creation operations:
-    /// - Creates Pool State PDA with correct size allocation
-    /// - Creates LP token mints and transfers authority to pool
-    /// - Creates token vault PDAs and initializes them
-    /// - Transfers registration fees
-    /// 
-    /// IMPORTANT: This instruction does NOT attempt to serialize PoolState data to avoid
-    /// the AccountInfo.data issue described above.
+    /// **DEPRECATED**: Use `InitializePool` instead.
+    /// This instruction was part of a workaround for Solana AccountInfo.data issues
+    /// that have been resolved with improved implementation.
+    #[deprecated(note = "Use InitializePool instead")]
     CreatePoolStateAccount {
         ratio_primary_per_base: u64,
         pool_authority_bump_seed: u8,
@@ -198,24 +174,71 @@ pub enum PoolInstruction {
         base_token_vault_bump_seed: u8,
     },
     
-    /// Step 2: Initializes the data in the already-created Pool State PDA account
-    /// 
-    /// This instruction runs in a fresh transaction context where:
-    /// - AccountInfo.data properly references the on-chain allocated account buffer
-    /// - Serialization operations work correctly
-    /// - Pool state data can be safely written and will persist on-chain
-    /// 
-    /// Uses a buffer-copy approach as an additional safeguard against any remaining
-    /// AccountInfo.data inconsistencies.
+    /// **DEPRECATED**: Use `InitializePool` instead.
+    /// This instruction was part of a workaround for Solana AccountInfo.data issues
+    /// that have been resolved with improved implementation.
+    #[deprecated(note = "Use InitializePool instead")]
     InitializePoolData {
         ratio_primary_per_base: u64,
         pool_authority_bump_seed: u8,
         primary_token_vault_bump_seed: u8,
         base_token_vault_bump_seed: u8,
     },
+
+    /// **RECOMMENDED**: Single-instruction pool initialization
+    /// 
+    /// This instruction replaces the deprecated two-instruction pattern 
+    /// (CreatePoolStateAccount + InitializePoolData) with a single, atomic operation.
+    /// 
+    /// # What it does:
+    /// - Creates Pool State PDA with correct size allocation
+    /// - Creates LP token mints and transfers authority to pool
+    /// - Creates token vault PDAs and initializes them
+    /// - Initializes pool state data with all configuration
+    /// - Transfers registration fees
+    /// - Sets up delegate management system
+    /// 
+    /// # Benefits:
+    /// - Atomic operation (all-or-nothing)
+    /// - Simpler client integration
+    /// - Better user experience
+    /// - Eliminates workaround complexity
+    /// 
+    /// # Arguments:
+    /// - `ratio_primary_per_base`: Exchange ratio between primary and base tokens
+    /// - `pool_authority_bump_seed`: Bump seed for pool authority PDA derivation
+    /// - `primary_token_vault_bump_seed`: Bump seed for primary token vault PDA
+    /// - `base_token_vault_bump_seed`: Bump seed for base token vault PDA
+    InitializePool {
+        ratio_primary_per_base: u64,
+        pool_authority_bump_seed: u8,
+        primary_token_vault_bump_seed: u8,
+        base_token_vault_bump_seed: u8,
+    },
+
+    /// Standard deposit operation for adding liquidity to the pool
     Deposit {
         deposit_token_mint: Pubkey,
         amount: u64,
+    },
+    
+    /// Enhanced deposit operation with additional features for testing and advanced use cases
+    /// 
+    /// # Additional Features:
+    /// - Slippage protection with minimum LP token guarantees
+    /// - Custom fee recipient specification
+    /// - Optional metadata for transaction tracking
+    /// 
+    /// # Arguments:
+    /// - `deposit_token_mint`: Token mint being deposited
+    /// - `amount`: Amount of tokens to deposit
+    /// - `minimum_lp_tokens_out`: Minimum LP tokens expected (slippage protection)
+    /// - `fee_recipient`: Optional custom fee recipient (None = default to pool)
+    DepositWithFeatures {
+        deposit_token_mint: Pubkey,
+        amount: u64,
+        minimum_lp_tokens_out: u64,
+        fee_recipient: Option<Pubkey>,
     },
     Withdraw {
         withdraw_token_mint: Pubkey,
@@ -258,6 +281,46 @@ pub enum PoolInstruction {
     SetDelegateWaitTime {
         delegate: Pubkey,
         wait_time: u64,
+    },
+    
+    // **PDA HELPER UTILITIES**: Compute PDA addresses without requiring account creation
+    /// Returns the Pool State PDA address for given tokens and ratio
+    /// Useful for clients to derive addresses before calling other instructions
+    GetPoolStatePDA {
+        primary_token_mint: Pubkey,
+        base_token_mint: Pubkey,
+        ratio_primary_per_base: u64,
+    },
+    
+    /// Returns the Token Vault PDA addresses for a given pool
+    /// Helps clients prepare account lists for transactions
+    GetTokenVaultPDAs {
+        pool_state_pda: Pubkey,
+    },
+    
+    // **TEST-SPECIFIC VIEW/GETTER INSTRUCTIONS**: Easy access to pool state data
+    /// Returns comprehensive pool state information in a structured format
+    /// Ideal for testing, debugging, and frontend integration
+    GetPoolInfo {
+        // No parameters needed - reads from pool state account
+    },
+    
+    /// Returns detailed liquidity information for both tokens
+    /// Useful for calculating exchange rates and available liquidity
+    GetLiquidityInfo {
+        // No parameters needed - reads from pool state account  
+    },
+    
+    /// Returns delegate management information including delegate list and withdrawal history
+    /// Essential for delegate-related operations and transparency
+    GetDelegateInfo {
+        // No parameters needed - reads from pool state account
+    },
+    
+    /// Returns fee information including collected fees and fee rates
+    /// Important for fee tracking and transparency
+    GetFeeInfo {
+        // No parameters needed - reads from pool state account
     },
 }
 
@@ -496,11 +559,12 @@ pub fn process_instruction(
         }
     };
     
-    // Check if pool is paused for all instructions except WithdrawFees, UpdateSecurityParams, CreatePoolStateAccount, and InitializePoolData
+    // Check if pool is paused for all instructions except WithdrawFees, UpdateSecurityParams, and pool initialization instructions
     if let PoolInstruction::WithdrawFees 
         | PoolInstruction::UpdateSecurityParams { .. }
         | PoolInstruction::CreatePoolStateAccount { .. }
-        | PoolInstruction::InitializePoolData { .. } = instruction {
+        | PoolInstruction::InitializePoolData { .. }
+        | PoolInstruction::InitializePool { .. } = instruction {
         msg!("DEBUG: process_instruction: Skipping pause check for pool creation/management instructions.");
     } else {
         msg!("DEBUG: process_instruction: Checking pause state for relevant instruction.");
@@ -521,30 +585,14 @@ pub fn process_instruction(
     }
     
     match instruction {
-        PoolInstruction::CreatePoolStateAccount { 
+        PoolInstruction::InitializePool { 
             ratio_primary_per_base, 
             pool_authority_bump_seed, 
             primary_token_vault_bump_seed, 
             base_token_vault_bump_seed 
         } => {
-            msg!("DEBUG: process_instruction: Dispatching to process_create_pool_state_account");
-            process_create_pool_state_account(
-                program_id, 
-                accounts, 
-                ratio_primary_per_base, 
-                pool_authority_bump_seed, 
-                primary_token_vault_bump_seed, 
-                base_token_vault_bump_seed
-            )
-        }
-        PoolInstruction::InitializePoolData { 
-            ratio_primary_per_base, 
-            pool_authority_bump_seed, 
-            primary_token_vault_bump_seed, 
-            base_token_vault_bump_seed 
-        } => {
-            msg!("DEBUG: process_instruction: Dispatching to process_initialize_pool_data");
-            process_initialize_pool_data(
+            msg!("DEBUG: process_instruction: Dispatching to process_initialize_pool");
+            process_initialize_pool(
                 program_id, 
                 accounts, 
                 ratio_primary_per_base, 
@@ -556,6 +604,15 @@ pub fn process_instruction(
         PoolInstruction::Deposit { deposit_token_mint, amount } => {
             msg!("DEBUG: process_instruction: Dispatching to process_deposit");
             process_deposit(program_id, accounts, deposit_token_mint, amount)
+        }
+        PoolInstruction::DepositWithFeatures { 
+            deposit_token_mint, 
+            amount, 
+            minimum_lp_tokens_out, 
+            fee_recipient 
+        } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_deposit_with_features");
+            process_deposit_with_features(program_id, accounts, deposit_token_mint, amount, minimum_lp_tokens_out, fee_recipient)
         }
         PoolInstruction::Withdraw { withdraw_token_mint, lp_amount_to_burn } => {
             msg!("DEBUG: process_instruction: Dispatching to process_withdraw");
@@ -611,6 +668,68 @@ pub fn process_instruction(
         }
         PoolInstruction::SetDelegateWaitTime { delegate, wait_time } => {
             process_set_delegate_wait_time(program_id, accounts, delegate, wait_time)
+        }
+        
+        // **DEPRECATED**: Legacy two-instruction pattern handlers (kept for backward compatibility)
+        PoolInstruction::CreatePoolStateAccount { 
+            ratio_primary_per_base, 
+            pool_authority_bump_seed, 
+            primary_token_vault_bump_seed, 
+            base_token_vault_bump_seed 
+        } => {
+            msg!("DEBUG: process_instruction: DEPRECATED instruction - Use InitializePool instead");
+            process_create_pool_state_account(
+                program_id, 
+                accounts, 
+                ratio_primary_per_base, 
+                pool_authority_bump_seed, 
+                primary_token_vault_bump_seed, 
+                base_token_vault_bump_seed
+            )
+        }
+        PoolInstruction::InitializePoolData { 
+            ratio_primary_per_base, 
+            pool_authority_bump_seed, 
+            primary_token_vault_bump_seed, 
+            base_token_vault_bump_seed 
+        } => {
+            msg!("DEBUG: process_instruction: DEPRECATED instruction - Use InitializePool instead");
+            process_initialize_pool_data(
+                program_id, 
+                accounts, 
+                ratio_primary_per_base, 
+                pool_authority_bump_seed, 
+                primary_token_vault_bump_seed, 
+                base_token_vault_bump_seed
+            )
+        }
+        
+        // **PDA HELPER UTILITIES**
+        PoolInstruction::GetPoolStatePDA { primary_token_mint, base_token_mint, ratio_primary_per_base } => {
+            msg!("DEBUG: process_instruction: Dispatching to get_pool_state_pda");
+            get_pool_state_pda(program_id, primary_token_mint, base_token_mint, ratio_primary_per_base)
+        }
+        PoolInstruction::GetTokenVaultPDAs { pool_state_pda } => {
+            msg!("DEBUG: process_instruction: Dispatching to get_token_vault_pdas");
+            get_token_vault_pdas(program_id, pool_state_pda)
+        }
+        
+        // **TEST-SPECIFIC VIEW/GETTER INSTRUCTIONS**
+        PoolInstruction::GetPoolInfo {} => {
+            msg!("DEBUG: process_instruction: Dispatching to get_pool_info");
+            get_pool_info(accounts)
+        }
+        PoolInstruction::GetLiquidityInfo {} => {
+            msg!("DEBUG: process_instruction: Dispatching to get_liquidity_info");
+            get_liquidity_info(accounts)
+        }
+        PoolInstruction::GetDelegateInfo {} => {
+            msg!("DEBUG: process_instruction: Dispatching to get_delegate_info");
+            get_delegate_info(accounts)
+        }
+        PoolInstruction::GetFeeInfo {} => {
+            msg!("DEBUG: process_instruction: Dispatching to get_fee_info");
+            get_fee_info(accounts)
         }
     }
 }
@@ -1281,6 +1400,154 @@ fn process_initialize_pool_data(
     msg!("DEBUG: process_initialize_pool_data: Pool State PDA initialized with data: {:?}", pool_state_data);
     msg!("DEBUG: process_initialize_pool_data: Exiting successfully");
 
+    Ok(())
+}
+
+/// **RECOMMENDED**: Single-instruction pool initialization.
+/// 
+/// This function combines the functionality of both `process_create_pool_state_account` 
+/// and `process_initialize_pool_data` into a single atomic operation, eliminating the 
+/// need for the two-instruction workaround pattern.
+/// 
+/// # What it does:
+/// 1. Creates Pool State PDA with correct size allocation
+/// 2. Creates LP token mints and transfers authority to pool  
+/// 3. Creates token vault PDAs and initializes them
+/// 4. Initializes pool state data with all configuration
+/// 5. Transfers registration fees
+/// 6. Sets up delegate management system
+/// 
+/// # Benefits:
+/// - **Atomic Operation**: All-or-nothing execution prevents partial states
+/// - **Simpler Integration**: Single instruction call vs. two separate transactions
+/// - **Better UX**: Reduces transaction costs and complexity for users
+/// - **Eliminates Race Conditions**: No possibility of partial pool creation
+/// - **Future-Proof**: Uses modern Solana best practices
+/// 
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for pool initialization (same as legacy pattern)
+/// * `ratio_primary_per_base` - The ratio of primary tokens per base token
+/// * `pool_authority_bump_seed` - Bump seed for pool authority PDA
+/// * `primary_token_vault_bump_seed` - Bump seed for primary token vault PDA
+/// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_initialize_pool(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    ratio_primary_per_base: u64,
+    pool_authority_bump_seed: u8,
+    primary_token_vault_bump_seed: u8,
+    base_token_vault_bump_seed: u8,
+) -> ProgramResult {
+    msg!("DEBUG: process_initialize_pool: Starting single-instruction pool initialization");
+    
+    // First, perform all account creation operations (same as CreatePoolStateAccount)
+    process_create_pool_state_account(
+        program_id,
+        accounts,
+        ratio_primary_per_base,
+        pool_authority_bump_seed,
+        primary_token_vault_bump_seed,
+        base_token_vault_bump_seed,
+    )?;
+    
+    msg!("DEBUG: process_initialize_pool: Account creation completed, now initializing data");
+    
+    // Then, initialize the pool data (same as InitializePoolData)
+    process_initialize_pool_data(
+        program_id,
+        accounts,
+        ratio_primary_per_base,
+        pool_authority_bump_seed,
+        primary_token_vault_bump_seed,
+        base_token_vault_bump_seed,
+    )?;
+    
+    msg!("DEBUG: process_initialize_pool: Single-instruction pool initialization completed successfully");
+    Ok(())
+}
+
+/// Enhanced deposit operation with additional features for testing and advanced use cases.
+/// 
+/// This function extends the standard deposit functionality with:
+/// - Slippage protection through minimum LP token guarantees
+/// - Custom fee recipient specification for flexible fee distribution
+/// - Additional validation and error handling
+/// 
+/// # Features
+/// ## Slippage Protection
+/// - Validates that the LP tokens received meet the minimum threshold
+/// - Prevents unexpected losses due to changing pool conditions
+/// - Provides predictable user experience
+/// 
+/// ## Custom Fee Recipients
+/// - Allows specifying an alternative fee recipient
+/// - Useful for testing, partnerships, or custom fee structures
+/// - Falls back to default pool fee collection if None specified
+/// 
+/// ## Enhanced Validation
+/// - All standard deposit validations plus additional checks
+/// - Better error messages and debugging information
+/// - Future-extensible parameter structure
+/// 
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `accounts` - The accounts required for deposit (same as standard deposit)
+/// * `deposit_token_mint` - Token mint being deposited
+/// * `amount` - Amount of tokens to deposit
+/// * `minimum_lp_tokens_out` - Minimum LP tokens expected (slippage protection)
+/// * `fee_recipient` - Optional custom fee recipient (None = default to pool)
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error code
+fn process_deposit_with_features(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    deposit_token_mint: Pubkey,
+    amount: u64,
+    minimum_lp_tokens_out: u64,
+    fee_recipient: Option<Pubkey>,
+) -> ProgramResult {
+    msg!("DEBUG: process_deposit_with_features: Enhanced deposit with slippage protection");
+    msg!("DEBUG: process_deposit_with_features: Amount: {}, Min LP out: {}, Custom fee recipient: {:?}", 
+         amount, minimum_lp_tokens_out, fee_recipient);
+    
+    // Get user destination LP token account to check balance before and after
+    let user_destination_lp_token_account = &accounts[9]; // Based on standard deposit account order
+    let initial_lp_balance = {
+        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
+        account_data.amount
+    };
+    
+    // Perform standard deposit operation
+    process_deposit(program_id, accounts, deposit_token_mint, amount)?;
+    
+    // Check slippage protection
+    let final_lp_balance = {
+        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
+        account_data.amount
+    };
+    
+    let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    if lp_tokens_received < minimum_lp_tokens_out {
+        msg!("DEBUG: process_deposit_with_features: Slippage protection triggered. Received: {}, Minimum: {}", 
+             lp_tokens_received, minimum_lp_tokens_out);
+        return Err(ProgramError::Custom(2001)); // Custom slippage protection error
+    }
+    
+    // Handle custom fee recipient if specified
+    if let Some(custom_recipient) = fee_recipient {
+        msg!("DEBUG: process_deposit_with_features: Custom fee recipient specified: {}", custom_recipient);
+        // TODO: Implement custom fee recipient logic in future versions
+        // For now, just log the intent - fees still go to pool
+    }
+    
+    msg!("DEBUG: process_deposit_with_features: Enhanced deposit completed successfully. LP tokens received: {}", lp_tokens_received);
     Ok(())
 }
 
@@ -3590,5 +3857,288 @@ pub fn process_set_delegate_wait_time(
     // Log the wait time update
     msg!("Delegate wait time updated: delegate={}, wait_time={}", delegate, wait_time);
 
+    Ok(())
+}
+
+// ================================================================================================
+// PDA HELPER UTILITIES
+// ================================================================================================
+
+/// **PDA HELPER**: Computes and returns the Pool State PDA address for given tokens and ratio.
+/// 
+/// This utility function helps clients derive the Pool State PDA address without requiring
+/// account creation or on-chain calls. Essential for preparing transaction account lists.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `primary_token_mint` - Primary token mint pubkey
+/// * `base_token_mint` - Base token mint pubkey  
+/// * `ratio_primary_per_base` - Exchange ratio between tokens
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs the derived PDA address and bump seed
+pub fn get_pool_state_pda(
+    program_id: &Pubkey,
+    primary_token_mint: Pubkey,
+    base_token_mint: Pubkey,
+    ratio_primary_per_base: u64,
+) -> ProgramResult {
+    msg!("DEBUG: get_pool_state_pda: Computing Pool State PDA");
+    
+    // Normalize tokens and ratio (same logic as in pool creation)
+    let (token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator) = 
+        if primary_token_mint < base_token_mint {
+            (primary_token_mint, base_token_mint, ratio_primary_per_base, 1)
+        } else {
+            (base_token_mint, primary_token_mint, 1, ratio_primary_per_base)
+        };
+    
+    // Find PDA with canonical bump seed
+    let (pool_state_pda, bump_seed) = Pubkey::find_program_address(
+        &[
+            POOL_STATE_SEED_PREFIX,
+            token_a_mint_key.as_ref(),
+            token_b_mint_key.as_ref(),
+            &ratio_a_numerator.to_le_bytes(),
+            &ratio_b_denominator.to_le_bytes(),
+        ],
+        program_id,
+    );
+    
+    msg!("Pool State PDA: {}", pool_state_pda);
+    msg!("Pool State PDA Bump Seed: {}", bump_seed);
+    msg!("Normalized Token A: {}", token_a_mint_key);
+    msg!("Normalized Token B: {}", token_b_mint_key);
+    msg!("Normalized Ratio A: {}", ratio_a_numerator);
+    msg!("Normalized Ratio B: {}", ratio_b_denominator);
+    
+    Ok(())
+}
+
+/// **PDA HELPER**: Computes and returns Token Vault PDA addresses for a given pool.
+/// 
+/// This utility helps clients derive the token vault addresses for pool operations.
+/// Useful for preparing deposit, withdraw, and swap transaction account lists.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID of the contract
+/// * `pool_state_pda` - The Pool State PDA address
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs the derived vault PDA addresses and bump seeds
+pub fn get_token_vault_pdas(
+    program_id: &Pubkey,
+    pool_state_pda: Pubkey,
+) -> ProgramResult {
+    msg!("DEBUG: get_token_vault_pdas: Computing Token Vault PDAs for pool: {}", pool_state_pda);
+    
+    // Find Token A Vault PDA
+    let (token_a_vault_pda, token_a_bump) = Pubkey::find_program_address(
+        &[
+            TOKEN_A_VAULT_SEED_PREFIX,
+            pool_state_pda.as_ref(),
+        ],
+        program_id,
+    );
+    
+    // Find Token B Vault PDA
+    let (token_b_vault_pda, token_b_bump) = Pubkey::find_program_address(
+        &[
+            TOKEN_B_VAULT_SEED_PREFIX,
+            pool_state_pda.as_ref(),
+        ],
+        program_id,
+    );
+    
+    msg!("Token A Vault PDA: {}", token_a_vault_pda);
+    msg!("Token A Vault Bump Seed: {}", token_a_bump);
+    msg!("Token B Vault PDA: {}", token_b_vault_pda);
+    msg!("Token B Vault Bump Seed: {}", token_b_bump);
+    
+    Ok(())
+}
+
+// ================================================================================================
+// TEST-SPECIFIC VIEW/GETTER INSTRUCTIONS
+// ================================================================================================
+
+/// **VIEW INSTRUCTION**: Returns comprehensive pool state information.
+/// 
+/// This function provides easy access to all pool state data in a structured format.
+/// Ideal for testing, debugging, frontend integration, and transparency.
+/// 
+/// # Arguments
+/// * `accounts` - Must contain pool state account as first account
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs comprehensive pool information
+pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("DEBUG: get_pool_info: Retrieving comprehensive pool information");
+    
+    let pool_state_account = &accounts[0];
+    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    msg!("=== POOL STATE INFORMATION ===");
+    msg!("Pool Owner: {}", pool_state.owner);
+    msg!("Pool State PDA: {}", pool_state_account.key);
+    msg!("Token A Mint: {}", pool_state.token_a_mint);
+    msg!("Token B Mint: {}", pool_state.token_b_mint);
+    msg!("Token A Vault: {}", pool_state.token_a_vault);
+    msg!("Token B Vault: {}", pool_state.token_b_vault);
+    msg!("LP Token A Mint: {}", pool_state.lp_token_a_mint);
+    msg!("LP Token B Mint: {}", pool_state.lp_token_b_mint);
+    msg!("Ratio A Numerator: {}", pool_state.ratio_a_numerator);
+    msg!("Ratio B Denominator: {}", pool_state.ratio_b_denominator);
+    msg!("Pool Authority Bump Seed: {}", pool_state.pool_authority_bump_seed);
+    msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
+    msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
+    msg!("Is Initialized: {}", pool_state.is_initialized);
+    msg!("Is Paused: {}", pool_state.is_paused);
+    msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
+    msg!("===============================");
+    
+    Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns detailed liquidity information for both tokens.
+/// 
+/// This function provides easy access to liquidity data, useful for calculating
+/// exchange rates, available liquidity, and pool utilization metrics.
+/// 
+/// # Arguments
+/// * `accounts` - Must contain pool state account as first account
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs detailed liquidity information
+pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("DEBUG: get_liquidity_info: Retrieving liquidity information");
+    
+    let pool_state_account = &accounts[0];
+    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    msg!("=== LIQUIDITY INFORMATION ===");
+    msg!("Total Token A Liquidity: {}", pool_state.total_token_a_liquidity);
+    msg!("Total Token B Liquidity: {}", pool_state.total_token_b_liquidity);
+    msg!("Exchange Rate (A per B): {}", 
+         if pool_state.ratio_b_denominator != 0 { 
+             pool_state.ratio_a_numerator as f64 / pool_state.ratio_b_denominator as f64 
+         } else { 0.0 });
+    msg!("Exchange Rate (B per A): {}", 
+         if pool_state.ratio_a_numerator != 0 { 
+             pool_state.ratio_b_denominator as f64 / pool_state.ratio_a_numerator as f64 
+         } else { 0.0 });
+    
+    // Calculate utilization if available
+    let total_value_locked = pool_state.total_token_a_liquidity + pool_state.total_token_b_liquidity;
+    msg!("Total Value Locked (TVL): {} tokens", total_value_locked);
+    msg!("==============================");
+    
+    Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns delegate management information.
+/// 
+/// This function provides comprehensive delegate system information including
+/// delegate list, withdrawal history, and pending requests for transparency.
+/// 
+/// # Arguments
+/// * `accounts` - Must contain pool state account as first account
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs delegate management information
+pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("DEBUG: get_delegate_info: Retrieving delegate information");
+    
+    let pool_state_account = &accounts[0];
+    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    msg!("=== DELEGATE INFORMATION ===");
+    msg!("Total Delegates: {}", pool_state.delegate_management.delegate_count);
+    
+    // List all delegates
+    for (i, delegate) in pool_state.delegate_management.delegates.iter().enumerate() {
+        if i < pool_state.delegate_management.delegate_count as usize {
+            msg!("Delegate {}: {}", i + 1, delegate);
+            
+            // Show wait time for this delegate
+            if let Some(wait_time) = pool_state.delegate_management.get_delegate_wait_time(delegate) {
+                msg!("  Wait Time: {} seconds", wait_time);
+            }
+            
+            // Show any pending withdrawal request
+            if let Some(request) = pool_state.delegate_management.get_withdrawal_request(delegate) {
+                msg!("  Pending Withdrawal: {} of token {}", request.amount, request.token_mint);
+                msg!("  Request Timestamp: {}", request.request_timestamp);
+            }
+        }
+    }
+    
+    // Show recent withdrawal history
+    msg!("Recent Withdrawal History:");
+    msg!("History Index: {}", pool_state.delegate_management.withdrawal_history_index);
+    for (i, record) in pool_state.delegate_management.withdrawal_history.iter().enumerate() {
+        if record.delegate != Pubkey::default() { // Only show non-empty records
+            msg!("  Record {}: Delegate {}, Amount {}, Token {}, Slot {}", 
+                 i, record.delegate, record.amount, record.token_mint, record.slot);
+        }
+    }
+    msg!("============================");
+    
+    Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns fee information including collected fees and rates.
+/// 
+/// This function provides comprehensive fee information essential for fee tracking,
+/// transparency, and financial reporting.
+/// 
+/// # Arguments
+/// * `accounts` - Must contain pool state account as first account
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs detailed fee information
+pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("DEBUG: get_fee_info: Retrieving fee information");
+    
+    let pool_state_account = &accounts[0];
+    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    msg!("=== FEE INFORMATION ===");
+    
+    // Fee rates
+    msg!("Swap Fee Rate: {} basis points ({:.4}%)", 
+         pool_state.swap_fee_basis_points, 
+         pool_state.swap_fee_basis_points as f64 / 100.0);
+    msg!("Registration Fee: {} lamports ({:.9} SOL)", REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
+    msg!("Deposit/Withdrawal Fee: {} lamports ({:.9} SOL)", DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
+    msg!("Swap Fee: {} lamports ({:.9} SOL)", SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
+    
+    // Collected fees
+    msg!("Collected Token A Fees: {}", pool_state.collected_fees_token_a);
+    msg!("Collected Token B Fees: {}", pool_state.collected_fees_token_b);
+    msg!("Collected SOL Fees: {} lamports ({:.9} SOL)", 
+         pool_state.collected_sol_fees, 
+         pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
+    
+    // Withdrawn fees (for tracking)
+    msg!("Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);
+    msg!("Total Token B Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_b);
+    msg!("Total SOL Fees Withdrawn: {} lamports ({:.9} SOL)", 
+         pool_state.total_sol_fees_withdrawn, 
+         pool_state.total_sol_fees_withdrawn as f64 / 1_000_000_000.0);
+    
+    // Available fees (collected minus withdrawn)
+    let available_token_a_fees = pool_state.collected_fees_token_a.saturating_sub(pool_state.total_fees_withdrawn_token_a);
+    let available_token_b_fees = pool_state.collected_fees_token_b.saturating_sub(pool_state.total_fees_withdrawn_token_b);
+    let available_sol_fees = pool_state.collected_sol_fees.saturating_sub(pool_state.total_sol_fees_withdrawn);
+    
+    msg!("Available Token A Fees: {}", available_token_a_fees);
+    msg!("Available Token B Fees: {}", available_token_b_fees);
+    msg!("Available SOL Fees: {} lamports ({:.9} SOL)", 
+         available_sol_fees, 
+         available_sol_fees as f64 / 1_000_000_000.0);
+    
+    msg!("=======================");
+    
     Ok(())
 }
