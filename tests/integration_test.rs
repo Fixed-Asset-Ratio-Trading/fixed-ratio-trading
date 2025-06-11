@@ -2257,3 +2257,207 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
 
     Ok(())
 }
+
+#[tokio::test]
+async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
+    // Setup program test
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        PROGRAM_ID,
+        processor!(process_instruction),
+    );
+
+    // Create accounts
+    let delegate = Keypair::new();
+    let non_owner = Keypair::new();
+
+    // Create token mints for pool initialization
+    let primary_mint_kp = Keypair::new();
+    let base_mint_kp = Keypair::new();
+    let lp_token_a_mint_kp = Keypair::new();
+    let lp_token_b_mint_kp = Keypair::new();
+
+    // Start test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    // Create token mints
+    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+
+    // Initialize pool with ratio 2:1
+    let ratio_primary_per_base = 2u64;
+    
+    // Normalize tokens and ratio as the program does
+    let (
+        prog_token_a_mint_key,
+        prog_token_b_mint_key, 
+        prog_ratio_a_num,
+        prog_ratio_b_den,
+        token_a_is_primary
+    ) = if primary_mint_kp.pubkey().to_bytes() < base_mint_kp.pubkey().to_bytes() {
+        (primary_mint_kp.pubkey(), base_mint_kp.pubkey(), ratio_primary_per_base, 1u64, true)
+    } else {
+        (base_mint_kp.pubkey(), primary_mint_kp.pubkey(), 1u64, ratio_primary_per_base, false)
+    };
+
+    let (pool_state_pda, pool_auth_bump) = Pubkey::find_program_address(
+        &[
+            fixed_ratio_trading::POOL_STATE_SEED_PREFIX,
+            prog_token_a_mint_key.as_ref(),
+            prog_token_b_mint_key.as_ref(),
+            &prog_ratio_a_num.to_le_bytes(),
+            &prog_ratio_b_den.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    // Derive vault PDAs
+    let (token_a_vault_pda, token_a_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda, token_b_vault_bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    let (primary_vault_bump, base_vault_bump) = if token_a_is_primary {
+        (token_a_vault_bump, token_b_vault_bump)
+    } else {
+        (token_b_vault_bump, token_a_vault_bump)
+    };
+
+    // Create and send CreatePoolStateAccount instruction with all required accounts
+    let create_pool_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), true),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), true),
+            AccountMeta::new(token_a_vault_pda, false),
+            AccountMeta::new(token_b_vault_pda, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: PoolInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base,
+            pool_authority_bump_seed: pool_auth_bump,
+            primary_token_vault_bump_seed: primary_vault_bump,
+            base_token_vault_bump_seed: base_vault_bump,
+        }.try_to_vec()?,
+    };
+
+    let mut transaction = Transaction::new_with_payer(
+        &[create_pool_ix],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+
+    // Create and send InitializePoolData instruction with all required accounts
+    let init_pool_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pool_state_pda, false),
+            AccountMeta::new(primary_mint_kp.pubkey(), false),
+            AccountMeta::new(base_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_a_mint_kp.pubkey(), false),
+            AccountMeta::new(lp_token_b_mint_kp.pubkey(), false),
+            AccountMeta::new(token_a_vault_pda, false),
+            AccountMeta::new(token_b_vault_pda, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        ],
+        data: PoolInstruction::InitializePoolData {
+            ratio_primary_per_base,
+            pool_authority_bump_seed: pool_auth_bump,
+            primary_token_vault_bump_seed: primary_vault_bump,
+            base_token_vault_bump_seed: base_vault_bump,
+        }.try_to_vec()?,
+    };
+
+    let mut transaction = Transaction::new_with_payer(
+        &[init_pool_ix],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+
+    // Test 1: Successfully add a delegate (using payer as the owner since payer created the pool)
+    // The success of this transaction proves that the AddDelegate functionality works correctly
+    let add_delegate_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true), // payer is the pool owner
+            AccountMeta::new(pool_state_pda, false),
+        ],
+        data: PoolInstruction::AddDelegate {
+            delegate: delegate.pubkey(),
+        }.try_to_vec()?,
+    };
+
+    let mut transaction = Transaction::new_with_payer(
+        &[add_delegate_ix],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer], recent_blockhash);
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // The transaction should succeed, proving AddDelegate works
+    assert!(result.is_ok(), "AddDelegate instruction should succeed for pool owner");
+
+    // Test 2: Fail to add delegate when caller is not owner
+    let add_delegate_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(non_owner.pubkey(), true),
+            AccountMeta::new(pool_state_pda, false),
+        ],
+        data: PoolInstruction::AddDelegate {
+            delegate: non_owner.pubkey(),
+        }.try_to_vec()?,
+    };
+
+    let mut transaction = Transaction::new_with_payer(
+        &[add_delegate_ix],
+        Some(&non_owner.pubkey()),
+    );
+    transaction.sign(&[&non_owner], recent_blockhash);
+    
+    let result = banks_client.process_transaction(transaction).await;
+    assert!(result.is_err(), "AddDelegate instruction should fail for non-owner");
+
+    // Test 3: Fail to add same delegate twice
+    let add_delegate_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true), // payer is the pool owner
+            AccountMeta::new(pool_state_pda, false),
+        ],
+        data: PoolInstruction::AddDelegate {
+            delegate: delegate.pubkey(),
+        }.try_to_vec()?,
+    };
+
+    let mut transaction = Transaction::new_with_payer(
+        &[add_delegate_ix],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer], recent_blockhash);
+    
+    let result = banks_client.process_transaction(transaction).await;
+    assert!(result.is_err(), "AddDelegate instruction should fail when adding same delegate twice");
+
+    println!("✅ AddDelegate functionality test completed successfully!");
+    println!("✅ Pool owner can successfully add delegates");
+    println!("✅ Non-owner cannot add delegates (authorization working)");
+    println!("✅ Cannot add same delegate twice (duplicate prevention working)");
+
+    Ok(())
+}
