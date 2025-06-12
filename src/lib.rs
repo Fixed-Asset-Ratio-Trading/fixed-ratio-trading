@@ -2937,7 +2937,7 @@ pub struct DelegateManagement {
     pub withdrawal_history_index: u8,
     pub withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES], // One request per delegate
     pub delegate_wait_times: [u64; MAX_DELEGATES], // Wait time in seconds for each delegate
-    pub pool_pause_requests: [Option<PoolPauseRequest>; MAX_DELEGATES], // One pause request per delegate
+    pub pool_pause_requests: [PoolPauseRequest; MAX_DELEGATES], // One pause request per delegate
     pub pool_pause_wait_times: [u64; MAX_DELEGATES], // Pool pause wait time in seconds for each delegate (default 72 hours)
 }
 
@@ -2953,7 +2953,7 @@ impl DelegateManagement {
             withdrawal_history_index: 0,
             withdrawal_requests: [WithdrawalRequest::default(); MAX_DELEGATES],
             delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time for fee withdrawals
-            pool_pause_requests: [const { None }; MAX_DELEGATES], // No pending pause requests initially
+            pool_pause_requests: [PoolPauseRequest::default(), PoolPauseRequest::default(), PoolPauseRequest::default()], // No pending pause requests initially
             pool_pause_wait_times: [259200; MAX_DELEGATES], // Default 72 hours for pool pausing (more deliberation time)
         }
     }
@@ -3025,7 +3025,7 @@ impl DelegateManagement {
         1 +  // withdrawal_history_index
         (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests
         (8 * MAX_DELEGATES) + // delegate_wait_times
-        (1 + PoolPauseRequest::get_packed_len()) * MAX_DELEGATES + // pool_pause_requests (Option<PoolPauseRequest>)
+        (PoolPauseRequest::get_packed_len() * MAX_DELEGATES) + // pool_pause_requests
         (8 * MAX_DELEGATES) // pool_pause_wait_times
     }
 
@@ -3162,8 +3162,8 @@ impl DelegateManagement {
         slot: u64
     ) -> Result<(), PoolError> {
         if let Some(index) = self.get_delegate_index(delegate) {
-            // Check if there's already a pending request
-            if self.pool_pause_requests[index].is_some() {
+            // Check if there's already a pending request (delegate != default means active request)
+            if self.pool_pause_requests[index].delegate != Pubkey::default() {
                 return Err(PoolError::PendingWithdrawalExists);
             }
 
@@ -3177,7 +3177,7 @@ impl DelegateManagement {
                 duration_seconds,
             )?;
             
-            self.pool_pause_requests[index] = Some(pause_request);
+            self.pool_pause_requests[index] = pause_request;
             Ok(())
         } else {
             Err(PoolError::DelegateNotFound { delegate: *delegate })
@@ -3198,11 +3198,11 @@ impl DelegateManagement {
     /// - `PoolError::NoPendingWithdrawal` if no pause request exists
     pub fn cancel_pool_pause_request(&mut self, delegate: &Pubkey) -> Result<(), PoolError> {
         if let Some(index) = self.get_delegate_index(delegate) {
-            if self.pool_pause_requests[index].is_none() {
+            if self.pool_pause_requests[index].delegate == Pubkey::default() {
                 return Err(PoolError::NoPendingWithdrawal);
             }
             
-            self.pool_pause_requests[index] = None;
+            self.pool_pause_requests[index] = PoolPauseRequest::default();
             Ok(())
         } else {
             Err(PoolError::DelegateNotFound { delegate: *delegate })
@@ -3219,7 +3219,13 @@ impl DelegateManagement {
     /// - `None` if no request exists or delegate not found
     pub fn get_pool_pause_request(&self, delegate: &Pubkey) -> Option<&PoolPauseRequest> {
         self.get_delegate_index(delegate)
-            .and_then(|index| self.pool_pause_requests[index].as_ref())
+            .and_then(|index| {
+                if self.pool_pause_requests[index].delegate != Pubkey::default() {
+                    Some(&self.pool_pause_requests[index])
+                } else {
+                    None
+                }
+            })
     }
     
     /// Check if any pool pause is currently active.
@@ -3235,10 +3241,9 @@ impl DelegateManagement {
     /// - `false` if no pauses are currently active
     pub fn is_pool_paused_by_delegates(&self, current_timestamp: i64) -> bool {
         for i in 0..self.delegate_count as usize {
-            if let Some(request) = &self.pool_pause_requests[i] {
-                if request.is_active(current_timestamp) {
-                    return true;
-                }
+            let request = &self.pool_pause_requests[i];
+            if request.delegate != Pubkey::default() && request.is_active(current_timestamp) {
+                return true;
             }
         }
         false
@@ -3257,10 +3262,9 @@ impl DelegateManagement {
     /// - `None` if no pause is currently active
     pub fn get_active_pool_pause_info(&self, current_timestamp: i64) -> Option<(Pubkey, PoolPauseReason)> {
         for i in 0..self.delegate_count as usize {
-            if let Some(request) = &self.pool_pause_requests[i] {
-                if request.is_active(current_timestamp) {
-                    return Some((request.delegate, request.reason.clone()));
-                }
+            let request = &self.pool_pause_requests[i];
+            if request.delegate != Pubkey::default() && request.is_active(current_timestamp) {
+                return Some((request.delegate, request.reason.clone()));
             }
         }
         None
@@ -3280,11 +3284,10 @@ impl DelegateManagement {
         let mut cleaned_count = 0;
         
         for i in 0..self.delegate_count as usize {
-            if let Some(request) = &self.pool_pause_requests[i] {
-                if request.is_expired(current_timestamp) {
-                    self.pool_pause_requests[i] = None;
-                    cleaned_count += 1;
-                }
+            let request = &self.pool_pause_requests[i];
+            if request.delegate != Pubkey::default() && request.is_expired(current_timestamp) {
+                self.pool_pause_requests[i] = PoolPauseRequest::default();
+                cleaned_count += 1;
             }
         }
         
@@ -4759,7 +4762,7 @@ pub fn process_cancel_pool_pause(
         // Owner can cancel any delegate's request - find and cancel the first one
         let mut cancelled = false;
         for i in 0..pool_state_data.delegate_management.delegate_count as usize {
-            if pool_state_data.delegate_management.pool_pause_requests[i].is_some() {
+            if pool_state_data.delegate_management.pool_pause_requests[i].delegate != Pubkey::default() {
                 let delegate = pool_state_data.delegate_management.delegates[i];
                 pool_state_data.delegate_management.cancel_pool_pause_request(&delegate)?;
                 msg!("Pool owner cancelled pause request for delegate: {}", delegate);
