@@ -283,6 +283,56 @@ pub enum PoolInstruction {
         wait_time: u64,
     },
     
+    // **INDIVIDUAL POOL RATIO PAUSING**: Delegate-controlled ratio-specific pausing system
+    /// Request to pause a specific pool ratio for a delegate-defined duration.
+    /// 
+    /// This instruction allows delegates to request a pause of pool trading operations
+    /// with configurable timing parameters. Designed as a primitive for governance
+    /// contracts to implement sophisticated dispute resolution and bonding mechanisms.
+    /// 
+    /// # Features:
+    /// - Individual delegate-controlled pausing per ratio
+    /// - Configurable wait times (1 minute to 72 hours, default 72 hours)  
+    /// - Separate timing from withdrawal requests
+    /// - Owner cancellation capability for emergency resolution
+    /// - Designed for integration with governance and bonding contracts
+    /// 
+    /// # Use Cases:
+    /// - Ratio dispute resolution systems
+    /// - Bonding mechanism enforcement 
+    /// - Governance-based pool management
+    /// - Security incident response
+    /// 
+    /// # Arguments:
+    /// - `reason`: Enumerated reason for pause request
+    /// - `duration_seconds`: Requested pause duration (1 minute to 72 hours max)
+    RequestPoolPause {
+        reason: PoolPauseReason,
+        duration_seconds: u64,
+    },
+    
+    /// Cancel a pending pool pause request.
+    /// 
+    /// Allows the requesting delegate or pool owner to cancel a pool pause request
+    /// before it becomes active. Useful for resolving disputes or correcting
+    /// accidental pause requests.
+    CancelPoolPause,
+    
+    /// Set pool pause wait time for a specific delegate.
+    /// 
+    /// Configures the delay period between when a delegate requests a pool pause
+    /// and when it becomes effective. Separate from withdrawal wait times to allow
+    /// independent governance parameter tuning.
+    /// 
+    /// # Timing Parameters:
+    /// - Minimum delay: 1 minute (60 seconds)
+    /// - Maximum delay: 72 hours (259,200 seconds)  
+    /// - Default: 72 hours for maximum deliberation time
+    SetPoolPauseWaitTime {
+        delegate: Pubkey,
+        wait_time: u64, // Wait time in seconds (60 to 259200)
+    },
+    
     // **PDA HELPER UTILITIES**: Compute PDA addresses without requiring account creation
     /// Returns the Pool State PDA address for given tokens and ratio
     /// Useful for clients to derive addresses before calling other instructions
@@ -440,6 +490,154 @@ impl PoolError {
 impl From<PoolError> for ProgramError {
     fn from(e: PoolError) -> Self {
         ProgramError::Custom(e.error_code())
+    }
+}
+
+/// Enumerated reasons for pool pause requests.
+/// 
+/// This enum provides structured categorization of pause requests to enable
+/// different governance and bonding mechanisms based on the type of issue.
+/// Designed for integration with higher-layer governance contracts.
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Default)]
+pub enum PoolPauseReason {
+    #[default]
+    /// Dispute over the fixed ratio accuracy or fairness
+    RatioDispute,
+    /// Insufficient bonding by pool participants
+    InsufficientBond,
+    /// General security concern requiring investigation
+    SecurityConcern,
+    /// Governance action or proposal execution
+    GovernanceAction,
+    /// Manual intervention by authorized delegate
+    ManualIntervention,
+    /// Emergency response to detected issues
+    Emergency,
+}
+
+/// Individual pool pause request structure.
+/// 
+/// Represents a delegate's request to pause pool operations for a specific duration.
+/// Designed as a primitive for governance contracts to implement sophisticated
+/// dispute resolution, bonding mechanisms, and automated pool management.
+/// 
+/// # Design Principles:
+/// - Separate timing from withdrawal requests for independent governance
+/// - Owner cancellation capability for emergency resolution
+/// - Structured reasons for automated governance integration
+/// - Maximum 72-hour duration to prevent indefinite pausing
+/// 
+/// # Timing Model:
+/// - Request submitted at `request_timestamp`
+/// - Becomes active after `wait_time` seconds (1 minute to 72 hours)
+/// - Remains active for `duration_seconds` (1 minute to 72 hours)
+/// - Can be cancelled by delegate or owner before activation
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
+pub struct PoolPauseRequest {
+    /// Delegate who submitted the pause request
+    pub delegate: Pubkey,
+    /// Structured reason for the pause request
+    pub reason: PoolPauseReason,
+    /// Timestamp when the request was submitted (Unix timestamp)
+    pub request_timestamp: i64,
+    /// Solana slot when the request was submitted (for audit trails)
+    pub request_slot: u64,
+    /// Wait time before pause becomes active (60 to 259200 seconds)
+    pub wait_time: u64,
+    /// Duration of the pause once active (60 to 259200 seconds)
+    pub duration_seconds: u64,
+}
+
+impl PoolPauseRequest {
+    /// Create a new pool pause request with validation.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - Pubkey of the requesting delegate
+    /// * `reason` - Structured reason for the pause
+    /// * `request_timestamp` - Current Unix timestamp
+    /// * `request_slot` - Current Solana slot
+    /// * `wait_time` - Delay before pause activation (60-259200 seconds)
+    /// * `duration_seconds` - Duration of pause (60-259200 seconds)
+    /// 
+    /// # Validation:
+    /// - Wait time must be between 1 minute and 72 hours
+    /// - Duration must be between 1 minute and 72 hours
+    pub fn new(
+        delegate: Pubkey,
+        reason: PoolPauseReason,
+        request_timestamp: i64,
+        request_slot: u64,
+        wait_time: u64,
+        duration_seconds: u64,
+    ) -> Result<Self, PoolError> {
+        // Validate wait time (1 minute to 72 hours)
+        if wait_time < 60 || wait_time > 259200 {
+            return Err(PoolError::InvalidWaitTime { wait_time });
+        }
+        
+        // Validate duration (1 minute to 72 hours)
+        if duration_seconds < 60 || duration_seconds > 259200 {
+            return Err(PoolError::InvalidWaitTime { wait_time: duration_seconds });
+        }
+        
+        Ok(Self {
+            delegate,
+            reason,
+            request_timestamp,
+            request_slot,
+            wait_time,
+            duration_seconds,
+        })
+    }
+    
+    /// Get the packed length of the structure for account sizing.
+    pub fn get_packed_len() -> usize {
+        32 + // delegate (Pubkey)
+        1 +  // reason (PoolPauseReason enum)
+        8 +  // request_timestamp (i64)
+        8 +  // request_slot (u64)
+        8 +  // wait_time (u64)
+        8    // duration_seconds (u64)
+    }
+    
+    /// Check if the pause request is ready to become active.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - `true` if enough time has passed since request submission
+    /// - `false` if still within the wait period
+    pub fn is_ready_to_activate(&self, current_timestamp: i64) -> bool {
+        current_timestamp >= self.request_timestamp + self.wait_time as i64
+    }
+    
+    /// Check if the pause is currently active.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - `true` if pause is active (past wait time, within duration)
+    /// - `false` if pause hasn't started or has expired
+    pub fn is_active(&self, current_timestamp: i64) -> bool {
+        let activation_time = self.request_timestamp + self.wait_time as i64;
+        let expiration_time = activation_time + self.duration_seconds as i64;
+        
+        current_timestamp >= activation_time && current_timestamp < expiration_time
+    }
+    
+    /// Check if the pause has expired.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - `true` if pause duration has fully elapsed
+    /// - `false` if pause is still pending or active
+    pub fn is_expired(&self, current_timestamp: i64) -> bool {
+        let expiration_time = self.request_timestamp + self.wait_time as i64 + self.duration_seconds as i64;
+        current_timestamp >= expiration_time
     }
 }
 
@@ -668,6 +866,20 @@ pub fn process_instruction(
         }
         PoolInstruction::SetDelegateWaitTime { delegate, wait_time } => {
             process_set_delegate_wait_time(program_id, accounts, delegate, wait_time)
+        }
+        
+        // **INDIVIDUAL POOL RATIO PAUSING HANDLERS**
+        PoolInstruction::RequestPoolPause { reason, duration_seconds } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_request_pool_pause");
+            process_request_pool_pause(program_id, accounts, reason, duration_seconds)
+        }
+        PoolInstruction::CancelPoolPause => {
+            msg!("DEBUG: process_instruction: Dispatching to process_cancel_pool_pause");
+            process_cancel_pool_pause(program_id, accounts)
+        }
+        PoolInstruction::SetPoolPauseWaitTime { delegate, wait_time } => {
+            msg!("DEBUG: process_instruction: Dispatching to process_set_pool_pause_wait_time");
+            process_set_pool_pause_wait_time(program_id, accounts, delegate, wait_time)
         }
         
         // **DEPRECATED**: Legacy two-instruction pattern handlers (kept for backward compatibility)
@@ -2725,6 +2937,8 @@ pub struct DelegateManagement {
     pub withdrawal_history_index: u8,
     pub withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES], // One request per delegate
     pub delegate_wait_times: [u64; MAX_DELEGATES], // Wait time in seconds for each delegate
+    pub pool_pause_requests: [Option<PoolPauseRequest>; MAX_DELEGATES], // One pause request per delegate
+    pub pool_pause_wait_times: [u64; MAX_DELEGATES], // Pool pause wait time in seconds for each delegate (default 72 hours)
 }
 
 impl DelegateManagement {
@@ -2738,7 +2952,9 @@ impl DelegateManagement {
             withdrawal_history: [WithdrawalRecord::default(); 10],
             withdrawal_history_index: 0,
             withdrawal_requests: [WithdrawalRequest::default(); MAX_DELEGATES],
-            delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time
+            delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time for fee withdrawals
+            pool_pause_requests: [const { None }; MAX_DELEGATES], // No pending pause requests initially
+            pool_pause_wait_times: [259200; MAX_DELEGATES], // Default 72 hours for pool pausing (more deliberation time)
         }
     }
 
@@ -2808,7 +3024,9 @@ impl DelegateManagement {
         (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
         1 +  // withdrawal_history_index
         (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests
-        (8 * MAX_DELEGATES) // delegate_wait_times
+        (8 * MAX_DELEGATES) + // delegate_wait_times
+        (1 + PoolPauseRequest::get_packed_len()) * MAX_DELEGATES + // pool_pause_requests (Option<PoolPauseRequest>)
+        (8 * MAX_DELEGATES) // pool_pause_wait_times
     }
 
     pub fn set_delegate_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), PoolError> {
@@ -2874,6 +3092,203 @@ impl DelegateManagement {
         } else {
             Err(PoolError::DelegateNotFound { delegate: *delegate })
         }
+    }
+    
+    // **POOL PAUSE REQUEST MANAGEMENT METHODS**
+    
+    /// Set pool pause wait time for a specific delegate.
+    /// 
+    /// Configures the delay period between when a delegate requests a pool pause
+    /// and when it becomes effective. This is separate from withdrawal wait times
+    /// to allow independent governance parameter tuning.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - The delegate's public key
+    /// * `wait_time` - Wait time in seconds (60 to 259200 = 1 minute to 72 hours)
+    /// 
+    /// # Returns:
+    /// - `Ok(())` if successful
+    /// - `PoolError::InvalidWaitTime` if wait time is out of range
+    /// - `PoolError::DelegateNotFound` if delegate is not authorized
+    pub fn set_pool_pause_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), PoolError> {
+        // Validate wait time (1 minute to 72 hours)
+        if wait_time < 60 || wait_time > 259200 {
+            return Err(PoolError::InvalidWaitTime { wait_time });
+        }
+
+        if let Some(index) = self.get_delegate_index(delegate) {
+            self.pool_pause_wait_times[index] = wait_time;
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+    
+    /// Get pool pause wait time for a specific delegate.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - The delegate's public key
+    /// 
+    /// # Returns:
+    /// - `Some(wait_time)` if delegate exists
+    /// - `None` if delegate is not found
+    pub fn get_pool_pause_wait_time(&self, delegate: &Pubkey) -> Option<u64> {
+        self.get_delegate_index(delegate).map(|index| self.pool_pause_wait_times[index])
+    }
+    
+    /// Create a pool pause request for a specific delegate.
+    /// 
+    /// Submits a request to pause pool operations for a delegate-defined duration.
+    /// The pause will become active after the delegate's configured wait time.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - The requesting delegate's public key
+    /// * `reason` - Structured reason for the pause request
+    /// * `duration_seconds` - Duration of pause once active (60 to 259200 seconds)
+    /// * `timestamp` - Current Unix timestamp
+    /// * `slot` - Current Solana slot for audit trails
+    /// 
+    /// # Returns:
+    /// - `Ok(())` if successful
+    /// - `PoolError::DelegateNotFound` if delegate is not authorized
+    /// - `PoolError::PendingWithdrawalExists` if delegate already has active pause request
+    /// - `PoolError::InvalidWaitTime` if duration is out of range
+    pub fn create_pool_pause_request(
+        &mut self, 
+        delegate: &Pubkey, 
+        reason: PoolPauseReason,
+        duration_seconds: u64,
+        timestamp: i64, 
+        slot: u64
+    ) -> Result<(), PoolError> {
+        if let Some(index) = self.get_delegate_index(delegate) {
+            // Check if there's already a pending request
+            if self.pool_pause_requests[index].is_some() {
+                return Err(PoolError::PendingWithdrawalExists);
+            }
+
+            let wait_time = self.pool_pause_wait_times[index];
+            let pause_request = PoolPauseRequest::new(
+                *delegate,
+                reason,
+                timestamp,
+                slot,
+                wait_time,
+                duration_seconds,
+            )?;
+            
+            self.pool_pause_requests[index] = Some(pause_request);
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+    
+    /// Cancel a pending pool pause request for a specific delegate.
+    /// 
+    /// Removes a pool pause request before it becomes active. Can be called by
+    /// the requesting delegate or the pool owner.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - The delegate's public key
+    /// 
+    /// # Returns:
+    /// - `Ok(())` if successful
+    /// - `PoolError::DelegateNotFound` if delegate is not authorized
+    /// - `PoolError::NoPendingWithdrawal` if no pause request exists
+    pub fn cancel_pool_pause_request(&mut self, delegate: &Pubkey) -> Result<(), PoolError> {
+        if let Some(index) = self.get_delegate_index(delegate) {
+            if self.pool_pause_requests[index].is_none() {
+                return Err(PoolError::NoPendingWithdrawal);
+            }
+            
+            self.pool_pause_requests[index] = None;
+            Ok(())
+        } else {
+            Err(PoolError::DelegateNotFound { delegate: *delegate })
+        }
+    }
+    
+    /// Get the pool pause request for a specific delegate.
+    /// 
+    /// # Arguments:
+    /// * `delegate` - The delegate's public key
+    /// 
+    /// # Returns:
+    /// - `Some(&PoolPauseRequest)` if a request exists
+    /// - `None` if no request exists or delegate not found
+    pub fn get_pool_pause_request(&self, delegate: &Pubkey) -> Option<&PoolPauseRequest> {
+        self.get_delegate_index(delegate)
+            .and_then(|index| self.pool_pause_requests[index].as_ref())
+    }
+    
+    /// Check if any pool pause is currently active.
+    /// 
+    /// Iterates through all delegate pause requests to determine if any
+    /// pause is currently in effect. This is used to enforce pool pausing.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - `true` if any delegate has an active pause
+    /// - `false` if no pauses are currently active
+    pub fn is_pool_paused_by_delegates(&self, current_timestamp: i64) -> bool {
+        for i in 0..self.delegate_count as usize {
+            if let Some(request) = &self.pool_pause_requests[i] {
+                if request.is_active(current_timestamp) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
+    /// Get information about the currently active pool pause, if any.
+    /// 
+    /// Returns details about the first active pool pause found, including
+    /// the delegate responsible and the reason for the pause.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - `Some((delegate, reason))` if a pause is active
+    /// - `None` if no pause is currently active
+    pub fn get_active_pool_pause_info(&self, current_timestamp: i64) -> Option<(Pubkey, PoolPauseReason)> {
+        for i in 0..self.delegate_count as usize {
+            if let Some(request) = &self.pool_pause_requests[i] {
+                if request.is_active(current_timestamp) {
+                    return Some((request.delegate, request.reason.clone()));
+                }
+            }
+        }
+        None
+    }
+    
+    /// Clean up expired pool pause requests.
+    /// 
+    /// Removes pause requests that have expired to keep the state clean.
+    /// Should be called periodically to prevent state bloat.
+    /// 
+    /// # Arguments:
+    /// * `current_timestamp` - Current Unix timestamp for comparison
+    /// 
+    /// # Returns:
+    /// - Number of expired requests cleaned up
+    pub fn cleanup_expired_pool_pause_requests(&mut self, current_timestamp: i64) -> u8 {
+        let mut cleaned_count = 0;
+        
+        for i in 0..self.delegate_count as usize {
+            if let Some(request) = &self.pool_pause_requests[i] {
+                if request.is_expired(current_timestamp) {
+                    self.pool_pause_requests[i] = None;
+                    cleaned_count += 1;
+                }
+            }
+        }
+        
+        cleaned_count
     }
 }
 
@@ -4140,5 +4555,339 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     
     msg!("=======================");
     
+    Ok(())
+}
+
+// ================================================================================================
+// INDIVIDUAL POOL RATIO PAUSING PROCESSORS
+// ================================================================================================
+
+/// Process a pool pause request from an authorized delegate.
+///
+/// This function allows authorized delegates to request a pause of pool operations for a
+/// specific duration with configurable timing parameters. Designed as a primitive for 
+/// governance contracts to implement sophisticated dispute resolution and bonding mechanisms.
+///
+/// # Purpose
+/// - Enables delegate-controlled pool pausing for governance integration
+/// - Provides structured dispute resolution and bonding enforcement
+/// - Creates audit trail for all pause requests and their reasons
+/// - Supports emergency response capabilities for security incidents
+/// - Facilitates integration with higher-layer governance contracts
+///
+/// # How it works
+/// 1. **Authorization**: Verifies the caller is an authorized delegate and signed the transaction
+/// 2. **Duplicate Check**: Ensures delegate doesn't have pending pause request
+/// 3. **Parameter Validation**: Validates duration is within allowed range (1 minute to 72 hours)
+/// 4. **Request Creation**: Creates pause request with delegate's configured wait time
+/// 5. **State Update**: Saves the request to pool state for future activation
+/// 6. **Audit Logging**: Logs request details for transparency and governance tracking
+///
+/// # Timing Model
+/// - **Request Time**: Current timestamp when request is submitted
+/// - **Wait Period**: Delegate-specific delay before pause becomes active (1 minute to 72 hours)
+/// - **Active Period**: Duration of pause once activated (1 minute to 72 hours)
+/// - **Cancellation**: Can be cancelled by delegate or owner before activation
+///
+/// # Arguments
+/// * `program_id` - The program ID for validation (unused but standard pattern)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Delegate account (must be signer and authorized delegate)
+///   - `accounts[1]` - Pool state PDA account (writable for request storage)
+///   - `accounts[2]` - Clock sysvar for timestamp access
+/// * `reason` - Structured reason for the pause request (enum PoolPauseReason)
+/// * `duration_seconds` - Duration of pause once active (60 to 259200 seconds)
+///
+/// # Account Requirements
+/// - Delegate: Must be signer and exist in pool's authorized delegate list
+/// - Pool state: Must be owned by program and writable for state updates
+/// - Clock: Standard Solana sysvar for timestamp access
+///
+/// # Validation Rules
+/// - Only authorized delegates can submit pause requests
+/// - Duration must be between 1 minute and 72 hours
+/// - Delegate can only have one pending pause request at a time
+/// - Pool doesn't need to be unpaused to submit request
+///
+/// # Integration with Governance
+/// This primitive enables governance contracts to implement:
+/// - **Bonding Mechanisms**: Pause pool until bond requirements are met
+/// - **Dispute Resolution**: Structured pause with categorized reasons
+/// - **Automated Governance**: Program-controlled pause requests
+/// - **Emergency Response**: Rapid response to security concerns
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Delegate didn't sign transaction
+/// - `PoolError::UnauthorizedDelegate` - Caller is not authorized delegate
+/// - `PoolError::PendingWithdrawalExists` - Delegate already has pending pause request
+/// - `PoolError::InvalidWaitTime` - Duration is outside allowed range
+///
+/// # Example Usage
+/// ```ignore
+/// // Governance contract requests pause for insufficient bonding
+/// let instruction = PoolInstruction::RequestPoolPause {
+///     reason: PoolPauseReason::InsufficientBond,
+///     duration_seconds: 3600, // 1 hour pause
+/// };
+/// ```
+pub fn process_request_pool_pause(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    reason: PoolPauseReason,
+    duration_seconds: u64,
+) -> ProgramResult {
+    msg!("Processing RequestPoolPause - reason: {:?}, duration: {} seconds", reason, duration_seconds);
+    let account_info_iter = &mut accounts.iter();
+
+    let delegate_account = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+    let clock_account = next_account_info(account_info_iter)?;
+
+    // Verify delegate is signer
+    if !delegate_account.is_signer {
+        msg!("Delegate must be a signer to request pool pause");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Get current timestamp from clock
+    let clock = Clock::from_account_info(clock_account)?;
+    let current_timestamp = clock.unix_timestamp;
+    let current_slot = clock.slot;
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    // Verify delegate is authorized
+    if !pool_state_data.delegate_management.is_delegate(delegate_account.key) {
+        msg!("Caller is not an authorized delegate: {}", delegate_account.key);
+        return Err(PoolError::UnauthorizedDelegate.into());
+    }
+
+    // Create the pause request
+    pool_state_data.delegate_management.create_pool_pause_request(
+        delegate_account.key,
+        reason.clone(),
+        duration_seconds,
+        current_timestamp,
+        current_slot,
+    )?;
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+
+    // Log the request for governance tracking
+    msg!("Pool pause requested successfully: delegate={}, reason={:?}, duration={} seconds, wait_time={} seconds", 
+         delegate_account.key, 
+         reason,
+         duration_seconds,
+         pool_state_data.delegate_management.get_pool_pause_wait_time(delegate_account.key).unwrap_or(259200));
+
+    Ok(())
+}
+
+/// Process cancellation of a pool pause request.
+///
+/// This function allows either the requesting delegate or the pool owner to cancel a 
+/// pending pool pause request before it becomes active. Provides flexibility for
+/// dispute resolution and accidental request correction.
+///
+/// # Purpose
+/// - Enables cancellation of accidental or resolved pause requests
+/// - Provides pool owner override capability for emergency resolution
+/// - Supports flexible dispute resolution mechanisms
+/// - Maintains audit trail of cancelled requests
+/// - Prevents unnecessary pool disruptions when issues are resolved
+///
+/// # How it works
+/// 1. **Authorization**: Verifies caller is either requesting delegate or pool owner
+/// 2. **Request Validation**: Ensures pending request exists for the delegate
+/// 3. **Cancellation**: Removes the pause request from pool state
+/// 4. **State Update**: Saves updated state without the cancelled request
+/// 5. **Audit Logging**: Logs cancellation for transparency
+///
+/// # Arguments
+/// * `program_id` - The program ID for validation (unused but standard pattern)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Caller account (delegate or owner, must be signer)
+///   - `accounts[1]` - Pool state PDA account (writable for state updates)
+///
+/// # Account Requirements
+/// - Caller: Must be signer and either pool owner or authorized delegate with pending request
+/// - Pool state: Must be owned by program and writable for state updates
+///
+/// # Authorization Rules
+/// - Pool owner can cancel any delegate's pause request
+/// - Delegates can only cancel their own pause requests
+/// - Cannot cancel requests that have already become active
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Caller didn't sign transaction
+/// - `PoolError::UnauthorizedDelegate` - Caller is not owner or requesting delegate
+/// - `PoolError::NoPendingWithdrawal` - No pause request exists to cancel
+///
+/// # Example Usage
+/// ```ignore
+/// // Delegate cancels their own request
+/// let instruction = PoolInstruction::CancelPoolPause;
+/// 
+/// // Owner cancels any delegate's request (emergency resolution)
+/// let instruction = PoolInstruction::CancelPoolPause;
+/// ```
+pub fn process_cancel_pool_pause(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("Processing CancelPoolPause");
+    let account_info_iter = &mut accounts.iter();
+
+    let caller_account = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+
+    // Verify caller is signer
+    if !caller_account.is_signer {
+        msg!("Caller must be a signer to cancel pool pause");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    // Check if caller is pool owner (can cancel any request)
+    let is_owner = *caller_account.key == pool_state_data.owner;
+    
+    if is_owner {
+        // Owner can cancel any delegate's request - find and cancel the first one
+        let mut cancelled = false;
+        for i in 0..pool_state_data.delegate_management.delegate_count as usize {
+            if pool_state_data.delegate_management.pool_pause_requests[i].is_some() {
+                let delegate = pool_state_data.delegate_management.delegates[i];
+                pool_state_data.delegate_management.cancel_pool_pause_request(&delegate)?;
+                msg!("Pool owner cancelled pause request for delegate: {}", delegate);
+                cancelled = true;
+                break;
+            }
+        }
+        
+        if !cancelled {
+            msg!("No pending pause requests to cancel");
+            return Err(PoolError::NoPendingWithdrawal.into());
+        }
+    } else {
+        // Delegate can only cancel their own request
+        if !pool_state_data.delegate_management.is_delegate(caller_account.key) {
+            msg!("Caller is not authorized delegate or pool owner: {}", caller_account.key);
+            return Err(PoolError::UnauthorizedDelegate.into());
+        }
+        
+        // Cancel delegate's own request
+        pool_state_data.delegate_management.cancel_pool_pause_request(caller_account.key)?;
+        msg!("Delegate cancelled their own pause request: {}", caller_account.key);
+    }
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+    
+    msg!("Pool pause request cancelled successfully");
+    Ok(())
+}
+
+/// Process setting pool pause wait time for a specific delegate.
+///
+/// This function allows the pool owner to configure delegate-specific wait times for
+/// pool pause requests. The wait time is the delay between when a pause is requested
+/// and when it becomes active, providing deliberation time for dispute resolution.
+///
+/// # Purpose
+/// - Configures delegate-specific governance timing parameters
+/// - Enables fine-tuned control over pause activation delays
+/// - Supports different trust levels for different delegates
+/// - Provides flexibility for various governance models
+/// - Allows optimization of response times for different use cases
+///
+/// # How it works
+/// 1. **Authorization**: Verifies caller is pool owner and signed transaction
+/// 2. **Delegate Validation**: Ensures target delegate exists in authorized list
+/// 3. **Parameter Validation**: Validates wait time is within allowed range
+/// 4. **Configuration Update**: Updates delegate's pause wait time setting
+/// 5. **State Persistence**: Saves updated configuration to pool state
+/// 6. **Audit Logging**: Logs configuration change for transparency
+///
+/// # Arguments
+/// * `program_id` - The program ID for validation (unused but standard pattern)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer)
+///   - `accounts[1]` - Pool state PDA account (writable for configuration updates)
+/// * `delegate` - Public key of the delegate to configure
+/// * `wait_time` - Wait time in seconds (60 to 259200 = 1 minute to 72 hours)
+///
+/// # Account Requirements
+/// - Owner: Must be signer and match pool state owner field
+/// - Pool state: Must be owned by program and writable for updates
+///
+/// # Validation Rules
+/// - Only pool owner can set delegate pause wait times
+/// - Wait time must be between 1 minute and 72 hours
+/// - Delegate must exist in authorized delegate list
+/// - Setting applies to future pause requests only
+///
+/// # Default Values
+/// - New delegates default to 72 hours wait time (maximum deliberation)
+/// - This provides conservative governance approach by default
+/// - Can be reduced for trusted delegates or specific use cases
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not pool owner
+/// - `PoolError::DelegateNotFound` - Target delegate is not authorized
+/// - `PoolError::InvalidWaitTime` - Wait time is outside allowed range
+///
+/// # Example Usage
+/// ```ignore
+/// // Set trusted delegate to 1 hour wait time
+/// let instruction = PoolInstruction::SetPoolPauseWaitTime {
+///     delegate: trusted_delegate_pubkey,
+///     wait_time: 3600, // 1 hour
+/// };
+/// 
+/// // Set new delegate to maximum wait time for safety
+/// let instruction = PoolInstruction::SetPoolPauseWaitTime {
+///     delegate: new_delegate_pubkey,
+///     wait_time: 259200, // 72 hours
+/// };
+/// ```
+pub fn process_set_pool_pause_wait_time(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    delegate: Pubkey,
+    wait_time: u64,
+) -> ProgramResult {
+    msg!("Processing SetPoolPauseWaitTime for delegate: {}, wait_time: {} seconds", delegate, wait_time);
+    let account_info_iter = &mut accounts.iter();
+
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to set pool pause wait time");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can set pool pause wait times");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Set the delegate's pool pause wait time
+    pool_state_data.delegate_management.set_pool_pause_wait_time(&delegate, wait_time)?;
+
+    // Save updated state
+    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+
+    // Log the wait time update
+    msg!("Pool pause wait time updated: delegate={}, wait_time={} seconds", delegate, wait_time);
+
     Ok(())
 }

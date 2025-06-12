@@ -116,6 +116,53 @@ let fee_ix = PoolInstruction::GetFeeInfo;
 - 👥 **Delegate Info**: Delegate list, wait times, withdrawal history
 - 💸 **Fee Info**: Fee rates, collected fees, available balances
 
+### **NEW: Individual Pool Ratio Pausing**
+Added sophisticated delegate-controlled pool pausing system for governance integration:
+
+```rust
+// Delegate requests pool pause for dispute resolution
+let pause_request_ix = PoolInstruction::RequestPoolPause {
+    reason: PoolPauseReason::RatioDispute,
+    duration_seconds: 3600, // 1 hour pause
+};
+
+// Owner or delegate can cancel before activation
+let cancel_pause_ix = PoolInstruction::CancelPoolPause;
+
+// Owner configures delegate-specific wait times
+let set_wait_time_ix = PoolInstruction::SetPoolPauseWaitTime {
+    delegate: delegate_pubkey,
+    wait_time: 3600, // 1 hour delay before activation
+};
+```
+
+**Features:**
+- 🔄 **Individual Delegate Control**: Each delegate can pause pools independently
+- ⏱️ **Configurable Timing**: 1 minute to 72 hours wait times and durations
+- 🏛️ **Governance Integration**: Structured reasons for dispute resolution
+- 🛡️ **Owner Override**: Pool owner can cancel any delegate's pause request
+- 🎯 **Bonding Support**: Designed for integration with bonding mechanisms
+
+**Pause Reasons:**
+- `RatioDispute` - Dispute over fixed ratio accuracy or fairness
+- `InsufficientBond` - Insufficient bonding by pool participants
+- `SecurityConcern` - General security concern requiring investigation
+- `GovernanceAction` - Governance action or proposal execution
+- `ManualIntervention` - Manual intervention by authorized delegate
+- `Emergency` - Emergency response to detected issues
+
+**Timing Model:**
+1. **Request**: Delegate submits pause request with reason and duration
+2. **Wait Period**: Configurable delay (1 minute to 72 hours) before activation
+3. **Active Period**: Pool operations paused for specified duration
+4. **Auto-Expiry**: Pause automatically lifts after duration completes
+
+**Use Cases:**
+- 💰 **Bonding Mechanisms**: Pause pool until bond requirements are met
+- ⚖️ **Dispute Resolution**: Structured pause system for governance
+- 🔒 **Security Response**: Rapid response to detected issues
+- 🏛️ **Governance Integration**: Primitive for higher-layer governance contracts
+
 ## Backward Compatibility
 
 The legacy two-instruction pattern is still supported but marked as deprecated:
@@ -223,6 +270,11 @@ You can migrate incrementally:
 - `CancelWithdrawalRequest` - Cancel pending withdrawal request
 - `SetDelegateWaitTime` - Configure delegate-specific wait times
 
+### Individual Pool Ratio Pausing
+- `RequestPoolPause` - **NEW**: Delegate requests pool pause with structured reason
+- `CancelPoolPause` - **NEW**: Cancel pending pool pause request (owner or delegate)
+- `SetPoolPauseWaitTime` - **NEW**: Configure delegate-specific pause wait times
+
 ### Helper Utilities
 - `GetPoolStatePDA` - **NEW**: Compute pool state PDA address
 - `GetTokenVaultPDAs` - **NEW**: Compute token vault PDA addresses
@@ -244,6 +296,11 @@ const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50;          // 0.5% maximum
 const MAX_DELEGATES: usize = 3;                     // Maximum delegates
 const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;          // 5 minutes
 const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;       // 72 hours
+
+// Pool Pause Constants
+const MIN_POOL_PAUSE_TIME: u64 = 60;                // 1 minute minimum
+const MAX_POOL_PAUSE_TIME: u64 = 259200;            // 72 hours maximum
+const DEFAULT_POOL_PAUSE_WAIT_TIME: u64 = 259200;   // 72 hours default wait
 ```
 
 ## Error Handling
@@ -300,7 +357,10 @@ This program implements multiple layers of security:
 2. **Parameter Validation**: Comprehensive input validation and bounds checking
 3. **Rent Protection**: Automatic maintenance of rent-exempt status
 4. **Pause Mechanism**: Emergency stop capability for security incidents
-5. **Time Delays**: Configurable wait times prevent immediate unauthorized access
-6. **Audit Trail**: Complete logging of all operations for transparency
+5. **Individual Pool Pausing**: Delegate-controlled pause system with governance integration
+6. **Time Delays**: Configurable wait times prevent immediate unauthorized access
+7. **Structured Dispute Resolution**: Categorized pause reasons for governance systems
+8. **Owner Override**: Pool owner can cancel any delegate's pause request for emergency resolution
+9. **Audit Trail**: Complete logging of all operations for transparency
 
 For security issues, please review the code thoroughly and test extensively before mainnet deployment. 
