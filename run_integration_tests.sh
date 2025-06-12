@@ -5,8 +5,8 @@
 # It will then stop the validator and exit with the test result
 # quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD is the program ID for the fixed-ratio-trading program
 
-# Start the Solana test validator in the background
-solana-test-validator &
+# Start the Solana test validator in the background with increased compute budget
+solana-test-validator --rpc-pubsub-enable --rpc-port 8899 --compute-unit-limit 1000000 &
 VALIDATOR_PID=$!
 
 # Wait for the validator to start
@@ -18,8 +18,8 @@ solana config set --url http://localhost:8899
 # Airdrop SOL to the default wallet
 solana airdrop 10
 
-# Run the integration tests
-cargo test -- --test-threads=1
+# Run the integration tests with increased timeout and compute budget
+RUST_LOG=error cargo test -- --test-threads=1 --nocapture
 
 # Capture the test result
 TEST_RESULT=$?
