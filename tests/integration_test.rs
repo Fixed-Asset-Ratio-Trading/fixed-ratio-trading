@@ -69,7 +69,6 @@ use solana_program_test::*;
 use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::{Transaction, TransactionError},
-    account::Account as SdkAccount,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction, InstructionError},
@@ -203,7 +202,7 @@ async fn create_mint(
 #[tokio::test]
 async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -401,7 +400,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
 #[tokio::test]
 async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -648,7 +647,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
 #[tokio::test]
 async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -821,7 +820,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
 #[tokio::test]
 async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -910,7 +909,7 @@ async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError
 #[tokio::test]
 async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -1008,7 +1007,7 @@ async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClient
 #[tokio::test]
 async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClientError> {
     // Setup program test without adding extra lamports to payer
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -1105,7 +1104,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
 #[tokio::test]
 async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -1205,7 +1204,7 @@ async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientErr
 #[tokio::test]
 async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -1704,7 +1703,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     use solana_sdk::signature::Signer;
     
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -2048,7 +2047,7 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
     // Negative 2: Pool owner tries to update with invalid pause state while using invalid signer
 
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading", 
         PROGRAM_ID,
         processor!(process_instruction),
@@ -2262,7 +2261,7 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
 #[tokio::test]
 async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
@@ -2474,7 +2473,7 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
 #[tokio::test]
 async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
     // Setup program test
-    let mut program_test = ProgramTest::new(
+    let program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
