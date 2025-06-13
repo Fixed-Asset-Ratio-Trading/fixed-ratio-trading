@@ -210,6 +210,7 @@ async fn test_request_fee_withdrawal_missing_signature_fails() -> TestResult {
     ).await?;
 
     // Try fee withdrawal with delegate not marked as signer
+    // Pool owner will be the payer, but delegate won't sign
     let request_amount = 100_000u64;
     let token_mint = config.token_a_mint;
 
@@ -226,8 +227,9 @@ async fn test_request_fee_withdrawal_missing_signature_fails() -> TestResult {
         }.try_to_vec().unwrap(),
     };
 
-    let mut request_tx = Transaction::new_with_payer(&[request_ix], Some(&delegate.pubkey()));
-    request_tx.sign(&[&delegate], ctx.env.recent_blockhash);
+    // Pool owner is payer, but delegate doesn't sign - this should fail
+    let mut request_tx = Transaction::new_with_payer(&[request_ix], Some(&ctx.env.payer.pubkey()));
+    request_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash); // Only payer signs, delegate doesn't
     
     let result = ctx.env.banks_client.process_transaction(request_tx).await;
     

@@ -4058,6 +4058,13 @@ pub fn process_request_fee_withdrawal(
         return Err(PoolError::UnauthorizedDelegate.into());
     }
 
+    // Validate token mint is one of the pool's valid tokens (or SOL for fee withdrawals)
+    if token_mint != pool_state.token_a_mint && token_mint != pool_state.token_b_mint && token_mint != Pubkey::default() {
+        msg!("Invalid token mint for withdrawal: {}. Valid mints: {}, {}, SOL (default)", 
+             token_mint, pool_state.token_a_mint, pool_state.token_b_mint);
+        return Err(ProgramError::InvalidArgument);
+    }
+
     // Get current timestamp
     let clock = Clock::from_account_info(clock_info)?;
     let current_timestamp = clock.unix_timestamp;
@@ -4071,8 +4078,17 @@ pub fn process_request_fee_withdrawal(
         clock.slot,
     )?;
 
-    // Save updated pool state
-    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+    // Save updated pool state using buffer serialization approach
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    let account_data_len = pool_state_info.data_len();
+    if serialized_data.len() > account_data_len {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    {
+        let mut account_data = pool_state_info.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
 
     // Log the withdrawal request
     msg!("Withdrawal requested: delegate={}, token_mint={}, amount={}, timestamp={}", 
