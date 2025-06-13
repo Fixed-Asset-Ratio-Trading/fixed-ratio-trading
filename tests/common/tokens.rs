@@ -92,6 +92,7 @@ pub async fn create_mint(
 /// * `token_account` - Keypair for the new token account
 /// * `mint` - Mint that this token account will hold
 /// * `owner` - Owner of the token account
+#[allow(dead_code)]
 pub async fn create_token_account(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -137,6 +138,7 @@ pub async fn create_token_account(
 /// * `destination` - Token account to mint tokens to
 /// * `authority` - Mint authority
 /// * `amount` - Amount of tokens to mint
+#[allow(dead_code)]
 pub async fn mint_tokens(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -172,6 +174,7 @@ pub async fn mint_tokens(
 /// 
 /// # Returns
 /// Token balance or 0 if account doesn't exist
+#[allow(dead_code)]
 pub async fn get_token_balance(
     banks: &mut BanksClient,
     token_account: &solana_program::pubkey::Pubkey,
@@ -220,6 +223,7 @@ pub async fn create_test_mints(
 /// * `primary_mint` - Primary token mint
 /// * `base_mint` - Base token mint
 /// * `user` - User who will own the token accounts
+#[allow(dead_code)]
 pub async fn create_user_token_accounts(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -266,6 +270,7 @@ pub async fn create_user_token_accounts(
 /// 
 /// # Returns
 /// (user_keypair, primary_token_account, base_token_account)
+#[allow(dead_code)]
 pub async fn setup_test_user(
     banks: &mut BanksClient,
     payer: &Keypair,

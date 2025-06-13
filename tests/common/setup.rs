@@ -136,6 +136,7 @@ pub async fn setup_pool_test_context(with_debug_logging: bool) -> PoolTestContex
 }
 
 /// Create and fund a test user account
+#[allow(dead_code)]
 /// 
 /// Creates a new keypair and funds it with SOL from the payer
 /// 
@@ -183,6 +184,7 @@ pub async fn create_funded_user(
 /// 
 /// # Returns
 /// Vector of funded user keypairs
+#[allow(dead_code)]
 pub async fn create_multiple_funded_users(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -208,6 +210,7 @@ pub async fn create_multiple_funded_users(
 /// 
 /// # Returns
 /// Account balance in lamports, or 0 if account doesn't exist
+#[allow(dead_code)]
 pub async fn get_sol_balance(
     banks: &mut BanksClient,
     account: &solana_program::pubkey::Pubkey,
@@ -225,6 +228,7 @@ pub async fn get_sol_balance(
 /// # Arguments
 /// * `banks` - Banks client 
 /// * `slots` - Number of slots to wait
+#[allow(dead_code)]
 pub async fn wait_slots(banks: &mut BanksClient, slots: u64) -> Result<(), solana_program_test::BanksClientError> {
     // In solana-program-test, we can't actually wait for slots to pass
     // This is a placeholder for when time-dependent tests are needed
@@ -243,6 +247,7 @@ pub async fn wait_slots(banks: &mut BanksClient, slots: u64) -> Result<(), solan
 /// # Arguments
 /// * `banks` - Banks client
 /// * `seconds` - Number of seconds to advance
+#[allow(dead_code)]
 pub async fn advance_clock(banks: &mut BanksClient, seconds: u64) -> Result<(), solana_program_test::BanksClientError> {
     // Similar to wait_slots, this is a placeholder for clock advancement
     // In solana-program-test, time manipulation is limited
@@ -261,6 +266,7 @@ pub async fn advance_clock(banks: &mut BanksClient, seconds: u64) -> Result<(), 
 /// 
 /// # Returns
 /// TestEnvironment with additional setup
+#[allow(dead_code)]
 pub async fn setup_custom_test_environment(
     debug_logging: bool,
     additional_accounts: Option<Vec<u64>>, // SOL amounts for additional accounts
@@ -296,6 +302,7 @@ pub async fn setup_custom_test_environment(
 /// 
 /// # Returns
 /// True if account exists, false otherwise
+#[allow(dead_code)]
 pub async fn account_exists(
     banks: &mut BanksClient,
     account: &solana_program::pubkey::Pubkey,
@@ -311,6 +318,7 @@ pub async fn account_exists(
 /// 
 /// # Returns
 /// Account data length, or 0 if account doesn't exist
+#[allow(dead_code)]
 pub async fn get_account_data_len(
     banks: &mut BanksClient,
     account: &solana_program::pubkey::Pubkey,

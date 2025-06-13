@@ -37,6 +37,7 @@ use crate::common::{constants, TestResult, *};
 /// 
 /// Contains the normalized token mints, ratios, and derived PDAs for a pool
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Allow unused fields as this is a comprehensive config struct for tests
 pub struct PoolConfig {
     /// Normalized token A mint (lexicographically smaller)
     pub token_a_mint: Pubkey,
@@ -181,6 +182,7 @@ pub fn normalize_pool_config(
 /// 
 /// # Returns
 /// Pool configuration with all derived addresses
+#[allow(dead_code)]
 pub async fn create_pool_new_pattern(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -246,6 +248,7 @@ pub async fn create_pool_new_pattern(
 /// 
 /// # Returns
 /// Pool configuration with all derived addresses
+#[allow(dead_code)]
 pub async fn create_pool_legacy_pattern(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -277,6 +280,7 @@ pub async fn create_pool_legacy_pattern(
             AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
         ],
+        #[allow(deprecated)]
         data: PoolInstruction::CreatePoolStateAccount {
             ratio_primary_per_base: ratio,
             pool_authority_bump_seed: config.pool_authority_bump,
@@ -306,6 +310,7 @@ pub async fn create_pool_legacy_pattern(
             AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
         ],
+        #[allow(deprecated)]
         data: PoolInstruction::InitializePoolData {
             ratio_primary_per_base: ratio,
             pool_authority_bump_seed: config.pool_authority_bump,
@@ -329,6 +334,7 @@ pub async fn create_pool_legacy_pattern(
 /// * `recent_blockhash` - Recent blockhash for transaction
 /// * `pool_state_pda` - Pool state account
 /// * `delegate` - Delegate to add
+#[allow(dead_code)]
 pub async fn add_delegate(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -362,6 +368,7 @@ pub async fn add_delegate(
 /// * `max_withdrawal_percentage` - Maximum withdrawal percentage (optional)
 /// * `withdrawal_cooldown` - Withdrawal cooldown period (optional)
 /// * `is_paused` - Whether pool is paused (optional)
+#[allow(dead_code)]
 pub async fn update_security_params(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -398,6 +405,7 @@ pub async fn update_security_params(
 /// 
 /// # Returns
 /// Deserialized pool state or None if account doesn't exist
+#[allow(dead_code)]
 pub async fn get_pool_state(
     banks: &mut BanksClient,
     pool_state_pda: &Pubkey,
@@ -421,6 +429,7 @@ pub async fn get_pool_state(
 /// * `owner` - Expected pool owner
 /// * `lp_token_a_mint` - Expected LP Token A mint
 /// * `lp_token_b_mint` - Expected LP Token B mint
+#[allow(dead_code)]
 pub async fn verify_pool_state(
     banks: &mut BanksClient,
     config: &PoolConfig,

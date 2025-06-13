@@ -42,23 +42,30 @@ pub use tokens::*;
 pub use pool_helpers::*;
 
 // Re-export external dependencies commonly used in tests
+// Allow unused imports since these are provided for optional use across test modules
+#[allow(unused_imports)]
 pub use borsh::{BorshDeserialize, BorshSerialize};
+#[allow(unused_imports)]
 pub use solana_program::{
     pubkey::Pubkey,
     instruction::{AccountMeta, Instruction},
 };
+#[allow(unused_imports)]
 pub use solana_sdk::{
     program_pack::Pack,
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
+#[allow(unused_imports)]
 pub use spl_token::{
     instruction as token_instruction,
     state::{Account as TokenAccount, Mint as MintAccount},
 };
+#[allow(unused_imports)]
 pub use solana_program_test::*;
 
 // Re-export program-specific imports
+#[allow(unused_imports)]
 pub use fixed_ratio_trading::{
     PoolInstruction, PoolState, process_instruction, 
     ID as PROGRAM_ID,
@@ -101,11 +108,14 @@ pub mod constants {
     pub const TOKEN_DECIMALS: u8 = 9;
     
     /// Default liquidity amounts for testing
+    #[allow(dead_code)]
     pub const DEFAULT_LIQUIDITY_AMOUNT: u64 = 10_000_000; // 10M tokens
     
     /// Default user token amounts for testing
+    #[allow(dead_code)]
     pub const DEFAULT_USER_TOKEN_AMOUNT: u64 = 25_000_000; // 25M tokens
     
     /// Default SOL airdrop amount for test users
+    #[allow(dead_code)]
     pub const DEFAULT_SOL_AIRDROP: u64 = 5_000_000_000; // 5 SOL
 } 

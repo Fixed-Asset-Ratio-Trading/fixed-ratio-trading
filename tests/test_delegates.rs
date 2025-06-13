@@ -171,7 +171,7 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
     assert!(first_result.is_ok(), "First delegate addition should succeed");
 
     // **CRITICAL**: Get new blockhash to ensure state persistence between transactions
-    let (new_blockhash, _) = ctx.env.banks_client.get_new_blockhash(&ctx.env.recent_blockhash).await?;
+    let new_blockhash = ctx.env.banks_client.get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
     ctx.env.recent_blockhash = new_blockhash;
 
     // Debug: Check pool state after first addition
@@ -264,7 +264,7 @@ async fn test_add_multiple_delegates() -> TestResult {
     assert!(result1.is_ok(), "First delegate addition should succeed");
 
     // **CRITICAL**: Get new blockhash to ensure state persistence between transactions
-    let (new_blockhash2, _) = ctx.env.banks_client.get_new_blockhash(&ctx.env.recent_blockhash).await?;
+    let new_blockhash2 = ctx.env.banks_client.get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
     ctx.env.recent_blockhash = new_blockhash2;
 
     // Add second additional delegate (this will be delegate[2])
