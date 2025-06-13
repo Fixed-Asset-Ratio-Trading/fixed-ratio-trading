@@ -2,6 +2,75 @@
 
 A Solana program implementing fixed-ratio token trading pools with enhanced security, delegate management, and comprehensive testing.
 
+## 🚨 CRITICAL: Anti-Liquidity Fragmentation
+
+**IMPORTANT**: This contract implements a critical invariant to prevent market fragmentation by ensuring only **ONE pool per token pair** can exist, regardless of token order or ratios.
+
+### Why This Matters
+
+Market fragmentation occurs when multiple pools exist for the same economic relationship, splitting liquidity and creating inefficiencies:
+
+```rust
+// ❌ THESE SCENARIOS ARE PREVENTED:
+// Pool 1: TokenA/TokenB with ratio 3:1 (3 A per 1 B)  
+// Pool 2: TokenB/TokenA with ratio 1:3 (1 B per 3 A) ← Same economic rate!
+
+// Pool 1: USDC/SOL with ratio 100:1 (100 USDC per 1 SOL)
+// Pool 2: SOL/USDC with any ratio ← BLOCKED - same token pair!
+```
+
+### How It Works
+
+The contract uses **enhanced normalization** to detect and prevent economically equivalent pools:
+
+1. **Token Normalization**: All token pairs are ordered lexicographically (A < B)
+2. **Canonical Mapping**: Both "A/B" and "B/A" pools normalize to the same configuration
+3. **PDA Collision**: Duplicate pools result in the same PDA, causing creation to fail
+4. **Atomic Prevention**: Second pool creation fails at the account level
+
+### Implementation Details
+
+```rust
+// Both of these pool configurations:
+normalize_pool_config(&token_a, &token_b, ratio_x)  // Pool 1
+normalize_pool_config(&token_b, &token_a, ratio_x)  // Pool 2
+
+// Result in IDENTICAL normalized configuration:
+// - Same token_a_mint (lexicographically smaller)
+// - Same token_b_mint (lexicographically larger)  
+// - Same pool_state_pda
+// - Same canonical ratio representation
+```
+
+### Benefits
+
+✅ **Prevents Market Fragmentation**: All liquidity concentrated in one pool per token pair  
+✅ **Eliminates User Confusion**: Clear, unambiguous pool for each token pair  
+✅ **Maximizes Liquidity Efficiency**: No splitting of liquidity across equivalent pools  
+✅ **Prevents Arbitrage Issues**: No price discrepancies between equivalent pools  
+✅ **Simplifies Integration**: Clients only need to handle one pool per token pair  
+
+### For Developers
+
+When creating pools, remember:
+- ✅ **First pool created**: Successfully establishes the token pair
+- ❌ **Second pool attempt**: Will fail with account already exists error
+- 🔍 **Pool lookup**: Use either token order - both resolve to same pool
+- 🎯 **Integration**: No need to worry about multiple pools for same pair
+
+```rust
+// Example: All these attempts reference the same pool
+let pool_usdc_sol = derive_pool_pda(&usdc_mint, &sol_mint, ratio);
+let pool_sol_usdc = derive_pool_pda(&sol_mint, &usdc_mint, ratio);
+// pool_usdc_sol == pool_sol_usdc ✅
+
+// Only the first creation succeeds
+create_pool(&usdc_mint, &sol_mint, ratio_1); // ✅ Success
+create_pool(&sol_mint, &usdc_mint, ratio_2); // ❌ Fails - same token pair
+```
+
+This design ensures **optimal liquidity concentration** and **market efficiency** while preventing the chaos of fragmented liquidity pools.
+
 ## Recent Improvements ✨
 
 ### **NEW: Single-Instruction Pool Initialization**

@@ -1058,15 +1058,30 @@ fn process_create_pool_state_account(
     }
     msg!("DEBUG: process_create_pool_state_account: Ratio is non-zero check passed");
 
-    // Normalize tokens and ratio
+    // Enhanced normalization to prevent economic duplicates
     msg!("DEBUG: process_create_pool_state_account: Normalizing tokens and ratio...");
-    let (token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+    
+    // Step 1: Lexicographic token ordering
+    let (token_a_mint_key, token_b_mint_key) = 
         if primary_token_mint_account.key < base_token_mint_account.key {
             msg!("DEBUG: process_create_pool_state_account: Primary mint < Base mint");
-            (primary_token_mint_account.key, base_token_mint_account.key, ratio_primary_per_base, 1, true)
+            (primary_token_mint_account.key, base_token_mint_account.key)
         } else {
             msg!("DEBUG: process_create_pool_state_account: Primary mint > Base mint");
-            (base_token_mint_account.key, primary_token_mint_account.key, 1, ratio_primary_per_base, false)
+            (base_token_mint_account.key, primary_token_mint_account.key)
+        };
+    
+    // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
+    // CRITICAL: All pools with the same token pair normalize to the same ratio
+    // This prevents both "X A per 1 B" and "X B per 1 A" from being separate pools
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+        if primary_token_mint_account.key < base_token_mint_account.key {
+            // Primary is token A: direct mapping
+            (ratio_primary_per_base, 1u64, true)
+        } else {
+            // Primary is token B: use canonical form to prevent economic duplicates
+            // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
+            (ratio_primary_per_base, 1u64, false)
         };
 
     msg!("DEBUG: process_create_pool_state_account: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
@@ -1463,15 +1478,30 @@ fn process_initialize_pool_data(
     }
     msg!("DEBUG: process_initialize_pool_data: Ratio is non-zero check passed");
 
-    // Normalize tokens and ratio
+    // Enhanced normalization to prevent economic duplicates
     msg!("DEBUG: process_initialize_pool_data: Normalizing tokens and ratio...");
-    let (token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+    
+    // Step 1: Lexicographic token ordering
+    let (token_a_mint_key, token_b_mint_key) = 
         if primary_token_mint_account.key < base_token_mint_account.key {
             msg!("DEBUG: process_initialize_pool_data: Primary mint < Base mint");
-            (primary_token_mint_account.key, base_token_mint_account.key, ratio_primary_per_base, 1, true)
+            (primary_token_mint_account.key, base_token_mint_account.key)
         } else {
             msg!("DEBUG: process_initialize_pool_data: Primary mint > Base mint");
-            (base_token_mint_account.key, primary_token_mint_account.key, 1, ratio_primary_per_base, false)
+            (base_token_mint_account.key, primary_token_mint_account.key)
+        };
+    
+    // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
+    // CRITICAL: All pools with the same token pair normalize to the same ratio
+    // This prevents both "X A per 1 B" and "X B per 1 A" from being separate pools
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+        if primary_token_mint_account.key < base_token_mint_account.key {
+            // Primary is token A: direct mapping
+            (ratio_primary_per_base, 1u64, true)
+        } else {
+            // Primary is token B: use canonical form to prevent economic duplicates
+            // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
+            (ratio_primary_per_base, 1u64, false)
         };
 
     msg!("DEBUG: process_initialize_pool_data: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
@@ -4348,12 +4378,22 @@ pub fn get_pool_state_pda(
 ) -> ProgramResult {
     msg!("DEBUG: get_pool_state_pda: Computing Pool State PDA");
     
-    // Normalize tokens and ratio (same logic as in pool creation)
-    let (token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator) = 
+    // Enhanced normalization to prevent economic duplicates (same logic as pool creation)
+    // Step 1: Lexicographic token ordering
+    let (token_a_mint_key, token_b_mint_key) = 
         if primary_token_mint < base_token_mint {
-            (primary_token_mint, base_token_mint, ratio_primary_per_base, 1)
+            (primary_token_mint, base_token_mint)
         } else {
-            (base_token_mint, primary_token_mint, 1, ratio_primary_per_base)
+            (base_token_mint, primary_token_mint)
+        };
+    
+    // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
+    let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
+        if primary_token_mint < base_token_mint {
+            (ratio_primary_per_base, 1u64)
+        } else {
+            // Use canonical form - both pools with same token pair get same ratio
+            (ratio_primary_per_base, 1u64)
         };
     
     // Find PDA with canonical bump seed

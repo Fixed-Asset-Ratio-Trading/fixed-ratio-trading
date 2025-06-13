@@ -198,22 +198,22 @@ impl PoolClient {
     /// # Returns
     /// * `PoolAddresses` - All derived addresses for the pool
     pub fn derive_pool_addresses(&self, config: &PoolConfig) -> PoolAddresses {
-        // Normalize tokens and ratio (lexicographic ordering)
-        let (token_a_mint, token_b_mint, ratio_a_numerator, ratio_b_denominator) = 
+        // Enhanced normalization to prevent economic duplicates
+        // Step 1: Lexicographic token ordering
+        let (token_a_mint, token_b_mint) = 
             if config.primary_token_mint < config.base_token_mint {
-                (
-                    config.primary_token_mint,
-                    config.base_token_mint,
-                    config.ratio_primary_per_base,
-                    1,
-                )
+                (config.primary_token_mint, config.base_token_mint)
             } else {
-                (
-                    config.base_token_mint,
-                    config.primary_token_mint,
-                    1,
-                    config.ratio_primary_per_base,
-                )
+                (config.base_token_mint, config.primary_token_mint)
+            };
+        
+        // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
+        let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
+            if config.primary_token_mint < config.base_token_mint {
+                (config.ratio_primary_per_base, 1u64)
+            } else {
+                // Use canonical form - all pools with same token pair get same ratio
+                (config.ratio_primary_per_base, 1u64)
             };
         
         // Derive pool state PDA

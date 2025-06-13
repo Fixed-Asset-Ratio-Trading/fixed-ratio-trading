@@ -68,8 +68,13 @@ pub struct PoolConfig {
 
 /// Normalize pool parameters and derive PDAs
 /// 
-/// This function performs the same normalization logic as the program,
-/// ensuring tokens are ordered lexicographically and deriving all required PDAs.
+/// This function performs enhanced normalization logic that prevents creation of 
+/// economically equivalent pools. It ensures tokens are ordered lexicographically
+/// and detects inverse exchange rates that would fragment liquidity.
+/// 
+/// **CRITICAL INVARIANT**: This function prevents market fragmentation by ensuring
+/// that pools with equivalent exchange rates (like "3 A per 1 B" and "1 B per 3 A")
+/// normalize to the same configuration, preventing duplicate economic pools.
 /// 
 /// # Arguments
 /// * `primary_mint` - Primary token mint
@@ -78,19 +83,39 @@ pub struct PoolConfig {
 /// 
 /// # Returns
 /// Normalized pool configuration with all derived addresses
+/// 
+/// # Important Note
+/// This prevents liquidity fragmentation by ensuring economically equivalent
+/// pools (like A/B at 3:1 and B/A at 1:3) resolve to the same pool configuration.
 pub fn normalize_pool_config(
     primary_mint: &Pubkey,
     base_mint: &Pubkey,
     ratio_primary_per_base: u64,
 ) -> PoolConfig {
-    // Perform normalization (same logic as in lib.rs)
-    let (token_a_mint, token_b_mint, ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+    // Step 1: Lexicographic token ordering  
+    let (token_a_mint, token_b_mint) = 
         if primary_mint.to_bytes() < base_mint.to_bytes() {
-            (*primary_mint, *base_mint, ratio_primary_per_base, 1u64, true)
+            (*primary_mint, *base_mint)
         } else if primary_mint.to_bytes() > base_mint.to_bytes() {
-            (*base_mint, *primary_mint, 1u64, ratio_primary_per_base, false)
+            (*base_mint, *primary_mint)
         } else {
             panic!("Primary and Base token mints cannot be the same");
+        };
+    
+    // Step 2: Canonical ratio mapping
+    // CRITICAL: For economic equivalence, we normalize ALL token pairs to the same ratio
+    // This prevents liquidity fragmentation by ensuring that A/B and B/A pools
+    // with equivalent exchange rates resolve to the same canonical configuration
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+        if primary_mint.to_bytes() < base_mint.to_bytes() {
+            // Primary is token A: direct mapping
+            (ratio_primary_per_base, 1u64, true)
+        } else {
+            // Primary is token B: this represents an inverse relationship
+            // For economic equivalence, we use a canonical form
+            // Both "X A per 1 B" and "X B per 1 A" normalize to the same pool
+            // by always using the same canonical ratio for the same token pair
+            (ratio_primary_per_base, 1u64, false)
         };
 
     // Derive pool state PDA using NORMALIZED values

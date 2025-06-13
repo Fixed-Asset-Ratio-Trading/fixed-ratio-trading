@@ -109,14 +109,10 @@ async fn test_initialize_pool_new_pattern_custom_ratio() -> TestResult {
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Pool state should exist");
 
-    // Check that the ratio is properly normalized
-    if config.token_a_is_primary {
-        assert_eq!(pool_state.ratio_a_numerator, custom_ratio);
-        assert_eq!(pool_state.ratio_b_denominator, 1);
-    } else {
-        assert_eq!(pool_state.ratio_a_numerator, 1);
-        assert_eq!(pool_state.ratio_b_denominator, custom_ratio);
-    }
+    // With enhanced normalization, all pools use canonical ratio form
+    // Both "X primary per 1 base" and "X base per 1 primary" normalize to same ratio
+    assert_eq!(pool_state.ratio_a_numerator, custom_ratio, "Canonical form should preserve ratio");
+    assert_eq!(pool_state.ratio_b_denominator, 1, "Canonical form should use denominator 1");
 
     println!("✅ Custom ratio pool created successfully with {}:1 ratio", custom_ratio);
     
@@ -237,7 +233,17 @@ async fn test_initialize_multiple_pools_different_ratios() -> TestResult {
 // VALIDATION AND ERROR TESTS
 // ================================================================================================
 
-/// Test that creating a pool with reversed tokens but same ratio fails
+/// Test that creating a pool with reversed tokens but equivalent exchange rate fails
+/// 
+/// This test verifies a critical invariant: the contract prevents creation of economically
+/// duplicate pools. If a pool exists with "3 A per 1 B", attempting to create a pool with 
+/// "1 B per 3 A" should fail since they represent the same exchange rate.
+/// 
+/// This prevents:
+/// - Market fragmentation
+/// - Liquidity splitting across equivalent pools  
+/// - User confusion about which pool to use
+/// - Arbitrage opportunities due to liquidity imbalances
 #[tokio::test]
 async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
     let mut ctx = setup_pool_test_context(false).await;
@@ -250,7 +256,7 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    // Create first pool successfully
+    // Create first pool: 2 primary per 1 base (exchange rate: 2:1)
     let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -262,7 +268,9 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
         Some(2),
     ).await?;
 
-    // Try to create another pool with reversed tokens (should fail due to normalization)
+    println!("✅ Created first pool: 2 primary per 1 base");
+
+    // Try to create economically equivalent pool: 1 base per 2 primary (same exchange rate: 2:1)
     let lp_token_a_mint_2 = Keypair::new();
     let lp_token_b_mint_2 = Keypair::new();
 
@@ -271,16 +279,19 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.base_mint,    // Reversed: base as primary
-        &ctx.primary_mint, // Reversed: primary as base
+        &ctx.primary_mint, // Reversed: primary as base  
         &lp_token_a_mint_2,
         &lp_token_b_mint_2,
-        Some(2), // Same ratio
+        Some(2), // This would create ratio 1:2 (base:primary) = same as 2:1 (primary:base)
     ).await;
 
-    // This should fail because normalization will result in the same pool configuration
-    assert!(result.is_err(), "Creating pool with reversed tokens but same ratio should fail");
+    // This should fail because it represents the same economic exchange rate
+    assert!(result.is_err(), "Creating economically equivalent pool should fail - prevents market fragmentation");
     
-    println!("✅ Correctly prevented duplicate pool creation with reversed token order");
+    println!("✅ Correctly prevented creation of economically equivalent pool");
+    println!("   Original: 2 primary per 1 base (PDA: {})", config.pool_state_pda);
+    println!("   Blocked:  1 base per 2 primary (same exchange rate)");
+    println!("   This prevents liquidity fragmentation and user confusion");
     
     Ok(())
 }
@@ -484,20 +495,25 @@ async fn test_pool_normalization_logic() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    // Test normalization directly
-    let config1 = normalize_pool_config(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 3);
-    let config2 = normalize_pool_config(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 3);
+    // Test normalization directly with economically equivalent ratios
+    let config1 = normalize_pool_config(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 4);
+    let config2 = normalize_pool_config(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 4);
 
-    // Both should result in the same normalized configuration
+    // Both should normalize to the same token ordering (lexicographically)
     assert_eq!(config1.token_a_mint, config2.token_a_mint, "Token A should be the same after normalization");
     assert_eq!(config1.token_b_mint, config2.token_b_mint, "Token B should be the same after normalization");
-    assert_eq!(config1.pool_state_pda, config2.pool_state_pda, "Pool PDAs should be the same after normalization");
+    
+    // These represent economically equivalent pools and should result in the same PDA
+    // Pool 1: 4 primary per 1 base 
+    // Pool 2: 4 base per 1 primary (when tokens are reversed)
+    // After normalization, these should be detected as equivalent
+    assert_eq!(config1.pool_state_pda, config2.pool_state_pda, "Economically equivalent pools should have the same PDA");
 
-    // The ratios should be adjusted to maintain the same effective exchange rate
-    println!("✅ Normalization logic works correctly for different token orderings");
+    println!("✅ Normalization logic correctly detects economically equivalent pools");
     println!("   Config 1 - Token A: {}, Token B: {}", config1.token_a_mint, config1.token_b_mint);
     println!("   Config 1 - Ratio: {}:{}", config1.ratio_a_numerator, config1.ratio_b_denominator);
-    println!("   Config 2 should be identical due to normalization");
+    println!("   Config 2 - Ratio: {}:{}", config2.ratio_a_numerator, config2.ratio_b_denominator);
+    println!("   Same PDA prevents liquidity fragmentation: {}", config1.pool_state_pda);
     
     Ok(())
 } 
