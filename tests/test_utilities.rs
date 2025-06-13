@@ -362,8 +362,25 @@ fn test_delegate_management_get_packed_len() {
     let len = DelegateManagement::get_packed_len();
     assert!(len > 0, "Delegate management should have non-zero packed length");
     
-    // Assuming reasonable bounds for delegate storage
-    assert!(len < 1000, "Delegate management packed length should be reasonable");
+    // Updated bounds to account for pool pause functionality (delegates, withdrawal history, pool pause requests)
+    // Expected size: ~1,509 bytes (3 delegates * multiple arrays + withdrawal history + pool pause system)
+    assert!(len >= 1400, "Delegate management should include comprehensive governance features");
+    assert!(len <= 2000, "Delegate management packed length should remain reasonable for Solana");
+    
+    // Verify the calculated size matches expected structure
+    let expected_size = 
+        (32 * 3) +        // delegates array (3 delegates)
+        1 +               // delegate_count
+        (88 * 10) +       // withdrawal_history (10 records, 88 bytes each)
+        1 +               // withdrawal_history_index  
+        (96 * 3) +        // withdrawal_requests (3 requests, 96 bytes each)
+        (8 * 3) +         // delegate_wait_times (3 delegates, 8 bytes each)
+        (65 * 3) +        // pool_pause_requests (3 requests, 65 bytes each)
+        (8 * 3);          // pool_pause_wait_times (3 delegates, 8 bytes each)
+    
+    assert_eq!(len, expected_size, 
+        "Packed length should match calculated structure size. Got: {}, Expected: {}", 
+        len, expected_size);
 }
 
 // ================================================================================================
