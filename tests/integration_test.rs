@@ -51,6 +51,8 @@ SOFTWARE.
 // It tests the program's functionality by creating a pool, depositing and withdrawing tokens, and swapping tokens
 // It also tests the program's error handling and security features
 
+#![allow(deprecated)]
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{AccountInfo},
