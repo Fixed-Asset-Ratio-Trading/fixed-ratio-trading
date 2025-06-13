@@ -2864,8 +2864,17 @@ fn process_update_security_params(
         pool_state_data.is_paused = paused;
     }
 
-    // Save updated state
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    // Save updated state using buffer serialization approach
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    let account_data_len = pool_state.data_len();
+    if serialized_data.len() > account_data_len {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
     msg!("Security parameters updated successfully");
 
     Ok(())
@@ -3020,14 +3029,15 @@ impl DelegateManagement {
     }
 
     pub fn get_packed_len() -> usize {
-        (32 * MAX_DELEGATES) + // delegates array
-        1 +  // delegate_count
-        (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history
-        1 +  // withdrawal_history_index
-        (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests
-        (8 * MAX_DELEGATES) + // delegate_wait_times
-        (PoolPauseRequest::get_packed_len() * MAX_DELEGATES) + // pool_pause_requests
-        (8 * MAX_DELEGATES) // pool_pause_wait_times
+        // Use exact calculation - Borsh serializes structs precisely
+        (32 * MAX_DELEGATES) + // delegates: [Pubkey; MAX_DELEGATES]
+        1 +  // delegate_count: u8
+        (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history: [WithdrawalRecord; 10]
+        1 +  // withdrawal_history_index: u8
+        (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES]
+        (8 * MAX_DELEGATES) + // delegate_wait_times: [u64; MAX_DELEGATES]
+        (PoolPauseRequest::get_packed_len() * MAX_DELEGATES) + // pool_pause_requests: [PoolPauseRequest; MAX_DELEGATES]
+        (8 * MAX_DELEGATES) // pool_pause_wait_times: [u64; MAX_DELEGATES]
     }
 
     pub fn set_delegate_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), PoolError> {
@@ -3366,8 +3376,17 @@ fn process_add_delegate(
     // Add the delegate
     pool_state_data.delegate_management.add_delegate(delegate)?;
     
-    // Save updated state
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    // Save updated state using buffer serialization approach
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    let account_data_len = pool_state.data_len();
+    if serialized_data.len() > account_data_len {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
     
     // Log the change for transparency
     msg!("Delegate added successfully: {}. Total delegates: {}", 
@@ -3446,8 +3465,17 @@ fn process_remove_delegate(
     // Remove the delegate
     pool_state_data.delegate_management.remove_delegate(delegate)?;
     
-    // Save updated state
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    // Save updated state using buffer serialization approach
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    let account_data_len = pool_state.data_len();
+    if serialized_data.len() > account_data_len {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
     
     // Log the change for transparency
     msg!("Delegate removed successfully: {}. Remaining delegates: {}", 
