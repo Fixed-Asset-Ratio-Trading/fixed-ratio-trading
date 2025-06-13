@@ -1,0 +1,459 @@
+/*
+MIT License
+
+Copyright (c) 2024 Davinci
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+//! # Pool Creation and Management Utilities
+//! 
+//! This module provides utilities for creating and managing liquidity pools
+//! in integration tests, including both the deprecated two-instruction pattern
+//! and the new single-instruction pattern for pool initialization.
+
+use solana_program_test::BanksClient;
+use solana_sdk::{signature::Keypair, signer::Signer};
+use borsh::BorshSerialize;
+use crate::common::{constants, TestResult, *};
+
+/// Normalized pool configuration data
+/// 
+/// Contains the normalized token mints, ratios, and derived PDAs for a pool
+#[derive(Debug, Clone)]
+pub struct PoolConfig {
+    /// Normalized token A mint (lexicographically smaller)
+    pub token_a_mint: Pubkey,
+    /// Normalized token B mint (lexicographically larger)
+    pub token_b_mint: Pubkey,
+    /// Normalized ratio A numerator
+    pub ratio_a_numerator: u64,
+    /// Normalized ratio B denominator
+    pub ratio_b_denominator: u64,
+    /// True if primary mint became token A after normalization
+    pub token_a_is_primary: bool,
+    /// Pool state PDA
+    pub pool_state_pda: Pubkey,
+    /// Pool authority bump seed
+    pub pool_authority_bump: u8,
+    /// Token A vault PDA
+    pub token_a_vault_pda: Pubkey,
+    /// Token A vault bump seed
+    pub token_a_vault_bump: u8,
+    /// Token B vault PDA
+    pub token_b_vault_pda: Pubkey,
+    /// Token B vault bump seed
+    pub token_b_vault_bump: u8,
+    /// Primary token vault bump (for instruction)
+    pub primary_vault_bump: u8,
+    /// Base token vault bump (for instruction)
+    pub base_vault_bump: u8,
+}
+
+/// Normalize pool parameters and derive PDAs
+/// 
+/// This function performs the same normalization logic as the program,
+/// ensuring tokens are ordered lexicographically and deriving all required PDAs.
+/// 
+/// # Arguments
+/// * `primary_mint` - Primary token mint
+/// * `base_mint` - Base token mint  
+/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// 
+/// # Returns
+/// Normalized pool configuration with all derived addresses
+pub fn normalize_pool_config(
+    primary_mint: &Pubkey,
+    base_mint: &Pubkey,
+    ratio_primary_per_base: u64,
+) -> PoolConfig {
+    // Perform normalization (same logic as in lib.rs)
+    let (token_a_mint, token_b_mint, ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+        if primary_mint.to_bytes() < base_mint.to_bytes() {
+            (*primary_mint, *base_mint, ratio_primary_per_base, 1u64, true)
+        } else if primary_mint.to_bytes() > base_mint.to_bytes() {
+            (*base_mint, *primary_mint, 1u64, ratio_primary_per_base, false)
+        } else {
+            panic!("Primary and Base token mints cannot be the same");
+        };
+
+    // Derive pool state PDA using NORMALIZED values
+    let (pool_state_pda, pool_authority_bump) = Pubkey::find_program_address(
+        &[
+            POOL_STATE_SEED_PREFIX,
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &ratio_a_numerator.to_le_bytes(),
+            &ratio_b_denominator.to_le_bytes(),
+        ],
+        &PROGRAM_ID,
+    );
+
+    // Derive vault PDAs
+    let (token_a_vault_pda, token_a_vault_bump) = Pubkey::find_program_address(
+        &[TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &PROGRAM_ID,
+    );
+    let (token_b_vault_pda, token_b_vault_bump) = Pubkey::find_program_address(
+        &[TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &PROGRAM_ID,
+    );
+
+    // Map vault bumps back to instruction parameters
+    let (primary_vault_bump, base_vault_bump) = if token_a_is_primary {
+        (token_a_vault_bump, token_b_vault_bump)
+    } else {
+        (token_b_vault_bump, token_a_vault_bump)
+    };
+
+    PoolConfig {
+        token_a_mint,
+        token_b_mint,
+        ratio_a_numerator,
+        ratio_b_denominator,
+        token_a_is_primary,
+        pool_state_pda,
+        pool_authority_bump,
+        token_a_vault_pda,
+        token_a_vault_bump,
+        token_b_vault_pda,
+        token_b_vault_bump,
+        primary_vault_bump,
+        base_vault_bump,
+    }
+}
+
+/// Create pool using the new single-instruction pattern (RECOMMENDED)
+/// 
+/// This function uses the InitializePool instruction to create and initialize
+/// a pool in a single atomic operation.
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `payer` - Account that pays for pool creation
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `primary_mint` - Primary token mint keypair
+/// * `base_mint` - Base token mint keypair
+/// * `lp_token_a_mint` - LP Token A mint keypair
+/// * `lp_token_b_mint` - LP Token B mint keypair
+/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// 
+/// # Returns
+/// Pool configuration with all derived addresses
+pub async fn create_pool_new_pattern(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    primary_mint: &Keypair,
+    base_mint: &Keypair,
+    lp_token_a_mint: &Keypair,
+    lp_token_b_mint: &Keypair,
+    ratio_primary_per_base: Option<u64>,
+) -> Result<PoolConfig, BanksClientError> {
+    let ratio = ratio_primary_per_base.unwrap_or(constants::DEFAULT_RATIO);
+    
+    // Get normalized pool configuration
+    let config = normalize_pool_config(&primary_mint.pubkey(), &base_mint.pubkey(), ratio);
+
+    // Create InitializePool instruction
+    let initialize_pool_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Payer (signer)
+            AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
+            AccountMeta::new_readonly(primary_mint.pubkey(), false),         // Primary token mint
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Base token mint
+            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
+            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
+            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault PDA
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_primary_per_base: ratio,
+            pool_authority_bump_seed: config.pool_authority_bump,
+            primary_token_vault_bump_seed: config.primary_vault_bump,
+            base_token_vault_bump_seed: config.base_vault_bump,
+        }.try_to_vec().unwrap(),
+    };
+
+    // Send transaction
+    let mut transaction = Transaction::new_with_payer(&[initialize_pool_ix], Some(&payer.pubkey()));
+    let signers = [payer, lp_token_a_mint, lp_token_b_mint];
+    transaction.sign(&signers[..], recent_blockhash);
+    banks.process_transaction(transaction).await?;
+
+    Ok(config)
+}
+
+/// Create pool using the deprecated two-instruction pattern (LEGACY)
+/// 
+/// This function uses the CreatePoolStateAccount + InitializePoolData pattern
+/// to work around the Solana AccountInfo.data issue documented in GitHub Issue #31960.
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `payer` - Account that pays for pool creation
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `primary_mint` - Primary token mint keypair
+/// * `base_mint` - Base token mint keypair
+/// * `lp_token_a_mint` - LP Token A mint keypair
+/// * `lp_token_b_mint` - LP Token B mint keypair
+/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// 
+/// # Returns
+/// Pool configuration with all derived addresses
+pub async fn create_pool_legacy_pattern(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    primary_mint: &Keypair,
+    base_mint: &Keypair,
+    lp_token_a_mint: &Keypair,
+    lp_token_b_mint: &Keypair,
+    ratio_primary_per_base: Option<u64>,
+) -> Result<PoolConfig, BanksClientError> {
+    let ratio = ratio_primary_per_base.unwrap_or(constants::DEFAULT_RATIO);
+    
+    // Get normalized pool configuration
+    let config = normalize_pool_config(&primary_mint.pubkey(), &base_mint.pubkey(), ratio);
+
+    // Step 1: CreatePoolStateAccount instruction
+    let create_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Signer
+            AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
+            AccountMeta::new(primary_mint.pubkey(), false),                  // Primary token mint
+            AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
+            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
+            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
+            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault PDA
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+        ],
+        data: PoolInstruction::CreatePoolStateAccount {
+            ratio_primary_per_base: ratio,
+            pool_authority_bump_seed: config.pool_authority_bump,
+            primary_token_vault_bump_seed: config.primary_vault_bump,
+            base_token_vault_bump_seed: config.base_vault_bump,
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    let signers_for_create = [payer, lp_token_a_mint, lp_token_b_mint];
+    create_tx.sign(&signers_for_create[..], recent_blockhash);
+    banks.process_transaction(create_tx).await?;
+
+    // Step 2: InitializePoolData instruction
+    let init_data_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Signer
+            AccountMeta::new(config.pool_state_pda, false),                  // Pool state account
+            AccountMeta::new(primary_mint.pubkey(), false),                  // Primary token mint
+            AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
+            AccountMeta::new(lp_token_a_mint.pubkey(), false),               // LP Token A mint
+            AccountMeta::new(lp_token_b_mint.pubkey(), false),               // LP Token B mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault
+            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+        ],
+        data: PoolInstruction::InitializePoolData {
+            ratio_primary_per_base: ratio,
+            pool_authority_bump_seed: config.pool_authority_bump,
+            primary_token_vault_bump_seed: config.primary_vault_bump,
+            base_token_vault_bump_seed: config.base_vault_bump,
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
+    init_data_tx.sign(&[payer], recent_blockhash);
+    banks.process_transaction(init_data_tx).await?;
+
+    Ok(config)
+}
+
+/// Add a delegate to a pool
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `payer` - Pool owner (pays for transaction)
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `pool_state_pda` - Pool state account
+/// * `delegate` - Delegate to add
+pub async fn add_delegate(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    pool_state_pda: &Pubkey,
+    delegate: &Pubkey,
+) -> TestResult {
+    let add_delegate_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),      // Pool owner (signer)
+            AccountMeta::new(*pool_state_pda, false),    // Pool state account
+        ],
+        data: PoolInstruction::AddDelegate {
+            delegate: *delegate,
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut transaction = Transaction::new_with_payer(&[add_delegate_ix], Some(&payer.pubkey()));
+    transaction.sign(&[payer], recent_blockhash);
+    banks.process_transaction(transaction).await
+}
+
+/// Update security parameters for a pool
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `payer` - Pool owner (pays for transaction)
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `pool_state_pda` - Pool state account
+/// * `max_withdrawal_percentage` - Maximum withdrawal percentage (optional)
+/// * `withdrawal_cooldown` - Withdrawal cooldown period (optional)
+/// * `is_paused` - Whether pool is paused (optional)
+pub async fn update_security_params(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    pool_state_pda: &Pubkey,
+    max_withdrawal_percentage: Option<u64>,
+    withdrawal_cooldown: Option<u64>,
+    is_paused: Option<bool>,
+) -> TestResult {
+    let update_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Pool owner (signer)
+            AccountMeta::new(*pool_state_pda, false),                        // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Rent sysvar
+        ],
+        data: PoolInstruction::UpdateSecurityParams {
+            max_withdrawal_percentage,
+            withdrawal_cooldown,
+            is_paused,
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut transaction = Transaction::new_with_payer(&[update_ix], Some(&payer.pubkey()));
+    transaction.sign(&[payer], recent_blockhash);
+    banks.process_transaction(transaction).await
+}
+
+/// Get pool state data
+/// 
+/// # Arguments
+/// * `banks` - Banks client for account fetching
+/// * `pool_state_pda` - Pool state account
+/// 
+/// # Returns
+/// Deserialized pool state or None if account doesn't exist
+pub async fn get_pool_state(
+    banks: &mut BanksClient,
+    pool_state_pda: &Pubkey,
+) -> Option<PoolState> {
+    match banks.get_account(*pool_state_pda).await {
+        Ok(Some(account)) => {
+            match PoolState::try_from_slice(&account.data) {
+                Ok(pool_state) => Some(pool_state),
+                Err(_) => None,
+            }
+        },
+        _ => None,
+    }
+}
+
+/// Verify pool state matches expected configuration
+/// 
+/// # Arguments
+/// * `banks` - Banks client for account fetching
+/// * `config` - Expected pool configuration
+/// * `owner` - Expected pool owner
+/// * `lp_token_a_mint` - Expected LP Token A mint
+/// * `lp_token_b_mint` - Expected LP Token B mint
+pub async fn verify_pool_state(
+    banks: &mut BanksClient,
+    config: &PoolConfig,
+    owner: &Pubkey,
+    lp_token_a_mint: &Pubkey,
+    lp_token_b_mint: &Pubkey,
+) -> Result<(), String> {
+    let pool_state = get_pool_state(banks, &config.pool_state_pda).await
+        .ok_or("Pool state account not found")?;
+
+    // Verify basic state
+    if !pool_state.is_initialized {
+        return Err("Pool should be initialized".to_string());
+    }
+    if pool_state.owner != *owner {
+        return Err("Pool owner mismatch".to_string());
+    }
+
+    // Verify normalized tokens and ratios
+    if pool_state.token_a_mint != config.token_a_mint {
+        return Err("Token A mint mismatch".to_string());
+    }
+    if pool_state.token_b_mint != config.token_b_mint {
+        return Err("Token B mint mismatch".to_string());
+    }
+    if pool_state.ratio_a_numerator != config.ratio_a_numerator {
+        return Err("Ratio A numerator mismatch".to_string());
+    }
+    if pool_state.ratio_b_denominator != config.ratio_b_denominator {
+        return Err("Ratio B denominator mismatch".to_string());
+    }
+
+    // Verify vault addresses
+    if pool_state.token_a_vault != config.token_a_vault_pda {
+        return Err("Token A vault PDA mismatch".to_string());
+    }
+    if pool_state.token_b_vault != config.token_b_vault_pda {
+        return Err("Token B vault PDA mismatch".to_string());
+    }
+
+    // Verify LP token mints
+    if pool_state.lp_token_a_mint != *lp_token_a_mint {
+        return Err("LP Token A mint mismatch".to_string());
+    }
+    if pool_state.lp_token_b_mint != *lp_token_b_mint {
+        return Err("LP Token B mint mismatch".to_string());
+    }
+
+    // Verify bump seeds
+    if pool_state.pool_authority_bump_seed != config.pool_authority_bump {
+        return Err("Pool authority bump mismatch".to_string());
+    }
+    if pool_state.token_a_vault_bump_seed != config.token_a_vault_bump {
+        return Err("Token A vault bump mismatch".to_string());
+    }
+    if pool_state.token_b_vault_bump_seed != config.token_b_vault_bump {
+        return Err("Token B vault bump mismatch".to_string());
+    }
+
+    Ok(())
+} 
