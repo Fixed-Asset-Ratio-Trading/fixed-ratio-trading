@@ -499,7 +499,7 @@ impl From<PoolError> for ProgramError {
 /// This enum provides structured categorization of pause requests to enable
 /// different governance and bonding mechanisms based on the type of issue.
 /// Designed for integration with higher-layer governance contracts.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Default)]
 pub enum PoolPauseReason {
     #[default]
     /// Dispute over the fixed ratio accuracy or fairness
@@ -533,7 +533,7 @@ pub enum PoolPauseReason {
 /// - Becomes active after `wait_time` seconds (1 minute to 72 hours)
 /// - Remains active for `duration_seconds` (1 minute to 72 hours)
 /// - Can be cancelled by delegate or owner before activation
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, Default)]
 pub struct PoolPauseRequest {
     /// Delegate who submitted the pause request
     pub delegate: Pubkey,
@@ -2954,7 +2954,7 @@ impl DelegateManagement {
             withdrawal_history_index: 0,
             withdrawal_requests: [WithdrawalRequest::default(); MAX_DELEGATES],
             delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time for fee withdrawals
-            pool_pause_requests: [PoolPauseRequest::default(), PoolPauseRequest::default(), PoolPauseRequest::default()], // No pending pause requests initially
+            pool_pause_requests: [PoolPauseRequest::default(); MAX_DELEGATES], // No pending pause requests initially
             pool_pause_wait_times: [259200; MAX_DELEGATES], // Default 72 hours for pool pausing (more deliberation time)
         }
     }

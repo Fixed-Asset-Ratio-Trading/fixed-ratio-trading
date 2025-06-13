@@ -149,7 +149,16 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
 
     let delegate = Keypair::new();
 
+    // Debug: Check initial pool state
+    let pool_account = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
+    let pool_state = PoolState::try_from_slice(&pool_account.data)?;
+    println!("🔍 Initial delegate count: {}", pool_state.delegate_management.delegate_count);
+    for i in 0..pool_state.delegate_management.delegate_count {
+        println!("🔍 Initial delegate[{}]: {}", i, pool_state.delegate_management.delegates[i as usize]);
+    }
+
     // Add delegate first time (should succeed)
+    println!("🔍 Adding delegate: {}", delegate.pubkey());
     let first_result = add_delegate(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -158,7 +167,20 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
         &delegate.pubkey(),
     ).await;
 
+    println!("🔍 First add result: {:?}", first_result.is_ok());
     assert!(first_result.is_ok(), "First delegate addition should succeed");
+
+    // Debug: Check pool state after first addition
+    let pool_account_after = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
+    let pool_state_after = PoolState::try_from_slice(&pool_account_after.data)?;
+    println!("🔍 After first addition - delegate count: {}", pool_state_after.delegate_management.delegate_count);
+    for i in 0..pool_state_after.delegate_management.delegate_count {
+        println!("🔍 After first addition - delegate[{}]: {}", i, pool_state_after.delegate_management.delegates[i as usize]);
+    }
+    
+    // Manually check if the delegate should be found
+    let is_delegate_found = pool_state_after.delegate_management.is_delegate(&delegate.pubkey());
+    println!("🔍 Manual is_delegate check: {}", is_delegate_found);
 
     // Try to add same delegate again (should fail)
     let second_result = add_delegate(
@@ -169,6 +191,7 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
         &delegate.pubkey(),
     ).await;
 
+    println!("🔍 Second add result (should fail): {:?}", second_result.is_ok());
     assert!(second_result.is_err(), "Adding same delegate twice should fail");
     
     // Also test trying to add the pool owner again (should fail since owner is auto-added)
@@ -218,7 +241,13 @@ async fn test_add_multiple_delegates() -> TestResult {
 
     println!("🔍 Pool owner (auto-delegate): {}", ctx.env.payer.pubkey());
 
+    // Debug: Check initial pool state
+    let pool_account = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
+    let pool_state = PoolState::try_from_slice(&pool_account.data)?;
+    println!("🔍 Initial delegate count: {}", pool_state.delegate_management.delegate_count);
+
     // Add first additional delegate (this will be delegate[1])
+    println!("🔍 Adding first delegate: {}", delegate1.pubkey());
     let result1 = add_delegate(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -227,9 +256,11 @@ async fn test_add_multiple_delegates() -> TestResult {
         &delegate1.pubkey(),
     ).await;
 
+    println!("🔍 First delegate result: {:?}", result1.is_ok());
     assert!(result1.is_ok(), "First delegate addition should succeed");
 
     // Add second additional delegate (this will be delegate[2])
+    println!("🔍 Adding second delegate: {}", delegate2.pubkey());
     let result2 = add_delegate(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -238,6 +269,10 @@ async fn test_add_multiple_delegates() -> TestResult {
         &delegate2.pubkey(),
     ).await;
 
+    println!("🔍 Second delegate result: {:?}", result2.is_ok());
+    if let Err(ref e) = result2 {
+        println!("🔍 Second delegate error: {:?}", e);
+    }
     assert!(result2.is_ok(), "Second delegate addition should succeed");
 
     // Try to add third additional delegate (should hit MAX_DELEGATES limit)
