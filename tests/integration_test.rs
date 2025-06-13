@@ -211,20 +211,20 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
-    // create_mint(&mut banks_client, &payer, recent_blockhash, &lp_token_a_mint_kp).await?;
-    // create_mint(&mut banks_client, &payer, recent_blockhash, &lp_token_b_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
+    // create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &lp_token_a_mint_kp).await?;
+    // create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &lp_token_b_mint_kp).await?;
 
     // Ratio for the instruction
     let ratio_primary_per_base_instr_arg = 2u64; // e.g., 2 primary units per 1 base unit for PDA derivation if primary < base
@@ -298,7 +298,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                     // Signer
+            AccountMeta::new(_pool_owner.pubkey(), true),                     // Signer
             AccountMeta::new(pool_state_pda_for_accounts, false), // REVERTED: new() is writable by default
             AccountMeta::new(primary_mint_kp.pubkey(), false),       // Not a direct signer for this instruction itself
             AccountMeta::new(base_mint_kp.pubkey(), false),         // Not a direct signer for this instruction itself
@@ -323,10 +323,10 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     // Send create pool state account transaction (Step 1)
     // This transaction creates all required accounts but does NOT write pool configuration data
     // to avoid the AccountInfo.data issue where data doesn't persist after CPI account creation
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    // Only payer and the LP mint keypairs (being created by program) need to sign this specific transaction.
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    // Only _pool_owner and the LP mint keypairs (being created by program) need to sign this specific transaction.
     // primary_mint_kp and base_mint_kp signed their own creation within the create_mint helper.
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash); 
     banks_client.process_transaction(create_tx).await?;
 
@@ -336,7 +336,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     let init_data_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                     // Signer
+            AccountMeta::new(_pool_owner.pubkey(), true),                     // Signer
             AccountMeta::new(pool_state_pda_for_accounts, false),       // Pool state account to write data to
             AccountMeta::new(primary_mint_kp.pubkey(), false),          // Primary token mint
             AccountMeta::new(base_mint_kp.pubkey(), false),             // Base token mint
@@ -359,10 +359,10 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
     };
 
     // Send initialize pool data transaction (Step 2)
-    // Only payer needs to sign for data initialization since all accounts already exist
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    // Only payer needs to sign for data initialization
-    init_data_tx.sign(&[&payer], recent_blockhash); 
+    // Only _pool_owner needs to sign for data initialization since all accounts already exist
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&_pool_owner.pubkey()));
+    // Only _pool_owner needs to sign for data initialization
+    init_data_tx.sign(&[&_pool_owner], recent_blockhash); 
     banks_client.process_transaction(init_data_tx).await?;
 
     // WORKAROUND VALIDATION:
@@ -376,7 +376,7 @@ async fn test_initialize_pool_with_ratio() -> Result<(), BanksClientError> {
 
     // Verify pool state values based on normalized keys and ratios
     assert!(pool_state.is_initialized);
-    assert_eq!(pool_state.owner, payer.pubkey());
+    assert_eq!(pool_state.owner, _pool_owner.pubkey());
     assert_eq!(pool_state.token_a_mint, prog_token_a_mint_key);
     assert_eq!(pool_state.token_b_mint, prog_token_b_mint_key);
     assert_eq!(pool_state.token_a_vault, token_a_vault_pda_for_accounts);
@@ -409,7 +409,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
@@ -418,11 +418,11 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
     let lp_token_b_mint_kp2 = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // First pool: ratio 1:2
     let ratio_primary_per_base_instr_arg1 = 2u64;
@@ -471,7 +471,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
     let create_ix1 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts1, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -493,15 +493,15 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
         .unwrap(),
     };
 
-    let mut create_tx1 = Transaction::new_with_payer(&[create_ix1], Some(&payer.pubkey()));
-    let signers_for_create_tx1 = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx1 = Transaction::new_with_payer(&[create_ix1], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx1 = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx1.sign(&signers_for_create_tx1[..], recent_blockhash);
     banks_client.process_transaction(create_tx1).await?;
 
     let init_data_ix1 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts1, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -523,8 +523,8 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
         .unwrap(),
     };
 
-    let mut init_data_tx1 = Transaction::new_with_payer(&[init_data_ix1], Some(&payer.pubkey()));
-    init_data_tx1.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx1 = Transaction::new_with_payer(&[init_data_ix1], Some(&_pool_owner.pubkey()));
+    init_data_tx1.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx1).await?;
 
     // Second pool: ratio 1:10
@@ -571,7 +571,7 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
     let create_ix2 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts2, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -593,15 +593,15 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
         .unwrap(),
     };
 
-    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&payer.pubkey()));
-    let signers_for_create_tx2 = [&payer, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
+    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx2 = [&_pool_owner, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
     create_tx2.sign(&signers_for_create_tx2[..], recent_blockhash);
     banks_client.process_transaction(create_tx2).await?;
 
     let init_data_ix2 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts2, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -623,8 +623,8 @@ async fn test_initialize_pool_with_different_ratios() -> Result<(), BanksClientE
         .unwrap(),
     };
 
-    let mut init_data_tx2 = Transaction::new_with_payer(&[init_data_ix2], Some(&payer.pubkey()));
-    init_data_tx2.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx2 = Transaction::new_with_payer(&[init_data_ix2], Some(&_pool_owner.pubkey()));
+    init_data_tx2.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx2).await?;
 
     // Verify both pools exist and have correct ratios
@@ -656,18 +656,18 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // First, create a successful pool with Token A as primary and Token B as base with 2:1 ratio
     let ratio_primary_per_base_instr_arg = 2u64;
@@ -716,7 +716,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -737,8 +737,8 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
         .try_to_vec()
         .unwrap(),
     };
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     banks_client.process_transaction(create_tx).await?;
 
@@ -746,7 +746,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
     let init_data_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -767,8 +767,8 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
         .try_to_vec()
         .unwrap(),
     };
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    init_data_tx.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&_pool_owner.pubkey()));
+    init_data_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx).await?;
 
     // Now try to create a pool with REVERSED token positions but SAME ratio (2:1)
@@ -781,7 +781,7 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
     let create_ix2 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false), // Same normalized PDA should be detected
             AccountMeta::new(base_mint_kp.pubkey(), false),       // Now using base as primary
             AccountMeta::new(primary_mint_kp.pubkey(), false),    // Now using primary as base
@@ -803,8 +803,8 @@ async fn test_initialize_pool_with_reversed_tokens_same_ratio_fails() -> Result<
         .unwrap(),
     };
 
-    let signers_for_create_tx2 = [&payer, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
-    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&payer.pubkey()));
+    let signers_for_create_tx2 = [&_pool_owner, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
+    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&_pool_owner.pubkey()));
     create_tx2.sign(&signers_for_create_tx2[..], recent_blockhash);
     
     // This transaction should fail because the program should detect that a pool
@@ -829,18 +829,18 @@ async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // Use ZERO ratio to trigger the error
     let ratio_primary_per_base_instr_arg = 0u64;
@@ -870,7 +870,7 @@ async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -892,8 +892,8 @@ async fn test_create_pool_with_zero_ratio_fails() -> Result<(), BanksClientError
         .unwrap(),
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     
     // This should fail with InvalidArgument due to zero ratio
@@ -918,18 +918,18 @@ async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClient
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     let ratio_primary_per_base_instr_arg = 2u64;
 
@@ -961,7 +961,7 @@ async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClient
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -983,8 +983,8 @@ async fn test_create_pool_with_wrong_vault_pda_fails() -> Result<(), BanksClient
         .unwrap(),
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     
     // This should fail with InvalidArgument due to wrong vault PDA
@@ -1016,7 +1016,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
@@ -1029,7 +1029,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
     let (mut banks_client, _default_payer, recent_blockhash) = program_test.start().await;
 
     // Try to create mints with our payer that has no account/funds
-    match create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await {
+    match create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await {
         Err(_) => {
             println!("Successfully caught error during mint creation due to insufficient funds");
             return Ok(());
@@ -1040,7 +1040,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
     }
 
     // Create the second mint
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     let ratio_primary_per_base_instr_arg = 2u64;
 
@@ -1068,7 +1068,7 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true), // Unfunded payer
+            AccountMeta::new(_pool_owner.pubkey(), true), // Unfunded payer
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1090,8 +1090,8 @@ async fn test_create_pool_with_insufficient_sol_fails() -> Result<(), BanksClien
         .unwrap(),
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     
     // This should fail due to insufficient funds
@@ -1113,30 +1113,30 @@ async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientErr
     );
 
     // Create payer and ONE valid token mint
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let invalid_mint_kp = Keypair::new(); // This will be a regular account, not a mint
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create only the primary mint, leave the base mint as invalid
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
     
     // Create invalid_mint_kp as a regular account (not a mint)
     let rent = banks_client.get_rent().await.unwrap();
     let lamports = rent.minimum_balance(0); // Empty account, not mint-sized
     let create_invalid_account_ix = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
+        &_pool_owner.pubkey(),
         &invalid_mint_kp.pubkey(),
         lamports,
         0, // WRONG SIZE - should be MintAccount::LEN
         &solana_program::system_program::id(), // WRONG OWNER - should be spl_token::id()
     );
-    let mut invalid_account_tx = Transaction::new_with_payer(&[create_invalid_account_ix], Some(&payer.pubkey()));
-    invalid_account_tx.sign(&[&payer, &invalid_mint_kp], recent_blockhash);
+    let mut invalid_account_tx = Transaction::new_with_payer(&[create_invalid_account_ix], Some(&_pool_owner.pubkey()));
+    invalid_account_tx.sign(&[&_pool_owner, &invalid_mint_kp], recent_blockhash);
     banks_client.process_transaction(invalid_account_tx).await?;
 
     let ratio_primary_per_base_instr_arg = 2u64;
@@ -1165,7 +1165,7 @@ async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientErr
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(invalid_mint_kp.pubkey(), false), // INVALID MINT
@@ -1187,8 +1187,8 @@ async fn test_create_pool_with_invalid_mint_fails() -> Result<(), BanksClientErr
         .unwrap(),
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     
     // This should fail with InvalidAccountData due to invalid mint
@@ -1213,18 +1213,18 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     let ratio_primary_per_base_instr_arg = 2u64;
 
@@ -1271,7 +1271,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1292,8 +1292,8 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
         .try_to_vec()
         .unwrap(),
     };
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create_tx = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     create_tx.sign(&signers_for_create_tx[..], recent_blockhash);
     banks_client.process_transaction(create_tx).await?;
 
@@ -1301,7 +1301,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
     let init_data_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1322,8 +1322,8 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
         .try_to_vec()
         .unwrap(),
     };
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    init_data_tx.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&_pool_owner.pubkey()));
+    init_data_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx).await?;
 
     // Now try to create the SAME pool again with new LP mints
@@ -1333,7 +1333,7 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
     let create_ix2 = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda_for_accounts, false), // SAME PDA
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1355,8 +1355,8 @@ async fn test_create_pool_that_already_exists_fails() -> Result<(), BanksClientE
         .unwrap(),
     };
 
-    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&payer.pubkey()));
-    let signers_for_create_tx2 = [&payer, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
+    let mut create_tx2 = Transaction::new_with_payer(&[create_ix2], Some(&_pool_owner.pubkey()));
+    let signers_for_create_tx2 = [&_pool_owner, &lp_token_a_mint_kp2, &lp_token_b_mint_kp2];
     create_tx2.sign(&signers_for_create_tx2[..], recent_blockhash);
     
     // This should fail with AccountAlreadyInitialized
@@ -1712,7 +1712,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     );
 
     // Create keypairs
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let user = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
@@ -1720,21 +1720,21 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Airdrop SOL to user for transaction fees
     let user_airdrop_ix = solana_sdk::system_instruction::transfer(
-        &payer.pubkey(),
+        &_pool_owner.pubkey(),
         &user.pubkey(),
         5_000_000_000, // 5 SOL
     );
-    let mut user_airdrop_tx = Transaction::new_with_payer(&[user_airdrop_ix], Some(&payer.pubkey()));
-    user_airdrop_tx.sign(&[&payer], recent_blockhash);
+    let mut user_airdrop_tx = Transaction::new_with_payer(&[user_airdrop_ix], Some(&_pool_owner.pubkey()));
+    user_airdrop_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(user_airdrop_tx).await?;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // Set up test with Token B -> Token A exchange (ratio 2:1)
     let ratio_primary_per_base_instr_arg = 2u64; // 2 primary per 1 base
@@ -1783,7 +1783,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1804,15 +1804,15 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
         .try_to_vec()?,
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    create_tx.sign(&[&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    create_tx.sign(&[&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
     banks_client.process_transaction(create_tx).await?;
 
     // Step 2: Initialize pool data
     let init_data_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -1833,8 +1833,8 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
         .try_to_vec()?,
     };
 
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    init_data_tx.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&_pool_owner.pubkey()));
+    init_data_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx).await?;
 
     // Create user token accounts
@@ -1844,7 +1844,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     // Create user's Token A account
     let create_user_token_a_ix = [
         solana_sdk::system_instruction::create_account(
-            &payer.pubkey(),
+            &_pool_owner.pubkey(),
             &user_token_a_account.pubkey(),
             banks_client.get_rent().await?.minimum_balance(TokenAccount::LEN),
             TokenAccount::LEN as u64,
@@ -1861,7 +1861,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
     // Create user's Token B account
     let create_user_token_b_ix = [
         solana_sdk::system_instruction::create_account(
-            &payer.pubkey(),
+            &_pool_owner.pubkey(),
             &user_token_b_account.pubkey(),
             banks_client.get_rent().await?.minimum_balance(TokenAccount::LEN),
             TokenAccount::LEN as u64,
@@ -1883,10 +1883,10 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
             create_user_token_b_ix[0].clone(),
             create_user_token_b_ix[1].clone(),
         ],
-        Some(&payer.pubkey()),
+        Some(&_pool_owner.pubkey()),
     );
     create_accounts_tx.sign(
-        &[&payer, &user_token_a_account, &user_token_b_account],
+        &[&_pool_owner, &user_token_a_account, &user_token_b_account],
         recent_blockhash,
     );
     banks_client.process_transaction(create_accounts_tx).await?;
@@ -1897,7 +1897,7 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
         &spl_token::id(),
         &prog_token_a_mint_key,
         &token_a_vault_pda,
-        &payer.pubkey(),
+        &_pool_owner.pubkey(),
         &[],
         10_000_000, // 10M Token A liquidity
     )?;
@@ -1907,16 +1907,16 @@ async fn test_exchange_token_b_for_token_a() -> Result<(), Box<dyn std::error::E
         &spl_token::id(),
         &prog_token_b_mint_key,
         &user_token_b_account.pubkey(),
-        &payer.pubkey(),
+        &_pool_owner.pubkey(),
         &[],
         25_000_000, // 25M Token B to user
     )?;
 
     let mut mint_tx = Transaction::new_with_payer(
         &[mint_token_a_to_vault_ix, mint_token_b_to_user_ix], 
-        Some(&payer.pubkey())
+        Some(&_pool_owner.pubkey())
     );
-    mint_tx.sign(&[&payer], recent_blockhash);
+    mint_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(mint_tx).await?;
 
     // Since we minted tokens directly to the vault, we need to update the pool state manually
@@ -2056,18 +2056,18 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
     );
 
     // Create accounts
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new(); 
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // Set up pool with 2:1 ratio
     let ratio_primary_per_base_instr_arg = 2u64;
@@ -2116,7 +2116,7 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
     let create_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -2137,15 +2137,15 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
         .try_to_vec()?,
     };
 
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    create_tx.sign(&[&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
+    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&_pool_owner.pubkey()));
+    create_tx.sign(&[&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
     banks_client.process_transaction(create_tx).await?;
 
     // Step 2: Initialize pool data  
     let init_data_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -2166,8 +2166,8 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
         .try_to_vec()?,
     };
 
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    init_data_tx.sign(&[&payer], recent_blockhash);
+    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&_pool_owner.pubkey()));
+    init_data_tx.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(init_data_tx).await?;
 
     // TEST 1: SUCCESS CASE - Owner updates security parameters
@@ -2176,7 +2176,7 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
     let update_security_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
@@ -2188,8 +2188,8 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
         .try_to_vec()?,
     };
 
-    let mut update_security_tx = Transaction::new_with_payer(&[update_security_ix], Some(&payer.pubkey()));
-    update_security_tx.sign(&[&payer], recent_blockhash);
+    let mut update_security_tx = Transaction::new_with_payer(&[update_security_ix], Some(&_pool_owner.pubkey()));
+    update_security_tx.sign(&[&_pool_owner], recent_blockhash);
     let success_result = banks_client.process_transaction(update_security_tx).await;
     
     // This should succeed
@@ -2233,15 +2233,15 @@ async fn test_process_instruction_update_security_params() -> Result<(), BanksCl
     let malformed_update_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
         ],
         data: vec![0x07, 0xFF, 0xFF, 0xFF, 0xFF], // Malformed/invalid instruction data for UpdateSecurityParams
     };
 
-    let mut malformed_update_tx = Transaction::new_with_payer(&[malformed_update_ix], Some(&payer.pubkey()));
-    malformed_update_tx.sign(&[&payer], recent_blockhash);
+    let mut malformed_update_tx = Transaction::new_with_payer(&[malformed_update_ix], Some(&_pool_owner.pubkey()));
+    malformed_update_tx.sign(&[&_pool_owner], recent_blockhash);
     let malformed_result = banks_client.process_transaction(malformed_update_tx).await;
     
     // This should fail due to invalid instruction data
@@ -2280,11 +2280,11 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // Initialize pool with ratio 2:1
     let ratio_primary_per_base = 2u64;
@@ -2333,7 +2333,7 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
     let create_pool_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -2355,16 +2355,16 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
 
     let mut transaction = Transaction::new_with_payer(
         &[create_pool_ix],
-        Some(&payer.pubkey()),
+        Some(&_pool_owner.pubkey()),
     );
-    transaction.sign(&[&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
+    transaction.sign(&[&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp], recent_blockhash);
     banks_client.process_transaction(transaction).await?;
 
     // Create and send InitializePoolData instruction with all required accounts
     let init_pool_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(_pool_owner.pubkey(), true),
             AccountMeta::new(pool_state_pda, false),
             AccountMeta::new(primary_mint_kp.pubkey(), false),
             AccountMeta::new(base_mint_kp.pubkey(), false),
@@ -2386,9 +2386,9 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
 
     let mut transaction = Transaction::new_with_payer(
         &[init_pool_ix],
-        Some(&payer.pubkey()),
+        Some(&_pool_owner.pubkey()),
     );
-    transaction.sign(&[&payer], recent_blockhash);
+    transaction.sign(&[&_pool_owner], recent_blockhash);
     banks_client.process_transaction(transaction).await?;
 
     // Test 1: Successfully add a delegate (using payer as the owner since payer created the pool)
@@ -2396,7 +2396,7 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
     let add_delegate_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true), // payer is the pool owner
+            AccountMeta::new(_pool_owner.pubkey(), true), // payer is the pool owner
             AccountMeta::new(pool_state_pda, false),
         ],
         data: PoolInstruction::AddDelegate {
@@ -2406,9 +2406,9 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
 
     let mut transaction = Transaction::new_with_payer(
         &[add_delegate_ix],
-        Some(&payer.pubkey()),
+        Some(&_pool_owner.pubkey()),
     );
-    transaction.sign(&[&payer], recent_blockhash);
+    transaction.sign(&[&_pool_owner], recent_blockhash);
     let result = banks_client.process_transaction(transaction).await;
     
     // The transaction should succeed, proving AddDelegate works
@@ -2439,7 +2439,7 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
     let add_delegate_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true), // payer is the pool owner
+            AccountMeta::new(_pool_owner.pubkey(), true), // payer is the pool owner
             AccountMeta::new(pool_state_pda, false),
         ],
         data: PoolInstruction::AddDelegate {
@@ -2449,9 +2449,9 @@ async fn test_process_add_delegate_success() -> Result<(), BanksClientError> {
 
     let mut transaction = Transaction::new_with_payer(
         &[add_delegate_ix],
-        Some(&payer.pubkey()),
+        Some(&_pool_owner.pubkey()),
     );
-    transaction.sign(&[&payer], recent_blockhash);
+    transaction.sign(&[&_pool_owner], recent_blockhash);
     
     let result = banks_client.process_transaction(transaction).await;
     assert!(result.is_err(), "AddDelegate instruction should fail when adding same delegate twice");
@@ -2482,18 +2482,18 @@ async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
     );
 
     // Create payer and token mints
-    let payer = Keypair::new();
+    let _pool_owner = Keypair::new();
     let primary_mint_kp = Keypair::new();
     let base_mint_kp = Keypair::new();
     let lp_token_a_mint_kp = Keypair::new();
     let lp_token_b_mint_kp = Keypair::new();
 
     // Start test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    let (mut banks_client, _pool_owner, recent_blockhash) = program_test.start().await;
 
     // Create token mints
-    create_mint(&mut banks_client, &payer, recent_blockhash, &primary_mint_kp).await?;
-    create_mint(&mut banks_client, &payer, recent_blockhash, &base_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &primary_mint_kp).await?;
+    create_mint(&mut banks_client, &_pool_owner, recent_blockhash, &base_mint_kp).await?;
 
     // Ratio for the instruction
     let ratio_primary_per_base_instr_arg = 2u64; // 2 primary tokens per 1 base token
@@ -2549,7 +2549,7 @@ async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
     let initialize_pool_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                     // Payer (signer)
+            AccountMeta::new(_pool_owner.pubkey(), true),                     // Payer (signer)
             AccountMeta::new(pool_state_pda, false),                    // Pool state PDA
             AccountMeta::new_readonly(primary_mint_kp.pubkey(), false), // Primary token mint
             AccountMeta::new_readonly(base_mint_kp.pubkey(), false),    // Base token mint
@@ -2571,8 +2571,8 @@ async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
 
     // Send single transaction (ATOMIC OPERATION)
     // This single transaction creates all accounts AND initializes data
-    let mut transaction = Transaction::new_with_payer(&[initialize_pool_ix], Some(&payer.pubkey()));
-    let signers = [&payer, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
+    let mut transaction = Transaction::new_with_payer(&[initialize_pool_ix], Some(&_pool_owner.pubkey()));
+    let signers = [&_pool_owner, &lp_token_a_mint_kp, &lp_token_b_mint_kp];
     transaction.sign(&signers[..], recent_blockhash);
     
     println!("DEBUG: test_initialize_pool_new_pattern: Sending atomic pool initialization transaction");
@@ -2586,7 +2586,7 @@ async fn test_initialize_pool_new_pattern() -> Result<(), BanksClientError> {
 
     // Verify all pool state values
     assert!(pool_state.is_initialized, "Pool should be initialized");
-    assert_eq!(pool_state.owner, payer.pubkey(), "Pool owner should match payer");
+    assert_eq!(pool_state.owner, _pool_owner.pubkey(), "Pool owner should match _pool_owner");
     assert_eq!(pool_state.token_a_mint, prog_token_a_mint_key, "Token A mint should match normalized value");
     assert_eq!(pool_state.token_b_mint, prog_token_b_mint_key, "Token B mint should match normalized value");
     assert_eq!(pool_state.token_a_vault, token_a_vault_pda, "Token A vault should match derived PDA");

@@ -19,7 +19,7 @@ solana config set --url http://localhost:8899
 solana airdrop 10
 
 # Run the integration tests with increased timeout and compute budget
-RUST_LOG=error cargo test -- --test-threads=1 --nocapture
+RUST_LOG=error cargo test
 
 # Capture the test result
 TEST_RESULT=$?
