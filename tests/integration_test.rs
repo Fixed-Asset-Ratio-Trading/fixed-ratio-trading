@@ -55,12 +55,7 @@ SOFTWARE.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{AccountInfo},
-    entrypoint::ProgramResult,
-    program::{invoke},
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
 };
 use spl_token::{
@@ -82,93 +77,6 @@ use fixed_ratio_trading::ID as PROGRAM_ID;
 // Import your contract's instruction enum and PoolState struct
 use fixed_ratio_trading::{RentRequirements, PoolError, MINIMUM_RENT_BUFFER, DelegateManagement};
 use fixed_ratio_trading::PoolState;
-
-// Helper function to create a token mint
-async fn create_token_mint<'a>(
-    payer: &AccountInfo<'a>,
-    mint: &AccountInfo<'a>,
-    authority: &Pubkey,
-    decimals: u8,
-    token_program: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
-    rent: &AccountInfo<'a>,
-) -> ProgramResult {
-    invoke(
-        &system_instruction::create_account(
-            payer.key,
-            mint.key,
-            Rent::from_account_info(rent)?.minimum_balance(MintAccount::LEN),
-            MintAccount::LEN as u64,
-            token_program.key,
-        ),
-        &[payer.clone(), mint.clone(), system_program.clone()],
-    )?;
-    invoke(
-        &token_instruction::initialize_mint(
-            token_program.key,
-            mint.key,
-            authority,
-            None,
-            decimals,
-        )?,
-        &[mint.clone(), rent.clone(), token_program.clone()],
-    )?;
-    Ok(())
-}
-
-// Helper function to create a token account
-async fn create_token_account<'a>(
-    payer: &AccountInfo<'a>,
-    account: &AccountInfo<'a>,
-    mint: &AccountInfo<'a>,
-    owner: &Pubkey,
-    token_program: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
-    rent: &AccountInfo<'a>,
-) -> ProgramResult {
-    invoke(
-        &system_instruction::create_account(
-            payer.key,
-            account.key,
-            Rent::from_account_info(rent)?.minimum_balance(TokenAccount::LEN),
-            TokenAccount::LEN as u64,
-            &spl_token::id(),
-        ),
-        &[payer.clone(), account.clone(), system_program.clone()],
-    )?;
-    invoke(
-        &token_instruction::initialize_account(
-            &spl_token::id(),
-            account.key,
-            mint.key,
-            owner,
-        )?,
-        &[account.clone(), mint.clone(), rent.clone(), token_program.clone()],
-    )?;
-    Ok(())
-}
-
-// Helper function to mint tokens
-async fn mint_tokens<'a>(
-    mint: &AccountInfo<'a>,
-    destination: &AccountInfo<'a>,
-    authority: &AccountInfo<'a>,
-    amount: u64,
-    token_program: &AccountInfo<'a>,
-) -> ProgramResult {
-    invoke(
-        &token_instruction::mint_to(
-            token_program.key,
-            mint.key,
-            destination.key,
-            authority.key,
-            &[],
-            amount,
-        )?,
-        &[mint.clone(), destination.clone(), authority.clone(), token_program.clone()],
-    )?;
-    Ok(())
-}
 
 // Helper function to create a token mint
 async fn create_mint(
