@@ -66,18 +66,18 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
         None,
     ).await?;
 
-    // Mint tokens to user for swapping
+    // Mint tokens to user for swapping (using original base mint)
     mint_tokens(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &config.token_b_mint,
+        &ctx.base_mint.pubkey(),
         &user_base_token_account.pubkey(),
         &ctx.env.payer,
         constants::DEFAULT_USER_TOKEN_AMOUNT,
     ).await?;
 
-    // Attempt swap (demonstrates liquidity protection)
+    // Attempt swap: base token for primary token (demonstrates liquidity protection)
     let swap_amount = 1u64;
     let minimum_amount_out = 0u64;
 
@@ -98,7 +98,7 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
         data: PoolInstruction::Swap {
-            input_token_mint: config.token_b_mint,
+            input_token_mint: ctx.base_mint.pubkey(),
             amount_in: swap_amount,
             minimum_amount_out,
         }.try_to_vec().unwrap(),
@@ -180,7 +180,7 @@ async fn test_swap_zero_amount_fails() -> TestResult {
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
         data: PoolInstruction::Swap {
-            input_token_mint: config.token_b_mint,
+            input_token_mint: ctx.base_mint.pubkey(),
             amount_in: 0u64, // Zero amount
             minimum_amount_out: 0u64,
         }.try_to_vec().unwrap(),
