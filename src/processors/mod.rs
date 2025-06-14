@@ -5,6 +5,7 @@
 pub mod pool_creation;
 pub mod liquidity;
 pub mod swap;
+pub mod delegates;
 
 // Re-export pool creation functions
 pub use pool_creation::*;
@@ -13,4 +14,7 @@ pub use pool_creation::*;
 pub use liquidity::*;
 
 // Re-export swap operations functions
-pub use swap::*; 
+pub use swap::*;
+
+// Re-export delegate management functions
+pub use delegates::*; 
