@@ -16,7 +16,7 @@ use solana_program::{
     system_instruction,
     sysvar::{rent::Rent, Sysvar, clock::Clock},
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 
 /// Processes fee withdrawals by the pool owner.
 ///

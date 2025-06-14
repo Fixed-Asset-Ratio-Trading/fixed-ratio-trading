@@ -11,7 +11,7 @@ use solana_program::{
     msg,
     pubkey::Pubkey,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 
 // ================================================================================================
 // PDA HELPER UTILITIES

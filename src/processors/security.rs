@@ -3,7 +3,6 @@
 //! This module contains all the processors for security-related operations including
 //! security parameter updates, pause/unpause functionality, and risk management controls.
 
-use crate::constants::*;
 use crate::types::*;
 use crate::utils::*;
 use solana_program::{
@@ -13,7 +12,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 
 /// Updates the pool's security parameters to manage operational risk and compliance.
 ///
