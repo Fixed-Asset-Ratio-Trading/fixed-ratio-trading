@@ -667,7 +667,23 @@ pub fn process_withdraw(
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(lp_amount_to_burn)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
-    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state_account.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
+    
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
     // Transfer withdrawal fee to pool state PDA

@@ -384,7 +384,23 @@ pub fn process_swap(
         pool_state_data.collected_fees_token_b = pool_state_data.collected_fees_token_b.checked_add(fee_amount)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
-    pool_state_data.serialize(&mut *pool_state_account.data.borrow_mut())?;
+
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state_account.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
+    
     msg!("Pool liquidity updated after swap. Token A: {}, Token B: {}", 
            pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
     msg!("Fees collected - Token A: {}, Token B: {}", 
@@ -531,8 +547,21 @@ pub fn process_set_swap_fee(
     let old_fee = pool_state_data.swap_fee_basis_points;
     pool_state_data.swap_fee_basis_points = fee_basis_points;
 
-    // Save updated state
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
     
     // Log the change for transparency
     msg!("Swap fee updated: {} -> {} basis points ({:.2}% -> {:.2}%)", 

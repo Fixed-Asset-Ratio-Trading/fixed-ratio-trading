@@ -395,8 +395,21 @@ pub fn process_withdraw_fees_to_delegate(
         // Clear withdrawal request after successful withdrawal
         pool_state_data.delegate_management.cancel_withdrawal_request(delegate.key)?;
 
-        // Save updated state
-        pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+        // ========================================================================
+        // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+        // ========================================================================
+        // Apply the same workaround used in process_deposit to prevent data corruption
+        // when the pool state PDA is used as both authority and data storage.
+        
+        // Step 1: Serialize the pool state data to a temporary buffer
+        let mut serialized_data = Vec::new();
+        pool_state_data.serialize(&mut serialized_data)?;
+        
+        // Step 2: Atomic copy to account data
+        {
+            let mut account_data = pool_state.data.borrow_mut();
+            account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+        }
 
         // Log the withdrawal for transparency
         msg!("SOL fee withdrawal completed: Delegate: {}, Amount: {}, Timestamp: {}", 
@@ -494,8 +507,21 @@ pub fn process_withdraw_fees_to_delegate(
     // Clear withdrawal request after successful withdrawal
     pool_state_data.delegate_management.cancel_withdrawal_request(delegate.key)?;
 
-    // Save updated state
-    pool_state_data.serialize(&mut *pool_state.data.borrow_mut())?;
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
 
     // Log the withdrawal for transparency
     msg!("Fee withdrawal completed: Delegate: {}, Token: {}, Amount: {}, Timestamp: {}", 
@@ -832,8 +858,21 @@ pub fn process_cancel_withdrawal_request(
     // Cancel withdrawal request
     pool_state.delegate_management.cancel_withdrawal_request(delegate_info.key)?;
 
-    // Save updated pool state
-    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state_info.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
 
     // Log the cancellation
     msg!("Withdrawal request cancelled: delegate={}, cancelled_by={}", 
@@ -952,8 +991,21 @@ pub fn process_set_delegate_wait_time(
     // Set delegate wait time
     pool_state.delegate_management.set_delegate_wait_time(&delegate, wait_time)?;
 
-    // Save updated pool state
-    pool_state.serialize(&mut *pool_state_info.data.borrow_mut())?;
+    // ========================================================================
+    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
+    // ========================================================================
+    // Apply the same workaround used in process_deposit to prevent data corruption
+    // when the pool state PDA is used as both authority and data storage.
+    
+    // Step 1: Serialize the pool state data to a temporary buffer
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    
+    // Step 2: Atomic copy to account data
+    {
+        let mut account_data = pool_state_info.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
 
     // Log the wait time update
     msg!("Delegate wait time updated: delegate={}, wait_time={}", delegate, wait_time);
