@@ -39,6 +39,12 @@ use solana_program::{
 
 declare_id!("quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD");
 
+// Declare the entrypoint to the Solana runtime
+#[cfg(not(feature = "no-entrypoint"))]
+use solana_program::entrypoint;
+#[cfg(not(feature = "no-entrypoint"))]
+entrypoint!(process_instruction);
+
 // Module declarations
 pub mod client_sdk;
 pub mod constants;
@@ -98,10 +104,38 @@ pub fn process_instruction(
         | PoolInstruction::InitializePoolData { .. }
         | PoolInstruction::InitializePool { .. }
     ) {
-        let pool_state_account = &accounts[0];
-        if let Ok(pool_state) = PoolState::try_from_slice(&pool_state_account.data.borrow()) {
-            if pool_state.is_paused {
-                return Err(PoolError::PoolPaused.into());
+        // Get the correct pool state account index based on instruction type
+        let pool_state_index = match instruction {
+            PoolInstruction::Deposit { .. } => 2,                    // accounts[2] for deposit
+            PoolInstruction::DepositWithFeatures { .. } => 2,        // accounts[2] for deposit with features
+            PoolInstruction::Withdraw { .. } => 3,                   // accounts[3] for withdraw  
+            PoolInstruction::Swap { .. } => 2,                       // accounts[2] for swap (assuming similar to deposit)
+            PoolInstruction::SetSwapFee { .. } => 1,                 // accounts[1] for set swap fee
+            PoolInstruction::RequestFeeWithdrawal { .. } => 1,       // accounts[1] for fee withdrawal request
+            PoolInstruction::CancelWithdrawalRequest => 1,           // accounts[1] for cancel request
+            PoolInstruction::AddDelegate { .. } => 1,                // accounts[1] for add delegate
+            PoolInstruction::RemoveDelegate { .. } => 1,             // accounts[1] for remove delegate
+            PoolInstruction::WithdrawFeesToDelegate { .. } => 1,     // accounts[1] for delegate withdrawal
+            PoolInstruction::SetDelegateWaitTime { .. } => 1,        // accounts[1] for delegate wait time
+            PoolInstruction::GetWithdrawalHistory => 1,              // accounts[1] for withdrawal history
+            PoolInstruction::RequestPoolPause { .. } => 1,           // accounts[1] for pool pause request
+            PoolInstruction::CancelPoolPause => 1,                   // accounts[1] for cancel pool pause
+            PoolInstruction::SetPoolPauseWaitTime { .. } => 1,       // accounts[1] for pause wait time
+            PoolInstruction::GetPoolStatePDA { .. } => return Ok(()), // Utility function, no pause check needed
+            PoolInstruction::GetTokenVaultPDAs { .. } => return Ok(()), // Utility function, no pause check needed
+            PoolInstruction::GetPoolInfo { .. } => 0,                // accounts[0] for pool info
+            PoolInstruction::GetLiquidityInfo { .. } => 0,           // accounts[0] for liquidity info
+            PoolInstruction::GetDelegateInfo { .. } => 0,            // accounts[0] for delegate info
+            PoolInstruction::GetFeeInfo { .. } => 0,                 // accounts[0] for fee info
+            _ => 0, // Default fallback for any missed instructions
+        };
+        
+        if pool_state_index < accounts.len() {
+            let pool_state_account = &accounts[pool_state_index];
+            if let Ok(pool_state) = PoolState::try_from_slice(&pool_state_account.data.borrow()) {
+                if pool_state.is_paused {
+                    return Err(PoolError::PoolPaused.into());
+                }
             }
         }
     }

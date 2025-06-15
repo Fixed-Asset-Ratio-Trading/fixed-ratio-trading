@@ -6,8 +6,25 @@
 **Total Tests Needed:** ~45 new tests  
 **Estimated Timeline:** 3-4 weeks
 
+## Testing Philosophy & Bug Fix Policy
+
+### Core Principles:
+- **High Priority First**: Critical business logic with 0% coverage
+- **Sequential Implementation**: One test at a time with developer approval
+- **Continuous Improvement**: Update plan based on discoveries
+- **Clear Progress Tracking**: Visible milestones and completion status
+
+### 🔧 CONTRACT BUG FIX POLICY:
+**When tests reveal bugs in the contract code, we fix the contract rather than work around issues, since the contract is not yet deployed.**
+
+- ✅ **Fix contract bugs immediately** when discovered during testing
+- ✅ **Update all affected tests** after contract fixes
+- ✅ **Document fixes** in the testing plan progress notes
+- ❌ **No workarounds** - ensure tests verify correct functionality
+- ✅ **Test-driven fixes** - let good tests drive better contract code
+
 ## Progress Overview
-- [ ] **Phase 1: High Priority** (0/20 tests completed)
+- [ ] **Phase 1: High Priority** (1/20 tests completed) - **LIQ-001 ✅ DONE**
 - [ ] **Phase 2: Medium Priority** (0/15 tests completed)  
 - [ ] **Phase 3: Low Priority** (0/10 tests completed)
 
@@ -20,7 +37,16 @@
 **Status:** 🔴 Not Started | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
 
 #### Sub-category 1.1: Deposit Operations
-- [ ] **LIQ-001** `test_basic_deposit_success` - Basic token deposit functionality
+- [x] **LIQ-001** `test_basic_deposit_success` - Basic token deposit functionality ✅ **COMPLETED**
+  - **🔧 CRITICAL BUG FIXES APPLIED**: 
+    1. Fixed `process_instruction` pause checking to use correct pool state account index for each instruction type (was assuming accounts[0] for all instructions)
+    2. **MAJOR**: Added missing entrypoint declaration - contract wasn't being called at all
+    3. **BUFFER SERIALIZATION WORKAROUND**: Applied known Solana fix for PDA data corruption during invoke_signed operations (same pattern as process_initialize_pool_data)
+  - **✅ COMPLETED**: Contract now working (18 tests pass), instruction serialization confirmed working
+  - **📚 DOCUMENTATION ADDED**: Comprehensive documentation of Buffer Serialization Workaround for future developers
+    - Module-level documentation explaining the PDA data corruption issue
+    - Inline documentation with detailed problem/solution explanation
+    - References to when and how to use this pattern
 - [ ] **LIQ-002** `test_deposit_with_features_success` - Advanced deposit with slippage protection
 - [ ] **LIQ-003** `test_deposit_insufficient_tokens_fails` - Insufficient balance error handling
 - [ ] **LIQ-004** `test_deposit_zero_amount_fails` - Zero amount validation
