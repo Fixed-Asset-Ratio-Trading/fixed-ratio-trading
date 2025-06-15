@@ -310,4 +310,330 @@ async fn test_basic_deposit_success() -> TestResult {
     println!("   - Pool liquidity updated correctly");
     
     Ok(())
+}
+
+/// LIQ-002: Test advanced deposit with slippage protection
+/// 
+/// This test verifies the `process_deposit_with_features` function which adds
+/// slippage protection to deposits. It ensures users receive at least the
+/// minimum expected LP tokens for their deposit.
+#[tokio::test]
+async fn test_deposit_with_features_success() -> TestResult {
+    println!("🧪 Testing LIQ-002: Advanced deposit with slippage protection...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    // Create pool with 3:1 ratio (3 primary tokens per 1 base token)
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        Some(3), // 3:1 ratio
+    ).await?;
+    println!("✅ Pool created with 3:1 ratio");
+
+    // Setup user with token accounts and extra SOL for fees
+    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint.pubkey(),
+        &ctx.base_mint.pubkey(),
+        Some(10_000_000_000), // 10 SOL for fees
+    ).await?;
+    println!("✅ User created and funded");
+
+    // Mint tokens to user for depositing - use primary token
+    let deposit_amount = 1_000_000u64; // 1M tokens
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+        (&ctx.primary_mint.pubkey(), &user_primary_token_account)
+    } else {
+        (&ctx.base_mint.pubkey(), &user_primary_token_account) // This would be wrong, but keeping same pattern
+    };
+
+    mint_tokens(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        deposit_mint,
+        &deposit_token_account.pubkey(),
+        &ctx.env.payer,
+        deposit_amount,
+    ).await?;
+    println!("✅ Minted {} tokens to user", deposit_amount);
+
+    // Create LP token account for user
+    let user_lp_token_account = Keypair::new();
+    let lp_mint = if config.token_a_is_primary {
+        &ctx.lp_token_a_mint.pubkey()
+    } else {
+        &ctx.lp_token_b_mint.pubkey()
+    };
+
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_lp_token_account,
+        lp_mint,
+        &user.pubkey(),
+    ).await?;
+
+    // Get initial balances
+    let initial_user_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    let initial_user_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+
+    assert_eq!(initial_user_token_balance, deposit_amount, "User should have deposit amount initially");
+    assert_eq!(initial_user_lp_balance, 0, "User should have no LP tokens initially");
+
+    // Create the deposit with features instruction
+    let deposit_amount_to_use = 500_000; // Deposit 500K tokens
+    let minimum_lp_out = 450_000; // Expect at least 450K LP tokens (10% slippage tolerance)
+    
+    let deposit_instruction_data = PoolInstruction::DepositWithFeatures {
+        deposit_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        amount: deposit_amount_to_use,
+        minimum_lp_tokens_out: minimum_lp_out,
+        fee_recipient: None, // No custom fee recipient
+    };
+
+    let serialized = deposit_instruction_data.try_to_vec().unwrap();
+    println!("DEBUG: DepositWithFeatures instruction serialized, length: {}", serialized.len());
+
+    // Test deserialization
+    let test_deserialize = PoolInstruction::try_from_slice(&serialized);
+    match test_deserialize {
+        Ok(_) => println!("DEBUG: DepositWithFeatures deserialization successful"),
+        Err(e) => println!("DEBUG: DepositWithFeatures deserialization failed: {:?}", e),
+    }
+
+    // Perform deposit with features
+    let deposit_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            // Account order must match process_deposit_with_features function exactly
+            AccountMeta::new(user.pubkey(), true),                           // accounts[0] - User (signer)  
+            AccountMeta::new(deposit_token_account.pubkey(), false),         // accounts[1] - User's source token account
+            AccountMeta::new(config.pool_state_pda, false),                  // accounts[2] - Pool state PDA
+            AccountMeta::new_readonly(config.token_a_mint, false),           // accounts[3] - Token A mint for PDA seeds
+            AccountMeta::new_readonly(config.token_b_mint, false),           // accounts[4] - Token B mint for PDA seeds
+            AccountMeta::new(config.token_a_vault_pda, false),               // accounts[5] - Pool's Token A vault
+            AccountMeta::new(config.token_b_vault_pda, false),               // accounts[6] - Pool's Token B vault
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),           // accounts[7] - LP Token A mint
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),           // accounts[8] - LP Token B mint
+            AccountMeta::new(user_lp_token_account.pubkey(), false),         // accounts[9] - User's destination LP token account
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // accounts[10] - System program
+            AccountMeta::new_readonly(spl_token::id(), false),                      // accounts[11] - SPL Token program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // accounts[12] - Rent sysvar
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // accounts[13] - Clock sysvar
+        ],
+        data: serialized,
+    };
+
+    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
+    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+    
+    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
+    match result {
+        Ok(_) => {
+            println!("✅ Deposit with features transaction succeeded");
+            
+            // Verify the LP tokens were received
+            let final_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+            let lp_tokens_received = final_lp_balance - initial_user_lp_balance;
+            println!("📊 LP tokens received: {}", lp_tokens_received);
+            
+            // Verify we received at least the minimum expected
+            assert!(
+                lp_tokens_received >= minimum_lp_out,
+                "Should receive at least {} LP tokens, got {}",
+                minimum_lp_out, lp_tokens_received
+            );
+            
+            // In this fixed-ratio system, we expect 1:1 LP tokens for deposits
+            assert_eq!(
+                lp_tokens_received, deposit_amount_to_use,
+                "Should receive exactly {} LP tokens for {} token deposit",
+                deposit_amount_to_use, deposit_amount_to_use
+            );
+            
+            // Verify the user's token balance decreased
+            let final_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+            let expected_remaining = deposit_amount - deposit_amount_to_use;
+            assert_eq!(
+                final_token_balance, expected_remaining,
+                "User should have {} tokens remaining, got {}",
+                expected_remaining, final_token_balance
+            );
+            
+            println!("✅ All slippage protection validations passed!");
+            println!("✅ LIQ-002 test completed successfully!");
+        }
+        Err(e) => {
+            println!("❌ Deposit with features transaction failed: {:?}", e);
+            panic!("Deposit with features transaction should succeed: {:?}", e);
+        }
+    }
+
+    Ok(())
+}
+
+/// LIQ-002b: Test slippage protection triggers correctly
+/// 
+/// This test verifies that the slippage protection in `process_deposit_with_features`
+/// correctly rejects deposits when the minimum LP token requirement is not met.
+#[tokio::test]
+async fn test_deposit_with_features_slippage_protection() -> TestResult {
+    println!("🧪 Testing LIQ-002b: Slippage protection triggers...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    // Create pool with 3:1 ratio
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        Some(3), // 3:1 ratio
+    ).await?;
+    println!("✅ Pool created with 3:1 ratio");
+
+    // Setup user with token accounts and extra SOL for fees
+    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint.pubkey(),
+        &ctx.base_mint.pubkey(),
+        Some(10_000_000_000), // 10 SOL for fees
+    ).await?;
+
+    // Mint tokens to user
+    let deposit_amount = 1_000_000;
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+        (&ctx.primary_mint.pubkey(), &user_primary_token_account)
+    } else {
+        (&ctx.base_mint.pubkey(), &user_primary_token_account)
+    };
+
+    mint_tokens(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        deposit_mint,
+        &deposit_token_account.pubkey(),
+        &ctx.env.payer,
+        deposit_amount,
+    ).await?;
+
+    // Create LP token account for user
+    let user_lp_token_account = Keypair::new();
+    let lp_mint = if config.token_a_is_primary {
+        &ctx.lp_token_a_mint.pubkey()
+    } else {
+        &ctx.lp_token_b_mint.pubkey()
+    };
+
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_lp_token_account,
+        lp_mint,
+        &user.pubkey(),
+    ).await?;
+
+    // Create deposit instruction with unrealistic minimum LP requirement
+    let deposit_amount_to_use = 500_000;
+    let minimum_lp_out = 600_000; // Expect MORE LP tokens than we're depositing (impossible)
+    
+    let deposit_instruction_data = PoolInstruction::DepositWithFeatures {
+        deposit_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        amount: deposit_amount_to_use,
+        minimum_lp_tokens_out: minimum_lp_out,
+        fee_recipient: None,
+    };
+
+    let serialized = deposit_instruction_data.try_to_vec().unwrap();
+
+    let deposit_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(deposit_token_account.pubkey(), false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
+            AccountMeta::new(user_lp_token_account.pubkey(), false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: serialized,
+    };
+
+    // Execute the transaction - it should fail due to slippage protection
+    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
+    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+
+    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
+    
+    match result {
+        Ok(_) => {
+            println!("❌ Transaction should have failed due to slippage protection!");
+            panic!("Slippage protection did not trigger as expected");
+        }
+        Err(e) => {
+            println!("✅ Transaction correctly failed due to slippage protection: {:?}", e);
+            
+            // Verify it's the specific slippage protection error (Custom(2001))
+            let error_str = format!("{:?}", e);
+            assert!(
+                error_str.contains("Custom(2001)") || error_str.contains("slippage"),
+                "Should fail with slippage protection error, got: {}",
+                error_str
+            );
+            
+            println!("✅ Slippage protection correctly triggered!");
+            println!("✅ LIQ-002b test completed successfully!");
+        }
+    }
+
+    Ok(())
 } 

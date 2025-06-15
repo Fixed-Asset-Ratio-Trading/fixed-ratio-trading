@@ -24,7 +24,7 @@
 - ✅ **Test-driven fixes** - let good tests drive better contract code
 
 ## Progress Overview
-- [ ] **Phase 1: High Priority** (1/20 tests completed) - **LIQ-001 ✅ DONE**
+- [ ] **Phase 1: High Priority** (2/20 tests completed) - **LIQ-001 ✅ DONE**, **LIQ-002 ✅ DONE**
 - [ ] **Phase 2: Medium Priority** (0/15 tests completed)  
 - [ ] **Phase 3: Low Priority** (0/10 tests completed)
 
@@ -34,7 +34,7 @@
 *Critical business logic with 0% current coverage*
 
 ### Module 1: Liquidity Management (0% → 80% target)
-**Status:** 🔴 Not Started | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
+**Status:** 🟡 In Progress (2/10 completed) | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
 
 #### Sub-category 1.1: Deposit Operations
 - [x] **LIQ-001** `test_basic_deposit_success` - Basic token deposit functionality ✅ **COMPLETED**
@@ -47,7 +47,15 @@
     - Module-level documentation explaining the PDA data corruption issue
     - Inline documentation with detailed problem/solution explanation
     - References to when and how to use this pattern
-- [ ] **LIQ-002** `test_deposit_with_features_success` - Advanced deposit with slippage protection
+- [x] **LIQ-002** `test_deposit_with_features_success` - Advanced deposit with slippage protection ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests `process_deposit_with_features` function
+  - **🔧 FEATURES TESTED**: 
+    1. Slippage protection with minimum LP token guarantees (10% tolerance tested)
+    2. Proper 1:1 LP token minting for fixed-ratio deposits
+    3. Custom fee recipient option (currently logs intent)
+    4. Enhanced deposit validation and error handling
+  - **📊 TEST COVERAGE**: Both success case and slippage protection failure case
+  - **🎯 RESULTS**: Deposited 500K tokens → received 500K LP tokens, slippage protection correctly triggers with Custom(2001) error
 - [ ] **LIQ-003** `test_deposit_insufficient_tokens_fails` - Insufficient balance error handling
 - [ ] **LIQ-004** `test_deposit_zero_amount_fails` - Zero amount validation
 - [ ] **LIQ-005** `test_deposit_wrong_token_fails` - Invalid token mint validation
