@@ -502,6 +502,7 @@ async fn test_deposit_with_features_success() -> TestResult {
 async fn test_deposit_with_features_slippage_protection() -> TestResult {
     println!("🧪 Testing LIQ-002b: Slippage protection triggers...");
     
+    // Create completely separate context to avoid test interference
     let mut ctx = setup_pool_test_context(false).await;
     
     // Create token mints
@@ -512,7 +513,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    // Create pool with 3:1 ratio
+    // Create pool with 5:1 ratio (unique from other tests)
     let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -521,9 +522,9 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
         &ctx.base_mint,
         &ctx.lp_token_a_mint,
         &ctx.lp_token_b_mint,
-        Some(3), // 3:1 ratio
+        Some(5), // 5:1 ratio (unique to avoid PDA conflicts)
     ).await?;
-    println!("✅ Pool created with 3:1 ratio");
+    println!("✅ Pool created with 5:1 ratio");
 
     // Setup user with token accounts and extra SOL for fees
     let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(

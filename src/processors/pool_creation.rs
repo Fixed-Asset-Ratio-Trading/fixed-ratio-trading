@@ -216,10 +216,15 @@ pub fn process_create_pool_state_account(
     }
     msg!("DEBUG: process_create_pool_state_account: Token B Vault PDA address verification passed.");
     
-    // Create the Pool State PDA account
-    let pool_state_account_size = PoolState::get_packed_len();
+    // Create the Pool State PDA account with ACTUAL SERIALIZED SIZE
+    // CRITICAL: GitHub Issue #31960 workaround - use actual size instead of calculated packed length
+    let temp_pool_state = PoolState::default();
+    let mut temp_buffer = Vec::new();
+    temp_pool_state.serialize(&mut temp_buffer)?;
+    let pool_state_account_size = temp_buffer.len();
     let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
-    msg!("DEBUG: process_create_pool_state_account: Creating Pool State PDA account: {}. Size: {}. Rent: {}", pool_state_pda_account.key, pool_state_account_size, rent_for_pool_state);
+    msg!("DEBUG: process_create_pool_state_account: Creating Pool State PDA account: {}. Size: {} (actual serialized vs {} calculated). Rent: {}", 
+         pool_state_pda_account.key, pool_state_account_size, PoolState::get_packed_len(), rent_for_pool_state);
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
@@ -571,10 +576,16 @@ pub fn process_initialize_pool_data(
     msg!("DEBUG: process_initialize_pool_data: Pool State PDA address verification passed.");
 
     // Check if pool state account exists and has the correct size
+    // CRITICAL: GitHub Issue #31960 workaround - check against actual serialized size
+    let temp_pool_state = PoolState::default();
+    let mut temp_buffer = Vec::new();
+    temp_pool_state.serialize(&mut temp_buffer)?;
+    let expected_size = temp_buffer.len();
+    
     msg!("DEBUG: process_initialize_pool_data: Checking pool state account. Data len: {}", pool_state_pda_account.data_len());
-    if pool_state_pda_account.data_len() != PoolState::get_packed_len() {
-        msg!("DEBUG: process_initialize_pool_data: Pool state account has incorrect size. Expected: {}, Got: {}", 
-             PoolState::get_packed_len(), pool_state_pda_account.data_len());
+    if pool_state_pda_account.data_len() != expected_size {
+        msg!("DEBUG: process_initialize_pool_data: Pool state account has incorrect size. Expected: {} (actual), Got: {} (packed_len would be: {})", 
+             expected_size, pool_state_pda_account.data_len(), PoolState::get_packed_len());
         return Err(ProgramError::InvalidAccountData);
     }
 
