@@ -9,9 +9,12 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
+    account_info::next_account_info,
 };
 use borsh::BorshDeserialize;
+use crate::error::PoolError;
 
 // ================================================================================================
 // PDA HELPER UTILITIES
@@ -210,43 +213,34 @@ pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Logs delegate management information
 pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("DEBUG: get_delegate_info: Retrieving delegate information");
-    
-    let pool_state_account = &accounts[0];
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_account = next_account_info(account_info_iter)?;
+
     let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
-    
-    msg!("=== DELEGATE INFORMATION ===");
+
+    msg!("Delegate Info:");
     msg!("Total Delegates: {}", pool_state.delegate_management.delegate_count);
-    
-    // List all delegates
-    for (i, delegate) in pool_state.delegate_management.delegates.iter().enumerate() {
-        if i < pool_state.delegate_management.delegate_count as usize {
-            msg!("Delegate {}: {}", i + 1, delegate);
-            
-            // Show wait time for this delegate
-            if let Some(wait_time) = pool_state.delegate_management.get_delegate_wait_time(delegate) {
-                msg!("  Wait Time: {} seconds", wait_time);
-            }
-            
-            // Show any pending withdrawal request
-            if let Some(request) = pool_state.delegate_management.get_withdrawal_request(delegate) {
-                msg!("  Pending Withdrawal: {} of token {}", request.amount, request.token_mint);
-                msg!("  Request Timestamp: {}", request.request_timestamp);
-            }
-        }
+    for i in 0..pool_state.delegate_management.delegate_count as usize {
+        let delegate = pool_state.delegate_management.delegates[i];
+        let time_limits = pool_state.delegate_management.time_limits[i];
+        msg!("Delegate {}: {}", i, delegate);
+        msg!("  Fee Change Wait Time: {} seconds", time_limits.fee_change_wait_time);
+        msg!("  Withdrawal Wait Time: {} seconds", time_limits.withdraw_wait_time);
+        msg!("  Pause Wait Time: {} seconds", time_limits.pause_wait_time);
     }
-    
-    // Show recent withdrawal history
-    msg!("Recent Withdrawal History:");
-    msg!("History Index: {}", pool_state.delegate_management.withdrawal_history_index);
-    for (i, record) in pool_state.delegate_management.withdrawal_history.iter().enumerate() {
-        if record.delegate != Pubkey::default() { // Only show non-empty records
-            msg!("  Record {}: Delegate {}, Amount {}, Token {}, Slot {}", 
-                 i, record.delegate, record.amount, record.token_mint, record.slot);
-        }
+
+    msg!("\nPending Actions:");
+    for action in pool_state.delegate_management.pending_actions.iter() {
+        msg!("Action ID: {}, Delegate: {}, Type: {:?}, Ready At: {}", 
+             action.action_id, action.delegate, action.action_type, action.execution_timestamp);
     }
-    msg!("============================");
-    
+
+    msg!("\nAction History:");
+    for action in pool_state.delegate_management.action_history.iter() {
+        msg!("Action ID: {}, Delegate: {}, Type: {:?}, Requested At: {}", 
+             action.action_id, action.delegate, action.action_type, action.request_timestamp);
+    }
+
     Ok(())
 }
 
@@ -261,47 +255,128 @@ pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Logs detailed fee information
 pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
-    msg!("DEBUG: get_fee_info: Retrieving fee information");
-    
-    let pool_state_account = &accounts[0];
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_account = next_account_info(account_info_iter)?;
+
     let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
-    
-    msg!("=== FEE INFORMATION ===");
-    
-    // Fee rates
-    msg!("Swap Fee Rate: {} basis points ({:.4}%)", 
-         pool_state.swap_fee_basis_points, 
-         pool_state.swap_fee_basis_points as f64 / 100.0);
-    msg!("Registration Fee: {} lamports ({:.9} SOL)", REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
-    msg!("Deposit/Withdrawal Fee: {} lamports ({:.9} SOL)", DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    msg!("Swap Fee: {} lamports ({:.9} SOL)", SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
-    
-    // Collected fees
-    msg!("Collected Token A Fees: {}", pool_state.collected_fees_token_a);
-    msg!("Collected Token B Fees: {}", pool_state.collected_fees_token_b);
-    msg!("Collected SOL Fees: {} lamports ({:.9} SOL)", 
-         pool_state.collected_sol_fees, 
-         pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
-    
-    // Withdrawn fees (for tracking)
-    msg!("Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);
-    msg!("Total Token B Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_b);
-    msg!("Total SOL Fees Withdrawn: {} lamports ({:.9} SOL)", 
-         pool_state.total_sol_fees_withdrawn, 
-         pool_state.total_sol_fees_withdrawn as f64 / 1_000_000_000.0);
-    
-    // Available fees (collected minus withdrawn)
-    let available_token_a_fees = pool_state.collected_fees_token_a.saturating_sub(pool_state.total_fees_withdrawn_token_a);
-    let available_token_b_fees = pool_state.collected_fees_token_b.saturating_sub(pool_state.total_fees_withdrawn_token_b);
-    let available_sol_fees = pool_state.collected_sol_fees.saturating_sub(pool_state.total_sol_fees_withdrawn);
-    
-    msg!("Available Token A Fees: {}", available_token_a_fees);
-    msg!("Available Token B Fees: {}", available_token_b_fees);
-    msg!("Available SOL Fees: {} lamports ({:.9} SOL)", 
-         available_sol_fees, 
-         available_sol_fees as f64 / 1_000_000_000.0);
-    
-    msg!("=======================");
-    
+
+    msg!("Fee Info:");
+    msg!("Current Swap Fee: {} basis points", pool_state.swap_fee_basis_points);
+    msg!("Collected Fees:");
+    msg!("  Token A: {}", pool_state.collected_fees_token_a);
+    msg!("  Token B: {}", pool_state.collected_fees_token_b);
+    msg!("  SOL: {}", pool_state.collected_sol_fees);
+    msg!("Total Fees Withdrawn:");
+    msg!("  Token A: {}", pool_state.total_fees_withdrawn_token_a);
+    msg!("  Token B: {}", pool_state.total_fees_withdrawn_token_b);
+    msg!("  SOL: {}", pool_state.total_sol_fees_withdrawn);
+
+    Ok(())
+}
+
+/// Validates that an account is owned by the expected program.
+pub fn validate_account_owner(account: &AccountInfo, expected_owner: &Pubkey) -> ProgramResult {
+    if account.owner != expected_owner {
+        msg!("Account {} has incorrect owner. Expected: {}, Actual: {}", 
+             account.key, expected_owner, account.owner);
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    Ok(())
+}
+
+/// Validates that an account is a signer.
+pub fn validate_signer(account: &AccountInfo, context: &str) -> ProgramResult {
+    if !account.is_signer {
+        msg!("{} must be a signer", context);
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    Ok(())
+}
+
+/// Validates that an account is writable.
+pub fn validate_writable(account: &AccountInfo, context: &str) -> ProgramResult {
+    if !account.is_writable {
+        msg!("{} must be writable", context);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    Ok(())
+}
+
+/// Validates that a swap fee is within allowed bounds.
+pub fn validate_swap_fee(fee_basis_points: u16) -> ProgramResult {
+    if fee_basis_points > 50 { // 0.5% maximum fee
+        msg!("Swap fee {} basis points exceeds maximum of {}", 
+             fee_basis_points, 50);
+        return Err(ProgramError::InvalidArgument);
+    }
+    Ok(())
+}
+
+/// Validates that an amount is non-zero.
+pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
+    if amount == 0 {
+        msg!("{} amount cannot be zero", context);
+        return Err(ProgramError::InvalidArgument);
+    }
+    Ok(())
+}
+
+/// Validates that two tokens are different.
+pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramResult {
+    if token_a == token_b {
+        msg!("Cannot create pool with identical tokens: {}", token_a);
+        return Err(ProgramError::InvalidArgument);
+    }
+    Ok(())
+}
+
+/// Validates that a wait time is within allowed bounds.
+pub fn validate_wait_time(wait_time: u64) -> ProgramResult {
+    if wait_time < 300 || wait_time > 259200 { // 5 minutes to 72 hours
+        msg!("Wait time {} seconds is outside allowed range [{}, {}]", 
+             wait_time, 300, 259200);
+        return Err(PoolError::InvalidWaitTime { wait_time }.into());
+    }
+    Ok(())
+}
+
+/// Validates that a pool is initialized.
+pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
+    if !pool_state.is_initialized {
+        msg!("Pool is not yet initialized");
+        return Err(ProgramError::UninitializedAccount);
+    }
+    Ok(())
+}
+
+/// Validates that a pool is not paused.
+pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
+    if pool_state.is_paused {
+        msg!("Pool operations are currently paused");
+        return Err(PoolError::PoolPaused.into());
+    }
+    Ok(())
+}
+
+/// Gets the wait time for a delegate action based on action type.
+pub fn get_action_wait_time(pool_state: &PoolState, delegate: &Pubkey, action_type: &DelegateActionType) -> Option<u64> {
+    if let Some(time_limits) = pool_state.delegate_management.get_delegate_time_limits(delegate) {
+        match action_type {
+            DelegateActionType::FeeChange => Some(time_limits.fee_change_wait_time),
+            DelegateActionType::Withdrawal => Some(time_limits.withdraw_wait_time),
+            DelegateActionType::PoolPause => Some(time_limits.pause_wait_time),
+        }
+    } else {
+        None
+    }
+}
+
+/// Gets the action history for a pool.
+pub fn get_action_history(pool_state: &PoolState) -> ProgramResult {
+    msg!("Action History (last 10 actions):");
+    for (i, action) in pool_state.delegate_management.action_history.iter().enumerate() {
+        msg!("Record {}: Delegate: {}, Action Type: {:?}, Action ID: {}, Timestamp: {}", 
+             i, action.delegate, action.action_type, action.action_id, action.request_timestamp);
+    }
     Ok(())
 } 

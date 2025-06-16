@@ -3,14 +3,16 @@
 //! This module contains all the core state structures for the trading pool,
 //! including the main PoolState, delegate management, and related helper types.
 
-use crate::constants::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     pubkey::Pubkey,
-    rent::Rent,
+    sysvar::rent::Rent,
     program_pack::Pack,
 };
 use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
+use crate::error::PoolError;
+use crate::constants::*;
+use super::delegate_actions::{DelegateTimeLimits, PendingDelegateAction};
 
 /// Enumerated reasons for pool pause requests.
 /// 
@@ -192,47 +194,40 @@ impl WithdrawalRequest {
     }
 }
 
-/// Represents a completed withdrawal for audit tracking.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, Copy)]
-pub struct WithdrawalRecord {
-    pub delegate: Pubkey,
-    pub token_mint: Pubkey,
-    pub amount: u64,
-    pub timestamp: i64,
-    pub slot: u64,
+/// Manages delegate authorization, actions, and time limits
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+pub struct DelegateManagement {
+    /// Array of authorized delegates
+    pub delegates: [Pubkey; MAX_DELEGATES],
+    /// Number of active delegates
+    pub delegate_count: u8,
+    /// Time limits for different actions per delegate
+    pub time_limits: [DelegateTimeLimits; MAX_DELEGATES],
+    /// Pending actions from delegates
+    pub pending_actions: Vec<PendingDelegateAction>, // Allow multiple actions per delegate
+    /// Number of pending actions
+    pub pending_action_count: u8,
+    /// Next action ID to assign
+    pub next_action_id: u64,
+    /// History of completed actions
+    pub action_history: Vec<PendingDelegateAction>, // Keep last 10 completed actions
+    /// Index for circular action history buffer
+    pub action_history_index: u8,
 }
 
-impl WithdrawalRecord {
-    pub fn new(delegate: Pubkey, token_mint: Pubkey, amount: u64, timestamp: i64, slot: u64) -> Self {
+impl Default for DelegateManagement {
+    fn default() -> Self {
         Self {
-            delegate,
-            token_mint,
-            amount,
-            timestamp,
-            slot,
+            delegates: [Pubkey::default(); MAX_DELEGATES],
+            delegate_count: 0,
+            time_limits: [DelegateTimeLimits::default(); MAX_DELEGATES],
+            pending_actions: Vec::with_capacity(MAX_DELEGATES * 2),
+            pending_action_count: 0,
+            next_action_id: 1,
+            action_history: Vec::with_capacity(10),
+            action_history_index: 0,
         }
     }
-
-    pub fn get_packed_len() -> usize {
-        32 + // delegate
-        32 + // token_mint
-        8 +  // amount
-        8 +  // timestamp
-        8    // slot
-    }
-}
-
-/// Manages delegate authorization, fee withdrawals, and pool pause requests.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
-pub struct DelegateManagement {
-    pub delegates: [Pubkey; MAX_DELEGATES],
-    pub delegate_count: u8,
-    pub withdrawal_history: [WithdrawalRecord; 10], // Last 10 withdrawals
-    pub withdrawal_history_index: u8,
-    pub withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES], // One request per delegate
-    pub delegate_wait_times: [u64; MAX_DELEGATES], // Wait time in seconds for each delegate
-    pub pool_pause_requests: [PoolPauseRequest; MAX_DELEGATES], // One pause request per delegate
-    pub pool_pause_wait_times: [u64; MAX_DELEGATES], // Pool pause wait time in seconds for each delegate (default 72 hours)
 }
 
 impl DelegateManagement {
@@ -243,12 +238,12 @@ impl DelegateManagement {
         Self {
             delegates,
             delegate_count: 1,
-            withdrawal_history: [WithdrawalRecord::default(); 10],
-            withdrawal_history_index: 0,
-            withdrawal_requests: [WithdrawalRequest::default(); MAX_DELEGATES],
-            delegate_wait_times: [MIN_WITHDRAWAL_WAIT_TIME; MAX_DELEGATES], // Default to minimum wait time for fee withdrawals
-            pool_pause_requests: [PoolPauseRequest::default(); MAX_DELEGATES], // No pending pause requests initially
-            pool_pause_wait_times: [259200; MAX_DELEGATES], // Default 72 hours for pool pausing (more deliberation time)
+            time_limits: [DelegateTimeLimits::default(); MAX_DELEGATES],
+            pending_actions: Vec::with_capacity(MAX_DELEGATES * 2),
+            pending_action_count: 0,
+            next_action_id: 1,
+            action_history: Vec::with_capacity(10),
+            action_history_index: 0,
         }
     }
 
@@ -265,14 +260,14 @@ impl DelegateManagement {
         self.get_delegate_index(pubkey).is_some()
     }
 
-    pub fn add_delegate(&mut self, delegate: Pubkey) -> Result<(), crate::PoolError> {
+    pub fn add_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
         if self.delegate_count as usize >= MAX_DELEGATES {
-            return Err(crate::PoolError::DelegateLimitExceeded);
+            return Err(PoolError::DelegateLimitExceeded);
         }
 
         // Check if already a delegate
         if self.is_delegate(&delegate) {
-            return Err(crate::PoolError::DelegateAlreadyExists { delegate });
+            return Err(PoolError::DelegateAlreadyExists { delegate });
         }
 
         self.delegates[self.delegate_count as usize] = delegate;
@@ -280,7 +275,7 @@ impl DelegateManagement {
         Ok(())
     }
 
-    pub fn remove_delegate(&mut self, delegate: Pubkey) -> Result<(), crate::PoolError> {
+    pub fn remove_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
         let mut found_index = None;
         for i in 0..self.delegate_count as usize {
             if self.delegates[i] == delegate {
@@ -293,300 +288,92 @@ impl DelegateManagement {
             // Shift remaining delegates
             for i in index..(self.delegate_count as usize - 1) {
                 self.delegates[i] = self.delegates[i + 1];
-                self.withdrawal_requests[i] = self.withdrawal_requests[i + 1];
-                self.delegate_wait_times[i] = self.delegate_wait_times[i + 1];
+                self.time_limits[i] = self.time_limits[i + 1];
             }
             self.delegates[self.delegate_count as usize - 1] = Pubkey::default();
-            self.withdrawal_requests[self.delegate_count as usize - 1] = WithdrawalRequest::default();
-            self.delegate_wait_times[self.delegate_count as usize - 1] = MIN_WITHDRAWAL_WAIT_TIME;
+            self.time_limits[self.delegate_count as usize - 1] = DelegateTimeLimits::default();
             self.delegate_count -= 1;
             Ok(())
         } else {
-            Err(crate::PoolError::DelegateNotFound { delegate })
+            Err(PoolError::DelegateNotFound { delegate })
         }
     }
 
-    pub fn add_withdrawal_record(&mut self, record: WithdrawalRecord) {
-        let index = self.withdrawal_history_index as usize;
-        self.withdrawal_history[index] = record;
-        self.withdrawal_history_index = (self.withdrawal_history_index + 1) % 10;
+    pub fn add_pending_action(
+        &mut self,
+        action: PendingDelegateAction,
+    ) -> Result<u64, PoolError> {
+        if self.pending_action_count as usize >= MAX_DELEGATES * 2 {
+            return Err(PoolError::TooManyPendingActions);
+        }
+
+        // Assign next action ID and increment
+        let action_id = self.next_action_id;
+        self.next_action_id = self.next_action_id.checked_add(1)
+            .ok_or(PoolError::ArithmeticOverflow)?;
+
+        // Store the action
+        self.pending_actions.push(action);
+        self.pending_action_count += 1;
+
+        Ok(action_id)
+    }
+
+    pub fn get_pending_action(&self, action_id: u64) -> Option<&PendingDelegateAction> {
+        self.pending_actions.iter()
+            .find(|action| action.action_id == action_id)
+    }
+
+    pub fn remove_pending_action(&mut self, action_id: u64) -> Result<PendingDelegateAction, PoolError> {
+        let position = self.pending_actions.iter()
+            .position(|action| action.action_id == action_id)
+            .ok_or(PoolError::ActionNotFound)?;
+
+        // Remove and return the action
+        let action = self.pending_actions.remove(position);
+        self.pending_action_count -= 1;
+
+        // Add to history
+        self.add_to_history(action.clone());
+
+        Ok(action)
+    }
+
+    fn add_to_history(&mut self, action: PendingDelegateAction) {
+        if self.action_history.len() >= 10 {
+            self.action_history.remove(0);
+        }
+        self.action_history.push(action);
+    }
+
+    pub fn get_delegate_time_limits(&self, delegate: &Pubkey) -> Option<&DelegateTimeLimits> {
+        self.get_delegate_index(delegate)
+            .map(|index| &self.time_limits[index])
+    }
+
+    pub fn set_delegate_time_limits(
+        &mut self,
+        delegate: &Pubkey,
+        new_limits: DelegateTimeLimits,
+    ) -> Result<(), PoolError> {
+        let index = self.get_delegate_index(delegate)
+            .ok_or(PoolError::DelegateNotFound { delegate: *delegate })?;
+        
+        self.time_limits[index] = new_limits;
+        Ok(())
     }
 
     pub fn get_packed_len() -> usize {
-        // Use exact calculation - Borsh serializes structs precisely
-        (32 * MAX_DELEGATES) + // delegates: [Pubkey; MAX_DELEGATES]
-        1 +  // delegate_count: u8
-        (WithdrawalRecord::get_packed_len() * 10) + // withdrawal_history: [WithdrawalRecord; 10]
-        1 +  // withdrawal_history_index: u8
-        (WithdrawalRequest::get_packed_len() * MAX_DELEGATES) + // withdrawal_requests: [WithdrawalRequest; MAX_DELEGATES]
-        (8 * MAX_DELEGATES) + // delegate_wait_times: [u64; MAX_DELEGATES]
-        (PoolPauseRequest::get_packed_len() * MAX_DELEGATES) + // pool_pause_requests: [PoolPauseRequest; MAX_DELEGATES]
-        (8 * MAX_DELEGATES) // pool_pause_wait_times: [u64; MAX_DELEGATES]
-    }
-
-    pub fn set_delegate_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), crate::PoolError> {
-        if wait_time < MIN_WITHDRAWAL_WAIT_TIME || wait_time > MAX_WITHDRAWAL_WAIT_TIME {
-            return Err(crate::PoolError::InvalidWaitTime { wait_time });
-        }
-
-        if let Some(index) = self.get_delegate_index(delegate) {
-            self.delegate_wait_times[index] = wait_time;
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-
-    pub fn get_delegate_wait_time(&self, delegate: &Pubkey) -> Option<u64> {
-        self.get_delegate_index(delegate).map(|index| self.delegate_wait_times[index])
-    }
-
-    pub fn create_withdrawal_request(&mut self, delegate: &Pubkey, token_mint: Pubkey, amount: u64, timestamp: i64, slot: u64) -> Result<(), crate::PoolError> {
-        if let Some(index) = self.get_delegate_index(delegate) {
-            // Check if there's already a pending request
-            if self.withdrawal_requests[index].delegate != Pubkey::default() {
-                return Err(crate::PoolError::PendingWithdrawalExists);
-            }
-
-            let wait_time = self.delegate_wait_times[index];
-            self.withdrawal_requests[index] = WithdrawalRequest::new(
-                *delegate,
-                token_mint,
-                amount,
-                timestamp,
-                slot,
-                wait_time,
-            );
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-
-    pub fn cancel_withdrawal_request(&mut self, delegate: &Pubkey) -> Result<(), crate::PoolError> {
-        if let Some(index) = self.get_delegate_index(delegate) {
-            self.withdrawal_requests[index] = WithdrawalRequest::default();
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-
-    pub fn get_withdrawal_request(&self, delegate: &Pubkey) -> Option<&WithdrawalRequest> {
-        self.get_delegate_index(delegate).map(|index| &self.withdrawal_requests[index])
-    }
-
-    pub fn is_withdrawal_ready(&self, delegate: &Pubkey, current_timestamp: i64) -> Result<bool, crate::PoolError> {
-        if let Some(request) = self.get_withdrawal_request(delegate) {
-            if request.delegate == Pubkey::default() {
-                return Err(crate::PoolError::NoPendingWithdrawal);
-            }
-
-            let elapsed_time = current_timestamp - request.request_timestamp;
-            Ok(elapsed_time >= request.wait_time as i64)
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-    
-    // **POOL PAUSE REQUEST MANAGEMENT METHODS**
-    
-    /// Set pool pause wait time for a specific delegate.
-    /// 
-    /// Configures the delay period between when a delegate requests a pool pause
-    /// and when it becomes effective. This is separate from withdrawal wait times
-    /// to allow independent governance parameter tuning.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - The delegate's public key
-    /// * `wait_time` - Wait time in seconds (60 to 259200 = 1 minute to 72 hours)
-    /// 
-    /// # Returns:
-    /// - `Ok(())` if successful
-    /// - `PoolError::InvalidWaitTime` if wait time is out of range
-    /// - `PoolError::DelegateNotFound` if delegate is not authorized
-    pub fn set_pool_pause_wait_time(&mut self, delegate: &Pubkey, wait_time: u64) -> Result<(), crate::PoolError> {
-        // Validate wait time (1 minute to 72 hours)
-        if wait_time < 60 || wait_time > 259200 {
-            return Err(crate::PoolError::InvalidWaitTime { wait_time });
-        }
-
-        if let Some(index) = self.get_delegate_index(delegate) {
-            self.pool_pause_wait_times[index] = wait_time;
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-    
-    /// Get pool pause wait time for a specific delegate.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - The delegate's public key
-    /// 
-    /// # Returns:
-    /// - `Some(wait_time)` if delegate exists
-    /// - `None` if delegate is not found
-    pub fn get_pool_pause_wait_time(&self, delegate: &Pubkey) -> Option<u64> {
-        self.get_delegate_index(delegate).map(|index| self.pool_pause_wait_times[index])
-    }
-    
-    /// Create a pool pause request for a specific delegate.
-    /// 
-    /// Submits a request to pause pool operations for a delegate-defined duration.
-    /// The pause will become active after the delegate's configured wait time.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - The requesting delegate's public key
-    /// * `reason` - Structured reason for the pause request
-    /// * `duration_seconds` - Duration of pause once active (60 to 259200 seconds)
-    /// * `timestamp` - Current Unix timestamp
-    /// * `slot` - Current Solana slot for audit trails
-    /// 
-    /// # Returns:
-    /// - `Ok(())` if successful
-    /// - `PoolError::DelegateNotFound` if delegate is not authorized
-    /// - `PoolError::PendingWithdrawalExists` if delegate already has active pause request
-    /// - `PoolError::InvalidWaitTime` if duration is out of range
-    pub fn create_pool_pause_request(
-        &mut self, 
-        delegate: &Pubkey, 
-        reason: PoolPauseReason,
-        duration_seconds: u64,
-        timestamp: i64, 
-        slot: u64
-    ) -> Result<(), crate::PoolError> {
-        if let Some(index) = self.get_delegate_index(delegate) {
-            // Check if there's already a pending request (delegate != default means active request)
-            if self.pool_pause_requests[index].delegate != Pubkey::default() {
-                return Err(crate::PoolError::PendingWithdrawalExists);
-            }
-
-            let wait_time = self.pool_pause_wait_times[index];
-            let pause_request = PoolPauseRequest::new(
-                *delegate,
-                reason,
-                timestamp,
-                slot,
-                wait_time,
-                duration_seconds,
-            )?;
-            
-            self.pool_pause_requests[index] = pause_request;
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-    
-    /// Cancel a pending pool pause request for a specific delegate.
-    /// 
-    /// Removes a pool pause request before it becomes active. Can be called by
-    /// the requesting delegate or the pool owner.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - The delegate's public key
-    /// 
-    /// # Returns:
-    /// - `Ok(())` if successful
-    /// - `PoolError::DelegateNotFound` if delegate is not authorized
-    /// - `PoolError::NoPendingWithdrawal` if no pause request exists
-    pub fn cancel_pool_pause_request(&mut self, delegate: &Pubkey) -> Result<(), crate::PoolError> {
-        if let Some(index) = self.get_delegate_index(delegate) {
-            if self.pool_pause_requests[index].delegate == Pubkey::default() {
-                return Err(crate::PoolError::NoPendingWithdrawal);
-            }
-            
-            self.pool_pause_requests[index] = PoolPauseRequest::default();
-            Ok(())
-        } else {
-            Err(crate::PoolError::DelegateNotFound { delegate: *delegate })
-        }
-    }
-    
-    /// Get the pool pause request for a specific delegate.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - The delegate's public key
-    /// 
-    /// # Returns:
-    /// - `Some(&PoolPauseRequest)` if a request exists
-    /// - `None` if no request exists or delegate not found
-    pub fn get_pool_pause_request(&self, delegate: &Pubkey) -> Option<&PoolPauseRequest> {
-        self.get_delegate_index(delegate)
-            .and_then(|index| {
-                if self.pool_pause_requests[index].delegate != Pubkey::default() {
-                    Some(&self.pool_pause_requests[index])
-                } else {
-                    None
-                }
-            })
-    }
-    
-    /// Check if any pool pause is currently active.
-    /// 
-    /// Iterates through all delegate pause requests to determine if any
-    /// pause is currently in effect. This is used to enforce pool pausing.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - `true` if any delegate has an active pause
-    /// - `false` if no pauses are currently active
-    pub fn is_pool_paused_by_delegates(&self, current_timestamp: i64) -> bool {
-        for i in 0..self.delegate_count as usize {
-            let request = &self.pool_pause_requests[i];
-            if request.delegate != Pubkey::default() && request.is_active(current_timestamp) {
-                return true;
-            }
-        }
-        false
-    }
-    
-    /// Get information about the currently active pool pause, if any.
-    /// 
-    /// Returns details about the first active pool pause found, including
-    /// the delegate responsible and the reason for the pause.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - `Some((delegate, reason))` if a pause is active
-    /// - `None` if no pause is currently active
-    pub fn get_active_pool_pause_info(&self, current_timestamp: i64) -> Option<(Pubkey, PoolPauseReason)> {
-        for i in 0..self.delegate_count as usize {
-            let request = &self.pool_pause_requests[i];
-            if request.delegate != Pubkey::default() && request.is_active(current_timestamp) {
-                return Some((request.delegate, request.reason.clone()));
-            }
-        }
-        None
-    }
-    
-    /// Clean up expired pool pause requests.
-    /// 
-    /// Removes pause requests that have expired to keep the state clean.
-    /// Should be called periodically to prevent state bloat.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - Number of expired requests cleaned up
-    pub fn cleanup_expired_pool_pause_requests(&mut self, current_timestamp: i64) -> u8 {
-        let mut cleaned_count = 0;
-        
-        for i in 0..self.delegate_count as usize {
-            let request = &self.pool_pause_requests[i];
-            if request.delegate != Pubkey::default() && request.is_expired(current_timestamp) {
-                self.pool_pause_requests[i] = PoolPauseRequest::default();
-                cleaned_count += 1;
-            }
-        }
-        
-        cleaned_count
+        (32 * MAX_DELEGATES) + // delegates
+        1 + // delegate_count
+        (24 * MAX_DELEGATES) + // time_limits (3 u64s per delegate)
+        4 + // pending_actions vec length
+        (PendingDelegateAction::get_packed_len() * MAX_DELEGATES * 2) + // pending_actions
+        1 + // pending_action_count
+        8 + // next_action_id
+        4 + // action_history vec length
+        (PendingDelegateAction::get_packed_len() * 10) + // action_history
+        1   // action_history_index
     }
 }
 
@@ -646,7 +433,7 @@ impl RentRequirements {
 }
 
 /// Main pool state containing all configuration and runtime data.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct PoolState {
     pub owner: Pubkey,
     pub token_a_mint: Pubkey,
@@ -665,14 +452,50 @@ pub struct PoolState {
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
     pub is_paused: bool,
+    pub pause_end_timestamp: i64,  // Unix timestamp when pause ends (0 if not paused)
+    pub pause_reason: PoolPauseReason,  // Reason for current pause
     pub delegate_management: DelegateManagement,
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
-    pub swap_fee_basis_points: u64, // Fee in basis points (0-50, representing 0%-0.5%)
-    pub collected_sol_fees: u64, // Track collected SOL fees
-    pub total_sol_fees_withdrawn: u64, // Track total SOL fees withdrawn
+    pub swap_fee_basis_points: u64,
+    pub collected_sol_fees: u64,
+    pub total_sol_fees_withdrawn: u64,
+}
+
+impl Default for PoolState {
+    fn default() -> Self {
+        Self {
+            owner: Pubkey::default(),
+            token_a_mint: Pubkey::default(),
+            token_b_mint: Pubkey::default(),
+            token_a_vault: Pubkey::default(),
+            token_b_vault: Pubkey::default(),
+            lp_token_a_mint: Pubkey::default(),
+            lp_token_b_mint: Pubkey::default(),
+            ratio_a_numerator: 0,
+            ratio_b_denominator: 0,
+            total_token_a_liquidity: 0,
+            total_token_b_liquidity: 0,
+            pool_authority_bump_seed: 0,
+            token_a_vault_bump_seed: 0,
+            token_b_vault_bump_seed: 0,
+            is_initialized: false,
+            rent_requirements: RentRequirements::default(),
+            is_paused: false,
+            pause_end_timestamp: 0,
+            pause_reason: PoolPauseReason::default(),
+            delegate_management: DelegateManagement::default(),
+            collected_fees_token_a: 0,
+            collected_fees_token_b: 0,
+            total_fees_withdrawn_token_a: 0,
+            total_fees_withdrawn_token_b: 0,
+            swap_fee_basis_points: 0,
+            collected_sol_fees: 0,
+            total_sol_fees_withdrawn: 0,
+        }
+    }
 }
 
 impl PoolState {
@@ -694,6 +517,8 @@ impl PoolState {
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // is_paused
+        8 +  // pause_end_timestamp
+        1 +  // pause_reason (enum)
         DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b

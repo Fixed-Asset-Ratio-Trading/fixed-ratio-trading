@@ -6,13 +6,14 @@
 use crate::types::PoolPauseReason;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
+use super::delegate_actions::{DelegateActionType, DelegateActionParams, DelegateTimeLimits};
 
 /// All supported instructions for the Solana Trading Pool Program.
 /// 
 /// This enum defines every operation that can be performed on the pool,
 /// from initialization and liquidity management to delegate operations
 /// and governance functions.
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub enum PoolInstruction {
     /// **DEPRECATED**: Use `InitializePool` instead.
     /// This instruction was part of a workaround for Solana AccountInfo.data issues
@@ -105,9 +106,6 @@ pub enum PoolInstruction {
         minimum_amount_out: u64,
     },
     
-    /// Owner withdraws accumulated SOL fees
-    WithdrawFees,
-    
     /// Update security parameters for the pool
     UpdateSecurityParams {
         max_withdrawal_percentage: Option<u64>,
@@ -125,87 +123,45 @@ pub enum PoolInstruction {
         delegate: Pubkey,
     },
     
-    /// Fee withdrawal by delegates
-    WithdrawFeesToDelegate {
-        token_mint: Pubkey,
-        amount: u64,
+    /// Request a delegate action (consolidated instruction)
+    RequestDelegateAction {
+        /// Type of action being requested
+        action_type: DelegateActionType,
+        /// Parameters for the action
+        params: DelegateActionParams,
     },
-    
-    /// Set swap fee configuration (owner only, max 0.5%)
-    SetSwapFee {
-        fee_basis_points: u64, // Fee in basis points (0-50)
+
+    /// Execute a pending delegate action
+    /// Required accounts for fee withdrawal:
+    /// - Signer (executor)
+    /// - Pool state PDA
+    /// - Clock sysvar
+    /// - Delegate's token account (for receiving fees)
+    /// - Token program
+    /// - Pool vault account (for the token being withdrawn)
+    ExecuteDelegateAction {
+        /// ID of the action to execute
+        action_id: u64,
+    },
+
+    /// Revoke a pending delegate action
+    RevokeAction {
+        /// ID of the action to revoke
+        action_id: u64,
+    },
+
+    /// Set time limits for delegate actions
+    SetDelegateTimeLimits {
+        /// Delegate to set limits for
+        delegate: Pubkey,
+        /// New time limits
+        time_limits: DelegateTimeLimits,
     },
     
     /// Get withdrawal history (for transparency)
     GetWithdrawalHistory,
     
-    /// Request a time-delayed fee withdrawal
-    RequestFeeWithdrawal {
-        token_mint: Pubkey,
-        amount: u64,
-    },
-    
-    /// Cancel a pending withdrawal request
-    CancelWithdrawalRequest,
-    
-    /// Set withdrawal wait time for a specific delegate
-    SetDelegateWaitTime {
-        delegate: Pubkey,
-        wait_time: u64,
-    },
-    
-    // **INDIVIDUAL POOL RATIO PAUSING**: Delegate-controlled ratio-specific pausing system
-    /// Request to pause a specific pool ratio for a delegate-defined duration.
-    /// 
-    /// This instruction allows delegates to request a pause of pool trading operations
-    /// with configurable timing parameters. Designed as a primitive for governance
-    /// contracts to implement sophisticated dispute resolution and bonding mechanisms.
-    /// 
-    /// # Features:
-    /// - Individual delegate-controlled pausing per ratio
-    /// - Configurable wait times (1 minute to 72 hours, default 72 hours)  
-    /// - Separate timing from withdrawal requests
-    /// - Owner cancellation capability for emergency resolution
-    /// - Designed for integration with governance and bonding contracts
-    /// 
-    /// # Use Cases:
-    /// - Ratio dispute resolution systems
-    /// - Bonding mechanism enforcement 
-    /// - Governance-based pool management
-    /// - Security incident response
-    /// 
-    /// # Arguments:
-    /// - `reason`: Enumerated reason for pause request
-    /// - `duration_seconds`: Requested pause duration (1 minute to 72 hours max)
-    RequestPoolPause {
-        reason: PoolPauseReason,
-        duration_seconds: u64,
-    },
-    
-    /// Cancel a pending pool pause request.
-    /// 
-    /// Allows the requesting delegate or pool owner to cancel a pool pause request
-    /// before it becomes active. Useful for resolving disputes or correcting
-    /// accidental pause requests.
-    CancelPoolPause,
-    
-    /// Set pool pause wait time for a specific delegate.
-    /// 
-    /// Configures the delay period between when a delegate requests a pool pause
-    /// and when it becomes effective. Separate from withdrawal wait times to allow
-    /// independent governance parameter tuning.
-    /// 
-    /// # Timing Parameters:
-    /// - Minimum delay: 1 minute (60 seconds)
-    /// - Maximum delay: 72 hours (259,200 seconds)  
-    /// - Default: 72 hours for maximum deliberation time
-    SetPoolPauseWaitTime {
-        delegate: Pubkey,
-        wait_time: u64, // Wait time in seconds (60 to 259200)
-    },
-    
-    // **PDA HELPER UTILITIES**: Compute PDA addresses without requiring account creation
-    /// Returns the Pool State PDA address for given tokens and ratio
+    /// Get pool state PDA address for given tokens and ratio
     /// Useful for clients to derive addresses before calling other instructions
     GetPoolStatePDA {
         primary_token_mint: Pubkey,
@@ -219,7 +175,6 @@ pub enum PoolInstruction {
         pool_state_pda: Pubkey,
     },
     
-    // **TEST-SPECIFIC VIEW/GETTER INSTRUCTIONS**: Easy access to pool state data
     /// Returns comprehensive pool state information in a structured format
     /// Ideal for testing, debugging, and frontend integration
     GetPoolInfo {

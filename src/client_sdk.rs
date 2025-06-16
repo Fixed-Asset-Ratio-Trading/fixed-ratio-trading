@@ -72,13 +72,14 @@ SOFTWARE.
 //! ).unwrap();
 //! ```
 
-use borsh::BorshSerialize;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     system_program,
-    sysvar,
+    sysvar::{self, rent, clock},
 };
+use borsh::BorshSerialize;
+use crate::types::*;
 use crate::{
     PoolInstruction,
     POOL_STATE_SEED_PREFIX, 
@@ -614,7 +615,4 @@ pub mod testing {
     pub fn create_test_keypairs(count: usize) -> Vec<Pubkey> {
         (0..count).map(|_| Pubkey::new_unique()).collect()
     }
-}
-
-/// Re-export commonly used types for convenience.
-pub use crate::PoolError; 
+} 

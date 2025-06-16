@@ -3,8 +3,6 @@
 //! This module contains utilities for validating user inputs, account states, and program parameters.
 //! These functions provide common validation logic used throughout the program.
 
-use crate::types::*;
-use crate::constants::*;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -12,6 +10,13 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+
+use crate::{
+    error::PoolError,
+    types::{PoolState, pool_state::PoolPauseReason},
+};
+
+use crate::constants::*;
 
 /// Validates that an account is owned by the expected program.
 ///
@@ -142,15 +147,28 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 }
 
 /// Validates that a pool is not paused (for user operations).
+/// Also handles automatic unpause if the pause duration has elapsed.
 ///
 /// # Arguments
 /// * `pool_state` - The pool state to validate
+/// * `current_timestamp` - Current Unix timestamp
 ///
 /// # Returns
-/// * `ProgramResult` - Success if pool is not paused, error otherwise
-pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
+/// * `ProgramResult` - Success if pool is not paused or pause has elapsed
+pub fn validate_pool_not_paused(pool_state: &mut PoolState, current_timestamp: i64) -> ProgramResult {
+    // Check if pause has elapsed and handle automatic unpause
+    if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && current_timestamp >= pool_state.pause_end_timestamp {
+        pool_state.is_paused = false;
+        pool_state.pause_end_timestamp = 0;
+        pool_state.pause_reason = PoolPauseReason::default();
+        msg!("Pool automatically unpaused as pause duration has elapsed");
+        return Ok(());
+    }
+
     if pool_state.is_paused {
         msg!("Pool operations are currently paused");
+        msg!("Pause reason: {:?}", pool_state.pause_reason);
+        msg!("Pause ends at timestamp: {}", pool_state.pause_end_timestamp);
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

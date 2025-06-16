@@ -9,6 +9,7 @@ pub mod delegates;
 pub mod fees;
 pub mod security;
 pub mod utilities;
+pub mod delegate_actions;
 
 // Re-export pool creation functions
 pub use pool_creation::*;
@@ -29,4 +30,7 @@ pub use fees::*;
 pub use security::*;
 
 // Re-export utility functions
-pub use utilities::*; 
+pub use utilities::*;
+
+// Re-export delegate actions functions
+pub use delegate_actions::*; 

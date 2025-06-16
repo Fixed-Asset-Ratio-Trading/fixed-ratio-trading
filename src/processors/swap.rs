@@ -16,9 +16,12 @@ use spl_token::{
     state::{Account as TokenAccount},
 };
 
-use crate::constants::*;
-use crate::types::*;
-use crate::check_rent_exempt;
+use crate::{
+    constants::*,
+    types::*,
+    error::PoolError,
+    check_rent_exempt,
+};
 
 /// **SWAP OPERATIONS MODULE**
 /// 
