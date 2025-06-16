@@ -730,30 +730,301 @@ pub fn process_initialize_pool(
     primary_token_vault_bump_seed: u8,
     base_token_vault_bump_seed: u8,
 ) -> ProgramResult {
-    msg!("DEBUG: process_initialize_pool: Starting single-instruction pool initialization");
+    msg!("DEBUG: process_initialize_pool: Starting FIXED single-instruction pool initialization");
     
-    // First, perform all account creation operations (same as CreatePoolStateAccount)
-    process_create_pool_state_account(
-        program_id,
-        accounts,
-        ratio_primary_per_base,
-        pool_authority_bump_seed,
-        primary_token_vault_bump_seed,
-        base_token_vault_bump_seed,
+    // CRITICAL FIX: Instead of calling separate functions, we implement everything inline
+    // to avoid the GITHUB_ISSUE_31960_WORKAROUND issue where AccountInfo.data doesn't 
+    // get updated after CPI account creation within the same instruction.
+    
+    let account_info_iter = &mut accounts.iter();
+
+    let payer = next_account_info(account_info_iter)?;
+    let pool_state_pda_account = next_account_info(account_info_iter)?;
+    let primary_token_mint_account = next_account_info(account_info_iter)?;
+    let base_token_mint_account = next_account_info(account_info_iter)?;
+    let lp_token_a_mint_account = next_account_info(account_info_iter)?;
+    let lp_token_b_mint_account = next_account_info(account_info_iter)?;
+    let token_a_vault_pda_account = next_account_info(account_info_iter)?;
+    let token_b_vault_pda_account = next_account_info(account_info_iter)?;
+    let system_program_account = next_account_info(account_info_iter)?;
+    let token_program_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+
+    // Verify that payer is a signer
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Verify ratio is non-zero
+    if ratio_primary_per_base == 0 {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Enhanced normalization
+    let (token_a_mint_key, token_b_mint_key) = 
+        if primary_token_mint_account.key < base_token_mint_account.key {
+            (primary_token_mint_account.key, base_token_mint_account.key)
+        } else {
+            (base_token_mint_account.key, primary_token_mint_account.key)
+        };
+    
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
+        if primary_token_mint_account.key < base_token_mint_account.key {
+            (ratio_primary_per_base, 1u64, true)
+        } else {
+            (ratio_primary_per_base, 1u64, false)
+        };
+
+    // Verify the pool state PDA
+    let pool_state_pda_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        token_a_mint_key.as_ref(),
+        token_b_mint_key.as_ref(),
+        &ratio_a_numerator.to_le_bytes(),
+        &ratio_b_denominator.to_le_bytes(),
+        &[pool_authority_bump_seed],
+    ];
+    let expected_pool_state_pda = Pubkey::create_program_address(pool_state_pda_seeds, program_id)?;
+    if *pool_state_pda_account.key != expected_pool_state_pda {
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Check if pool already exists
+    if pool_state_pda_account.data_len() > 0 && !pool_state_pda_account.data_is_empty() {
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    // Create the Pool State PDA account with the correct size
+    let pool_state_account_size = PoolState::get_packed_len();
+    let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
+    
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            pool_state_pda_account.key,
+            rent_for_pool_state,
+            pool_state_account_size as u64,
+            program_id,
+        ),
+        &[
+            payer.clone(),
+            pool_state_pda_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+
+    // Transfer registration fee
+    invoke(
+        &system_instruction::transfer(payer.key, pool_state_pda_account.key, REGISTRATION_FEE),
+        &[
+            payer.clone(),
+            pool_state_pda_account.clone(),
+            system_program_account.clone(),
+        ],
+    )?;
+
+    // Create and initialize LP token mints
+    let rent_for_mint = rent.minimum_balance(MintAccount::LEN);
+    
+    // Create LP Token A Mint
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_a_mint_account.key,
+            rent_for_mint,
+            MintAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[payer.clone(), lp_token_a_mint_account.clone(), system_program_account.clone()],
     )?;
     
-    msg!("DEBUG: process_initialize_pool: Account creation completed, now initializing data");
-    
-    // Then, initialize the pool data (same as InitializePoolData)
-    process_initialize_pool_data(
-        program_id,
-        accounts,
-        ratio_primary_per_base,
-        pool_authority_bump_seed,
-        primary_token_vault_bump_seed,
-        base_token_vault_bump_seed,
+    invoke(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_a_mint_account.key,
+            payer.key,
+            None,
+            9,
+        )?,
+        &[lp_token_a_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
+    )?;
+
+    // Create LP Token B Mint
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_b_mint_account.key,
+            rent_for_mint,
+            MintAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[payer.clone(), lp_token_b_mint_account.clone(), system_program_account.clone()],
     )?;
     
-    msg!("DEBUG: process_initialize_pool: Single-instruction pool initialization completed successfully");
+    invoke(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_b_mint_account.key,
+            payer.key,
+            None,
+            9,
+        )?,
+        &[lp_token_b_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
+    )?;
+
+    // Transfer LP mint authorities to pool
+    invoke(
+        &token_instruction::set_authority(
+            token_program_account.key,
+            lp_token_a_mint_account.key,
+            Some(pool_state_pda_account.key),
+            token_instruction::AuthorityType::MintTokens,
+            payer.key,
+            &[],
+        )?,
+        &[lp_token_a_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
+    )?;
+
+    invoke(
+        &token_instruction::set_authority(
+            token_program_account.key,
+            lp_token_b_mint_account.key,
+            Some(pool_state_pda_account.key),
+            token_instruction::AuthorityType::MintTokens,
+            payer.key,
+            &[],
+        )?,
+        &[lp_token_b_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
+    )?;
+
+    // Map vault bump seeds and create vault PDAs
+    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_primary {
+        (primary_token_vault_bump_seed, base_token_vault_bump_seed)
+    } else {
+        (base_token_vault_bump_seed, primary_token_vault_bump_seed)
+    };
+
+    let token_a_vault_seeds = &[
+        TOKEN_A_VAULT_SEED_PREFIX,
+        pool_state_pda_account.key.as_ref(),
+        &[token_a_vault_bump],
+    ];
+    let token_b_vault_seeds = &[
+        TOKEN_B_VAULT_SEED_PREFIX,
+        pool_state_pda_account.key.as_ref(),
+        &[token_b_vault_bump],
+    ];
+
+    let token_a_mint_account_ref = if token_a_is_primary { primary_token_mint_account } else { base_token_mint_account };
+    let token_b_mint_account_ref = if token_a_is_primary { base_token_mint_account } else { primary_token_mint_account };
+
+    // Create token vaults
+    let rent_for_vault = rent.minimum_balance(TokenAccount::LEN);
+    
+    // Create Token A Vault
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            token_a_vault_pda_account.key,
+            rent_for_vault,
+            TokenAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[payer.clone(), token_a_vault_pda_account.clone(), system_program_account.clone()],
+        &[token_a_vault_seeds],
+    )?;
+    
+    invoke_signed(
+        &token_instruction::initialize_account(
+            token_program_account.key,
+            token_a_vault_pda_account.key,
+            token_a_mint_account_ref.key,
+            pool_state_pda_account.key,
+        )?,
+        &[
+            token_a_vault_pda_account.clone(),
+            token_a_mint_account_ref.clone(),
+            pool_state_pda_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+
+    // Create Token B Vault
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            token_b_vault_pda_account.key,
+            rent_for_vault,
+            TokenAccount::LEN as u64,
+            token_program_account.key,
+        ),
+        &[payer.clone(), token_b_vault_pda_account.clone(), system_program_account.clone()],
+        &[token_b_vault_seeds],
+    )?;
+    
+    invoke_signed(
+        &token_instruction::initialize_account(
+            token_program_account.key,
+            token_b_vault_pda_account.key,
+            token_b_mint_account_ref.key,
+            pool_state_pda_account.key,
+        )?,
+        &[
+            token_b_vault_pda_account.clone(),
+            token_b_mint_account_ref.clone(),
+            pool_state_pda_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pool_state_pda_seeds],
+    )?;
+
+    // CRITICAL: Now immediately initialize the pool state data while we have fresh AccountInfo
+    // This is the proper implementation of the GITHUB_ISSUE_31960_WORKAROUND
+    
+    let mut pool_state_data = PoolState::default();
+    pool_state_data.owner = *payer.key;
+    pool_state_data.token_a_mint = *token_a_mint_key;
+    pool_state_data.token_b_mint = *token_b_mint_key;
+    pool_state_data.token_a_vault = *token_a_vault_pda_account.key;
+    pool_state_data.token_b_vault = *token_b_vault_pda_account.key;
+    pool_state_data.lp_token_a_mint = *lp_token_a_mint_account.key;
+    pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
+    pool_state_data.ratio_a_numerator = ratio_a_numerator;
+    pool_state_data.ratio_b_denominator = ratio_b_denominator;
+    pool_state_data.total_token_a_liquidity = 0;
+    pool_state_data.total_token_b_liquidity = 0;
+    pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;
+    pool_state_data.token_a_vault_bump_seed = token_a_vault_bump;
+    pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
+    pool_state_data.is_initialized = true;
+    pool_state_data.is_paused = false;
+    pool_state_data.pause_end_timestamp = 0;
+    pool_state_data.pause_reason = PoolPauseReason::default();
+    pool_state_data.rent_requirements = RentRequirements::new(rent);
+    pool_state_data.delegate_management = DelegateManagement::new(*payer.key, 0);
+    pool_state_data.collected_fees_token_a = 0;
+    pool_state_data.collected_fees_token_b = 0;
+    pool_state_data.total_fees_withdrawn_token_a = 0;
+    pool_state_data.total_fees_withdrawn_token_b = 0;
+    pool_state_data.swap_fee_basis_points = 0;
+    pool_state_data.collected_sol_fees = 0;
+    pool_state_data.total_sol_fees_withdrawn = 0;
+
+    // Buffer serialization workaround
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    
+    {
+        let mut account_data = pool_state_pda_account.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
+
+    msg!("DEBUG: process_initialize_pool: FIXED single-instruction pool initialization completed successfully");
     Ok(())
 } 
