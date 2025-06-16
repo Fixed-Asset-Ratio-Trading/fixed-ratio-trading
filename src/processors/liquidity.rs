@@ -116,24 +116,61 @@ pub fn process_deposit_with_features(
     msg!("DEBUG: process_deposit_with_features: Amount: {}, Min LP out: {}, Custom fee recipient: {:?}", 
          amount, minimum_lp_tokens_out, fee_recipient);
     
+    // Debug account validation
+    if accounts.len() < 14 {
+        msg!("DEBUG: process_deposit_with_features: Insufficient accounts provided: {}", accounts.len());
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
     // Get user destination LP token account to check balance before and after
     let user_destination_lp_token_account = &accounts[9]; // Based on standard deposit account order
+    msg!("DEBUG: process_deposit_with_features: About to read initial LP balance from account: {}", user_destination_lp_token_account.key);
+    
     let initial_lp_balance = {
-        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
-        account_data.amount
+        match TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow()) {
+            Ok(account_data) => {
+                msg!("DEBUG: process_deposit_with_features: Initial LP balance: {}", account_data.amount);
+                account_data.amount
+            }
+            Err(e) => {
+                msg!("DEBUG: process_deposit_with_features: Failed to read initial LP balance: {:?}", e);
+                return Err(e.into());
+            }
+        }
     };
     
     // Perform standard deposit operation
-    process_deposit(program_id, accounts, deposit_token_mint, amount)?;
+    msg!("DEBUG: process_deposit_with_features: About to call process_deposit");
+    match process_deposit(program_id, accounts, deposit_token_mint, amount) {
+        Ok(_) => {
+            msg!("DEBUG: process_deposit_with_features: process_deposit completed successfully");
+        }
+        Err(e) => {
+            msg!("DEBUG: process_deposit_with_features: process_deposit FAILED with error: {:?}", e);
+            return Err(e);
+        }
+    }
     
     // Check slippage protection
+    msg!("DEBUG: process_deposit_with_features: About to read final LP balance");
     let final_lp_balance = {
-        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
-        account_data.amount
+        match TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow()) {
+            Ok(account_data) => {
+                msg!("DEBUG: process_deposit_with_features: Final LP balance: {}", account_data.amount);
+                account_data.amount
+            }
+            Err(e) => {
+                msg!("DEBUG: process_deposit_with_features: Failed to read final LP balance: {:?}", e);
+                return Err(e.into());
+            }
+        }
     };
     
     let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    msg!("DEBUG: process_deposit_with_features: LP tokens received: {}, minimum required: {}", 
+         lp_tokens_received, minimum_lp_tokens_out);
     
     if lp_tokens_received < minimum_lp_tokens_out {
         msg!("DEBUG: process_deposit_with_features: Slippage protection triggered. Received: {}, Minimum: {}", 
