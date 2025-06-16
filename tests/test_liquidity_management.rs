@@ -31,6 +31,8 @@ mod common;
 
 use common::*;
 use serial_test::serial;
+use solana_sdk::transaction::TransactionError;
+use solana_sdk::instruction::InstructionError;
 
 /// Test instruction serialization and deserialization
 #[tokio::test]
@@ -672,5 +674,160 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
         }
     }
 
+    Ok(())
+}
+
+/// LIQ-003: Test deposit fails with insufficient token balance
+/// 
+/// This test verifies that attempting to deposit more tokens than available
+/// in the user's account fails with the appropriate error.
+#[tokio::test]
+#[serial]
+async fn test_deposit_insufficient_tokens_fails() -> TestResult {
+    println!("🧪 Testing LIQ-003: Deposit with insufficient balance...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    // Create pool with 1:1 ratio
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        Some(1), // 1:1 ratio
+    ).await?;
+    println!("✅ Pool created with 1:1 ratio");
+
+    // Setup user with token accounts and extra SOL for fees
+    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint.pubkey(),
+        &ctx.base_mint.pubkey(),
+        Some(10_000_000_000), // 10 SOL for fees
+    ).await?;
+    println!("✅ User created and funded");
+
+    // Mint a small amount of tokens to user
+    let available_amount = 100_000u64; // 100K tokens
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+        (&ctx.primary_mint.pubkey(), &user_primary_token_account)
+    } else {
+        (&ctx.base_mint.pubkey(), &user_primary_token_account)
+    };
+
+    mint_tokens(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        deposit_mint,
+        &deposit_token_account.pubkey(),
+        &ctx.env.payer,
+        available_amount,
+    ).await?;
+    println!("✅ Minted {} tokens to user", available_amount);
+
+    // Create LP token account for user
+    let user_lp_token_account = Keypair::new();
+    let lp_mint = if config.token_a_is_primary {
+        &ctx.lp_token_a_mint.pubkey()
+    } else {
+        &ctx.lp_token_b_mint.pubkey()
+    };
+
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_lp_token_account,
+        lp_mint,
+        &user.pubkey(),
+    ).await?;
+    println!("✅ LP token account created");
+
+    // Attempt to deposit more tokens than available
+    let deposit_amount = available_amount + 1; // Try to deposit 1 more token than available
+    
+    let deposit_instruction_data = PoolInstruction::Deposit {
+        deposit_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        amount: deposit_amount,
+    };
+
+    let serialized = deposit_instruction_data.try_to_vec().unwrap();
+
+    let deposit_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(deposit_token_account.pubkey(), false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
+            AccountMeta::new(user_lp_token_account.pubkey(), false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: serialized,
+    };
+
+    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
+    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+    
+    // Execute the transaction - it should fail due to insufficient balance
+    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
+    
+    match result {
+        Ok(_) => panic!("Deposit should fail with insufficient balance"),
+        Err(e) => {
+            println!("✅ Transaction failed as expected with error: {:?}", e);
+            // Verify the error is BanksClientError::TransactionError(TransactionError::InstructionError(...))
+            match e {
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::Custom(3))) |
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InsufficientFunds)) => {
+                    println!("✅ Correctly received InsufficientFunds error");
+                }
+                _ => panic!("Expected InsufficientFunds error, got: {:?}", e),
+            }
+        }
+    }
+
+    // Verify user's token balance remains unchanged
+    let final_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    assert_eq!(
+        final_token_balance, available_amount,
+        "User's token balance should remain unchanged at {}",
+        available_amount
+    );
+
+    // Verify no LP tokens were minted
+    let final_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    assert_eq!(
+        final_lp_balance, 0,
+        "No LP tokens should have been minted"
+    );
+
+    println!("✅ LIQ-003 test completed successfully!");
     Ok(())
 } 
