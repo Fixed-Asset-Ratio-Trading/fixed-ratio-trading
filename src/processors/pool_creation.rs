@@ -5,6 +5,7 @@
 
 use crate::constants::*;
 use crate::types::*;
+use crate::utils::serialization::{serialize_to_account, prepare_account_data};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -807,8 +808,8 @@ pub fn process_initialize_pool(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // CRITICAL FIX: Calculate actual size by creating a temp PoolState and serializing it
-    // This ensures we get the correct size for Vec fields in DelegateManagement
+    // **CRITICAL: GitHub Issue #31960 Workaround - Use standardized utilities**
+    // Create a fully populated temp PoolState to get the actual serialized size
     let temp_pool_state = {
         let mut temp_state = PoolState::default();
         temp_state.owner = *payer.key;
@@ -819,17 +820,26 @@ pub fn process_initialize_pool(
         temp_state.pool_authority_bump_seed = pool_authority_bump_seed;
         temp_state.is_initialized = true;
         temp_state.is_paused = false;
+        // CRITICAL: Initialize ALL fields including pause-related ones
+        temp_state.pause_end_timestamp = 0;
+        temp_state.pause_reason = PoolPauseReason::default();
         temp_state.rent_requirements = RentRequirements::new(rent);
         temp_state.delegate_management = DelegateManagement::new(*payer.key, 0);
         temp_state.swap_fee_basis_points = 0;
+        temp_state.collected_fees_token_a = 0;
+        temp_state.collected_fees_token_b = 0;
+        temp_state.total_fees_withdrawn_token_a = 0;
+        temp_state.total_fees_withdrawn_token_b = 0;
+        temp_state.collected_sol_fees = 0;
+        temp_state.total_sol_fees_withdrawn = 0;
         temp_state
     };
     
-    let mut temp_serialized = Vec::new();
-    temp_pool_state.serialize(&mut temp_serialized)?;
-    let pool_state_account_size = temp_serialized.len();
+    // Use the standardized workaround utility to get actual size
+    let (serialized_data, pool_state_account_size) = prepare_account_data(&temp_pool_state)?;
     
-    msg!("DEBUG: Calculated pool state size: {} bytes", pool_state_account_size);
+    msg!("DEBUG: Using standardized workaround - calculated pool state size: {} bytes (vs packed_len: {})", 
+         pool_state_account_size, PoolState::get_packed_len());
     let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
     
     invoke_signed(
@@ -1016,9 +1026,8 @@ pub fn process_initialize_pool(
         &[pool_state_pda_seeds],
     )?;
 
-    // CRITICAL: Now immediately initialize the pool state data while we have fresh AccountInfo
-    // This is the proper implementation of the GITHUB_ISSUE_31960_WORKAROUND
-    
+    // **CRITICAL: GitHub Issue #31960 Workaround - Initialize pool state with standardized utility**
+    // Create the actual pool state data with all fields properly initialized
     let mut pool_state_data = PoolState::default();
     pool_state_data.owner = *payer.key;
     pool_state_data.token_a_mint = *token_a_mint_key;
@@ -1036,6 +1045,7 @@ pub fn process_initialize_pool(
     pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
     pool_state_data.is_paused = false;
+    // **CRITICAL: Initialize ALL pause-related fields**
     pool_state_data.pause_end_timestamp = 0;
     pool_state_data.pause_reason = PoolPauseReason::default();
     pool_state_data.rent_requirements = RentRequirements::new(rent);
@@ -1048,15 +1058,9 @@ pub fn process_initialize_pool(
     pool_state_data.collected_sol_fees = 0;
     pool_state_data.total_sol_fees_withdrawn = 0;
 
-    // Buffer serialization workaround
-    let mut serialized_data = Vec::new();
-    pool_state_data.serialize(&mut serialized_data)?;
-    
-    {
-        let mut account_data = pool_state_pda_account.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    }
+    // **Use standardized GitHub Issue #31960 workaround**
+    serialize_to_account(&pool_state_data, pool_state_pda_account)?;
 
-    msg!("DEBUG: process_initialize_pool: FIXED single-instruction pool initialization completed successfully");
+    msg!("DEBUG: process_initialize_pool: Successfully used standardized workaround for pool initialization");
     Ok(())
 } 
