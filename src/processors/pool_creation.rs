@@ -796,8 +796,29 @@ pub fn process_initialize_pool(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // Create the Pool State PDA account with the correct size
-    let pool_state_account_size = PoolState::get_packed_len();
+    // CRITICAL FIX: Calculate actual size by creating a temp PoolState and serializing it
+    // This ensures we get the correct size for Vec fields in DelegateManagement
+    let temp_pool_state = {
+        let mut temp_state = PoolState::default();
+        temp_state.owner = *payer.key;
+        temp_state.token_a_mint = *token_a_mint_key;
+        temp_state.token_b_mint = *token_b_mint_key;
+        temp_state.ratio_a_numerator = ratio_a_numerator;
+        temp_state.ratio_b_denominator = ratio_b_denominator;
+        temp_state.pool_authority_bump_seed = pool_authority_bump_seed;
+        temp_state.is_initialized = true;
+        temp_state.is_paused = false;
+        temp_state.rent_requirements = RentRequirements::new(rent);
+        temp_state.delegate_management = DelegateManagement::new(*payer.key, 0);
+        temp_state.swap_fee_basis_points = 0;
+        temp_state
+    };
+    
+    let mut temp_serialized = Vec::new();
+    temp_pool_state.serialize(&mut temp_serialized)?;
+    let pool_state_account_size = temp_serialized.len();
+    
+    msg!("DEBUG: Calculated pool state size: {} bytes", pool_state_account_size);
     let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
     
     invoke_signed(

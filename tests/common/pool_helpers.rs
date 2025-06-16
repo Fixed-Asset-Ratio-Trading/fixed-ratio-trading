@@ -397,7 +397,7 @@ pub async fn update_security_params(
     banks.process_transaction(transaction).await
 }
 
-/// Get pool state data
+/// Get pool state data with debug information
 /// 
 /// # Arguments
 /// * `banks` - Banks client for account fetching
@@ -412,12 +412,42 @@ pub async fn get_pool_state(
 ) -> Option<PoolState> {
     match banks.get_account(*pool_state_pda).await {
         Ok(Some(account)) => {
+            println!("🔍 DEBUG: Account found!");
+            println!("   - Account data length: {}", account.data.len());
+            println!("   - Expected PoolState size: {}", PoolState::get_packed_len());
+            println!("   - Account owner: {}", account.owner);
+            println!("   - Account lamports: {}", account.lamports);
+            
+            // Check if data is all zeros
+            let is_zeroed = account.data.iter().all(|&x| x == 0);
+            println!("   - Data is all zeros: {}", is_zeroed);
+            
+            // Show first 32 bytes of data
+            let preview_len = std::cmp::min(32, account.data.len());
+            let preview: Vec<String> = account.data[..preview_len].iter().map(|b| format!("{:02x}", b)).collect();
+            println!("   - First {} bytes: {}", preview_len, preview.join(" "));
+            
             match PoolState::try_from_slice(&account.data) {
-                Ok(pool_state) => Some(pool_state),
-                Err(_) => None,
+                Ok(pool_state) => {
+                    println!("✅ Successfully deserialized PoolState!");
+                    println!("   - Is initialized: {}", pool_state.is_initialized);
+                    println!("   - Owner: {}", pool_state.owner);
+                    Some(pool_state)
+                },
+                Err(e) => {
+                    println!("❌ Failed to deserialize PoolState: {:?}", e);
+                    None
+                }
             }
         },
-        _ => None,
+        Ok(None) => {
+            println!("❌ Account does not exist: {}", pool_state_pda);
+            None
+        },
+        Err(e) => {
+            println!("❌ Error fetching account: {:?}", e);
+            None
+        }
     }
 }
 
