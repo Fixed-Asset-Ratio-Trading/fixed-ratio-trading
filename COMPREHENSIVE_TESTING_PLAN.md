@@ -1,0 +1,1 @@
+- [x] LIQ-003: Test deposit with insufficient token balance 
