@@ -1,5 +1,7 @@
 # Comprehensive Testing Plan - Fixed Ratio Trading
 
+File Name : COMPREHENSIVE_TESTING_PLAN.md
+
 ## Executive Summary
 **Current Coverage:** 28.11% (544/1935 lines covered)  
 **Target Coverage:** 85%+ (1,645+ lines covered)  
@@ -102,42 +104,125 @@
 ## PHASE 2: MEDIUM PRIORITY TESTS 🔶
 *Important features with partial or missing coverage*
 
-### Module 4: Advanced Delegate Functions (12.5% → 75% target)
-**Status:** 🔴 Not Started | **Priority:** Medium | **File:** `src/processors/delegates.rs`
+### Module 4: Consolidated Delegate Management (0% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** High | **File:** `src/processors/delegates.rs`
 
-#### Sub-category 4.1: Fee Withdrawal to Delegates
-- [ ] **DEL-001** `test_withdraw_fees_to_delegate_success` - Delegate fee withdrawal
-- [ ] **DEL-002** `test_withdraw_fees_to_delegate_unauthorized` - Non-delegate rejection
-- [ ] **DEL-003** `test_withdraw_fees_to_delegate_wait_time` - Wait time enforcement
+#### Sub-category 4.1: Action Request & Execution
+- [ ] **DEL-001** `test_request_delegate_action_fee_change` - Fee change request
+  - Test requesting fee change with valid parameters
+  - Verify action is properly recorded with correct wait time
+  - Ensure fee is not changed until execution
+  - Validate fee change within allowed range (0-0.5%)
 
-#### Sub-category 4.2: Withdrawal History Management
-- [ ] **DEL-004** `test_get_withdrawal_history_success` - History retrieval
-- [ ] **DEL-005** `test_get_withdrawal_history_empty` - Empty history handling
+- [ ] **DEL-002** `test_request_delegate_action_withdrawal` - Withdrawal request
+  - Test requesting fee withdrawal with valid amount
+  - Verify withdrawal request is properly recorded
+  - Ensure funds are not moved until execution
+  - Validate withdrawal amount against available balance
 
-#### Sub-category 4.3: Fee Withdrawal Requests
-- [ ] **DEL-006** `test_request_fee_withdrawal_success` - Fee withdrawal request
-- [ ] **DEL-007** `test_cancel_withdrawal_request_success` - Request cancellation
-- [ ] **DEL-008** `test_set_delegate_wait_time_success` - Wait time configuration
+- [ ] **DEL-003** `test_request_delegate_action_pool_pause` - Pool pause request
+  - Test requesting pool pause with valid duration
+  - Verify pause request is properly recorded
+  - Ensure pool remains active until execution
+  - Validate pause duration within allowed range
 
-#### Sub-category 4.4: Pool Pause Governance
-- [ ] **DEL-009** `test_request_pool_pause_success` - Pool pause request
-- [ ] **DEL-010** `test_cancel_pool_pause_success` - Pool pause cancellation
-- [ ] **DEL-011** `test_set_pool_pause_wait_time_success` - Pause wait time config
+- [ ] **DEL-004** `test_execute_delegate_action_success` - Action execution
+  - Test executing each type of delegate action
+  - Verify wait time is enforced before execution
+  - Ensure state changes are applied correctly
+  - Validate action history is updated
 
-**Milestone 2.1:** ✅ Complete advanced delegate functionality (Tests DEL-001 to DEL-011)
+#### Sub-category 4.2: Action Revocation & Time Limits
+- [ ] **DEL-005** `test_revoke_action_success` - Action revocation
+  - Test revoking pending actions by owner
+  - Verify action is properly removed from pending list
+  - Ensure state remains unchanged after revocation
+  - Validate action history records revocation
+
+- [ ] **DEL-006** `test_set_delegate_time_limits` - Time limit configuration
+  - Test setting custom wait times for each action type
+  - Verify limits are within allowed range
+  - Ensure limits are applied per-delegate
+  - Validate default limits for new delegates
+
+#### Sub-category 4.3: Security & Validation
+- [ ] **DEL-007** `test_unauthorized_action_request_fails` - Authorization checks
+  - Test action requests from non-delegates
+  - Verify unauthorized requests are rejected
+  - Ensure proper error codes are returned
+  - Validate no state changes occur
+
+- [ ] **DEL-008** `test_early_execution_prevention` - Wait time enforcement
+  - Test executing actions before wait time
+  - Verify early execution attempts fail
+  - Ensure proper error codes are returned
+  - Validate wait time calculation accuracy
+
+- [ ] **DEL-009** `test_rate_limiting_enforcement` - Rate limiting
+  - Test rapid successive action requests
+  - Verify cooldown period is enforced
+  - Ensure maximum pending actions limit
+  - Validate action counting logic
+
+#### Sub-category 4.4: Edge Cases & Error Handling
+- [ ] **DEL-010** `test_invalid_action_parameters` - Parameter validation
+  - Test invalid fee rates
+  - Test invalid withdrawal amounts
+  - Test invalid pause durations
+  - Verify proper error handling
+
+- [ ] **DEL-011** `test_concurrent_action_handling` - Concurrency handling
+  - Test multiple pending actions
+  - Test executing actions in order
+  - Test revoking while pending execution
+  - Verify state consistency
+
+**Milestone 4.1:** ✅ Complete consolidated delegate management (Tests DEL-001 to DEL-011)
 
 ---
 
 ### Module 5: Swap Fee Management (10.6% → 80% target)
-**Status:** 🔴 Not Started | **Priority:** Medium | **File:** `src/processors/swap.rs`
+**Status:** 🔴 Not Started | **Priority:** High | **File:** `src/processors/swap.rs`
 
-#### Sub-category 5.1: Fee Configuration
-- [ ] **SWAP-001** `test_set_swap_fee_success` - Valid fee setting
-- [ ] **SWAP-002** `test_set_swap_fee_unauthorized_fails` - Non-owner rejection
-- [ ] **SWAP-003** `test_set_swap_fee_invalid_range_fails` - Fee range validation
-- [ ] **SWAP-004** `test_set_swap_fee_maximum_limit` - Maximum fee limit check
+#### Sub-category 5.1: Fee Change Through Delegate Actions
+- [ ] **SWAP-001** `test_fee_change_request_success` - Fee change request flow
+  - Test requesting fee change through delegate action
+  - Verify fee change request is properly recorded
+  - Ensure fee remains unchanged during wait time
+  - Validate new fee after execution
 
-**Milestone 2.2:** ✅ Complete swap fee management (Tests SWAP-001 to SWAP-004)
+- [ ] **SWAP-002** `test_fee_change_validation` - Fee validation
+  - Test fee changes within allowed range
+  - Test fee changes exceeding maximum
+  - Test zero fee setting
+  - Verify proper error handling
+
+- [ ] **SWAP-003** `test_fee_change_authorization` - Authorization checks
+  - Test fee changes from authorized delegates
+  - Test unauthorized fee change attempts
+  - Test owner override capabilities
+  - Verify proper permission enforcement
+
+- [ ] **SWAP-004** `test_fee_change_timing` - Timing controls
+  - Test fee change wait time enforcement
+  - Test multiple fee changes in succession
+  - Test fee change cooldown period
+  - Verify timing calculation accuracy
+
+#### Sub-category 5.2: Fee Collection & Distribution
+- [ ] **SWAP-005** `test_fee_collection_accuracy` - Fee calculation
+  - Test fee collection on swaps
+  - Verify fee amount calculation accuracy
+  - Test fee accumulation over multiple swaps
+  - Validate fee balance tracking
+
+- [ ] **SWAP-006** `test_fee_withdrawal_through_action` - Fee withdrawal
+  - Test fee withdrawal through delegate action
+  - Verify withdrawal amount validation
+  - Test partial vs full withdrawals
+  - Validate balance updates
+
+**Milestone 5.1:** ✅ Complete swap fee management (Tests SWAP-001 to SWAP-006)
 
 ---
 
@@ -199,8 +284,8 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 - [ ] **🎯 Phase 1 Complete** - All high priority tests passing
 
 ### Phase 2 Milestones
-- [ ] **M2.1** - Advanced Delegate Functions Complete (11 tests)
-- [ ] **M2.2** - Swap Fee Management Complete (4 tests)
+- [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests)
+- [ ] **M2.2** - Swap Fee Management Complete (6 tests)
 - [ ] **🎯 Phase 2 Complete** - All medium priority tests passing
 
 ### Phase 3 Milestones

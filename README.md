@@ -232,6 +232,57 @@ let set_wait_time_ix = PoolInstruction::SetPoolPauseWaitTime {
 - 🔒 **Security Response**: Rapid response to detected issues
 - 🏛️ **Governance Integration**: Primitive for higher-layer governance contracts
 
+### **NEW: Consolidated Delegate Management & Swap Fees** 🔄
+Added a streamlined delegate management system with consolidated instructions and time-based authorization:
+
+```rust
+// Single instruction for all delegate actions
+let request_ix = PoolInstruction::RequestDelegateAction {
+    action_type: DelegateActionType::FeeChange,
+    params: DelegateActionParams::FeeChange { 
+        new_fee_basis_points: 25 // 0.25% fee
+    },
+};
+
+// Execute after wait time
+let execute_ix = PoolInstruction::ExecuteDelegateAction {
+    action_id: pending_action_id,
+};
+
+// Owner can revoke before execution
+let revoke_ix = PoolInstruction::RevokeAction {
+    action_id: pending_action_id,
+};
+
+// Configure per-delegate time limits
+let time_limits_ix = PoolInstruction::SetDelegateTimeLimits {
+    delegate: delegate_pubkey,
+    time_limits: DelegateTimeLimits {
+        fee_change_wait_time: 3600,    // 1 hour for fee changes
+        withdraw_wait_time: 86400,     // 24 hours for withdrawals
+        pause_wait_time: 300,          // 5 minutes for pausing
+    },
+};
+```
+
+**Features:**
+- 🔄 **Consolidated Instructions**: Single instruction for all delegate actions
+- ⏱️ **Time-based Authorization**: Configurable wait times per delegate and action
+- 🔍 **Action Tracking**: Complete history of all delegate actions
+- 🛡️ **Enhanced Security**: Double validation for critical operations
+- 📊 **Rate Limiting**: Prevents rapid successive changes
+
+**Action Types:**
+- `FeeChange` - Modify swap fee rates (0-0.5%)
+- `Withdrawal` - Request fee withdrawal to delegate
+- `PoolPause` - Pause pool operations
+
+**Benefits:**
+- ✅ **Simpler Integration**: Fewer instructions to handle
+- ✅ **Better Security**: Consistent time-based authorization
+- ✅ **More Flexibility**: Per-delegate configuration
+- ✅ **Enhanced Governance**: Complete action history
+
 ## Backward Compatibility
 
 The legacy two-instruction pattern is still supported but marked as deprecated:
@@ -327,22 +378,13 @@ You can migrate incrementally:
 - `Withdraw` - Remove liquidity by burning LP tokens
 - `Swap` - Exchange tokens at fixed ratio
 
-### Fee Management
-- `WithdrawFees` - Owner withdraws accumulated SOL fees
-- `SetSwapFee` - Configure trading fee rates (0-0.5%)
-
-### Delegate System
-- `AddDelegate` - Add authorized fee withdrawal delegate
+### Delegate Management (Updated)
+- `RequestDelegateAction` - **NEW**: Consolidated delegate action requests
+- `ExecuteDelegateAction` - **NEW**: Execute pending delegate action
+- `RevokeAction` - **NEW**: Revoke pending delegate action
+- `SetDelegateTimeLimits` - **NEW**: Configure per-delegate time limits
+- `AddDelegate` - Add authorized delegate
 - `RemoveDelegate` - Remove delegate authorization
-- `WithdrawFeesToDelegate` - Execute delegate fee withdrawal
-- `RequestFeeWithdrawal` - Request time-delayed fee withdrawal
-- `CancelWithdrawalRequest` - Cancel pending withdrawal request
-- `SetDelegateWaitTime` - Configure delegate-specific wait times
-
-### Individual Pool Ratio Pausing
-- `RequestPoolPause` - **NEW**: Delegate requests pool pause with structured reason
-- `CancelPoolPause` - **NEW**: Cancel pending pool pause request (owner or delegate)
-- `SetPoolPauseWaitTime` - **NEW**: Configure delegate-specific pause wait times
 
 ### Helper Utilities
 - `GetPoolStatePDA` - **NEW**: Compute pool state PDA address
@@ -370,6 +412,13 @@ const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;       // 72 hours
 const MIN_POOL_PAUSE_TIME: u64 = 60;                // 1 minute minimum
 const MAX_POOL_PAUSE_TIME: u64 = 259200;            // 72 hours maximum
 const DEFAULT_POOL_PAUSE_WAIT_TIME: u64 = 259200;   // 72 hours default wait
+
+// New Delegate Management Constants
+const MIN_ACTION_WAIT_TIME: u64 = 300;          // 5 minutes minimum
+const MAX_ACTION_WAIT_TIME: u64 = 259200;       // 72 hours maximum
+const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600; // 1 hour default for fee changes
+const MAX_PENDING_ACTIONS: usize = 10;          // Maximum pending actions per delegate
+const ACTION_COOLDOWN: u64 = 300;               // 5 minutes between similar actions
 ```
 
 ## Error Handling
