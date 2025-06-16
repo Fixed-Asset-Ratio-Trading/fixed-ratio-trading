@@ -23,11 +23,55 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-// This is the main library for the fixed-ratio-trading program
-// It contains the program's instructions, error handling, and other functionality
-// It also contains the program's constants and PDA seeds
-// It is used by the program's entrypoint and other modules
-
+//! # Fixed Ratio Trading Pool Program
+//! 
+//! This is the main library for the fixed-ratio-trading program.
+//! It contains the program's instructions, error handling, and other functionality.
+//! It also contains the program's constants and PDA seeds.
+//! It is used by the program's entrypoint and other modules.
+//!
+//! ## CRITICAL: GITHUB_ISSUE_31960_WORKAROUND
+//! 
+//! **This program implements a workaround for Solana GitHub Issue #31960**
+//! 
+//! ### The Problem:
+//! Solana's AccountInfo.data doesn't get updated after CPI account creation within 
+//! the same instruction. This causes issues when:
+//! 1. Creating accounts via CPI (system_instruction::create_account)
+//! 2. Immediately trying to read/write data to those accounts
+//! 3. The AccountInfo.data reference still points to empty/uninitialized memory
+//! 
+//! ### The Solution:
+//! We implement a **two-instruction pattern** for pool creation:
+//! 
+//! #### Step 1: CreatePoolStateAccount (DEPRECATED - kept for compatibility)
+//! - Creates all required accounts via CPI
+//! - Creates Pool State PDA, LP token mints, token vaults
+//! - **CRITICALLY: Does NOT write PoolState data**
+//! - Allows accounts to be properly initialized on-chain
+//! 
+//! #### Step 2: InitializePoolData (DEPRECATED - kept for compatibility)  
+//! - Runs with fresh AccountInfo references
+//! - Writes actual PoolState data structure
+//! - Uses buffer serialization for reliability
+//! 
+//! #### Modern Approach: InitializePool (RECOMMENDED)
+//! - Single instruction that handles both steps internally
+//! - Uses careful account handling to avoid the issue
+//! - Implements buffer serialization workaround
+//! 
+//! ### Where This Affects:
+//! - Pool creation functions in `processors/pool_creation.rs`
+//! - Test helpers in `tests/common/pool_helpers.rs`
+//! - Any code that creates and immediately uses accounts
+//! 
+//! ### Buffer Serialization Workaround:
+//! Instead of direct serialization, we use a two-step process:
+//! 1. Serialize to temporary buffer
+//! 2. Copy buffer to account data atomically
+//! 
+//! This prevents "silent failures" where serialization reports success
+//! but data doesn't persist due to stale AccountInfo references.
 
 use borsh::BorshDeserialize;
 use solana_program::{
@@ -50,51 +94,47 @@ pub mod utils;
 pub mod processors;
 
 // Re-export all modules for public API
+// IMPORTANT: These must be public re-exports to allow test access
 pub use constants::*;
 pub use error::*;
 pub use types::*;
 pub use utils::*;
 
-use crate::{
-    error::PoolError,
-    types::{
-        PoolInstruction,
-        delegate_actions::{DelegateActionType, DelegateActionParams, DelegateTimeLimits},
+// Import specific processor functions for internal use only
+// Note: We only import processors, not types, to avoid shadowing public re-exports
+use crate::processors::{
+    pool_creation::{
+        process_initialize_pool,
+        process_create_pool_state_account,
+        process_initialize_pool_data,
     },
-    processors::{
-        pool_creation::{
-            process_initialize_pool,
-            process_create_pool_state_account,
-            process_initialize_pool_data,
-        },
-        liquidity::{
-            process_deposit,
-            process_deposit_with_features,
-            process_withdraw,
-        },
-        swap::{
-            process_swap,
-            process_set_swap_fee,
-        },
-        security::process_update_security_params,
-        delegates::{
-            process_add_delegate,
-            process_remove_delegate,
-        },
-        delegate_actions::{
-            process_request_delegate_action,
-            process_execute_delegate_action,
-            process_revoke_action,
-            process_set_delegate_time_limits,
-        },
-        utilities::{
-            get_pool_state_pda,
-            get_token_vault_pdas,
-            get_pool_info,
-            get_liquidity_info,
-            get_delegate_info,
-            get_fee_info,
-        },
+    liquidity::{
+        process_deposit,
+        process_deposit_with_features,
+        process_withdraw,
+    },
+    swap::{
+        process_swap,
+        process_set_swap_fee,
+    },
+    security::process_update_security_params,
+    delegates::{
+        process_add_delegate,
+        process_remove_delegate,
+    },
+    delegate_actions::{
+        process_request_delegate_action,
+        process_execute_delegate_action,
+        process_revoke_action,
+        process_set_delegate_time_limits,
+    },
+    utilities::{
+        get_pool_state_pda,
+        get_token_vault_pdas,
+        get_pool_info,
+        get_liquidity_info,
+        get_delegate_info,
+        get_fee_info,
     },
 };
 

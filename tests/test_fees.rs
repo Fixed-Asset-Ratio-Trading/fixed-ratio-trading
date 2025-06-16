@@ -82,9 +82,12 @@ async fn test_request_fee_withdrawal_success() -> TestResult {
             AccountMeta::new(delegate.pubkey(), true),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -151,9 +154,12 @@ async fn test_request_fee_withdrawal_unauthorized_fails() -> TestResult {
             AccountMeta::new(unauthorized_user.pubkey(), true),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -221,9 +227,12 @@ async fn test_request_fee_withdrawal_missing_signature_fails() -> TestResult {
             AccountMeta::new(delegate.pubkey(), false), // NOT MARKED AS SIGNER
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -291,9 +300,12 @@ async fn test_request_fee_withdrawal_zero_amount() -> TestResult {
             AccountMeta::new(delegate.pubkey(), true),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -354,9 +366,12 @@ async fn test_request_fee_withdrawal_token_a() -> TestResult {
             AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -413,9 +428,12 @@ async fn test_request_fee_withdrawal_token_b() -> TestResult {
             AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -507,9 +525,12 @@ async fn test_multiple_fee_withdrawal_requests() -> TestResult {
                 AccountMeta::new(delegate.pubkey(), true),
                 AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
             ],
-            data: PoolInstruction::RequestFeeWithdrawal {
-                token_mint,
-                amount,
+            data: PoolInstruction::RequestDelegateAction {
+                action_type: DelegateActionType::Withdrawal,
+                params: DelegateActionParams::Withdrawal {
+                    token_mint,
+                    amount,
+                },
             }.try_to_vec().unwrap(),
         };
 
@@ -570,9 +591,12 @@ async fn test_request_fee_withdrawal_invalid_token_fails() -> TestResult {
             AccountMeta::new(ctx.env.payer.pubkey(), true),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint: invalid_mint.pubkey(), // Invalid token mint
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint: invalid_mint.pubkey(), // Invalid token mint
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 

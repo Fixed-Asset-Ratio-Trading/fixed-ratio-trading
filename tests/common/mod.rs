@@ -68,6 +68,7 @@ pub use solana_program_test::*;
 #[allow(unused_imports)]
 pub use fixed_ratio_trading::{
     PoolInstruction, PoolState, process_instruction, 
+    DelegateActionType, DelegateActionParams, DelegateTimeLimits,
     ID as PROGRAM_ID,
     POOL_STATE_SEED_PREFIX, TOKEN_A_VAULT_SEED_PREFIX, TOKEN_B_VAULT_SEED_PREFIX
 };

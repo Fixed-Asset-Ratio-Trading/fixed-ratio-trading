@@ -354,7 +354,7 @@ async fn test_delegate_authorization() -> TestResult {
 
     assert!(add_result.is_ok(), "Delegate addition should succeed");
 
-    // Test delegate operation: RequestFeeWithdrawal
+    // Test delegate operation: RequestDelegateAction (Withdrawal)
     let request_amount = 1_000_000u64;
     let token_mint = config.token_a_mint;
 
@@ -365,9 +365,12 @@ async fn test_delegate_authorization() -> TestResult {
             AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -433,9 +436,12 @@ async fn test_unauthorized_delegate_operation_fails() -> TestResult {
             AccountMeta::new(unauthorized_user.pubkey(), true), // Unauthorized user
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
@@ -487,9 +493,12 @@ async fn test_pool_owner_as_implicit_delegate() -> TestResult {
             AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner as delegate
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
-        data: PoolInstruction::RequestFeeWithdrawal {
-            token_mint,
-            amount: request_amount,
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint,
+                amount: request_amount,
+            },
         }.try_to_vec().unwrap(),
     };
 
