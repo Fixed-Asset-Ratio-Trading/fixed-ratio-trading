@@ -70,6 +70,7 @@ use spl_token::{
     instruction as token_instruction,
     state::{Account as TokenAccount},
 };
+use crate::utils::validation::validate_non_zero_amount;
 
 /// Enhanced deposit operation with additional features for testing and advanced use cases.
 /// 
@@ -243,6 +244,9 @@ pub fn process_deposit(
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let _rent = &Rent::from_account_info(rent_sysvar_account)?;
     let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
+
+    // Validate amount is non-zero
+    validate_non_zero_amount(amount, "Deposit")?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for deposit");

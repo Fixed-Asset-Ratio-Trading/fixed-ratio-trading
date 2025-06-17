@@ -1091,4 +1091,189 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
 
     println!("✅ LIQ-003 test completed successfully!");
     Ok(())
+}
+
+/// LIQ-004: Test deposit fails with zero amount
+/// 
+/// This test verifies that attempting to deposit zero tokens fails with
+/// the appropriate error.
+#[tokio::test]
+#[serial]
+async fn test_deposit_zero_amount_fails() -> TestResult {
+    println!("🧪 Testing LIQ-004: Deposit with zero amount...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // **CRITICAL FIX: Use ordered token mints to avoid edge case**
+    let keypair1 = Keypair::new();
+    let keypair2 = Keypair::new();
+    
+    // Ensure correct ordering for "Token A is primary: true"
+    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
+        (keypair1, keypair2)
+    } else {
+        (keypair2, keypair1)
+    };
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&primary_mint, &base_mint],
+    ).await?;
+
+    // Create pool with 1:1 ratio
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint,
+        &base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        Some(1), // 1:1 ratio
+    ).await?;
+    println!("✅ Pool created with 1:1 ratio");
+
+    // Setup user with token accounts and extra SOL for fees
+    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint.pubkey(),
+        &base_mint.pubkey(),
+        Some(10_000_000_000), // 10 SOL for fees
+    ).await?;
+    println!("✅ User created and funded");
+
+    // Mint tokens to user
+    let deposit_amount = 1_000_000u64; // 1M tokens
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+        (&primary_mint.pubkey(), &user_primary_token_account)
+    } else {
+        (&base_mint.pubkey(), &user_primary_token_account)
+    };
+
+    mint_tokens(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        deposit_mint,
+        &deposit_token_account.pubkey(),
+        &ctx.env.payer,
+        deposit_amount,
+    ).await?;
+    println!("✅ Minted {} tokens to user", deposit_amount);
+
+    // Create LP token account for user
+    let user_lp_token_account = Keypair::new();
+    let lp_mint = if config.token_a_is_primary {
+        &ctx.lp_token_a_mint.pubkey()
+    } else {
+        &ctx.lp_token_b_mint.pubkey()
+    };
+
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_lp_token_account,
+        lp_mint,
+        &user.pubkey(),
+    ).await?;
+    println!("✅ LP token account created");
+
+    // Get initial balances for verification
+    let initial_user_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    let initial_user_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    let initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Pool state should exist");
+
+    // Attempt to deposit zero tokens
+    let zero_amount = 0u64;
+    
+    let deposit_instruction_data = PoolInstruction::Deposit {
+        deposit_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        amount: zero_amount,
+    };
+
+    let serialized = deposit_instruction_data.try_to_vec().unwrap();
+
+    let deposit_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(deposit_token_account.pubkey(), false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
+            AccountMeta::new(user_lp_token_account.pubkey(), false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: serialized,
+    };
+
+    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
+    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+    
+    // Execute the transaction - it should fail due to zero amount
+    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
+    
+    match result {
+        Ok(_) => panic!("Deposit should fail with zero amount"),
+        Err(e) => {
+            println!("✅ Transaction failed as expected with error: {:?}", e);
+            // Verify the error is InvalidArgument (for zero amount)
+            match e {
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InvalidArgument)) => {
+                    println!("✅ Correctly received InvalidArgument error for zero amount");
+                }
+                _ => panic!("Expected InvalidArgument error, got: {:?}", e),
+            }
+        }
+    }
+
+    // Verify user's token balance remains unchanged
+    let final_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    assert_eq!(
+        final_token_balance, initial_user_token_balance,
+        "User's token balance should remain unchanged at {}",
+        initial_user_token_balance
+    );
+
+    // Verify no LP tokens were minted
+    let final_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    assert_eq!(
+        final_lp_balance, initial_user_lp_balance,
+        "No LP tokens should have been minted"
+    );
+
+    // Verify pool state remains unchanged
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Pool state should exist");
+    assert_eq!(
+        final_pool_state.total_token_a_liquidity,
+        initial_pool_state.total_token_a_liquidity,
+        "Pool Token A liquidity should remain unchanged"
+    );
+    assert_eq!(
+        final_pool_state.total_token_b_liquidity,
+        initial_pool_state.total_token_b_liquidity,
+        "Pool Token B liquidity should remain unchanged"
+    );
+
+    println!("✅ LIQ-004 test completed successfully!");
+    Ok(())
 } 
