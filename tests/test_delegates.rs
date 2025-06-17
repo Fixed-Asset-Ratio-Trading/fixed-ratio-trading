@@ -293,16 +293,9 @@ async fn test_add_multiple_delegates() -> TestResult {
         &delegate3.pubkey(),
     ).await;
 
-    // This should fail if MAX_DELEGATES = 3 (owner + 2 additional delegates)
-    match result3 {
-        Ok(_) => {
-            println!("✅ Third delegate addition succeeded (MAX_DELEGATES > 3)");
-            println!("   Delegate 3: {}", delegate3.pubkey());
-        },
-        Err(_) => {
-            println!("✅ Third delegate addition failed (hit MAX_DELEGATES limit)");
-        }
-    }
+    // This should fail since MAX_DELEGATES = 3 (owner + 2 additional delegates)
+    assert!(result3.is_err(), "Third delegate addition should fail (MAX_DELEGATES = 3)");
+    println!("✅ Third delegate addition correctly failed (hit MAX_DELEGATES limit)");
     
     println!("✅ Multiple delegates management tested successfully:");
     println!("   Pool Owner (auto): {}", ctx.env.payer.pubkey());

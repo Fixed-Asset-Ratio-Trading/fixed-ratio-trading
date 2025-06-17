@@ -105,10 +105,11 @@ pub enum PoolInstruction {
         minimum_amount_out: u64,
     },
     
-    /// Update security parameters for the pool
+    /// Updates security parameters for the pool
     UpdateSecurityParams {
+        /// Maximum percentage of pool liquidity that can be withdrawn in a single transaction
         max_withdrawal_percentage: Option<u64>,
-        withdrawal_cooldown: Option<u64>,
+        /// Whether to pause pool operations
         is_paused: Option<bool>,
     },
     

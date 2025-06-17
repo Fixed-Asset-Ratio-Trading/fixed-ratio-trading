@@ -62,12 +62,8 @@ pub enum PoolError {
     #[error("Withdrawal amount exceeds maximum allowed percentage")]
     WithdrawalTooLarge,
     
-    /// Withdrawal is currently in cooldown period
-    #[error("Withdrawal is currently in cooldown period")]
-    WithdrawalCooldown,
-    
     /// Pool operations are currently paused
-    #[error("Pool operations are currently paused")]
+    #[error("Pool is paused")]
     PoolPaused,
     
     /// Maximum number of delegates exceeded
@@ -83,7 +79,7 @@ pub enum PoolError {
     DelegateNotFound { delegate: Pubkey },
     
     /// Invalid wait time specified
-    #[error("Invalid wait time: {wait_time} seconds")]
+    #[error("Invalid wait time")]
     InvalidWaitTime { wait_time: u64 },
     
     /// Unauthorized operation
@@ -103,7 +99,7 @@ pub enum PoolError {
     InvalidActionType,
     
     /// Action not ready for execution
-    #[error("Action not ready for execution")]
+    #[error("Action not ready")]
     ActionNotReady,
     
     /// Action not found
@@ -111,12 +107,24 @@ pub enum PoolError {
     ActionNotFound,
     
     /// Too many pending actions
-    #[error("Too many pending actions")]
-    TooManyPendingActions,
+    #[error("Maximum pending actions reached")]
+    MaxPendingActionsReached,
     
     /// Arithmetic overflow
     #[error("Arithmetic overflow")]
     ArithmeticOverflow,
+
+    /// Action already executed
+    #[error("Action already executed")]
+    ActionAlreadyExecuted,
+
+    /// Action expired
+    #[error("Action expired")]
+    ActionExpired,
+
+    /// Rate limit exceeded
+    #[error("Rate limit exceeded")]
+    RateLimitExceeded,
 }
 
 impl PoolError {
@@ -133,20 +141,22 @@ impl PoolError {
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
             PoolError::WithdrawalTooLarge => 1007,
-            PoolError::WithdrawalCooldown => 1008,
-            PoolError::PoolPaused => 1009,
-            PoolError::DelegateLimitExceeded => 1010,
-            PoolError::DelegateAlreadyExists { .. } => 1011,
-            PoolError::DelegateNotFound { .. } => 1012,
-            PoolError::InvalidWaitTime { .. } => 1013,
-            PoolError::Unauthorized => 1014,
-            PoolError::UnauthorizedDelegate => 1015,
-            PoolError::InvalidActionParameters => 1016,
-            PoolError::InvalidActionType => 1017,
-            PoolError::ActionNotReady => 1018,
-            PoolError::ActionNotFound => 1019,
-            PoolError::TooManyPendingActions => 1020,
-            PoolError::ArithmeticOverflow => 1021,
+            PoolError::PoolPaused => 1008,
+            PoolError::DelegateLimitExceeded => 1009,
+            PoolError::DelegateAlreadyExists { .. } => 1010,
+            PoolError::DelegateNotFound { .. } => 1011,
+            PoolError::InvalidWaitTime { .. } => 1012,
+            PoolError::Unauthorized => 1013,
+            PoolError::UnauthorizedDelegate => 1014,
+            PoolError::InvalidActionParameters => 1015,
+            PoolError::InvalidActionType => 1016,
+            PoolError::ActionNotReady => 1017,
+            PoolError::ActionNotFound => 1018,
+            PoolError::MaxPendingActionsReached => 1019,
+            PoolError::ArithmeticOverflow => 1020,
+            PoolError::ActionAlreadyExecuted => 1021,
+            PoolError::ActionExpired => 1022,
+            PoolError::RateLimitExceeded => 1023,
         }
     }
 }

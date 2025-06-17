@@ -5,13 +5,16 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
+    msg,
     pubkey::Pubkey,
     sysvar::rent::Rent,
     program_pack::Pack,
 };
 use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
-use crate::error::PoolError;
-use crate::constants::*;
+use crate::{
+    error::PoolError,
+    constants::{MAX_DELEGATES, MAX_PENDING_ACTIONS, MINIMUM_RENT_BUFFER},
+};
 use super::delegate_actions::{DelegateTimeLimits, PendingDelegateAction};
 
 /// Enumerated reasons for pool pause requests.
@@ -303,8 +306,9 @@ impl DelegateManagement {
         &mut self,
         action: PendingDelegateAction,
     ) -> Result<u64, PoolError> {
-        if self.pending_action_count as usize >= MAX_DELEGATES * 2 {
-            return Err(PoolError::TooManyPendingActions);
+        if self.pending_actions.len() >= MAX_PENDING_ACTIONS {
+            msg!("Maximum number of pending actions reached");
+            return Err(PoolError::MaxPendingActionsReached);
         }
 
         // Assign next action ID and increment

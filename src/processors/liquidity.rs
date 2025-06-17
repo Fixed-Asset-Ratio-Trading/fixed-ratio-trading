@@ -457,12 +457,14 @@ pub fn process_deposit(
 /// their LP (Liquidity Provider) tokens. The withdrawal is processed at a 1:1 ratio between
 /// LP tokens burned and underlying tokens received, maintaining the pool's fixed ratio structure.
 /// The function includes slippage protection, fee collection, and comprehensive validation.
+/// Withdrawals must be initiated through the delegate system for security.
 ///
 /// # Purpose
 /// - Enables users to exit their liquidity positions by burning LP tokens
 /// - Maintains pool's fixed ratio by reducing both LP supply and underlying token reserves
 /// - Collects withdrawal fees to fund pool operations and rent exemption
 /// - Provides audit trail and security checks for all withdrawal operations
+/// - Enforces delegate-based two-step withdrawal process for security
 ///
 /// # How it works
 /// 1. Validates the user is authorized (signed the transaction)
@@ -501,6 +503,12 @@ pub fn process_deposit(
 /// - LP token account: Must contain sufficient tokens and be owned by user
 /// - Destination account: Must be owned by user and match withdraw token mint
 /// - Pool accounts: Must maintain rent-exempt status throughout operation
+///
+/// # Security Model
+/// - Uses delegate-based two-step withdrawal process
+/// - Withdrawal must be requested through delegate action
+/// - Pool owner can review and cancel withdrawal requests
+/// - Only approved withdrawals can be executed
 ///
 /// # Fees
 /// - Withdrawal fee: Fixed SOL amount (DEPOSIT_WITHDRAWAL_FEE) transferred to pool state PDA

@@ -5,8 +5,10 @@
 pub mod pool_state;
 pub mod instructions;
 pub mod delegate_actions;
+pub mod errors;
 
 // Re-export all types for easy access
 pub use pool_state::*;
 pub use instructions::*;
-pub use delegate_actions::*; 
+pub use delegate_actions::*;
+pub use errors::*; 

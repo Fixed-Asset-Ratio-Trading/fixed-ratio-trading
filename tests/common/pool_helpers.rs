@@ -366,7 +366,6 @@ pub async fn add_delegate(
 /// * `recent_blockhash` - Recent blockhash for transaction
 /// * `pool_state_pda` - Pool state account
 /// * `max_withdrawal_percentage` - Maximum withdrawal percentage (optional)
-/// * `withdrawal_cooldown` - Withdrawal cooldown period (optional)
 /// * `is_paused` - Whether pool is paused (optional)
 #[allow(dead_code)]
 pub async fn update_security_params(
@@ -375,7 +374,6 @@ pub async fn update_security_params(
     recent_blockhash: solana_sdk::hash::Hash,
     pool_state_pda: &Pubkey,
     max_withdrawal_percentage: Option<u64>,
-    withdrawal_cooldown: Option<u64>,
     is_paused: Option<bool>,
 ) -> TestResult {
     let update_ix = Instruction {
@@ -387,7 +385,6 @@ pub async fn update_security_params(
         ],
         data: PoolInstruction::UpdateSecurityParams {
             max_withdrawal_percentage,
-            withdrawal_cooldown,
             is_paused,
         }.try_to_vec().unwrap(),
     };

@@ -21,6 +21,9 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 /// Maximum number of delegates allowed per pool
 pub const MAX_DELEGATES: usize = 3;
 
+/// Maximum number of pending actions across all delegates
+pub const MAX_PENDING_ACTIONS: usize = MAX_DELEGATES * 2; // Each delegate can have up to 2 pending actions
+
 /// Minimum wait time for withdrawal requests (5 minutes in seconds)
 pub const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;
 

@@ -196,9 +196,8 @@ pub fn process_instruction(
 
         PoolInstruction::UpdateSecurityParams {
             max_withdrawal_percentage,
-            withdrawal_cooldown,
             is_paused,
-        } => process_update_security_params(program_id, accounts, max_withdrawal_percentage, withdrawal_cooldown, is_paused),
+        } => process_update_security_params(program_id, accounts, max_withdrawal_percentage, is_paused),
 
         PoolInstruction::AddDelegate {
             delegate,
@@ -265,3 +264,5 @@ pub fn process_instruction(
             pool_authority_bump_seed, primary_token_vault_bump_seed, base_token_vault_bump_seed),
     }
 }
+
+pub use crate::types::errors::PoolError;

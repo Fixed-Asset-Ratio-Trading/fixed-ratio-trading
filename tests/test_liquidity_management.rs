@@ -590,7 +590,7 @@ async fn test_deposit_with_features_success() -> TestResult {
     println!("✅ Pool created with 3:1 ratio");
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -598,14 +598,14 @@ async fn test_deposit_with_features_success() -> TestResult {
         &base_mint.pubkey(),
         Some(10_000_000_000), // 10 SOL for fees
     ).await?;
-    println!("✅ User created and funded");
+    println!("DEBUG: User and token accounts created successfully");
 
     // Mint tokens to user for depositing - use primary token
     let deposit_amount = 1_000_000u64; // 1M tokens
     let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
-        (&base_mint.pubkey(), &user_primary_token_account) // This would be wrong, but keeping same pattern
+        (&base_mint.pubkey(), &user_base_token_account) // This would be wrong, but keeping same pattern
     };
 
     mint_tokens(
@@ -787,7 +787,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
     println!("DEBUG: Pool state PDA: {}", config.pool_state_pda);
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, _user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -802,7 +802,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
     let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
-        (&base_mint.pubkey(), &user_primary_token_account)
+        (&base_mint.pubkey(), &user_base_token_account)
     };
 
     mint_tokens(
@@ -1714,7 +1714,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
     println!("DEBUG: Pool state PDA: {}", config.pool_state_pda);
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -1729,7 +1729,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
     let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
-        (&base_mint.pubkey(), &user_primary_token_account)
+        (&base_mint.pubkey(), &user_base_token_account)
     };
 
     mint_tokens(
@@ -1973,7 +1973,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
     println!("DEBUG: Pool state PDA: {}", config.pool_state_pda);
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, _user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -1988,7 +1988,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
     let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
-        (&base_mint.pubkey(), &user_primary_token_account)
+        (&base_mint.pubkey(), &user_base_token_account)
     };
 
     mint_tokens(
