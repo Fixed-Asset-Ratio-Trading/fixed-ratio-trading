@@ -28,9 +28,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Progress Overview
 - Current Coverage: 28.11%
 - Target Coverage: 85%+
-- Tests Completed: 5/20 in Phase 1
+- Tests Completed: 6/20 in Phase 1
 - Estimated Timeline: 3-4 weeks
-- Tests Remaining: ~40
+- Tests Remaining: ~39
 
 ## PHASE 1: HIGH PRIORITY TESTS 🚨
 *Critical business logic with 0% current coverage*
@@ -75,13 +75,13 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
   - **📊 TEST COVERAGE**: Error case for zero amount in deposit operations
   - **🎯 RESULTS**: Correctly returns InvalidArgument error, maintains account state integrity
 - [x] **LIQ-005** `test_deposit_wrong_token_fails` - Invalid token mint validation ✅ **COMPLETED**
+- [x] **LIQ-006** `test_deposit_insufficient_balance_fails` - Insufficient balance validation ✅ **COMPLETED**
 
 #### Sub-category 1.2: Withdrawal Operations  
-- [ ] **LIQ-006** `test_basic_withdrawal_success` - Basic LP token withdrawal
-- [ ] **LIQ-007** `test_withdrawal_insufficient_lp_fails` - Insufficient LP tokens error
-- [ ] **LIQ-008** `test_withdrawal_cooldown_enforcement` - Withdrawal cooldown validation
-- [ ] **LIQ-009** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
-- [ ] **LIQ-010** `test_withdrawal_zero_lp_fails` - Zero LP amount validation
+- [ ] **LIQ-007** `test_basic_withdrawal_success` - Basic LP token withdrawal
+- [ ] **LIQ-008** `test_withdrawal_insufficient_lp_fails` - Insufficient LP tokens error
+- [ ] **LIQ-009** `test_withdrawal_cooldown_enforcement` - Withdrawal cooldown validation
+- [ ] **LIQ-010** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
 
 **Milestone 1.1:** ✅ Complete basic deposit/withdrawal functionality (Tests LIQ-001 to LIQ-010)
 
@@ -292,10 +292,10 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 ## Milestone Tracking
 
 ### Phase 1 Milestones
-- [x] **M1.1** - Liquidity Management Complete (4/10 tests completed)
+- [x] **M1.1** - Liquidity Management Complete (6/10 tests completed)
 - [ ] **M1.2** - Fee Management Complete (0/5 tests completed)  
 - [ ] **M1.3** - Client SDK Complete (0/5 tests completed)
-- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (4/20 completed)
+- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (6/20 completed)
 
 ### Phase 2 Milestones
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests)
