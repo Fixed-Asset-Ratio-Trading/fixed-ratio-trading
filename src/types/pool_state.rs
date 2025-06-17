@@ -363,17 +363,47 @@ impl DelegateManagement {
         Ok(())
     }
 
+    /// Calculate the maximum packed length the structure may occupy when
+    /// serialized.  For on-chain accounts we must allocate enough space for
+    /// the *largest* possible variant so that the account does not need to be
+    /// re-allocated later (which Solana does not allow).
+    ///
+    /// Capacity assumptions:
+    /// * `MAX_DELEGATES` is the hard limit for delegates (currently 3).
+    /// * Each delegate may have **two** concurrent pending actions, giving
+    ///   `MAX_PENDING_ACTIONS = MAX_DELEGATES * 2`.
+    /// * A circular history keeps the **last 10** completed actions.
+    ///
+    /// These values are aligned with the expectations of the test-suite and
+    /// governance design docs.
     pub fn get_packed_len() -> usize {
-        (32 * MAX_DELEGATES) + // delegates
-        1 + // delegate_count
-        (24 * MAX_DELEGATES) + // time_limits (3 u64s per delegate)
-        4 + // pending_actions vec length (empty initially, just the length prefix)
-        // NOTE: pending_actions starts empty, so no data initially
-        1 + // pending_action_count
-        8 + // next_action_id
-        4 + // action_history vec length (empty initially, just the length prefix)
-        // NOTE: action_history starts empty, so no data initially
-        1   // action_history_index
+        // Fixed-size fields --------------------------------------------------
+        let delegates_size = 32 * MAX_DELEGATES;        // [Pubkey; MAX_DELEGATES]
+        let delegate_count_size = 1;                    // u8
+        let time_limits_size = 24 * MAX_DELEGATES;      // 3 * u64 per delegate
+        let pending_action_count_size = 1;              // u8
+        let next_action_id_size = 8;                    // u64
+        let action_history_index_size = 1;              // u8
+
+        // Variable-length fields -------------------------------------------
+        // For vectors we include 4-byte length prefix plus the maximum number
+        // of elements we plan to store.
+        const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2;
+        const ACTION_HISTORY_CAPACITY: usize = 10;
+
+        let max_pending_actions = MAX_DELEGATES * MAX_PENDING_ACTIONS_PER_DELEGATE;
+        let pending_actions_size = 4 + PendingDelegateAction::get_packed_len() * max_pending_actions;
+
+        let action_history_size = 4 + PendingDelegateAction::get_packed_len() * ACTION_HISTORY_CAPACITY;
+
+        delegates_size
+            + delegate_count_size
+            + time_limits_size
+            + pending_actions_size
+            + pending_action_count_size
+            + next_action_id_size
+            + action_history_size
+            + action_history_index_size
     }
 }
 

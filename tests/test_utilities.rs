@@ -309,7 +309,7 @@ fn test_pool_state_get_packed_len() {
         1 +  // is_paused
         8 +  // pause_end_timestamp
         1 +  // pause_reason (enum)
-        187 + // delegate_management (corrected size: 96+1+72+4+1+8+4+1)
+        DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
