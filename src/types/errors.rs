@@ -57,9 +57,6 @@ pub enum PoolError {
     /// Withdrawal amount exceeds maximum allowed percentage
     WithdrawalTooLarge,
     
-    /// Withdrawal is currently in cooldown period
-    WithdrawalCooldown,
-    
     /// Pool operations are currently paused
     PoolPaused,
     
@@ -119,7 +116,6 @@ impl fmt::Display for PoolError {
                 write!(f, "Insufficient funds: Required {}, Available {}, Account {}", required, available, account)
             },
             PoolError::WithdrawalTooLarge => write!(f, "Withdrawal amount exceeds maximum allowed percentage"),
-            PoolError::WithdrawalCooldown => write!(f, "Withdrawal is currently in cooldown period"),
             PoolError::PoolPaused => write!(f, "Pool operations are currently paused"),
             PoolError::DelegateLimitExceeded => write!(f, "Delegate limit exceeded"),
             PoolError::DelegateAlreadyExists { delegate } => write!(f, "Delegate already exists: {}", delegate),
@@ -150,19 +146,18 @@ impl PoolError {
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
             PoolError::WithdrawalTooLarge => 1007,
-            PoolError::WithdrawalCooldown => 1008,
-            PoolError::PoolPaused => 1009,
-            PoolError::DelegateLimitExceeded => 1010,
-            PoolError::DelegateAlreadyExists { .. } => 1011,
-            PoolError::DelegateNotFound { .. } => 1012,
-            PoolError::InvalidWaitTime { .. } => 1013,
-            PoolError::PendingWithdrawalExists => 1014,
-            PoolError::NoPendingWithdrawal => 1015,
-            PoolError::UnauthorizedDelegate => 1016,
-            PoolError::InsufficientFees => 1017,
-            PoolError::InvalidWithdrawalRequest => 1018,
-            PoolError::WithdrawalNotReady => 1019,
-            PoolError::Unauthorized => 1020,
+            PoolError::PoolPaused => 1008,
+            PoolError::DelegateLimitExceeded => 1009,
+            PoolError::DelegateAlreadyExists { .. } => 1010,
+            PoolError::DelegateNotFound { .. } => 1011,
+            PoolError::InvalidWaitTime { .. } => 1012,
+            PoolError::PendingWithdrawalExists => 1013,
+            PoolError::NoPendingWithdrawal => 1014,
+            PoolError::UnauthorizedDelegate => 1015,
+            PoolError::InsufficientFees => 1016,
+            PoolError::InvalidWithdrawalRequest => 1017,
+            PoolError::WithdrawalNotReady => 1018,
+            PoolError::Unauthorized => 1019,
         }
     }
 }

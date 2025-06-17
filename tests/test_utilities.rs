@@ -177,25 +177,24 @@ fn test_pool_error_error_code() {
     assert_eq!(error.error_code(), 1006);
 
     assert_eq!(PoolError::WithdrawalTooLarge.error_code(), 1007);
-    assert_eq!(PoolError::WithdrawalCooldown.error_code(), 1008);
-    assert_eq!(PoolError::PoolPaused.error_code(), 1009);
-    assert_eq!(PoolError::DelegateLimitExceeded.error_code(), 1010);
+    assert_eq!(PoolError::PoolPaused.error_code(), 1008);
+    assert_eq!(PoolError::DelegateLimitExceeded.error_code(), 1009);
     let error = PoolError::DelegateAlreadyExists {
         delegate: Pubkey::new_unique(),
     };
-    assert_eq!(error.error_code(), 1011);
+    assert_eq!(error.error_code(), 1010);
     let error = PoolError::DelegateNotFound {
         delegate: Pubkey::new_unique(),
     };
-    assert_eq!(error.error_code(), 1012);
-    assert_eq!(PoolError::InvalidWaitTime { wait_time: 0 }.error_code(), 1013);
-    assert_eq!(PoolError::PendingWithdrawalExists.error_code(), 1014);
-    assert_eq!(PoolError::NoPendingWithdrawal.error_code(), 1015);
-    assert_eq!(PoolError::UnauthorizedDelegate.error_code(), 1016);
-    assert_eq!(PoolError::InsufficientFees.error_code(), 1017);
-    assert_eq!(PoolError::InvalidWithdrawalRequest.error_code(), 1018);
-    assert_eq!(PoolError::WithdrawalNotReady.error_code(), 1019);
-    assert_eq!(PoolError::Unauthorized.error_code(), 1020);
+    assert_eq!(error.error_code(), 1011);
+    assert_eq!(PoolError::InvalidWaitTime { wait_time: 0 }.error_code(), 1012);
+    assert_eq!(PoolError::PendingWithdrawalExists.error_code(), 1013);
+    assert_eq!(PoolError::NoPendingWithdrawal.error_code(), 1014);
+    assert_eq!(PoolError::UnauthorizedDelegate.error_code(), 1015);
+    assert_eq!(PoolError::InsufficientFees.error_code(), 1016);
+    assert_eq!(PoolError::InvalidWithdrawalRequest.error_code(), 1017);
+    assert_eq!(PoolError::WithdrawalNotReady.error_code(), 1018);
+    assert_eq!(PoolError::Unauthorized.error_code(), 1019);
 }
 
 #[test]
@@ -224,9 +223,6 @@ fn test_pool_error_display() {
 
     let error = PoolError::WithdrawalTooLarge;
     assert_eq!(format!("{}", error), "Withdrawal amount exceeds maximum allowed percentage");
-
-    let error = PoolError::WithdrawalCooldown;
-    assert_eq!(format!("{}", error), "Withdrawal is currently in cooldown period");
 
     let error = PoolError::PoolPaused;
     assert_eq!(format!("{}", error), "Pool operations are currently paused");
@@ -295,61 +291,57 @@ fn test_pool_error_to_program_error() {
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1007));
 
-    let error = PoolError::WithdrawalCooldown;
+    let error = PoolError::PoolPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1008));
 
-    let error = PoolError::PoolPaused;
-    let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1009));
-
     let error = PoolError::DelegateLimitExceeded;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1010));
+    assert_eq!(program_error, ProgramError::Custom(1009));
 
     let error = PoolError::DelegateAlreadyExists {
         delegate: Pubkey::new_unique(),
     };
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1011));
+    assert_eq!(program_error, ProgramError::Custom(1010));
 
     let error = PoolError::DelegateNotFound {
         delegate: Pubkey::new_unique(),
     };
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1012));
+    assert_eq!(program_error, ProgramError::Custom(1011));
 
     let error = PoolError::InvalidWaitTime { wait_time: 0 };
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1013));
+    assert_eq!(program_error, ProgramError::Custom(1012));
 
     let error = PoolError::PendingWithdrawalExists;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1014));
+    assert_eq!(program_error, ProgramError::Custom(1013));
 
     let error = PoolError::NoPendingWithdrawal;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1015));
+    assert_eq!(program_error, ProgramError::Custom(1014));
 
     let error = PoolError::UnauthorizedDelegate;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1016));
+    assert_eq!(program_error, ProgramError::Custom(1015));
 
     let error = PoolError::InsufficientFees;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1017));
+    assert_eq!(program_error, ProgramError::Custom(1016));
 
     let error = PoolError::InvalidWithdrawalRequest;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1018));
+    assert_eq!(program_error, ProgramError::Custom(1017));
 
     let error = PoolError::WithdrawalNotReady;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1019));
+    assert_eq!(program_error, ProgramError::Custom(1018));
 
     let error = PoolError::Unauthorized;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1020));
+    assert_eq!(program_error, ProgramError::Custom(1019));
 }
 
 // ================================================================================================

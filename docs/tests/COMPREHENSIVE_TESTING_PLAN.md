@@ -216,8 +216,8 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 
 - [ ] **DEL-009** `test_rate_limiting_enforcement` - Rate limiting
   - Test rapid successive action requests
-  - Verify cooldown period is enforced
-  - Ensure maximum pending actions limit
+  - Verify maximum pending actions limit
+  - Ensure proper action queuing
   - Validate action counting logic
 
 #### Sub-category 4.4: Edge Cases & Error Handling
@@ -262,7 +262,7 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 - [ ] **SWAP-004** `test_fee_change_timing` - Timing controls
   - Test fee change wait time enforcement
   - Test multiple fee changes in succession
-  - Test fee change cooldown period
+  - Test fee change authorization timing
   - Verify timing calculation accuracy
 
 #### Sub-category 5.2: Fee Collection & Distribution
