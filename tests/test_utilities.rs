@@ -305,9 +305,11 @@ fn test_pool_state_get_packed_len() {
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
-        RentRequirements::get_packed_len() + // rent_requirements
+        40 + // rent_requirements
         1 +  // is_paused
-        DelegateManagement::get_packed_len() + // delegate_management
+        8 +  // pause_end_timestamp
+        1 +  // pause_reason (enum)
+        1739 + // delegate_management (size from test above)
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
@@ -371,12 +373,14 @@ fn test_delegate_management_get_packed_len() {
     let expected_size = 
         (32 * 3) +        // delegates array (3 delegates)
         1 +               // delegate_count
-        (88 * 10) +       // withdrawal_history (10 records, 88 bytes each)
-        1 +               // withdrawal_history_index  
-        (96 * 3) +        // withdrawal_requests (3 requests, 96 bytes each)
-        (8 * 3) +         // delegate_wait_times (3 delegates, 8 bytes each)
-        (65 * 3) +        // pool_pause_requests (3 requests, 65 bytes each)
-        (8 * 3);          // pool_pause_wait_times (3 delegates, 8 bytes each)
+        (24 * 3) +       // time_limits array (3 delegates * 24 bytes each)
+        4 +              // pending_actions vec length
+        (97 * 3 * 2) +   // pending_actions (3 delegates * 2 actions * 97 bytes each)
+        1 +              // pending_action_count
+        8 +              // next_action_id
+        4 +              // action_history vec length
+        (97 * 10) +      // action_history (10 entries * 97 bytes each)
+        1;              // action_history_index
     
     assert_eq!(len, expected_size, 
         "Packed length should match calculated structure size. Got: {}, Expected: {}", 
