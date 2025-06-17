@@ -114,7 +114,15 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     4. Verification that no underlying tokens are transferred
   - **📊 TEST COVERAGE**: Error case for insufficient LP tokens in withdrawal operations
   - **🎯 RESULTS**: Correctly returns InsufficientFunds error, maintains account state integrity
-- [ ] **LIQ-009** `test_withdrawal_cooldown_enforcement` - Withdrawal cooldown validation
+- [ ] **LIQ-009** `test_withdrawal_delegate_process` - Two-step withdrawal validation
+  - **🔒 SECURITY MODEL**: Uses delegate-based two-step withdrawal process
+  - **🔧 FEATURES TO TEST**:
+    1. Delegate must request withdrawal through `process_request_delegate_action`
+    2. Request enters waiting period for owner review
+    3. Owner can cancel withdrawal during waiting period
+    4. Only approved withdrawals can be executed
+  - **📊 TEST COVERAGE**: Full validation of two-step withdrawal security process
+  - **🎯 EXPECTED RESULTS**: Ensures withdrawals follow proper security protocol
 - [ ] **LIQ-010** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
 
 **Milestone 1.1:** ✅ Complete basic deposit/withdrawal functionality (Tests LIQ-001 to LIQ-010)
