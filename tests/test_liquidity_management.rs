@@ -802,10 +802,10 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
         Ok(_) => panic!("Deposit should fail with insufficient balance"),
         Err(e) => {
             println!("✅ Transaction failed as expected with error: {:?}", e);
-            // Verify the error is BanksClientError::TransactionError(TransactionError::InstructionError(...))
+            // Verify the error is either InsufficientFunds or its custom code equivalent
             match e {
-                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::Custom(3))) |
-                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InsufficientFunds)) => {
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InsufficientFunds)) |
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::Custom(3))) => {
                     println!("✅ Correctly received InsufficientFunds error");
                 }
                 _ => panic!("Expected InsufficientFunds error, got: {:?}", e),
