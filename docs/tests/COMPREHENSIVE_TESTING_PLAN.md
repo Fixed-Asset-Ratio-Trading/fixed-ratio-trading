@@ -25,6 +25,24 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 - ❌ **No workarounds** - ensure tests verify correct functionality
 - ✅ **Test-driven fixes** - let good tests drive better contract code
 
+### 📝 GIT COMMIT MESSAGE FORMAT:
+**All test completion commits must follow this exact format:**
+
+```
+test: Complete LIQ-XXX <description> - <summary of work done>
+```
+
+**Examples:**
+- `test: Complete LIQ-004 zero amount deposit validation test - Add validation, implement test, update plan`
+- `test: Complete LIQ-005 wrong token deposit validation test - Add test, update plan`
+- `test: Complete LIQ-006 insufficient balance deposit validation test - Add test, update plan`
+
+**Format Requirements:**
+- Start with `test:` prefix
+- Include the test ID (LIQ-XXX, FEE-XXX, etc.)
+- Brief description of what the test validates
+- Dash separator followed by summary of changes made
+
 ## Progress Overview
 - Current Coverage: 28.11%
 - Target Coverage: 85%+
@@ -78,7 +96,15 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 - [x] **LIQ-006** `test_deposit_insufficient_balance_fails` - Insufficient balance validation ✅ **COMPLETED**
 
 #### Sub-category 1.2: Withdrawal Operations  
-- [ ] **LIQ-007** `test_basic_withdrawal_success` - Basic LP token withdrawal
+- [x] **LIQ-007** `test_basic_withdrawal_success` - Basic LP token withdrawal ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests basic withdrawal functionality
+  - **🔧 FEATURES TESTED**:
+    1. LP token burning during withdrawal
+    2. Underlying token transfer back to user
+    3. Pool state updates after withdrawal
+    4. 1:1 ratio maintained between LP tokens and underlying tokens
+  - **📊 TEST COVERAGE**: Full withdrawal flow from deposit to withdrawal
+  - **🎯 RESULTS**: Successfully withdrew 1M tokens, verified all state changes
 - [ ] **LIQ-008** `test_withdrawal_insufficient_lp_fails` - Insufficient LP tokens error
 - [ ] **LIQ-009** `test_withdrawal_cooldown_enforcement` - Withdrawal cooldown validation
 - [ ] **LIQ-010** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
