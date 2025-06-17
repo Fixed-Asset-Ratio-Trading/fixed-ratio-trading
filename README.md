@@ -283,6 +283,61 @@ let time_limits_ix = PoolInstruction::SetDelegateTimeLimits {
 - ✅ **More Flexibility**: Per-delegate configuration
 - ✅ **Enhanced Governance**: Complete action history
 
+### **Delegate Action Limits & Concurrency** ⚖️
+
+The delegate management system implements sophisticated limits to prevent system overload while allowing operational flexibility:
+
+#### **Concurrent Action Limits**
+- **Per Delegate**: Each delegate can have up to **2 pending actions** simultaneously
+- **System Total**: Maximum of **6 pending actions** across all delegates (3 delegates × 2 actions each)
+- **Action Types**: Fee changes, withdrawals, and pool pauses can be pending concurrently
+
+#### **When MaxPendingActionsReached Occurs**
+
+The `MaxPendingActionsReached` error is triggered when the total number of pending actions across **all delegates** reaches 6:
+
+```rust
+// Example scenario that triggers the error:
+// Delegate A: 2 pending actions (withdrawal + fee change)
+// Delegate B: 2 pending actions (withdrawal + pool pause)  
+// Delegate C: 2 pending actions (withdrawal + fee change)
+// Total: 6 pending actions
+// → Any new action request will fail with MaxPendingActionsReached
+```
+
+#### **Key Behaviors**
+
+- **✅ Concurrent Requests**: Delegates do NOT need to wait for one action to complete before making another
+- **✅ Mixed Action Types**: Different action types can be pending simultaneously per delegate
+- **✅ Independent Execution**: Actions can be executed independently when their wait times expire
+- **✅ Flexible Timing**: Each action type has configurable wait times per delegate
+
+#### **Example Usage Patterns**
+
+```rust
+// Valid: Delegate can request multiple actions simultaneously
+let withdrawal_request = request_delegate_action(DelegateActionType::Withdrawal, params1);
+let fee_change_request = request_delegate_action(DelegateActionType::FeeChange, params2);
+// Both succeed if under limits
+
+// Valid: Actions execute independently
+execute_delegate_action(withdrawal_action_id);  // Executes when withdrawal wait time expires
+execute_delegate_action(fee_change_action_id);  // Executes when fee change wait time expires
+
+// Invalid: Would exceed system limit
+// If system already has 6 pending actions total:
+let pool_pause_request = request_delegate_action(DelegateActionType::PoolPause, params3);
+// → Fails with MaxPendingActionsReached
+```
+
+#### **Why These Limits Exist**
+
+- **🛡️ Resource Protection**: Prevents unbounded growth of pending operations
+- **📊 State Management**: Keeps on-chain state size manageable
+- **⚡ Performance**: Ensures efficient processing and storage
+- **🎯 Governance**: Prevents gridlock from excessive simultaneous requests
+- **💾 Storage Optimization**: Limits on-chain account storage requirements
+
 ## Backward Compatibility
 
 The legacy two-instruction pattern is still supported but marked as deprecated:
@@ -417,8 +472,8 @@ const DEFAULT_POOL_PAUSE_WAIT_TIME: u64 = 259200;   // 72 hours default wait
 const MIN_ACTION_WAIT_TIME: u64 = 300;          // 5 minutes minimum
 const MAX_ACTION_WAIT_TIME: u64 = 259200;       // 72 hours maximum
 const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600; // 1 hour default for fee changes
-const MAX_PENDING_ACTIONS: usize = 10;          // Maximum pending actions per delegate
-const ACTION_COOLDOWN: u64 = 300;               // 5 minutes between similar actions
+const MAX_PENDING_ACTIONS: usize = 6;           // Maximum pending actions across ALL delegates
+const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2; // Each delegate can have up to 2 concurrent actions
 ```
 
 ## Error Handling
