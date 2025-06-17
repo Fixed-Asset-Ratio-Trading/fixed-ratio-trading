@@ -47,7 +47,9 @@ pub struct TestEnvironment {
 /// Contains a test environment plus pool-specific components
 pub struct PoolTestContext {
     pub env: TestEnvironment,
+    #[allow(dead_code)]
     pub primary_mint: Keypair,
+    #[allow(dead_code)]
     pub base_mint: Keypair,
     pub lp_token_a_mint: Keypair,
     pub lp_token_b_mint: Keypair,

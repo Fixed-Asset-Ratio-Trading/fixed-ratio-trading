@@ -33,7 +33,6 @@ use common::*;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    sysvar::{rent::Rent, clock::Clock},
 };
 use solana_program_test::{BanksClient, BanksClientError};
 use solana_sdk::{

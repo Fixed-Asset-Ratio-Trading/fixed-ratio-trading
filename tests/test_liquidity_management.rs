@@ -1338,7 +1338,7 @@ async fn test_deposit_wrong_token_fails() -> TestResult {
     println!("✅ Created wrong token mint");
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, _user_primary_token_account, _user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -1774,8 +1774,8 @@ async fn test_basic_withdrawal_success() -> TestResult {
     println!("✅ Destination token account created");
 
     // Get initial balances
-    let initial_user_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
-    let initial_user_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    let _initial_user_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    let _initial_user_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
     let initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Pool state should exist");
 

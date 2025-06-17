@@ -94,7 +94,6 @@ pub mod processors;
 // Re-export all modules for public API
 // IMPORTANT: These must be public re-exports to allow test access
 pub use constants::*;
-pub use error::*;
 pub use types::*;
 pub use utils::*;
 
