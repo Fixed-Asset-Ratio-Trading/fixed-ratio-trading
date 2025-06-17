@@ -668,31 +668,21 @@ pub fn process_initialize_pool_data(
     // This approach prevents issues where serialization reports "OK" but data doesn't persist.
     
     // Step 1: Serialize the pool state data to a temporary buffer
-    let mut serialized_data = Vec::new();
-    match pool_state_data.serialize(&mut serialized_data) {
-        Ok(_) => {
-            msg!("DEBUG: process_initialize_pool_data: Serialization to buffer successful. Buffer len: {}", serialized_data.len());
-        }
-        Err(e) => {
-            msg!("DEBUG: process_initialize_pool_data: Serialization to buffer FAILED: {:?}", e);
-            return Err(e.into());
-        }
-    }
+    let (_serialized_data, _pool_state_account_size) = prepare_account_data(&pool_state_data)?;
     
     // Step 2: Copy the serialized data to the account data
-    msg!("DEBUG: process_initialize_pool_data: Copying {} bytes to account data", serialized_data.len());
+    msg!("DEBUG: process_initialize_pool_data: Copying data to account");
     let account_data_len = pool_state_pda_account.data_len();
-    if serialized_data.len() > account_data_len {
+    if _serialized_data.len() > account_data_len {
         msg!("DEBUG: process_initialize_pool_data: Serialized data too large for account. Need: {}, Have: {}", 
-             serialized_data.len(), account_data_len);
+            _serialized_data.len(), account_data_len);
         return Err(ProgramError::AccountDataTooSmall);
     }
-    
-    // Perform the atomic copy operation
-    // This ensures that either all data is written correctly or the operation fails cleanly
+
+    // Step 3: Atomic copy to account data
     {
         let mut account_data = pool_state_pda_account.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+        account_data[.._serialized_data.len()].copy_from_slice(&_serialized_data);
         msg!("DEBUG: process_initialize_pool_data: Data copied to account successfully");
     }
     
@@ -836,7 +826,7 @@ pub fn process_initialize_pool(
     };
     
     // Use the standardized workaround utility to get actual size
-    let (serialized_data, pool_state_account_size) = prepare_account_data(&temp_pool_state)?;
+    let (_serialized_data, pool_state_account_size) = prepare_account_data(&temp_pool_state)?;
     
     msg!("DEBUG: Using standardized workaround - calculated pool state size: {} bytes (vs packed_len: {})", 
          pool_state_account_size, PoolState::get_packed_len());

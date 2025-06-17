@@ -3,7 +3,6 @@
 //! This module contains all the instruction definitions for the Solana Trading Pool Program.
 //! Instructions define the operations that can be performed on the pool.
 
-use crate::types::PoolPauseReason;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 use super::delegate_actions::{DelegateActionType, DelegateActionParams, DelegateTimeLimits};

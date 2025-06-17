@@ -9,7 +9,7 @@ use solana_program::{
     msg,
     program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::rent::Rent,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use crate::error::PoolError;

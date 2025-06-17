@@ -77,8 +77,6 @@ use borsh::BorshDeserialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
-    msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
     declare_id,
 };
@@ -115,7 +113,6 @@ use crate::processors::{
     },
     swap::{
         process_swap,
-        process_set_swap_fee,
     },
     security::process_update_security_params,
     delegates::{

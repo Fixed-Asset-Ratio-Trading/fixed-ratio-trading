@@ -76,15 +76,14 @@ use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     system_program,
-    sysvar::{self, rent, clock},
+    sysvar::{self},
 };
 use borsh::BorshSerialize;
-use crate::types::*;
 use crate::{
     PoolInstruction,
-    POOL_STATE_SEED_PREFIX, 
-    TOKEN_A_VAULT_SEED_PREFIX, 
-    TOKEN_B_VAULT_SEED_PREFIX
+    POOL_STATE_SEED_PREFIX,
+    TOKEN_A_VAULT_SEED_PREFIX,
+    TOKEN_B_VAULT_SEED_PREFIX,
 };
 
 /// Configuration for creating a new trading pool.
