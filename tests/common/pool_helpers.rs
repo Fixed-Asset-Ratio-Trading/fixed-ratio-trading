@@ -424,7 +424,7 @@ pub async fn get_pool_state(
             let preview: Vec<String> = account.data[..preview_len].iter().map(|b| format!("{:02x}", b)).collect();
             println!("   - First {} bytes: {}", preview_len, preview.join(" "));
             
-            match PoolState::try_from_slice(&account.data) {
+            match PoolState::deserialize(&mut &account.data[..]) {
                 Ok(pool_state) => {
                     println!("✅ Successfully deserialized PoolState!");
                     println!("   - Is initialized: {}", pool_state.is_initialized);

@@ -49,7 +49,7 @@ pub fn process_request_delegate_action(
     }
 
     // Load pool state
-    let mut pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     // Verify delegate is authorized
     if !pool_state.delegate_management.is_delegate(delegate_account.key) {
@@ -113,7 +113,7 @@ pub fn process_execute_delegate_action(
     }
 
     // Load pool state
-    let mut pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     // Check if pool needs to be automatically unpaused
     if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && clock.unix_timestamp >= pool_state.pause_end_timestamp {
@@ -282,7 +282,7 @@ pub fn process_revoke_action(
     }
 
     // Load pool state
-    let mut pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     // Get the pending action
     let action = pool_state.delegate_management.get_pending_action(action_id)
@@ -326,7 +326,7 @@ pub fn process_set_delegate_time_limits(
     }
 
     // Load pool state
-    let mut pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     // Verify caller is pool owner
     if *owner_account.key != pool_state.owner {

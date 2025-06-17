@@ -592,7 +592,7 @@ pub fn process_initialize_pool_data(
 
     // Check if pool state is already initialized
     if !pool_state_pda_account.data_is_empty() {
-        match PoolState::try_from_slice(&pool_state_pda_account.data.borrow()) {
+        match PoolState::deserialize(&mut &pool_state_pda_account.data.borrow()[..]) {
             Ok(pool_state_data) => {
                 if pool_state_data.is_initialized {
                     msg!("DEBUG: process_initialize_pool_data: Pool state already initialized");
@@ -816,50 +816,14 @@ pub fn process_initialize_pool(
         pool_state_pda_account.key.as_ref(),
         &[token_b_vault_bump],
     ];
-    let expected_token_a_vault_pda = Pubkey::create_program_address(token_a_vault_seeds, program_id)?;
-    let expected_token_b_vault_pda = Pubkey::create_program_address(token_b_vault_seeds, program_id)?;
 
-    // **CRITICAL FIX: GitHub Issue #31960 Workaround - Use COMPLETELY populated temp PoolState**
-    // The temp state MUST include ALL fields that will be in the final state to calculate correct size
-    let temp_pool_state = {
-        let mut temp_state = PoolState::default();
-        temp_state.owner = *payer.key;
-        temp_state.token_a_mint = *token_a_mint_key;
-        temp_state.token_b_mint = *token_b_mint_key;
-        // **CRITICAL: Include vault addresses in size calculation**
-        temp_state.token_a_vault = expected_token_a_vault_pda;
-        temp_state.token_b_vault = expected_token_b_vault_pda;
-        temp_state.lp_token_a_mint = *lp_token_a_mint_account.key;
-        temp_state.lp_token_b_mint = *lp_token_b_mint_account.key;
-        temp_state.ratio_a_numerator = ratio_a_numerator;
-        temp_state.ratio_b_denominator = ratio_b_denominator;
-        temp_state.total_token_a_liquidity = 0;
-        temp_state.total_token_b_liquidity = 0;
-        temp_state.pool_authority_bump_seed = pool_authority_bump_seed;
-        temp_state.token_a_vault_bump_seed = token_a_vault_bump;
-        temp_state.token_b_vault_bump_seed = token_b_vault_bump;
-        temp_state.is_initialized = true;
-        temp_state.is_paused = false;
-        // CRITICAL: Initialize ALL fields including pause-related ones
-        temp_state.pause_end_timestamp = 0;
-        temp_state.pause_reason = PoolPauseReason::default();
-        temp_state.rent_requirements = RentRequirements::new(rent);
-        temp_state.delegate_management = DelegateManagement::new(*payer.key, 0);
-        temp_state.swap_fee_basis_points = 0;
-        temp_state.collected_fees_token_a = 0;
-        temp_state.collected_fees_token_b = 0;
-        temp_state.total_fees_withdrawn_token_a = 0;
-        temp_state.total_fees_withdrawn_token_b = 0;
-        temp_state.collected_sol_fees = 0;
-        temp_state.total_sol_fees_withdrawn = 0;
-        temp_state
-    };
+
+
+    // CRITICAL FIX: Use get_packed_len() to ensure max size allocation
+    let pool_state_account_size = PoolState::get_packed_len();
     
-    // Use the standardized workaround utility to get actual size
-    let (_serialized_data, pool_state_account_size) = prepare_account_data(&temp_pool_state)?;
-    
-    msg!("DEBUG: Using standardized workaround - calculated pool state size: {} bytes (vs packed_len: {})", 
-         pool_state_account_size, PoolState::get_packed_len());
+    msg!("DEBUG: Using get_packed_len for allocation - size: {} bytes", 
+         pool_state_account_size);
     let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
     
     invoke_signed(

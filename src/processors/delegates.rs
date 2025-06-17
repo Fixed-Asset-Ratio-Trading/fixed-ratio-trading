@@ -73,7 +73,7 @@ pub fn process_add_delegate(
     }
 
     // Load and verify pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can add delegates");
         return Err(ProgramError::InvalidAccountData);
@@ -154,7 +154,7 @@ pub fn process_remove_delegate(
     }
 
     // Load and verify pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can remove delegates");
         return Err(ProgramError::InvalidAccountData);
@@ -230,7 +230,7 @@ pub fn process_get_action_history(
     let pool_state = next_account_info(account_info_iter)?;
 
     // Load pool state
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
 
     // Log action history for transparency
     msg!("Action History (last 10 actions):");

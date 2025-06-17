@@ -60,7 +60,7 @@ fn ensure_rent_exempt(
     rent: &Rent,
     current_slot: u64,
 ) -> ProgramResult {
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     
     // Update rent requirements if needed
     if pool_state_data.rent_requirements.update_if_needed(rent, current_slot) {

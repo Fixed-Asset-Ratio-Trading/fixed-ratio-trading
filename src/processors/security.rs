@@ -105,7 +105,7 @@ pub fn process_update_security_params(
     }
 
     // Load and verify pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can update security parameters");
         return Err(ProgramError::InvalidAccountData);

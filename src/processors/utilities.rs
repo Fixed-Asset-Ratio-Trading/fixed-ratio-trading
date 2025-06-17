@@ -142,7 +142,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DEBUG: get_pool_info: Retrieving comprehensive pool information");
     
     let pool_state_account = &accounts[0];
-    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
     msg!("=== POOL STATE INFORMATION ===");
     msg!("Pool Owner: {}", pool_state.owner);
@@ -180,7 +180,7 @@ pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DEBUG: get_liquidity_info: Retrieving liquidity information");
     
     let pool_state_account = &accounts[0];
-    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
     msg!("=== LIQUIDITY INFORMATION ===");
     msg!("Total Token A Liquidity: {}", pool_state.total_token_a_liquidity);
@@ -216,7 +216,7 @@ pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let pool_state_account = next_account_info(account_info_iter)?;
 
-    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     msg!("Delegate Info:");
     msg!("Total Delegates: {}", pool_state.delegate_management.delegate_count);
@@ -258,7 +258,7 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let pool_state_account = next_account_info(account_info_iter)?;
 
-    let pool_state = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
     msg!("Fee Info:");
     msg!("Current Swap Fee: {} basis points", pool_state.swap_fee_basis_points);

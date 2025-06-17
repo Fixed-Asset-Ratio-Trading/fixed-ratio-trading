@@ -172,7 +172,7 @@ pub fn process_swap(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
@@ -533,7 +533,7 @@ pub fn process_set_swap_fee(
     }
 
     // Load and verify pool state
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can set swap fees");
         return Err(ProgramError::InvalidAccountData);

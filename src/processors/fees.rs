@@ -100,7 +100,7 @@ pub fn process_withdraw_fees(
     }
 
     // Load and verify pool state
-    let pool_state_data = PoolState::try_from_slice(&pool_state.data.borrow())?;
+    let pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
     if *owner.key != pool_state_data.owner {
         msg!("Only pool owner can withdraw fees");
         return Err(ProgramError::InvalidAccountData);

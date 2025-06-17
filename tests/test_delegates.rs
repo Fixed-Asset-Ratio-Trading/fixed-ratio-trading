@@ -151,7 +151,7 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
 
     // Debug: Check initial pool state
     let pool_account = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
-    let pool_state = PoolState::try_from_slice(&pool_account.data)?;
+    let pool_state = PoolState::deserialize(&mut &pool_account.data[..])?;
     println!("🔍 Initial delegate count: {}", pool_state.delegate_management.delegate_count);
     for i in 0..pool_state.delegate_management.delegate_count {
         println!("🔍 Initial delegate[{}]: {}", i, pool_state.delegate_management.delegates[i as usize]);
@@ -176,7 +176,7 @@ async fn test_add_duplicate_delegate_fails() -> TestResult {
 
     // Debug: Check pool state after first addition
     let pool_account_after = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
-    let pool_state_after = PoolState::try_from_slice(&pool_account_after.data)?;
+    let pool_state_after = PoolState::deserialize(&mut &pool_account_after.data[..])?;
     println!("🔍 After first addition - delegate count: {}", pool_state_after.delegate_management.delegate_count);
     for i in 0..pool_state_after.delegate_management.delegate_count {
         println!("🔍 After first addition - delegate[{}]: {}", i, pool_state_after.delegate_management.delegates[i as usize]);
@@ -247,7 +247,7 @@ async fn test_add_multiple_delegates() -> TestResult {
 
     // Debug: Check initial pool state
     let pool_account = ctx.env.banks_client.get_account(config.pool_state_pda).await?.unwrap();
-    let pool_state = PoolState::try_from_slice(&pool_account.data)?;
+    let pool_state = PoolState::deserialize(&mut &pool_account.data[..])?;
     println!("🔍 Initial delegate count: {}", pool_state.delegate_management.delegate_count);
 
     // Add first additional delegate (this will be delegate[1])

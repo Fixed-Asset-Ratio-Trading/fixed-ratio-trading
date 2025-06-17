@@ -254,7 +254,7 @@ pub fn process_deposit(
     }
 
     // Read pool state data
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
     // TODO: Re-enable rent checks after fixing the deposit test
     // check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
@@ -569,7 +569,7 @@ pub fn process_withdraw(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    let mut pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);

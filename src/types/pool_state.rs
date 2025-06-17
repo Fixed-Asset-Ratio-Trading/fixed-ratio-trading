@@ -381,7 +381,7 @@ impl DelegateManagement {
     /// These values are aligned with the expectations of the test-suite and
     /// governance design docs.
     pub fn get_packed_len() -> usize {
-        // Fixed-size fields --------------------------------------------------
+        // Fixed-size fields
         let delegates_size = 32 * MAX_DELEGATES;        // [Pubkey; MAX_DELEGATES]
         let delegate_count_size = 1;                    // u8
         let time_limits_size = 24 * MAX_DELEGATES;      // 3 * u64 per delegate
@@ -389,25 +389,23 @@ impl DelegateManagement {
         let next_action_id_size = 8;                    // u64
         let action_history_index_size = 1;              // u8
 
-        // Variable-length fields -------------------------------------------
-        // For vectors we include 4-byte length prefix plus the maximum number
-        // of elements we plan to store.
+        // Variable-length fields
         const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2;
         const ACTION_HISTORY_CAPACITY: usize = 10;
 
         let max_pending_actions = MAX_DELEGATES * MAX_PENDING_ACTIONS_PER_DELEGATE;
-        let pending_actions_size = 4 + PendingDelegateAction::get_packed_len() * max_pending_actions;
+        let pending_actions_size = 4 + (PendingDelegateAction::get_packed_len() * max_pending_actions);
+        let action_history_size = 4 + (PendingDelegateAction::get_packed_len() * ACTION_HISTORY_CAPACITY);
 
-        let action_history_size = 4 + PendingDelegateAction::get_packed_len() * ACTION_HISTORY_CAPACITY;
-
-        delegates_size
-            + delegate_count_size
-            + time_limits_size
-            + pending_actions_size
-            + pending_action_count_size
-            + next_action_id_size
-            + action_history_size
-            + action_history_index_size
+        // Total size calculation
+        delegates_size +
+        delegate_count_size +
+        time_limits_size +
+        pending_action_count_size +
+        next_action_id_size +
+        action_history_index_size +
+        pending_actions_size +
+        action_history_size
     }
 }
 
