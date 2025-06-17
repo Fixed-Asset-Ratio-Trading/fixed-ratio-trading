@@ -367,12 +367,12 @@ impl DelegateManagement {
         (32 * MAX_DELEGATES) + // delegates
         1 + // delegate_count
         (24 * MAX_DELEGATES) + // time_limits (3 u64s per delegate)
-        4 + // pending_actions vec length
-        (PendingDelegateAction::get_packed_len() * MAX_DELEGATES * 2) + // pending_actions
+        4 + // pending_actions vec length (empty initially, just the length prefix)
+        // NOTE: pending_actions starts empty, so no data initially
         1 + // pending_action_count
         8 + // next_action_id
-        4 + // action_history vec length
-        (PendingDelegateAction::get_packed_len() * 10) + // action_history
+        4 + // action_history vec length (empty initially, just the length prefix)
+        // NOTE: action_history starts empty, so no data initially
         1   // action_history_index
     }
 }
