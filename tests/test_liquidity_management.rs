@@ -787,7 +787,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
     println!("DEBUG: Pool state PDA: {}", config.pool_state_pda);
 
     // Setup user with token accounts and extra SOL for fees
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
+    let (user, _user_primary_token_account, _user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -1902,3 +1902,275 @@ async fn test_basic_withdrawal_success() -> TestResult {
     
     Ok(())
 } 
+
+/// LIQ-008: Test withdrawal fails with insufficient LP tokens
+/// 
+/// This test verifies that attempting to withdraw more LP tokens than available
+/// fails with the appropriate error. It:
+/// 1. Creates a pool with a unique ratio
+/// 2. Sets up a user with tokens
+/// 3. Performs a deposit to get LP tokens
+/// 4. Attempts to withdraw more LP tokens than available
+/// 5. Verifies the withdrawal fails with InsufficientFunds error
+/// 6. Verifies no state changes occurred
+#[tokio::test]
+#[serial]
+async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
+    println!("🧪 Testing LIQ-008: Withdrawal with insufficient LP tokens...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Use unique parameters to avoid PDA conflicts
+    let unique_ratio = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64 % 1000 + 100; // Random ratio between 100-1099
+    
+    println!("📊 Using unique ratio: {} (to avoid PDA conflicts)", unique_ratio);
+    
+    // Generate two keypairs and ensure correct ordering for "Token A is primary: true"
+    let keypair1 = Keypair::new();
+    let keypair2 = Keypair::new();
+    
+    // Ensure keypair1 is lexicographically smaller than keypair2
+    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
+        (keypair1, keypair2)
+    } else {
+        (keypair2, keypair1)
+    };
+    
+    // Verify ordering
+    assert!(primary_mint.pubkey() < base_mint.pubkey(), 
+           "Primary mint should be lexicographically smaller to ensure Token A is primary");
+    
+    println!("✅ Created ordered token mints with correct ordering");
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&primary_mint, &base_mint],
+    ).await?;
+    
+    println!("✅ Created test token mints");
+    println!("   Primary mint: {}", primary_mint.pubkey());
+    println!("   Base mint: {}", base_mint.pubkey());
+
+    // Create pool with unique ratio
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint,
+        &base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        Some(unique_ratio),
+    ).await?;
+    
+    println!("✅ Pool created with ratio: {}", unique_ratio);
+    println!("DEBUG: Pool state PDA: {}", config.pool_state_pda);
+
+    // Setup user with token accounts and extra SOL for fees
+    let (user, _user_primary_token_account, _user_base_token_account) = setup_test_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint.pubkey(),
+        &base_mint.pubkey(),
+        Some(10_000_000_000), // 10 SOL for fees
+    ).await?;
+    println!("DEBUG: User and token accounts created successfully");
+
+    // Mint tokens to user
+    let deposit_amount = 1_000_000;
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+        (&primary_mint.pubkey(), &user_primary_token_account)
+    } else {
+        (&base_mint.pubkey(), &user_primary_token_account)
+    };
+
+    mint_tokens(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        deposit_mint,
+        &deposit_token_account.pubkey(),
+        &ctx.env.payer,
+        deposit_amount,
+    ).await?;
+    println!("DEBUG: Tokens minted to user successfully");
+
+    // Create LP token account for user
+    let user_lp_token_account = Keypair::new();
+    let lp_mint = if config.token_a_is_primary {
+        &ctx.lp_token_a_mint.pubkey()
+    } else {
+        &ctx.lp_token_b_mint.pubkey()
+    };
+
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_lp_token_account,
+        lp_mint,
+        &user.pubkey(),
+    ).await?;
+    println!("DEBUG: LP token account created successfully");
+
+    // Create destination token account for withdrawal
+    let user_destination_token_account = Keypair::new();
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &user_destination_token_account,
+        deposit_mint,
+        &user.pubkey(),
+    ).await?;
+    println!("✅ Destination token account created");
+
+    // Get initial balances
+    let _initial_user_token_balance = get_token_balance(&mut ctx.env.banks_client, &deposit_token_account.pubkey()).await;
+    let _initial_user_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    let _initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Pool state should exist");
+
+    // First, perform a deposit to get LP tokens
+    let deposit_instruction_data = PoolInstruction::Deposit {
+        deposit_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        amount: deposit_amount,
+    };
+
+    let serialized = deposit_instruction_data.try_to_vec().unwrap();
+
+    let deposit_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),
+            AccountMeta::new(deposit_token_account.pubkey(), false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
+            AccountMeta::new(user_lp_token_account.pubkey(), false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: serialized,
+    };
+
+    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
+    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+    
+    println!("📤 Executing deposit transaction...");
+    ctx.env.banks_client.process_transaction(deposit_tx).await?;
+    println!("✅ Deposit successful");
+
+    // Verify deposit state
+    let post_deposit_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    assert_eq!(post_deposit_lp_balance, deposit_amount, "Should receive 1:1 LP tokens for deposit");
+
+    // Now attempt to withdraw more LP tokens than available
+    let withdraw_amount = deposit_amount + 1; // Try to withdraw 1 more token than available
+    
+    let withdraw_instruction_data = PoolInstruction::Withdraw {
+        withdraw_token_mint: if config.token_a_is_primary { 
+            config.token_a_mint 
+        } else { 
+            config.token_b_mint 
+        },
+        lp_amount_to_burn: withdraw_amount,
+    };
+
+    let serialized = withdraw_instruction_data.try_to_vec().unwrap();
+
+    let withdraw_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(user.pubkey(), true),                           // User (signer)
+            AccountMeta::new(user_lp_token_account.pubkey(), false),         // User's LP token account (source of burn)
+            AccountMeta::new(user_destination_token_account.pubkey(), false), // User's destination token account
+            AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
+            AccountMeta::new_readonly(config.token_a_mint, false),           // Token A mint
+            AccountMeta::new_readonly(config.token_b_mint, false),           // Token B mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault
+            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault
+            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),           // LP Token A mint
+            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),           // LP Token B mint
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Clock sysvar
+        ],
+        data: serialized,
+    };
+
+    let mut withdraw_tx = Transaction::new_with_payer(&[withdraw_ix], Some(&user.pubkey()));
+    withdraw_tx.sign(&[&user], ctx.env.recent_blockhash);
+    
+    println!("📤 Executing withdrawal transaction (should fail)...");
+    let result = ctx.env.banks_client.process_transaction(withdraw_tx).await;
+    
+    match result {
+        Ok(_) => panic!("Withdrawal should fail with insufficient LP tokens"),
+        Err(e) => {
+            println!("✅ Transaction failed as expected with error: {:?}", e);
+            // Verify the error is InsufficientFunds
+            match e {
+                solana_program_test::BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InsufficientFunds)) => {
+                    println!("✅ Correctly received InsufficientFunds error");
+                }
+                _ => panic!("Expected InsufficientFunds error, got: {:?}", e),
+            }
+        }
+    }
+
+    // Verify final state
+    let final_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+    let final_token_balance = get_token_balance(&mut ctx.env.banks_client, &user_destination_token_account.pubkey()).await;
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Pool state should exist");
+
+    // Verify LP tokens were not burned
+    assert_eq!(final_lp_balance, post_deposit_lp_balance, "LP tokens should remain unchanged");
+    
+    // Verify no tokens were transferred
+    assert_eq!(final_token_balance, 0, "No tokens should have been transferred");
+    
+    // Verify pool state remains unchanged
+    if config.token_a_is_primary {
+        assert_eq!(
+            final_pool_state.total_token_a_liquidity,
+            deposit_amount,
+            "Pool Token A liquidity should remain unchanged"
+        );
+    } else {
+        assert_eq!(
+            final_pool_state.total_token_b_liquidity,
+            deposit_amount,
+            "Pool Token B liquidity should remain unchanged"
+        );
+    }
+
+    println!("✅ LIQ-008 test completed successfully!");
+    println!("   📊 Summary:");
+    println!("   - Deposited: {} tokens", deposit_amount);
+    println!("   - Received: {} LP tokens", post_deposit_lp_balance);
+    println!("   - Attempted to withdraw: {} LP tokens", withdraw_amount);
+    println!("   - Correctly failed with InsufficientFunds error");
+    println!("   - All state verifications passed ✅");
+    
+    Ok(())
+}

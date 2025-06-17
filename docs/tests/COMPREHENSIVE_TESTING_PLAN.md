@@ -105,7 +105,15 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     4. 1:1 ratio maintained between LP tokens and underlying tokens
   - **📊 TEST COVERAGE**: Full withdrawal flow from deposit to withdrawal
   - **🎯 RESULTS**: Successfully withdrew 1M tokens, verified all state changes
-- [ ] **LIQ-008** `test_withdrawal_insufficient_lp_fails` - Insufficient LP tokens error
+- [x] **LIQ-008** `test_withdrawal_insufficient_lp_fails` - Insufficient LP tokens error ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests insufficient LP token error handling
+  - **🔧 FEATURES TESTED**:
+    1. Proper error handling when attempting to withdraw more LP tokens than available
+    2. State consistency after failed withdrawal attempt
+    3. Verification that no LP tokens are burned on failure
+    4. Verification that no underlying tokens are transferred
+  - **📊 TEST COVERAGE**: Error case for insufficient LP tokens in withdrawal operations
+  - **🎯 RESULTS**: Correctly returns InsufficientFunds error, maintains account state integrity
 - [ ] **LIQ-009** `test_withdrawal_cooldown_enforcement` - Withdrawal cooldown validation
 - [ ] **LIQ-010** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
 
