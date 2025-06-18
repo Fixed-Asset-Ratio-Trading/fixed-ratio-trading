@@ -32,6 +32,8 @@ use solana_program_test::{BanksClient, ProgramTest, processor};
 use solana_sdk::{signature::Keypair, signer::Signer};
 use crate::common::{constants, PROGRAM_ID};
 use fixed_ratio_trading::process_instruction;
+use std::env;
+use env_logger;
 
 /// Test environment context
 /// 
@@ -62,11 +64,15 @@ pub struct PoolTestContext {
 /// # Returns
 /// Configured ProgramTest instance
 pub fn create_program_test() -> ProgramTest {
-    ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         PROGRAM_ID,
         processor!(process_instruction),
-    )
+    );
+    
+    // Minimize logging output
+    program_test.set_compute_max_units(100_000);
+    program_test
 }
 
 /// Start a basic test environment
@@ -76,7 +82,9 @@ pub fn create_program_test() -> ProgramTest {
 /// # Returns
 /// TestEnvironment with banks client, payer, and recent blockhash
 pub async fn start_test_environment() -> TestEnvironment {
-    crate::common::init_test_logging();
+    // Set minimal logging
+    env::set_var("RUST_LOG", "error,solana_runtime::message_processor::stable_log=error");
+    let _ = env_logger::try_init();
     
     let program_test = create_program_test();
     let (banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -95,7 +103,8 @@ pub async fn start_test_environment() -> TestEnvironment {
 /// # Returns
 /// TestEnvironment with debug logging enabled
 pub async fn start_test_environment_with_debug() -> TestEnvironment {
-    crate::common::init_debug_logging();
+    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+    let _ = env_logger::try_init();
     
     let program_test = create_program_test();
     let (banks_client, payer, recent_blockhash) = program_test.start().await;

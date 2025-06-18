@@ -10,10 +10,8 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
     msg,
-    program::invoke_signed,
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
     sysvar::{rent::Rent, Sysvar, clock::Clock},
 };
 use borsh::BorshDeserialize;
@@ -37,7 +35,7 @@ use borsh::BorshDeserialize;
 /// 2. Loads current pool state data to verify ownership and calculate available fees
 /// 3. Calculates available fees by subtracting rent-exempt minimum from pool balance
 /// 4. Transfers available SOL fees directly from pool state PDA to owner account
-/// 5. Uses PDA signing with proper seeds for authorized pool transfers
+/// 5. Uses direct lamport transfer for PDA accounts
 /// 6. Logs fee withdrawal amount for transparency and audit compliance
 ///
 /// # Arguments
@@ -62,7 +60,7 @@ use borsh::BorshDeserialize;
 /// # Security Features
 /// - **Ownership validation**: Only the designated pool owner can withdraw fees
 /// - **Rent protection**: Always maintains minimum balance for rent exemption
-/// - **PDA signing**: Uses proper PDA seeds for authorized pool transfers
+/// - **Direct lamport transfer**: Uses safe lamport transfer for PDA accounts
 /// - **Transparency**: Logs all fee withdrawals for audit trail
 ///
 /// # Errors
@@ -89,7 +87,7 @@ pub fn process_withdraw_fees(
 
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
+    let _system_program = next_account_info(account_info_iter)?;
     let rent_sysvar = next_account_info(account_info_iter)?;
     let clock_sysvar = next_account_info(account_info_iter)?;
 
@@ -98,20 +96,33 @@ pub fn process_withdraw_fees(
         msg!("Owner must be a signer for fee withdrawal");
         return Err(ProgramError::MissingRequiredSignature);
     }
+    msg!("✅ Owner is signer check passed");
 
     // Load and verify pool state
+    msg!("📖 Loading pool state data...");
     let pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
+    msg!("✅ Pool state loaded successfully");
+    
+    msg!("🔍 Checking owner authorization...");
+    msg!("   Owner provided: {}", owner.key);
+    msg!("   Pool owner: {}", pool_state_data.owner);
+    
     if *owner.key != pool_state_data.owner {
-        msg!("Only pool owner can withdraw fees");
+        msg!("❌ Only pool owner can withdraw fees");
         return Err(ProgramError::InvalidAccountData);
     }
+    msg!("✅ Owner authorization verified");
 
     // Calculate available fees (total balance minus rent exempt requirement)
+    msg!("💰 Calculating available fees...");
     let rent = &Rent::from_account_info(rent_sysvar)?;
     let clock = &Clock::from_account_info(clock_sysvar)?;
+    msg!("✅ Rent and clock sysvars loaded");
     
     // Ensure rent exempt status before withdrawal
-    check_rent_exempt(pool_state, &pool_state_data.owner, rent, clock.slot)?;
+    msg!("🔒 Checking rent exempt status...");
+    check_rent_exempt(pool_state, _program_id, rent, clock.slot)?;
+    msg!("✅ Rent exempt status verified");
 
     let minimum_balance = rent.minimum_balance(pool_state.data_len());
     let current_balance = pool_state.lamports();
@@ -126,21 +137,9 @@ pub fn process_withdraw_fees(
     
     msg!("Withdrawing {} lamports in fees", available_fees);
 
-    // Create transfer instruction from pool state to owner
-    let pool_state_pda_seeds = &[
-        POOL_STATE_SEED_PREFIX,
-        pool_state_data.token_a_mint.as_ref(),
-        pool_state_data.token_b_mint.as_ref(),
-        &pool_state_data.ratio_a_numerator.to_le_bytes(),
-        &pool_state_data.ratio_b_denominator.to_le_bytes(),
-        &[pool_state_data.pool_authority_bump_seed],
-    ];
-
-    invoke_signed(
-        &system_instruction::transfer(pool_state.key, owner.key, available_fees),
-        &[pool_state.clone(), owner.clone(), system_program.clone()],
-        &[pool_state_pda_seeds],
-    )?;
+    // Transfer lamports from pool state to owner
+    **pool_state.try_borrow_mut_lamports()? -= available_fees;
+    **owner.try_borrow_mut_lamports()? += available_fees;
 
     msg!("Fee withdrawal completed successfully. Amount: {} lamports", available_fees);
 

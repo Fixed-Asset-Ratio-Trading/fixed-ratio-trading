@@ -110,6 +110,9 @@ use crate::processors::{
         process_deposit_with_features,
         process_withdraw,
     },
+    fees::{
+        process_withdraw_fees,
+    },
     swap::{
         process_swap,
     },
@@ -242,6 +245,8 @@ pub fn process_instruction(
         PoolInstruction::GetDelegateInfo {} => get_delegate_info(accounts),
 
         PoolInstruction::GetFeeInfo {} => get_fee_info(accounts),
+        
+        PoolInstruction::WithdrawFees => process_withdraw_fees(program_id, accounts),
 
         #[allow(deprecated)]
         PoolInstruction::CreatePoolStateAccount {

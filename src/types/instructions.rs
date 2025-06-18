@@ -196,4 +196,10 @@ pub enum PoolInstruction {
     GetFeeInfo {
         // No parameters needed - reads from pool state account
     },
+    
+    /// Withdraws accumulated SOL fees from the pool state account
+    /// Only the pool owner can withdraw fees
+    /// Maintains rent exemption for pool state account
+    WithdrawFees,
+    
 } 
