@@ -3,7 +3,6 @@
 //! This module contains all the processors for fee-related operations including
 //! fee withdrawals, fee configuration, and fee collection management.
 
-use crate::constants::*;
 use crate::types::*;
 use crate::utils::*;
 use solana_program::{
