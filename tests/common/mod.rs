@@ -17,7 +17,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT IN TORT OR OTHERWISE, ARISING FROM,
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
@@ -30,7 +30,7 @@ SOFTWARE.
 //! - Token creation and minting helpers
 //! - Pool setup and initialization utilities  
 //! - Test environment configuration
-//! - Logging control utilities
+//! - Test execution utilities
 
 pub mod setup;
 pub mod tokens;
@@ -73,32 +73,35 @@ pub use fixed_ratio_trading::{
     POOL_STATE_SEED_PREFIX, TOKEN_A_VAULT_SEED_PREFIX, TOKEN_B_VAULT_SEED_PREFIX
 };
 
-/// Default test logging configuration
-/// 
-/// Sets up minimal logging by default unless overridden by RUST_LOG environment variable
-pub fn init_test_logging() {
-    use std::env;
-    
-    // Only initialize if not already set
-    if env::var("RUST_LOG").is_err() {
-        env::set_var("RUST_LOG", "error");
-    }
-    
-    // Initialize env_logger, ignoring errors if already initialized
-    let _ = env_logger::try_init();
-}
-
-/// Enhanced test logging for debugging
-/// 
-/// Use this in specific tests that need detailed logging output
-pub fn init_debug_logging() {
-    use std::env;
-    env::set_var("RUST_LOG", "debug");
-    let _ = env_logger::try_init();
-}
-
 /// Test result type alias for convenience
 pub type TestResult = Result<(), BanksClientError>;
+
+/// Helper function to run a test with minimal logging
+#[allow(dead_code)]
+pub async fn run_test_with_minimal_logging<F, Fut>(test_fn: F) -> TestResult 
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = TestResult>,
+{
+    // Save current log level
+    let original_log = std::env::var("RUST_LOG").ok();
+    
+    // Set minimal logging
+    std::env::set_var("RUST_LOG", "off");
+    std::env::set_var("SOLANA_TEST_METRICS_ENABLED", "0");
+    
+    // Run the test
+    let result = test_fn().await;
+    
+    // Restore original log level
+    if let Some(log) = original_log {
+        std::env::set_var("RUST_LOG", log);
+    } else {
+        std::env::remove_var("RUST_LOG");
+    }
+    
+    result
+}
 
 /// Common test constants
 pub mod constants {
