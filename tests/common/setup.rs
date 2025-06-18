@@ -34,6 +34,12 @@ use crate::common::{constants, PROGRAM_ID};
 use fixed_ratio_trading::process_instruction;
 use std::env;
 use env_logger;
+use solana_program::program_error::ProgramError;
+use solana_sdk::pubkey::Pubkey;
+use fixed_ratio_trading::constants::POOL_STATE_SEED_PREFIX;
+use borsh::BorshDeserialize;
+use fixed_ratio_trading::types::PoolState;
+use crate::pool_helpers::get_pool_state;
 
 /// Test environment context
 /// 
@@ -339,3 +345,173 @@ pub async fn get_account_data_len(
         _ => 0,
     }
 } 
+
+/// Request a delegate withdrawal action
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `delegate` - Delegate keypair (must be authorized)
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `pool_state_pda` - Pool state account
+/// * `token_mint` - Token mint for withdrawal
+/// * `amount` - Amount to withdraw
+/// 
+/// # Returns
+/// Action ID of the requested withdrawal
+#[allow(dead_code)]
+pub async fn request_delegate_withdrawal(
+    banks: &mut BanksClient,
+    delegate: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    pool_state_pda: &solana_program::pubkey::Pubkey,
+    token_mint: &solana_program::pubkey::Pubkey,
+    amount: u64,
+) -> Result<u64, solana_program_test::BanksClientError> {
+    use solana_program::instruction::{AccountMeta, Instruction};
+    use solana_sdk::transaction::Transaction;
+    use borsh::BorshSerialize;
+    use fixed_ratio_trading::{PoolInstruction, DelegateActionType, DelegateActionParams};
+
+    let request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate must be signed
+            AccountMeta::new(*pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal {
+                token_mint: *token_mint,
+                amount,
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut request_tx = Transaction::new_with_payer(&[request_ix], Some(&delegate.pubkey()));
+    request_tx.sign(&[delegate], recent_blockhash);
+    
+    banks.process_transaction(request_tx).await?;
+    
+    // For now, return action ID 1 (in real implementation, this would be extracted from program logs)
+    // TODO: Parse transaction logs to get actual action ID
+    Ok(1)
+}
+
+/// Execute a delegate action
+/// 
+/// # Arguments
+/// * `banks` - Banks client for transaction processing
+/// * `delegate` - Delegate keypair
+/// * `recent_blockhash` - Recent blockhash for transaction
+/// * `pool_state_pda` - Pool state account
+/// * `action_id` - ID of the action to execute
+/// * `token_vault` - Token vault account (for withdrawals)
+/// * `delegate_token_account` - Delegate's token account to receive funds
+#[allow(dead_code)]
+pub async fn execute_delegate_action(
+    banks: &mut BanksClient,
+    delegate: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    pool_state_pda: &solana_program::pubkey::Pubkey,
+    action_id: u64,
+    token_vault: &solana_program::pubkey::Pubkey,
+    delegate_token_account: &solana_program::pubkey::Pubkey,
+) -> Result<(), solana_program_test::BanksClientError> {
+    use solana_program::instruction::{AccountMeta, Instruction};
+    use solana_sdk::transaction::Transaction;
+    use borsh::BorshSerialize;
+    use fixed_ratio_trading::PoolInstruction;
+
+    let execute_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),  // Executor (delegate) - must be signer
+            AccountMeta::new(*pool_state_pda, false),   // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+            AccountMeta::new(*delegate_token_account, false), // Delegate token account (receives funds)
+            AccountMeta::new_readonly(spl_token::id(), false), // Token program
+            AccountMeta::new(*token_vault, false),      // Token vault (source of funds)
+        ],
+        data: PoolInstruction::ExecuteDelegateAction {
+            action_id,
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut execute_tx = Transaction::new_with_payer(&[execute_ix], Some(&delegate.pubkey()));
+    execute_tx.sign(&[delegate], recent_blockhash);
+    
+    banks.process_transaction(execute_tx).await
+}
+
+/// Add delegate to pool (reexported from pool_helpers for convenience)
+#[allow(dead_code)]
+pub async fn add_delegate_to_pool(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    pool_state_pda: &solana_program::pubkey::Pubkey,
+    delegate: &solana_program::pubkey::Pubkey,
+) -> Result<(), solana_program_test::BanksClientError> {
+    use crate::common::pool_helpers::add_delegate;
+    add_delegate(banks, payer, recent_blockhash, pool_state_pda, delegate).await
+}
+
+/// Update pool state by directly modifying its data (for testing fee simulation)
+/// 
+/// # Arguments
+/// * `banks` - Banks client
+/// * `pool_state_pda` - Pool state account
+/// * `update_fn` - Function to update the pool state
+/// 
+/// Note: This function applies the update to the pool state in memory but doesn't
+/// persist changes back to the blockchain. In a real test scenario, you would need
+/// to use actual program instructions to modify pool state.
+#[allow(dead_code)]
+pub async fn update_pool_state<F>(
+    banks: &mut BanksClient,
+    pool_state_pda: &solana_program::pubkey::Pubkey,
+    update_fn: F,
+) -> Result<fixed_ratio_trading::PoolState, Box<dyn std::error::Error>>
+where
+    F: FnOnce(&mut fixed_ratio_trading::PoolState),
+{
+    use fixed_ratio_trading::PoolState;
+    use borsh::{BorshDeserialize};
+    
+    // Get current pool state
+    let account = banks.get_account(*pool_state_pda).await?
+        .ok_or("Pool state account not found")?;
+    
+    let mut pool_state = PoolState::deserialize(&mut &account.data[..])?;
+    
+    // Apply update in memory only
+    update_fn(&mut pool_state);
+    
+    println!("Note: update_pool_state only modifies the pool state in memory");
+    println!("For testing, ensure your program has proper instructions to handle fee collection");
+    println!("✓ Updated pool state (in memory only): collected fees A: {}, B: {}", 
+             pool_state.collected_fees_token_a, pool_state.collected_fees_token_b);
+    
+    // Return the updated pool state (but it's not persisted on-chain)
+    Ok(pool_state)
+}
+
+/// Transfer SOL between accounts (convenience function)
+#[allow(dead_code)]
+pub async fn transfer_sol(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    from: &Keypair,
+    to: &solana_program::pubkey::Pubkey,
+    amount: u64,
+) -> Result<(), solana_program_test::BanksClientError> {
+    use solana_sdk::{system_instruction, transaction::Transaction};
+    
+    let transfer_ix = system_instruction::transfer(&from.pubkey(), to, amount);
+    let mut transfer_tx = Transaction::new_with_payer(&[transfer_ix], Some(&payer.pubkey()));
+    transfer_tx.sign(&[payer, from], recent_blockhash);
+    
+    banks.process_transaction(transfer_tx).await
+}

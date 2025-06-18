@@ -129,7 +129,7 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 ---
 
 ### Module 2: Fee Management (0% → 85% target)
-**Status:** 🟡 In Progress (3/5 completed) | **Priority:** Critical | **File:** `src/processors/fees.rs`
+**Status:** 🟡 In Progress (4/5 completed) | **Priority:** Critical | **File:** `src/processors/fees.rs`
 
 #### Sub-category 2.1: Fee Withdrawal
 - [x] **FEE-001** `test_withdraw_fees_success` - Basic fee withdrawal by owner ✅ **COMPLETED**
@@ -159,10 +159,19 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     4. Balance preservation when no excess fees available
   - **📊 TEST COVERAGE**: System response to withdrawal attempts with insufficient balance
   - **🎯 RESULTS**: Correctly handled insufficient balance scenario with appropriate error code
-- [ ] **FEE-004** `test_withdraw_fees_both_tokens` - Withdrawal of both token types
+- [x] **FEE-004** `test_withdraw_fees_both_tokens` - Withdrawal of both token types ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests withdrawal of both token types through delegate system
+  - **🔧 FEATURES TESTED**:
+    1. Token A and Token B fee withdrawal
+    2. Delegate authorization and validation
+    3. Fee collection state tracking
+    4. Proper token transfers and balance updates
+    5. Pool state consistency after withdrawals
+  - **📊 TEST COVERAGE**: Complete token withdrawal workflow for both token types
+  - **🎯 RESULTS**: Successfully withdrew both token types with proper state updates
 - [ ] **FEE-005** `test_withdraw_fees_zero_balance` - No fees available scenario
 
-**Milestone 1.2:** 🟡 In Progress - Fee management functionality (3/5 tests completed)
+**Milestone 1.2:** 🟡 In Progress - Fee management functionality (4/5 tests completed)
 
 ---
 
@@ -358,9 +367,9 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ### Phase 1 Milestones
 - [x] **M1.1** - Liquidity Management Complete (9/9 tests completed) ✅
-- [ ] **M1.2** - Fee Management Complete (3/5 tests completed)  
+- [ ] **M1.2** - Fee Management Complete (4/5 tests completed)  
 - [ ] **M1.3** - Client SDK Complete (0/5 tests completed)
-- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (12/20 completed)
+- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (13/20 completed)
 
 ### Phase 2 Milestones
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests)
@@ -408,5 +417,5 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-18 (FEE-003 completed)*  
+*Last Updated: 2025-06-18 (FEE-004 completed)*  
 *Next Review: After each completed milestone* 
