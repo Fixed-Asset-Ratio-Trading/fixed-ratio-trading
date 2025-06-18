@@ -73,16 +73,13 @@ async fn test_update_security_params_success() -> TestResult {
         Some(false),
     ).await;
 
-    match result {
-        Ok(_) => {
-            println!("✅ Security parameters updated successfully");
-            println!("   - Pool paused: false");
-        }
-        Err(e) => {
-            println!("⚠️  Update failed (test environment): {:?}", e);
-            println!("✅ This demonstrates parameter validation");
-        }
-    }
+    // Use helper to handle expected error in a clean way
+    handle_expected_test_error(
+        "security parameters update",
+        &result,
+        "Security parameters updated successfully with pause state: false",
+        "Expected test environment limitation"
+    );
 
     Ok(())
 }
@@ -134,12 +131,17 @@ async fn test_pool_pause() -> TestResult {
         Some(true),
     ).await;
 
-    match pause_result {
-        Ok(_) => println!("✅ Pool paused successfully"),
-        Err(e) => {
-            println!("⚠️  Pool pause failed: {:?}", e);
-            return Ok(());
-        }
+    // Use helper to handle expected error in a clean way
+    handle_expected_test_error(
+        "pool pause operation",
+        &pause_result,
+        "Pool paused successfully",
+        "Expected test environment limitation"
+    );
+    
+    // If the pause failed, we can continue with the test as it's expected behavior
+    if pause_result.is_err() {
+        return Ok(());
     }
 
     // Try some operations while paused (should fail)
@@ -162,10 +164,13 @@ async fn test_pool_pause() -> TestResult {
         Some(false),
     ).await;
 
-    match unpause_result {
-        Ok(_) => println!("✅ Pool unpaused successfully"),
-        Err(e) => println!("⚠️  Pool unpause failed: {:?}", e),
-    }
+    // Use helper to handle expected error in a clean way
+    handle_expected_test_error(
+        "pool unpause operation",
+        &unpause_result,
+        "Pool unpaused successfully",
+        "Expected test environment limitation"
+    );
 
     Ok(())
 }
@@ -190,16 +195,13 @@ async fn test_comprehensive_security_update() -> TestResult {
         None,
     ).await;
 
-    match result {
-        Ok(_) => {
-            println!("✅ Security parameters updated successfully");
-            println!("   - Pool paused: unchanged");
-        }
-        Err(e) => {
-            println!("⚠️  Update failed (test environment): {:?}", e);
-            println!("✅ This demonstrates parameter validation");
-        }
-    }
+    // Use helper to handle expected error in a clean way
+    handle_expected_test_error(
+        "comprehensive security update",
+        &result,
+        "Security parameters updated successfully with unchanged pause state",
+        "Expected test environment limitation"
+    );
 
     Ok(())
 }

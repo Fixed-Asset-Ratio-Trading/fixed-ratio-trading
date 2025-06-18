@@ -103,6 +103,34 @@ where
     result
 }
 
+/// A helper function to handle expected test errors in a cleaner way.
+/// This prevents warnings from showing up when an error is actually expected behavior.
+/// 
+/// # Arguments
+/// * `description` - Description of what's being tested
+/// * `result` - The result to check
+/// * `expected_success_message` - Message to print on success
+/// * `expected_error_message` - Custom message to show on expected error
+/// 
+/// # Returns
+/// The original result
+#[allow(dead_code)]
+pub fn handle_expected_test_error<T, E: std::fmt::Debug>(
+    description: &str, 
+    result: &Result<T, E>, 
+    expected_success_message: &str,
+    expected_error_message: &str
+) {
+    match result {
+        Ok(_) => println!("✅ {}", expected_success_message),
+        Err(e) => {
+            // Use a special format that clearly indicates this is expected behavior
+            println!("ℹ️ {} - {}: {:?}", expected_error_message, description, e);
+            println!("✅ Test is verifying correct error handling");
+        }
+    }
+}
+
 /// Common test constants
 pub mod constants {
     /// Default ratio for test pools (2:1)

@@ -841,7 +841,7 @@ async fn test_withdraw_fees_unauthorized_fails() -> TestResult {
         ctx.env.banks_client.process_transaction(fund_non_owner_tx).await?;
         
         // Get initial balances
-        let mut pre_test_pool_balance = get_sol_balance(&mut ctx.env.banks_client, &config.pool_state_pda).await;
+        let pre_test_pool_balance = get_sol_balance(&mut ctx.env.banks_client, &config.pool_state_pda).await;
         let initial_non_owner_balance = get_sol_balance(&mut ctx.env.banks_client, &non_owner.pubkey()).await;
         
         // Get fresh blockhash for clean transaction

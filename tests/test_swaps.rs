@@ -109,15 +109,13 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
     
     let swap_result = ctx.env.banks_client.process_transaction(swap_tx).await;
     
-    // This demonstrates liquidity protection - swaps fail when no liquidity
-    match swap_result {
-        Ok(_) => {
-            println!("✅ Swap processed successfully");
-        },
-        Err(_) => {
-            println!("✅ Swap correctly failed due to insufficient liquidity protection");
-        }
-    }
+    // Use helper to handle expected error in a clean way
+    handle_expected_test_error(
+        "swap with insufficient liquidity",
+        &swap_result,
+        "Swap processed successfully",
+        "Expected insufficient liquidity protection activated"
+    );
 
     // Verify user tokens remain safe
     let user_primary_balance = get_token_balance(&mut ctx.env.banks_client, &user_primary_token_account.pubkey()).await;

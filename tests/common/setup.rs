@@ -34,12 +34,6 @@ use crate::common::{constants, PROGRAM_ID};
 use fixed_ratio_trading::process_instruction;
 use std::env;
 use env_logger;
-use solana_program::program_error::ProgramError;
-use solana_sdk::pubkey::Pubkey;
-use fixed_ratio_trading::constants::POOL_STATE_SEED_PREFIX;
-use borsh::BorshDeserialize;
-use fixed_ratio_trading::types::PoolState;
-use crate::pool_helpers::get_pool_state;
 
 /// Test environment context
 /// 

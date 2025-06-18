@@ -160,8 +160,10 @@ async fn test_initialize_pool_legacy_pattern() -> TestResult {
         &ctx.lp_token_b_mint.pubkey(),
     ).await.expect("Pool state verification failed");
 
+    // Use a more consistent pattern for logging deprecation warnings
     println!("✅ Legacy two-instruction pattern: Pool created and verified successfully!");
-    println!("⚠️  Note: This pattern is deprecated - use InitializePool instruction instead");
+    println!("ℹ️  DEPRECATED: This pattern will be removed in a future version");
+    println!("✅ Use InitializePool instruction for new implementations");
     
     Ok(())
 }
