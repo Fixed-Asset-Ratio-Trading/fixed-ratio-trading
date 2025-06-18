@@ -51,7 +51,7 @@ async fn test_withdrawal_delegate_process() -> TestResult {
     let request_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(delegate.pubkey(), true), // Delegate must be first and signed
             AccountMeta::new(config.pool_state_pda, false),
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
         ],
@@ -68,8 +68,17 @@ async fn test_withdrawal_delegate_process() -> TestResult {
     request_tx.sign(&[&delegate], ctx.env.recent_blockhash);
     
     let request_result = ctx.env.banks_client.process_transaction(request_tx).await;
+    match &request_result {
+        Ok(_) => println!("✅ Step 1: Delegate withdrawal request successful"),
+        Err(e) => {
+            println!("❌ Step 1: Delegate withdrawal request failed: {:?}", e);
+            println!("   Delegate: {}", delegate.pubkey());
+            println!("   Pool State PDA: {}", config.pool_state_pda);
+            println!("   Token Mint: {}", token_mint);
+            println!("   Request Amount: {}", request_amount);
+        }
+    }
     assert!(request_result.is_ok(), "Delegate withdrawal request should succeed");
-    println!("✅ Step 1: Delegate withdrawal request successful");
 
     // Step 2: Try to execute withdrawal before wait time (should fail)
     let execute_ix = Instruction {
