@@ -365,7 +365,6 @@ pub async fn add_delegate(
 /// * `payer` - Pool owner (pays for transaction)
 /// * `recent_blockhash` - Recent blockhash for transaction
 /// * `pool_state_pda` - Pool state account
-/// * `max_withdrawal_percentage` - Maximum withdrawal percentage (optional)
 /// * `is_paused` - Whether pool is paused (optional)
 #[allow(dead_code)]
 pub async fn update_security_params(
@@ -373,7 +372,6 @@ pub async fn update_security_params(
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
     pool_state_pda: &Pubkey,
-    max_withdrawal_percentage: Option<u64>,
     is_paused: Option<bool>,
 ) -> TestResult {
     let update_ix = Instruction {
@@ -384,7 +382,6 @@ pub async fn update_security_params(
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Rent sysvar
         ],
         data: PoolInstruction::UpdateSecurityParams {
-            max_withdrawal_percentage,
             is_paused,
         }.try_to_vec().unwrap(),
     };

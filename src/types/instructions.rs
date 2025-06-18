@@ -107,8 +107,6 @@ pub enum PoolInstruction {
     
     /// Updates security parameters for the pool
     UpdateSecurityParams {
-        /// Maximum percentage of pool liquidity that can be withdrawn in a single transaction
-        max_withdrawal_percentage: Option<u64>,
         /// Whether to pause pool operations
         is_paused: Option<bool>,
     },

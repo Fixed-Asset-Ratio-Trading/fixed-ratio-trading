@@ -70,14 +70,12 @@ async fn test_update_security_params_success() -> TestResult {
         ctx.env.recent_blockhash,
         &owner,
         &pool_state_pda,
-        Some(75),
         Some(false),
     ).await;
 
     match result {
         Ok(_) => {
             println!("✅ Security parameters updated successfully");
-            println!("   - Max withdrawal: 75%");
             println!("   - Pool paused: false");
         }
         Err(e) => {
@@ -107,7 +105,6 @@ async fn test_unauthorized_security_update() -> TestResult {
         ctx.env.recent_blockhash,
         &non_owner,
         &pool_state_pda,
-        Some(100),
         Some(true),
     ).await;
 
@@ -134,7 +131,6 @@ async fn test_pool_pause() -> TestResult {
         ctx.env.recent_blockhash,
         &owner,
         &pool_state_pda,
-        None,
         Some(true),
     ).await;
 
@@ -153,7 +149,6 @@ async fn test_pool_pause() -> TestResult {
         ctx.env.recent_blockhash,
         &owner,
         &pool_state_pda,
-        None,
         Some(true),
     ).await;
 
@@ -164,7 +159,6 @@ async fn test_pool_pause() -> TestResult {
         ctx.env.recent_blockhash,
         &owner,
         &pool_state_pda,
-        None,
         Some(false),
     ).await;
 
@@ -186,21 +180,19 @@ async fn test_comprehensive_security_update() -> TestResult {
     let owner = Keypair::new();
     let pool_state_pda = create_test_pool(&mut ctx, &owner).await?;
 
-    // Update multiple parameters at once
+    // Update security parameters
     let result = update_security_params(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &owner,
         &pool_state_pda,
-        Some(50),
         None,
     ).await;
 
     match result {
         Ok(_) => {
             println!("✅ Security parameters updated successfully");
-            println!("   - Max withdrawal: 50%");
             println!("   - Pool paused: unchanged");
         }
         Err(e) => {
@@ -212,32 +204,7 @@ async fn test_comprehensive_security_update() -> TestResult {
     Ok(())
 }
 
-/// Test invalid security parameter values
-#[tokio::test]
-#[serial]
-async fn test_invalid_security_params() -> TestResult {
-    println!("🧪 Testing invalid security parameter values...");
-    
-    let mut ctx = setup_pool_test_context(false).await;
-    let owner = Keypair::new();
-    let pool_state_pda = create_test_pool(&mut ctx, &owner).await?;
 
-    // Test invalid max withdrawal percentage (over 100%)
-    let result = update_security_params(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &owner,
-        &pool_state_pda,
-        Some(10100), // 101%
-        None,
-    ).await;
-
-    assert!(result.is_err(), "Should reject withdrawal percentage over 100%");
-    println!("✅ Rejected invalid withdrawal percentage");
-
-    Ok(())
-}
 
 /// Helper function to create a test pool
 async fn create_test_pool(ctx: &mut PoolTestContext, _owner: &Keypair) -> Result<Pubkey, BanksClientError> {
@@ -281,11 +248,9 @@ async fn update_security_params(
     recent_blockhash: Hash,
     owner: &Keypair,
     pool_state_pda: &Pubkey,
-    max_withdrawal_percentage: Option<u64>,
     is_paused: Option<bool>,
 ) -> TestResult {
     let instruction_data = PoolInstruction::UpdateSecurityParams {
-        max_withdrawal_percentage,
         is_paused,
     };
 

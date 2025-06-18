@@ -58,10 +58,6 @@ pub enum PoolError {
         available: u64,
     },
     
-    /// Withdrawal amount exceeds maximum allowed percentage
-    #[error("Withdrawal amount exceeds maximum allowed percentage")]
-    WithdrawalTooLarge,
-    
     /// Pool operations are currently paused
     #[error("Pool is paused")]
     PoolPaused,
@@ -140,23 +136,22 @@ impl PoolError {
             PoolError::InvalidTokenAccount { .. } => 1004,
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
-            PoolError::WithdrawalTooLarge => 1007,
-            PoolError::PoolPaused => 1008,
-            PoolError::DelegateLimitExceeded => 1009,
-            PoolError::DelegateAlreadyExists { .. } => 1010,
-            PoolError::DelegateNotFound { .. } => 1011,
-            PoolError::InvalidWaitTime { .. } => 1012,
-            PoolError::Unauthorized => 1013,
-            PoolError::UnauthorizedDelegate => 1014,
-            PoolError::InvalidActionParameters => 1015,
-            PoolError::InvalidActionType => 1016,
-            PoolError::ActionNotReady => 1017,
-            PoolError::ActionNotFound => 1018,
-            PoolError::MaxPendingActionsReached => 1019,
-            PoolError::ArithmeticOverflow => 1020,
-            PoolError::ActionAlreadyExecuted => 1021,
-            PoolError::ActionExpired => 1022,
-            PoolError::RateLimitExceeded => 1023,
+            PoolError::PoolPaused => 1007,
+            PoolError::DelegateLimitExceeded => 1008,
+            PoolError::DelegateAlreadyExists { .. } => 1009,
+            PoolError::DelegateNotFound { .. } => 1010,
+            PoolError::InvalidWaitTime { .. } => 1011,
+            PoolError::Unauthorized => 1012,
+            PoolError::UnauthorizedDelegate => 1013,
+            PoolError::InvalidActionParameters => 1014,
+            PoolError::InvalidActionType => 1015,
+            PoolError::ActionNotReady => 1016,
+            PoolError::ActionNotFound => 1017,
+            PoolError::MaxPendingActionsReached => 1018,
+            PoolError::ArithmeticOverflow => 1019,
+            PoolError::ActionAlreadyExecuted => 1020,
+            PoolError::ActionExpired => 1021,
+            PoolError::RateLimitExceeded => 1022,
         }
     }
 }

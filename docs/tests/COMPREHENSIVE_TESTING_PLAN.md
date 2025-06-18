@@ -123,9 +123,8 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     4. Only approved withdrawals can be executed
   - **📊 TEST COVERAGE**: Full validation of two-step withdrawal security process
   - **🎯 RESULTS**: Ensures withdrawals follow proper security protocol; all steps and error cases pass as expected
-- [ ] **LIQ-010** `test_withdrawal_percentage_limit` - Maximum withdrawal percentage check
 
-**Milestone 1.1:** ✅ Complete basic deposit/withdrawal functionality (Tests LIQ-001 to LIQ-010)
+**Milestone 1.1:** ✅ Complete basic deposit/withdrawal functionality (Tests LIQ-001 to LIQ-009)
 
 ---
 

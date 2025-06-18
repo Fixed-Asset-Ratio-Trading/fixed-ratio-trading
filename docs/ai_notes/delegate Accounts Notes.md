@@ -78,7 +78,7 @@ Perfect! The code compiles successfully. Here's a comprehensive summary of the d
 ### **Recommended Additional Security Measures:**
 
 1. **Multi-signature Owner**: Implement multi-sig for critical operations
-2. **Fee-Based Limits**: Limit withdrawals to percentage of collected fees
+2. **Fee-Based Limits**: Limit withdrawals to percentage of collected trading fees (not pool liquidity percentage limits)
 3. **Delegate Rotation**: Force periodic delegate renewal
 4. **Emergency Revocation**: Allow immediate delegate revocation in emergencies
 5. **Withdrawal Delays**: Add delay between withdrawal request and execution

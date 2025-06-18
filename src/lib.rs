@@ -194,9 +194,8 @@ pub fn process_instruction(
         } => process_swap(program_id, accounts, input_token_mint, amount_in, minimum_amount_out),
 
         PoolInstruction::UpdateSecurityParams {
-            max_withdrawal_percentage,
             is_paused,
-        } => process_update_security_params(program_id, accounts, max_withdrawal_percentage, is_paused),
+        } => process_update_security_params(program_id, accounts, is_paused),
 
         PoolInstruction::AddDelegate {
             delegate,

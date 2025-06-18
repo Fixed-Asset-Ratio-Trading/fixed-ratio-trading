@@ -18,8 +18,8 @@ use borsh::BorshDeserialize;
 ///
 /// This function allows the pool owner to modify critical security settings that control
 /// pool operations. Currently focused on pause/unpause functionality, with extensibility
-/// for future security parameters like withdrawal limits. This provides emergency controls 
-/// and operational flexibility for pool management.
+/// for future security parameters. This provides emergency controls and operational 
+/// flexibility for pool management.
 ///
 /// # Purpose
 /// - Provides emergency stop capability through pause functionality
@@ -33,7 +33,6 @@ use borsh::BorshDeserialize;
 /// 2. Loads current pool state data to verify ownership permissions
 /// 3. Applies any provided security parameter updates:
 ///    - `is_paused`: Immediately enables/disables pool operations
-///    - `max_withdrawal_percentage`: Reserved for future withdrawal limit controls
 /// 4. Serializes updated pool state back to on-chain storage
 /// 5. Logs changes for transparency and audit compliance
 ///
@@ -42,7 +41,6 @@ use borsh::BorshDeserialize;
 /// * `accounts` - Array of account infos in the following order:
 ///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
 ///   - `accounts[1]` - Pool state PDA account (writable for parameter updates)
-/// * `_max_withdrawal_percentage` - Reserved for future use. Maximum percentage of pool liquidity withdrawable in single transaction (e.g., 1000 = 10%)
 /// * `is_paused` - Optional boolean to pause/unpause all pool operations (except owner functions)
 ///
 /// # Account Requirements
@@ -64,7 +62,6 @@ use borsh::BorshDeserialize;
 ///
 /// # Future Extensions
 /// The reserved parameters enable future security enhancements:
-/// - Withdrawal limits to prevent liquidity drain attacks
 /// - Rate limiting for various operations
 /// - Dynamic fee adjustments based on market conditions
 ///
@@ -76,20 +73,17 @@ use borsh::BorshDeserialize;
 /// ```ignore
 /// // Emergency pause all pool operations
 /// let instruction = PoolInstruction::UpdateSecurityParams {
-///     max_withdrawal_percentage: None, // No change
 ///     is_paused: Some(true),          // Pause operations
 /// };
 ///
 /// // Resume normal operations
 /// let instruction = PoolInstruction::UpdateSecurityParams {
-///     max_withdrawal_percentage: None,
 ///     is_paused: Some(false),         // Unpause operations
 /// };
 /// ```
 pub fn process_update_security_params(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
-    _max_withdrawal_percentage: Option<u64>,
     is_paused: Option<bool>,
 ) -> ProgramResult {
     msg!("Processing UpdateSecurityParams");

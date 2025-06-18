@@ -62,7 +62,7 @@ Based on the comprehensive code coverage analysis I just ran, here's a detailed 
 **Tests in `test_security.rs`:**
 - Security parameter updates
 - Pool pause/unpause functionality
-- Withdrawal percentage limits
+
 - Cooldown period management
 
 ### **3. Delegate Management (Partial Coverage: 12.5%)**
