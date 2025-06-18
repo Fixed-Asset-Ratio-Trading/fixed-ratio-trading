@@ -3,9 +3,9 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 28.65% (554/1935 lines covered)  
+**Current Coverage:** 29.76% (576/1935 lines covered)  
 **Target Coverage:** 85%+ (1,645+ lines covered)  
-**Total Tests Needed:** ~45 new tests  
+**Total Tests Needed:** ~42 new tests  
 **Estimated Timeline:** 3-4 weeks
 
 ## Testing Philosophy & Bug Fix Policy
@@ -44,17 +44,17 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 - Dash separator followed by summary of changes made
 
 ## Progress Overview
-- Current Coverage: 28.11%
+- Current Coverage: 29.76%
 - Target Coverage: 85%+
-- Tests Completed: 10/20 in Phase 1
+- Tests Completed: 12/20 in Phase 1
 - Estimated Timeline: 3-4 weeks
-- Tests Remaining: ~35
+- Tests Remaining: ~33
 
 ## PHASE 1: HIGH PRIORITY TESTS 🚨
 *Critical business logic with 0% current coverage*
 
 ### Module 1: Liquidity Management (0% → 80% target)
-**Status:** 🟡 In Progress (9/10 completed) | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
+**Status:** ✅ Complete (9/9 completed) | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
 
 #### Sub-category 1.1: Deposit Operations
 - [x] **LIQ-001** `test_basic_deposit_success` - Basic token deposit functionality ✅ **COMPLETED**
@@ -129,7 +129,7 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 ---
 
 ### Module 2: Fee Management (0% → 85% target)
-**Status:** 🟡 In Progress (2/5 completed) | **Priority:** Critical | **File:** `src/processors/fees.rs`
+**Status:** 🟡 In Progress (3/5 completed) | **Priority:** Critical | **File:** `src/processors/fees.rs`
 
 #### Sub-category 2.1: Fee Withdrawal
 - [x] **FEE-001** `test_withdraw_fees_success` - Basic fee withdrawal by owner ✅ **COMPLETED**
@@ -150,11 +150,19 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     4. State protection from unauthorized modifications
   - **📊 TEST COVERAGE**: Unauthorized access control and security enforcement
   - **🎯 RESULTS**: Correctly rejected unauthorized fee withdrawal attempt with no state changes
-- [ ] **FEE-003** `test_withdraw_fees_insufficient_balance` - Insufficient fee balance handling
+- [x] **FEE-003** `test_withdraw_fees_insufficient_balance` - Insufficient fee balance handling ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests behavior when withdrawing from a pool with only rent-exempt balance
+  - **🔧 FEATURES TESTED**:
+    1. Rent-exempt minimum balance protection
+    2. Error handling for insufficient fee scenarios
+    3. Proper transaction behavior with error code verification
+    4. Balance preservation when no excess fees available
+  - **📊 TEST COVERAGE**: System response to withdrawal attempts with insufficient balance
+  - **🎯 RESULTS**: Correctly handled insufficient balance scenario with appropriate error code
 - [ ] **FEE-004** `test_withdraw_fees_both_tokens` - Withdrawal of both token types
 - [ ] **FEE-005** `test_withdraw_fees_zero_balance` - No fees available scenario
 
-**Milestone 1.2:** 🟡 In Progress - Fee management functionality (2/5 tests completed)
+**Milestone 1.2:** 🟡 In Progress - Fee management functionality (3/5 tests completed)
 
 ---
 
@@ -349,10 +357,10 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 ## Milestone Tracking
 
 ### Phase 1 Milestones
-- [x] **M1.1** - Liquidity Management Complete (9/10 tests completed)
-- [ ] **M1.2** - Fee Management Complete (2/5 tests completed)  
+- [x] **M1.1** - Liquidity Management Complete (9/9 tests completed) ✅
+- [ ] **M1.2** - Fee Management Complete (3/5 tests completed)  
 - [ ] **M1.3** - Client SDK Complete (0/5 tests completed)
-- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (10/20 completed)
+- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (12/20 completed)
 
 ### Phase 2 Milestones
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests)
@@ -400,5 +408,5 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-18 (FEE-002 completed)*  
+*Last Updated: 2025-06-18 (FEE-003 completed)*  
 *Next Review: After each completed milestone* 
