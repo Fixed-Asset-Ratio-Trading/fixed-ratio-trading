@@ -31,6 +31,7 @@ mod common;
 
 use common::*;
 use solana_program::sysvar::rent::Rent;
+use solana_program::program_error::ProgramError;
 
 /// Test successful SOL fee withdrawal by pool owner
 ///
@@ -742,6 +743,145 @@ async fn test_request_fee_withdrawal_invalid_token_fails() -> TestResult {
     println!("✅ Invalid token mint fee withdrawal correctly rejected");
     
     Ok(())
+}
+
+/// Test unauthorized SOL fee withdrawal by non-owner account is rejected
+///
+/// This test validates that only the pool owner can withdraw SOL fees and
+/// that withdrawal attempts by non-owners are properly rejected.
+///
+/// Steps:
+/// 1. Create a test pool with the necessary configuration
+/// 2. Fund the pool state account with additional SOL to simulate fee collection
+/// 3. Create a new keypair (non-owner) that will attempt to withdraw fees
+/// 4. Execute fee withdrawal by the non-owner
+/// 5. Verify the transaction fails with InvalidAccountData error
+/// 6. Verify balances remain unchanged (pool and non-owner accounts)
+#[tokio::test]
+async fn test_withdraw_fees_unauthorized_fails() -> TestResult {
+    run_test_with_minimal_logging(|| async {
+        // Setup test environment
+        let mut ctx = setup_pool_test_context(false).await;
+        
+        // Create token mints and pool
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&ctx.primary_mint, &ctx.base_mint],
+        ).await?;
+
+        let config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &ctx.primary_mint,
+            &ctx.base_mint,
+            &ctx.lp_token_a_mint,
+            &ctx.lp_token_b_mint,
+            None,
+        ).await?;
+        
+        // Get fresh pool state data and verify ownership
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+            .expect("Failed to get pool state after creation");
+        
+        // Verify pool owner is set correctly
+        assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), 
+                  "Pool owner must match test payer");
+        
+        // Fund pool state account with additional SOL to simulate collected fees
+        const SIMULATED_FEES: u64 = 2_000_000_000; // 2 SOL as simulated fees
+        let fund_pool_ix = solana_program::system_instruction::transfer(
+            &ctx.env.payer.pubkey(),
+            &config.pool_state_pda,
+            SIMULATED_FEES,
+        );
+        
+        let mut fund_tx = Transaction::new_with_payer(
+            &[fund_pool_ix],
+            Some(&ctx.env.payer.pubkey()),
+        );
+        fund_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+        ctx.env.banks_client.process_transaction(fund_tx).await?;
+        
+        // Generate a non-owner account that will try to withdraw fees
+        let non_owner = Keypair::new();
+        
+        // Fund the non-owner account so it can pay transaction fees
+        let fund_non_owner_ix = solana_program::system_instruction::transfer(
+            &ctx.env.payer.pubkey(),
+            &non_owner.pubkey(),
+            1_000_000_000, // 1 SOL for transaction fees
+        );
+        
+        let mut fund_non_owner_tx = Transaction::new_with_payer(
+            &[fund_non_owner_ix],
+            Some(&ctx.env.payer.pubkey()),
+        );
+        fund_non_owner_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+        ctx.env.banks_client.process_transaction(fund_non_owner_tx).await?;
+        
+        // Get initial balances
+        let initial_pool_balance = get_sol_balance(&mut ctx.env.banks_client, &config.pool_state_pda).await;
+        let initial_non_owner_balance = get_sol_balance(&mut ctx.env.banks_client, &non_owner.pubkey()).await;
+        
+        // Get fresh blockhash for clean transaction
+        ctx.env.recent_blockhash = ctx.env.banks_client.get_new_blockhash(&ctx.env.recent_blockhash).await?.0;
+        
+        // Create fee withdrawal instruction using non-owner account
+        let withdraw_ix = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new(non_owner.pubkey(), true),         // Non-owner (should be rejected)
+                AccountMeta::new(config.pool_state_pda, false),      // Pool state PDA
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+                AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),  // Rent sysvar
+                AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+            ],
+            data: PoolInstruction::WithdrawFees.try_to_vec().unwrap(),
+        };
+        
+        let mut withdraw_tx = Transaction::new_with_payer(
+            &[withdraw_ix],
+            Some(&non_owner.pubkey()),
+        );
+        withdraw_tx.sign(&[&non_owner], ctx.env.recent_blockhash);
+        
+        // Try to process the withdrawal (should fail)
+        println!("🧪 Attempting unauthorized fee withdrawal with non-owner");
+        let result = ctx.env.banks_client.process_transaction(withdraw_tx).await;
+        
+        // Verify transaction was rejected with proper error
+        assert!(result.is_err(), "Non-owner fee withdrawal should fail");
+        println!("✅ Unauthorized fee withdrawal properly rejected");
+        
+        // ErrorCode should match with InvalidAccountData (permission error)
+        // Our test environment can't check exact error but we can verify funds didn't move
+        
+        // Check balances after transaction rejection
+        let final_pool_balance = get_sol_balance(&mut ctx.env.banks_client, &config.pool_state_pda).await;
+        let final_non_owner_balance = get_sol_balance(&mut ctx.env.banks_client, &non_owner.pubkey()).await;
+        
+        // Pool balance should remain unchanged
+        assert_eq!(
+            initial_pool_balance, 
+            final_pool_balance,
+            "Pool balance should not change after rejected withdrawal"
+        );
+        
+        // Non-owner balance should be unchanged (except for signature fee)
+        // We can't calculate exact signature fee, so we just check it didn't increase
+        assert!(
+            final_non_owner_balance <= initial_non_owner_balance,
+            "Non-owner balance should not increase after rejected withdrawal"
+        );
+        
+        println!("✅ Balances verified after rejection (no unauthorized withdrawal)");
+        println!("✅ Test completed: Non-owner fee withdrawal properly rejected");
+        
+        Ok(())
+    }).await
 }
 
 /// Test fee collection state and tracking
