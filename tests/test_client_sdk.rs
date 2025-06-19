@@ -30,8 +30,21 @@ SOFTWARE.
 mod common;
 
 use common::*;
-use fixed_ratio_trading::{ID as PROGRAM_ID, client_sdk::{PoolClient, PoolConfig}};
-use solana_program::pubkey::Pubkey;
+use fixed_ratio_trading::{
+    ID as PROGRAM_ID, 
+    client_sdk::{PoolClient, PoolConfig, PoolClientError},
+    PoolInstruction,
+    POOL_STATE_SEED_PREFIX,
+    TOKEN_A_VAULT_SEED_PREFIX,
+    TOKEN_B_VAULT_SEED_PREFIX,
+};
+use solana_program::{
+    pubkey::Pubkey,
+    system_program,
+    sysvar,
+    instruction::{AccountMeta, Instruction},
+};
+use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Test PoolClient initialization and configuration (SDK-001)
 #[tokio::test]
@@ -249,5 +262,152 @@ async fn test_derive_pool_addresses() -> TestResult {
     println!("✅ Different ratios produce different PDAs as expected");
     
     println!("✅ SDK-002 test completed successfully");
+    Ok(())
+}
+
+/// Test Pool creation instruction building (SDK-003)
+#[tokio::test]
+async fn test_create_pool_instruction() -> TestResult {
+    println!("Running SDK-003: test_create_pool_instruction - Pool creation instruction building");
+    
+    // Setup test environment
+    let pool_client = PoolClient::new(PROGRAM_ID);
+    let payer = Pubkey::new_unique();
+    let primary_token_mint = Pubkey::new_unique();
+    let base_token_mint = Pubkey::new_unique();
+    let ratio = 1000; // 1000:1 ratio
+    let lp_token_a_mint = Pubkey::new_unique();
+    let lp_token_b_mint = Pubkey::new_unique();
+    
+    let pool_config = PoolConfig {
+        primary_token_mint,
+        base_token_mint,
+        ratio_primary_per_base: ratio,
+    };
+    
+    // 1. Test successful instruction creation
+    let instruction = pool_client.create_pool_instruction(
+        &payer,
+        &pool_config,
+        &lp_token_a_mint,
+        &lp_token_b_mint
+    ).expect("Pool creation instruction should be created successfully");
+    
+    // 2. Verify program ID
+    assert_eq!(instruction.program_id, PROGRAM_ID, "Instruction program ID should match the client's program ID");
+    println!("✅ Instruction has correct program ID");
+    
+    // 3. Get pool addresses to verify they match the instruction accounts
+    let addresses = pool_client.derive_pool_addresses(&pool_config);
+    
+    // 4. Verify accounts list correctness and ordering
+    assert_eq!(instruction.accounts.len(), 11, "Instruction should have exactly 11 accounts");
+    
+    // 4.1 Verify each account match and proper flags (signer, writable)
+    assert_eq!(instruction.accounts[0], AccountMeta::new(payer, true), 
+        "Account 0 should be payer (writable + signer)");
+    
+    assert_eq!(instruction.accounts[1], AccountMeta::new(addresses.pool_state, false), 
+        "Account 1 should be pool_state PDA (writable, non-signer)");
+    
+    assert_eq!(instruction.accounts[2], AccountMeta::new_readonly(primary_token_mint, false), 
+        "Account 2 should be primary token mint (non-writable, non-signer)");
+    
+    assert_eq!(instruction.accounts[3], AccountMeta::new_readonly(base_token_mint, false), 
+        "Account 3 should be base token mint (non-writable, non-signer)");
+    
+    assert_eq!(instruction.accounts[4], AccountMeta::new(lp_token_a_mint, false), 
+        "Account 4 should be LP token A mint (writable, non-signer)");
+    
+    assert_eq!(instruction.accounts[5], AccountMeta::new(lp_token_b_mint, false), 
+        "Account 5 should be LP token B mint (writable, non-signer)");
+    
+    assert_eq!(instruction.accounts[6], AccountMeta::new(addresses.token_a_vault, false), 
+        "Account 6 should be token A vault (writable, non-signer)");
+        
+    assert_eq!(instruction.accounts[7], AccountMeta::new(addresses.token_b_vault, false), 
+        "Account 7 should be token B vault (writable, non-signer)");
+        
+    assert_eq!(instruction.accounts[8], AccountMeta::new_readonly(system_program::id(), false), 
+        "Account 8 should be system program (non-writable, non-signer)");
+        
+    assert_eq!(instruction.accounts[9], AccountMeta::new_readonly(spl_token::id(), false), 
+        "Account 9 should be SPL token program (non-writable, non-signer)");
+        
+    assert_eq!(instruction.accounts[10], AccountMeta::new_readonly(sysvar::rent::id(), false), 
+        "Account 10 should be rent sysvar (non-writable, non-signer)");
+    
+    println!("✅ Instruction contains all required accounts with correct flags");
+    
+    // 5. Deserialize and verify instruction data
+    let instruction_data = PoolInstruction::try_from_slice(&instruction.data)
+        .expect("Instruction data should deserialize successfully");
+    
+    if let PoolInstruction::InitializePool { 
+        ratio_primary_per_base,
+        pool_authority_bump_seed,
+        primary_token_vault_bump_seed,
+        base_token_vault_bump_seed, 
+    } = instruction_data {
+        // 5.1 Verify ratio
+        assert_eq!(ratio_primary_per_base, ratio, "Ratio should match the config");
+        
+        // 5.2 Verify bumps
+        assert_eq!(pool_authority_bump_seed, addresses.pool_state_bump, 
+            "Pool authority bump seed should match the derived bump");
+        
+        // 5.3 Map vault bumps back to primary/base convention for comparison
+        let (expected_primary_bump, expected_base_bump) = 
+            if primary_token_mint < base_token_mint {
+                (addresses.token_a_vault_bump, addresses.token_b_vault_bump)
+            } else {
+                (addresses.token_b_vault_bump, addresses.token_a_vault_bump)
+            };
+            
+        assert_eq!(primary_token_vault_bump_seed, expected_primary_bump, 
+            "Primary token vault bump should be correctly mapped");
+            
+        assert_eq!(base_token_vault_bump_seed, expected_base_bump, 
+            "Base token vault bump should be correctly mapped");
+        
+        println!("✅ Instruction data contains correct parameters");
+    } else {
+        panic!("Instruction didn't deserialize to InitializePool variant");
+    }
+    
+    // 6. Test validation: Zero ratio should be rejected
+    let invalid_config = PoolConfig {
+        primary_token_mint,
+        base_token_mint,
+        ratio_primary_per_base: 0, // Invalid: zero ratio
+    };
+    
+    let result = pool_client.create_pool_instruction(
+        &payer,
+        &invalid_config,
+        &lp_token_a_mint,
+        &lp_token_b_mint
+    );
+    
+    // Should return an InvalidRatio error
+    assert!(result.is_err(), "Zero ratio should be rejected");
+    match result {
+        Err(PoolClientError::InvalidRatio) => println!("✅ Zero ratio correctly rejected with InvalidRatio error"),
+        _ => panic!("Expected InvalidRatio error for zero ratio, got {:?}", result),
+    }
+    
+    // 7. Verify instruction data size is as expected
+    let expected_data_size = PoolInstruction::InitializePool {
+        ratio_primary_per_base: ratio,
+        pool_authority_bump_seed: addresses.pool_state_bump,
+        primary_token_vault_bump_seed: 255, // placeholder
+        base_token_vault_bump_seed: 255, // placeholder
+    }.try_to_vec().unwrap().len();
+    
+    assert_eq!(instruction.data.len(), expected_data_size, 
+        "Instruction data size should match the expected serialized size");
+    
+    println!("✅ Instruction data has correct size");
+    println!("✅ SDK-003 test completed successfully");
     Ok(())
 }
