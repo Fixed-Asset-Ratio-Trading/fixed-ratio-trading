@@ -3,13 +3,13 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 48.21% (1024/2122 lines covered)  
+**Current Coverage:** 48.68% (1033/2122 lines covered)  
 **Target Coverage:** 85%+ (1,804+ lines covered)  
-**Total Tests Implemented:** 69 passing tests  
-**Total Tests Needed:** ~34 additional tests  
+**Total Tests Implemented:** 70 passing tests  
+**Total Tests Needed:** ~33 additional tests  
 **Estimated Timeline:** 2-3 weeks
 
-**Update (2025-06-19)**: Added the DEL-001 test for delegate fee change requests, improving coverage for the Consolidated Delegate Management module.
+**Update (2025-06-19)**: Added the DEL-001 and DEL-002 tests for delegate fee change and withdrawal requests, improving coverage for the Consolidated Delegate Management module from 30.5% to 40.7%.
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -268,9 +268,9 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 ## PHASE 2: MEDIUM PRIORITY TESTS 🔶
 *Important features with partial or missing coverage*
 
-### Module 6: Consolidated Delegate Management (35.6% → 85% target)
+### Module 6: Consolidated Delegate Management (40.7% → 85% target)
 **Status:** 🟡 In Progress | **Priority:** Medium | **File:** `src/processors/delegates.rs`
-**Current Coverage:** 35.6% (21/59 lines) 🟠 **MEDIUM COVERAGE - MEDIUM PRIORITY**
+**Current Coverage:** 40.7% (24/59 lines) 🟠 **MEDIUM COVERAGE - MEDIUM PRIORITY**
 
 #### Sub-category 4.1: Action Request & Execution
 - [x] **DEL-001** `test_request_delegate_action_fee_change` - Fee change request ✅ **COMPLETED**
@@ -281,11 +281,13 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     3. Ensuring fee remains unchanged until action execution
     4. Validating parameter validation by rejecting fee change above 0.5%
 
-- [ ] **DEL-002** `test_request_delegate_action_withdrawal` - Withdrawal request
-  - Test requesting fee withdrawal with valid amount
-  - Verify withdrawal request is properly recorded
-  - Ensure funds are not moved until execution
-  - Validate withdrawal amount against available balance
+- [x] **DEL-002** `test_request_delegate_action_withdrawal` - Withdrawal request ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests delegate withdrawal request and validation
+  - **🔧 FEATURES TESTED**:
+    1. Requesting withdrawal with valid parameters for Token A
+    2. Verifying action recording in the pending actions list
+    3. Validating parameter validation by rejecting zero amount withdrawal
+    4. Confirming balance validation happens at execution time, not request time
 
 - [ ] **DEL-003** `test_request_delegate_action_pool_pause` - Pool pause request
   - Test requesting pool pause with valid duration
