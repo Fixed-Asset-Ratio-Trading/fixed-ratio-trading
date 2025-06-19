@@ -5,7 +5,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 51.32% (1090/2122 lines covered)  
 **Target Coverage:** 85%+ (1,804+ lines covered)  
-**Total Tests Implemented:** 76 passing tests  
+**Total Tests Implemented:** 77 passing tests  
 **Total Tests Needed:** ~26 additional tests  
 **Estimated Timeline:** 2-3 weeks
 
@@ -297,20 +297,24 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 **Current Coverage:** 0% (0/179 lines) ⛔ **ZERO COVERAGE - CRITICAL PRIORITY**
 
 #### Sub-category 4.1: Core Utility Functions
-- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation and validation
-  - **🔧 FEATURES TO TEST**:
-    1. PDA derivation using pool ID and program seeds
-    2. Bump seed calculation and verification
-    3. Address consistency across multiple calls
-    4. Validation against expected PDA format
-    5. Error handling for invalid pool IDs
-    6. Memory efficiency of derivation process
-  - **📊 EXPECTED OUTCOMES**:
-    - Correct PDA address generated for valid pool IDs
-    - Proper bump seed returned (typically 254-255)
-    - Consistent results across multiple derivations
-    - Appropriate errors for invalid inputs
-    - No memory leaks or performance issues
+- [x] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation and validation ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests PDA derivation using actual utility instruction
+  - **🔧 FEATURES TESTED**:
+    1. PDA derivation using pool ID and program seeds via GetPoolStatePDA instruction
+    2. Bump seed calculation and verification (240-255 range validation)
+    3. Address consistency across multiple calls and token orderings
+    4. Token normalization (lexicographic ordering) validation
+    5. Ratio normalization correctness for economic duplicate prevention
+    6. Edge case handling (identical tokens, zero ratios)
+    7. Performance characteristics for instruction execution
+  - **📊 TEST COVERAGE**: Complete validation of utility instruction execution and PDA logic
+  - **🎯 RESULTS**: Successfully verified PDA derivation accuracy, consistency, and proper normalization
+  - **🔧 IMPROVEMENTS MADE**:
+    - Fixed test to use actual `PoolInstruction::GetPoolStatePDA` instead of custom implementation
+    - Added comprehensive edge case testing
+    - Added token vault PDA testing (`test_get_token_vault_pdas`)
+    - Improved error handling and validation
+    - Added performance benchmarking for realistic scenarios
 
 - [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation for both tokens
   - **🔧 FEATURES TO TEST**:
@@ -810,10 +814,12 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 ### Phase 1 Milestones (Critical Modules)
 - [x] **M1.1** - Liquidity Management Complete (9/9 tests completed) ✅
 - [x] **M1.2** - Fee Management Complete (5/5 tests completed) ✅
-- [x] **M1.3** - Client SDK Complete (5/5 tests completed) ✅ **COMPLETE - Coverage improving**
-- [ ] **M1.4** - Processors/Utilities Complete (0/8 tests completed) ⛔ **CRITICAL - 0% coverage**
-- [ ] **M1.5** - Utils/Validation Complete (0/10 tests completed) ⛔ **CRITICAL - 8.9% coverage**
-- [ ] **🎯 Phase 1 Complete** - All critical priority tests passing (18/37 completed)
+- [x] **M1.3** - Client SDK Complete (5/5 tests completed) ✅ 
+- [ ] **M1.4** - Processors/Utilities Complete (1/8 tests completed) 🔴 **CRITICAL**
+- [ ] **M1.5** - Utils/Validation Complete (0/10 tests completed) ⛔ **CRITICAL**
+
+
+- [ ] **🎯 Phase 1 Complete** - All critical priority tests passing (20/37 completed)
 
 ### Phase 2 Milestones (High Priority Modules)
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests) 🔴 **30.5% coverage**

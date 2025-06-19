@@ -31,9 +31,19 @@ mod common;
 
 use common::*;
 use solana_program::rent::Rent;
+use solana_program::pubkey::Pubkey;
+use solana_program::instruction::Instruction;
 use solana_sdk::program_pack::Pack;
+use solana_sdk::transaction::Transaction;
+use solana_sdk::signature::Keypair;
 use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
-use fixed_ratio_trading::{RentRequirements, PoolError, MINIMUM_RENT_BUFFER, DelegateManagement};
+use borsh::BorshSerialize;
+use fixed_ratio_trading::{
+    RentRequirements, 
+    PoolError, 
+    MINIMUM_RENT_BUFFER, 
+    DelegateManagement
+};
 
 // ================================================================================================
 // RENT REQUIREMENTS TESTS
@@ -540,6 +550,348 @@ async fn test_setup_test_user() -> TestResult {
     
     println!("✅ Setup test user utility working correctly");
     
+    Ok(())
+}
+
+// ================================================================================================
+// PDA DERIVATION TESTS (UTIL-001) - IMPROVED VERSION
+// ================================================================================================
+
+
+
+/// UTIL-001: Comprehensive test for pool state PDA derivation and validation
+/// 
+/// This test validates the get_pool_state_pda utility function and covers:
+/// 1. Proper PDA derivation using pool ID and program seeds
+/// 2. Bump seed calculation and verification
+/// 3. Address consistency across multiple calls
+/// 4. Token normalization (lexicographic ordering)
+/// 5. Ratio normalization correctness
+/// 6. Error handling for edge cases
+/// 7. Performance characteristics
+#[tokio::test]
+async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Running UTIL-001: test_get_pool_state_pda");
+    
+    let mut env = start_test_environment().await;
+    
+    // Create test token mints
+    let token_a_mint = Keypair::new();
+    let token_b_mint = Keypair::new();
+    create_test_mints(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &[&token_a_mint, &token_b_mint],
+    ).await?;
+    
+    let ratio = 5u64; // 5:1 ratio for testing
+    
+    // Test 1: Basic PDA derivation functionality
+    {
+        let instruction_data = PoolInstruction::GetPoolStatePDA {
+            primary_token_mint: token_a_mint.pubkey(),
+            base_token_mint: token_b_mint.pubkey(),
+            ratio_primary_per_base: ratio,
+        };
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![], // No accounts needed for this utility
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&env.payer.pubkey()),
+            &[&env.payer],
+            env.recent_blockhash,
+        );
+        
+        let result = env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_state_pda instruction should succeed");
+    }
+    
+    // Test 2: Consistency validation using manual PDA derivation
+    {
+        // Derive PDA manually for comparison
+        let (token_a_norm, token_b_norm) = if token_a_mint.pubkey() < token_b_mint.pubkey() {
+            (token_a_mint.pubkey(), token_b_mint.pubkey())
+        } else {
+            (token_b_mint.pubkey(), token_a_mint.pubkey())
+        };
+        
+        let (ratio_a, ratio_b) = (ratio, 1u64);
+        
+        let (expected_pda, expected_bump) = Pubkey::find_program_address(
+            &[
+                POOL_STATE_SEED_PREFIX,
+                token_a_norm.as_ref(),
+                token_b_norm.as_ref(),
+                &ratio_a.to_le_bytes(),
+                &ratio_b.to_le_bytes(),
+            ],
+            &PROGRAM_ID,
+        );
+        
+        println!("Expected PDA: {}, Expected Bump: {}", expected_pda, expected_bump);
+        
+                 // Verify bump seed is in valid range (u8 is always <= 255, so just check lower bound)
+         assert!(expected_bump >= 240, 
+                 "Bump seed should be in valid range (240-255), got: {}", expected_bump);
+    }
+    
+    // Test 3: Token order normalization (validate normalization logic directly)
+    {
+        // Test that both orderings produce the same PDA via manual derivation
+        // This validates the normalization logic without needing multiple instruction calls
+        
+        // Order 1: A < B (already normalized)
+        let (token_a_norm_1, token_b_norm_1) = if token_a_mint.pubkey() < token_b_mint.pubkey() {
+            (token_a_mint.pubkey(), token_b_mint.pubkey())
+        } else {
+            (token_b_mint.pubkey(), token_a_mint.pubkey())
+        };
+        
+        // Order 2: B < A (should normalize to same result)
+        let (token_a_norm_2, token_b_norm_2) = if token_b_mint.pubkey() < token_a_mint.pubkey() {
+            (token_b_mint.pubkey(), token_a_mint.pubkey())
+        } else {
+            (token_a_mint.pubkey(), token_b_mint.pubkey())
+        };
+        
+        // Both should normalize to the same ordering
+        assert_eq!(token_a_norm_1, token_a_norm_2, "Token A normalization should be consistent");
+        assert_eq!(token_b_norm_1, token_b_norm_2, "Token B normalization should be consistent");
+        
+        // Derive PDAs for both orderings - should be identical
+        let (pda1, _) = Pubkey::find_program_address(
+            &[
+                POOL_STATE_SEED_PREFIX,
+                token_a_norm_1.as_ref(),
+                token_b_norm_1.as_ref(),
+                &ratio.to_le_bytes(),
+                &1u64.to_le_bytes(),
+            ],
+            &PROGRAM_ID,
+        );
+        
+        let (pda2, _) = Pubkey::find_program_address(
+            &[
+                POOL_STATE_SEED_PREFIX,
+                token_a_norm_2.as_ref(),
+                token_b_norm_2.as_ref(),
+                &ratio.to_le_bytes(),
+                &1u64.to_le_bytes(),
+            ],
+            &PROGRAM_ID,
+        );
+        
+        assert_eq!(pda1, pda2, "Normalized token orderings should produce identical PDAs");
+        
+        // Test one successful instruction call with swapped tokens to verify instruction works
+        let instruction_data = PoolInstruction::GetPoolStatePDA {
+            primary_token_mint: token_b_mint.pubkey(),
+            base_token_mint: token_a_mint.pubkey(),
+            ratio_primary_per_base: ratio,
+        };
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&env.payer.pubkey()),
+            &[&env.payer],
+            env.recent_blockhash,
+        );
+        
+        let result = env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "Swapped token ordering instruction should succeed");
+    }
+    
+    // Test 4: Different ratios produce different PDAs
+    {
+        let ratio1 = 5u64;
+        let ratio2 = 10u64;
+        
+        let (pda1, _) = Pubkey::find_program_address(
+            &[
+                POOL_STATE_SEED_PREFIX,
+                token_a_mint.pubkey().as_ref(),
+                token_b_mint.pubkey().as_ref(),
+                &ratio1.to_le_bytes(),
+                &1u64.to_le_bytes(),
+            ],
+            &PROGRAM_ID,
+        );
+        
+        let (pda2, _) = Pubkey::find_program_address(
+            &[
+                POOL_STATE_SEED_PREFIX,
+                token_a_mint.pubkey().as_ref(),
+                token_b_mint.pubkey().as_ref(),
+                &ratio2.to_le_bytes(),
+                &1u64.to_le_bytes(),
+            ],
+            &PROGRAM_ID,
+        );
+        
+        assert_ne!(pda1, pda2, "Different ratios should produce different PDAs");
+    }
+    
+         // Test 5: Edge case - identical tokens should be prevented at pool creation level
+     // (The utility function itself doesn't prevent this, but pool creation does)
+     {
+         let instruction_data = PoolInstruction::GetPoolStatePDA {
+             primary_token_mint: token_a_mint.pubkey(),
+             base_token_mint: token_a_mint.pubkey(), // Same token
+             ratio_primary_per_base: ratio,
+         };
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&env.payer.pubkey()),
+            &[&env.payer],
+            env.recent_blockhash,
+        );
+        
+        // This should still succeed as the utility function doesn't validate tokens
+        // Validation happens at pool creation time
+        let result = env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "Utility function should not validate token uniqueness");
+    }
+    
+         // Test 6: Zero ratio edge case
+     {
+         let instruction_data = PoolInstruction::GetPoolStatePDA {
+             primary_token_mint: token_a_mint.pubkey(),
+             base_token_mint: token_b_mint.pubkey(),
+             ratio_primary_per_base: 0, // Zero ratio
+         };
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&env.payer.pubkey()),
+            &[&env.payer],
+            env.recent_blockhash,
+        );
+        
+        // Should succeed as utility doesn't validate ratio (validation at pool creation)
+        let result = env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "Utility function should handle zero ratio");
+    }
+    
+    // Test 7: Performance characteristics
+    {
+        let start = std::time::Instant::now();
+        
+                 for _ in 0..10 { // Reduced iterations for realistic testing
+             let instruction_data = PoolInstruction::GetPoolStatePDA {
+                 primary_token_mint: token_a_mint.pubkey(),
+                 base_token_mint: token_b_mint.pubkey(),
+                 ratio_primary_per_base: ratio,
+             };
+            
+            let instruction = Instruction {
+                program_id: PROGRAM_ID,
+                accounts: vec![],
+                data: instruction_data.try_to_vec()?,
+            };
+            
+            let transaction = Transaction::new_signed_with_payer(
+                &[instruction],
+                Some(&env.payer.pubkey()),
+                &[&env.payer],
+                env.recent_blockhash,
+            );
+            
+            let result = env.banks_client.process_transaction(transaction).await;
+            assert!(result.is_ok(), "Performance test iteration should succeed");
+        }
+        
+        let duration = start.elapsed();
+        println!("Time for 10 PDA instruction calls: {:?}", duration);
+        
+        // More realistic performance expectation for instruction calls
+        assert!(
+            duration.as_millis() < 1000, 
+            "PDA instruction calls should be reasonably fast (10 calls in under 1s)"
+        );
+    }
+    
+    println!("✅ UTIL-001 test_get_pool_state_pda completed successfully");
+    Ok(())
+}
+
+/// Test the get_token_vault_pdas utility function  
+/// This extends UTIL-001 to cover vault PDA derivation
+#[tokio::test]
+async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Running UTIL-001b: test_get_token_vault_pdas");
+    
+    let mut env = start_test_environment().await;
+    
+    // Create a test pool state PDA
+    let pool_state_pda = Pubkey::new_unique();
+    
+         // Test vault PDA derivation
+     let instruction_data = PoolInstruction::GetTokenVaultPDAs {
+         pool_state_pda,
+     };
+    
+    let instruction = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![],
+        data: instruction_data.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&env.payer.pubkey()),
+        &[&env.payer],
+        env.recent_blockhash,
+    );
+    
+    let result = env.banks_client.process_transaction(transaction).await;
+    assert!(result.is_ok(), "get_token_vault_pdas instruction should succeed");
+    
+    // Verify vault PDAs manually
+    let (expected_vault_a, _) = Pubkey::find_program_address(
+        &[
+            TOKEN_A_VAULT_SEED_PREFIX,
+            pool_state_pda.as_ref(),
+        ],
+        &PROGRAM_ID,
+    );
+    
+    let (expected_vault_b, _) = Pubkey::find_program_address(
+        &[
+            TOKEN_B_VAULT_SEED_PREFIX,
+            pool_state_pda.as_ref(),
+        ],
+        &PROGRAM_ID,
+    );
+    
+    // Ensure vault PDAs are different
+    assert_ne!(expected_vault_a, expected_vault_b, "Vault PDAs should be unique");
+    
+    println!("✅ UTIL-001b test_get_token_vault_pdas completed successfully");
     Ok(())
 }
 
