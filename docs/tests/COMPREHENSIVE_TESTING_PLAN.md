@@ -627,11 +627,14 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     5. Testing that actions remain in pending and not moved to history until execution
 
 #### Sub-category 4.2: Action Revocation & Time Limits
-- [ ] **DEL-005** `test_revoke_action_success` - Action revocation
-  - Test revoking pending actions by owner
-  - Verify action is properly removed from pending list
-  - Ensure state remains unchanged after revocation
-  - Validate action history records revocation
+- [x] **DEL-005** `test_revoke_action_success` - Action revocation ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests delegate action revocation by both delegates and owners
+  - **🔧 FEATURES TESTED**:
+    1. Delegates can revoke their own requested actions
+    2. Pool owners can revoke any delegate action
+    3. Revoked actions are properly removed from pending list
+    4. Pool state remains unchanged after revocation
+    5. Executing revoked actions fails with proper error
 
 - [ ] **DEL-006** `test_set_delegate_time_limits` - Time limit configuration
   - Test setting custom wait times for each action type
