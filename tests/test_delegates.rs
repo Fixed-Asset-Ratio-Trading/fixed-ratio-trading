@@ -30,7 +30,8 @@ SOFTWARE.
 mod common;
 
 use common::*;
-use solana_program::program_error::ProgramError;
+use fixed_ratio_trading::types::delegate_actions::{DelegateActionParams, DelegateActionType, PauseReason};
+use fixed_ratio_trading::types::instructions::PoolInstruction;
 
 /// Test successful delegate addition by pool owner
 #[tokio::test]
@@ -828,5 +829,176 @@ async fn test_request_delegate_action_withdrawal() -> TestResult {
     
     // Record test completion
     println!("✅ DEL-002 test completed successfully");
+    Ok(())
+}
+
+/// Test requesting pool pause with valid duration (DEL-003)
+#[tokio::test]
+async fn test_request_delegate_action_pool_pause() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+
+    // Create a delegate keypair
+    let delegate = Keypair::new();
+
+    // Add delegate to pool (payer is the pool owner)
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &delegate.pubkey(),
+    ).await?;
+    
+    println!("✅ Pool owner successfully added delegate: {}", delegate.pubkey());
+    
+    // Get the current pool state to check initial settings
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get initial pool state");
+    
+    // Verify pool is initially active (not paused)
+    assert!(!pool_state.is_paused, "Pool should not be paused initially");
+    println!("✅ Pool is initially active (not paused)");
+    
+    // Request a pool pause action as the delegate
+    // Valid parameters: duration between 60 seconds and 259200 seconds (3 days)
+    let valid_pause_duration = 7200u64; // 2 hours in seconds
+    let pause_reason = PauseReason::SecurityConcern;
+    
+    println!("Requesting pool pause for {} seconds due to {:?}", valid_pause_duration, pause_reason);
+    
+    let request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::PoolPause,
+            params: DelegateActionParams::PoolPause { 
+                duration: valid_pause_duration,
+                reason: pause_reason
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut request_tx = Transaction::new_with_payer(&[request_ix], Some(&ctx.env.payer.pubkey()));
+    request_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    let request_result = ctx.env.banks_client.process_transaction(request_tx).await;
+    assert!(request_result.is_ok(), "Pool pause request should succeed with valid parameters");
+    println!("✅ Pool pause request was successfully recorded");
+    
+    // Verify action was recorded by getting updated pool state
+    let updated_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get updated pool state");
+    
+    // Check that the pool is still not paused after request (should only pause after execution)
+    assert!(!updated_pool_state.is_paused, "Pool should remain active until action execution");
+    println!("✅ Pool correctly remains active after request (not paused)");
+    
+    // Check that the pending actions contain our pause request
+    let mut found_pending_action = false;
+    let mut action_id = 0;
+    let mut wait_time_seconds = 0; // Time difference between execution and request
+    
+    for action in updated_pool_state.delegate_management.pending_actions.iter() {
+        if let (DelegateActionType::PoolPause, DelegateActionParams::PoolPause { duration, reason }) = (&action.action_type, &action.params) {
+            if action.delegate == delegate.pubkey() && 
+               *duration == valid_pause_duration && 
+               *reason == pause_reason {
+                found_pending_action = true;
+                action_id = action.action_id;
+                // Calculate wait time as difference between timestamps
+                wait_time_seconds = (action.execution_timestamp - action.request_timestamp) as u64;
+                break;
+            }
+        }
+    }
+    
+    assert!(found_pending_action, "Pool pause action should be recorded in pending actions");
+    println!("✅ Pool pause action was correctly recorded with ID: {}", action_id);
+    
+    // Verify the wait time is set correctly according to delegate time limits
+    let time_limits = updated_pool_state.delegate_management.get_delegate_time_limits(&delegate.pubkey())
+        .expect("Delegate time limits should exist");
+    
+    // Compare computed wait time to the delegate's configured wait time
+    assert_eq!(wait_time_seconds, time_limits.pause_wait_time, 
+        "Wait time should match delegate's pause_wait_time");
+    println!("✅ Action has correct wait time: {} seconds", wait_time_seconds);
+    
+    // Try with invalid parameters: test too short duration (< 60 seconds)
+    let invalid_short_duration = 30u64; // 30 seconds - too short
+    
+    let short_duration_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::PoolPause,
+            params: DelegateActionParams::PoolPause { 
+                duration: invalid_short_duration,
+                reason: PauseReason::ManualIntervention
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut invalid_tx = Transaction::new_with_payer(&[short_duration_ix], Some(&ctx.env.payer.pubkey()));
+    invalid_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    let invalid_result = ctx.env.banks_client.process_transaction(invalid_tx).await;
+    assert!(invalid_result.is_err(), "Request with too short pause duration should fail");
+    println!("✅ Invalid pause request with too short duration ({} seconds) correctly rejected", invalid_short_duration);
+    
+    // Try with invalid parameters: test too long duration (> 259,200 seconds = 3 days)
+    let invalid_long_duration = 300000u64; // > 3 days
+    
+    let long_duration_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::PoolPause,
+            params: DelegateActionParams::PoolPause { 
+                duration: invalid_long_duration,
+                reason: PauseReason::Emergency
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut long_tx = Transaction::new_with_payer(&[long_duration_ix], Some(&ctx.env.payer.pubkey()));
+    long_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    let long_result = ctx.env.banks_client.process_transaction(long_tx).await;
+    assert!(long_result.is_err(), "Request with too long pause duration should fail");
+    println!("✅ Invalid pause request with too long duration ({} seconds) correctly rejected", invalid_long_duration);
+    
+    println!("✅ DEL-003 test completed successfully");
     Ok(())
 }
