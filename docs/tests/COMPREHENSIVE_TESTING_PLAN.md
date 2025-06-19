@@ -215,11 +215,77 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 **Current Coverage:** 0% (0/89 lines) ⛔ **ZERO COVERAGE - HIGHEST PRIORITY**
 
 #### Sub-category 3.1: Client Initialization & Core Methods
-- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization
-- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy
+- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization and configuration
+  - **🔧 FEATURES TO TEST**:
+    1. PoolClient creation with valid RPC client and program ID
+    2. Proper initialization of internal fields and state
+    3. Verification of RPC client connectivity
+    4. Program ID validation and storage
+    5. Default configuration values are set correctly
+  - **📊 EXPECTED OUTCOMES**: 
+    - PoolClient instance created successfully
+    - All required fields properly initialized
+    - Ready to perform pool operations
+    - Error handling for invalid parameters
+
+- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy and consistency
+  - **🔧 FEATURES TO TEST**:
+    1. Pool state PDA derivation using correct seeds
+    2. Token vault PDA derivation for both tokens
+    3. LP token mint PDA derivation
+    4. Consistency of derived addresses across multiple calls
+    5. Verification against manually calculated PDAs
+    6. Bump seed calculation accuracy
+  - **📊 EXPECTED OUTCOMES**:
+    - All PDAs derived correctly with proper bump seeds
+    - Addresses match expected Solana PDA calculation
+    - Consistent results across multiple derivations
+    - Proper error handling for invalid inputs
+
 - [ ] **SDK-003** `test_create_pool_instruction` - Pool creation instruction building
-- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval
+  - **🔧 FEATURES TO TEST**:
+    1. Instruction data serialization for pool creation
+    2. Account metadata construction with correct keys
+    3. Required vs optional accounts handling
+    4. Instruction parameters validation
+    5. Proper signer and writable flags setting
+    6. Program ID and instruction discriminator
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid Solana instruction created
+    - All required accounts included with correct flags
+    - Instruction data properly serialized
+    - Ready for transaction submission
+    - Proper error handling for missing parameters
+
+- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval and deserialization
+  - **🔧 FEATURES TO TEST**:
+    1. Pool state account data retrieval from blockchain
+    2. Account data deserialization into PoolState struct
+    3. Validation of retrieved pool parameters
+    4. Handling of different pool states (active, paused, etc.)
+    5. Token mint validation and verification
+    6. Delegate and owner information accuracy
+  - **📊 EXPECTED OUTCOMES**:
+    - Pool state successfully retrieved and parsed
+    - All pool parameters match expected values
+    - Token information correctly populated
+    - Pool status and configuration accessible
+    - Proper error handling for account issues
+
 - [ ] **SDK-005** `test_get_pool_state_not_found` - Non-existent pool handling
+  - **🔧 FEATURES TO TEST**:
+    1. Graceful handling of non-existent pool accounts
+    2. Proper error reporting for missing accounts
+    3. Differentiation between uninitialized and missing accounts
+    4. Error message clarity and usefulness
+    5. No panic or crash on missing account data
+    6. Consistent error types across different failure modes
+  - **📊 EXPECTED OUTCOMES**:
+    - Clear error message indicating pool not found
+    - No unexpected panics or crashes
+    - Appropriate error type returned
+    - Client remains in valid state after error
+    - Error distinguishable from other account issues
 
 **Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
 
@@ -230,14 +296,131 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 **Current Coverage:** 0% (0/179 lines) ⛔ **ZERO COVERAGE - CRITICAL PRIORITY**
 
 #### Sub-category 4.1: Core Utility Functions
-- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation
-- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation
-- [ ] **UTIL-003** `test_get_pool_info` - Pool information retrieval
-- [ ] **UTIL-004** `test_get_liquidity_info` - Liquidity information retrieval
-- [ ] **UTIL-005** `test_get_delegate_info` - Delegate information retrieval
-- [ ] **UTIL-006** `test_get_fee_info` - Fee information retrieval
-- [ ] **UTIL-007** `test_get_action_wait_time` - Action wait time calculation
-- [ ] **UTIL-008** `test_get_action_history` - Action history retrieval
+- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation and validation
+  - **🔧 FEATURES TO TEST**:
+    1. PDA derivation using pool ID and program seeds
+    2. Bump seed calculation and verification
+    3. Address consistency across multiple calls
+    4. Validation against expected PDA format
+    5. Error handling for invalid pool IDs
+    6. Memory efficiency of derivation process
+  - **📊 EXPECTED OUTCOMES**:
+    - Correct PDA address generated for valid pool IDs
+    - Proper bump seed returned (typically 254-255)
+    - Consistent results across multiple derivations
+    - Appropriate errors for invalid inputs
+    - No memory leaks or performance issues
+
+- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation for both tokens
+  - **🔧 FEATURES TO TEST**:
+    1. Token A vault PDA derivation with correct seeds
+    2. Token B vault PDA derivation with correct seeds
+    3. Differentiation between A and B vault addresses
+    4. Bump seed calculation for both vaults
+    5. Validation that vaults are unique per pool
+    6. Error handling for invalid token mint addresses
+  - **📊 EXPECTED OUTCOMES**:
+    - Two distinct vault PDAs generated per pool
+    - Each vault PDA correctly associated with its token
+    - Proper bump seeds calculated for both vaults
+    - Vault addresses unique across different pools
+    - Clear error messages for invalid inputs
+
+- [ ] **UTIL-003** `test_get_pool_info` - Comprehensive pool information retrieval
+  - **🔧 FEATURES TO TEST**:
+    1. Pool state data retrieval and parsing
+    2. Token mint information extraction
+    3. Pool configuration parameters (fees, ratios, etc.)
+    4. Pool status and operational state
+    5. Owner and delegate information
+    6. Pool creation timestamp and metadata
+    7. Current liquidity and balance information
+  - **📊 EXPECTED OUTCOMES**:
+    - Complete pool information struct populated
+    - All numeric values correctly parsed and validated
+    - Pool status accurately reflected
+    - Token information matches on-chain data
+    - Proper error handling for corrupted pool data
+
+- [ ] **UTIL-004** `test_get_liquidity_info` - Liquidity metrics and calculations
+  - **🔧 FEATURES TO TEST**:
+    1. Current pool liquidity calculation
+    2. LP token supply tracking
+    3. Token A and B balance retrieval
+    4. Available liquidity for withdrawals
+    5. Locked liquidity due to pending actions
+    6. Liquidity ratio calculations and validation
+    7. Historical liquidity change tracking
+  - **📊 EXPECTED OUTCOMES**:
+    - Accurate liquidity metrics calculated
+    - LP token supply matches actual mint supply
+    - Token balances correctly retrieved from vaults
+    - Available vs locked liquidity properly differentiated
+    - All calculations mathematically consistent
+
+- [ ] **UTIL-005** `test_get_delegate_info` - Delegate information and permissions
+  - **🔧 FEATURES TO TEST**:
+    1. Active delegate list retrieval
+    2. Delegate permission levels and scope
+    3. Delegate-specific wait times and limits
+    4. Pending actions per delegate
+    5. Delegate authorization status
+    6. Delegate action history and performance
+    7. Rate limiting and action count tracking
+  - **📊 EXPECTED OUTCOMES**:
+    - Complete delegate roster with permissions
+    - Accurate pending action counts per delegate
+    - Wait times properly calculated per delegate
+    - Authorization status correctly determined
+    - Action history properly attributed
+
+- [ ] **UTIL-006** `test_get_fee_info` - Fee structure and collection data
+  - **🔧 FEATURES TO TEST**:
+    1. Current fee rates (basis points) retrieval
+    2. Accumulated fee balances for both tokens
+    3. Fee collection history and timestamps
+    4. Withdrawable fee amounts calculation
+    5. Fee recipient configuration
+    6. Fee change pending actions and timeline
+    7. Fee calculation accuracy validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Current fee rates accurately retrieved
+    - Fee balances match actual token vault balances
+    - Withdrawable amounts properly calculated
+    - Fee history complete and chronological
+    - All fee-related parameters consistent
+
+- [ ] **UTIL-007** `test_get_action_wait_time` - Action wait time calculation and validation
+  - **🔧 FEATURES TO TEST**:
+    1. Wait time calculation for each action type
+    2. Custom vs default wait time handling
+    3. Delegate-specific wait time overrides
+    4. Wait time remaining calculation
+    5. Action eligibility determination
+    6. Wait time validation against configured limits
+    7. Time zone and timestamp accuracy
+  - **📊 EXPECTED OUTCOMES**:
+    - Accurate wait times calculated per action type
+    - Custom overrides properly applied
+    - Remaining wait time correctly calculated
+    - Action eligibility accurately determined
+    - All time calculations consistent with system clock
+
+- [ ] **UTIL-008** `test_get_action_history` - Action history retrieval and analysis
+  - **🔧 FEATURES TO TEST**:
+    1. Complete action history retrieval
+    2. Action filtering by type, delegate, and date
+    3. Action status tracking (pending, executed, revoked)
+    4. Historical action parameter preservation
+    5. Action timeline and chronological ordering
+    6. Performance metrics for action processing
+    7. Action impact on pool state tracking
+  - **📊 EXPECTED OUTCOMES**:
+    - Complete action history with proper ordering
+    - Filtering works correctly for all criteria
+    - Action statuses accurately tracked
+    - Historical parameters preserved and accessible
+    - Performance metrics provide useful insights
 
 **Milestone 1.4:** ✅ Complete utility functions (Tests UTIL-001 to UTIL-008)
 
@@ -248,18 +431,156 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 **Current Coverage:** 8.9% (5/56 lines) ⛔ **VERY LOW COVERAGE - CRITICAL PRIORITY**
 
 #### Sub-category 5.1: Account Validation
-- [ ] **VAL-001** `test_validate_account_owner_success` - Correct owner validation
+- [ ] **VAL-001** `test_validate_account_owner_success` - Correct account owner validation
+  - **🔧 FEATURES TO TEST**:
+    1. Validation of account owner against expected program ID
+    2. System program owned account validation
+    3. Token program owned account validation
+    4. Custom program owned account validation
+    5. Multiple account owner validation in batch
+    6. Owner validation for different account types
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid owner accounts pass validation
+    - Correct program IDs are accepted
+    - System and token program accounts properly validated
+    - No false positives for correct ownership
+    - Performance efficient for batch validation
+
 - [ ] **VAL-002** `test_validate_account_owner_fails` - Wrong owner rejection
-- [ ] **VAL-003** `test_validate_signer_success` - Signer validation
-- [ ] **VAL-004** `test_validate_writable_success` - Writable account check
+  - **🔧 FEATURES TO TEST**:
+    1. Rejection of accounts with incorrect owners
+    2. Clear error messages for ownership mismatches
+    3. Validation of error types returned
+    4. Security prevention of ownership spoofing
+    5. Handling of uninitialized account ownership
+    6. Multiple ownership validation failures
+  - **📊 EXPECTED OUTCOMES**:
+    - Incorrect owners properly rejected
+    - Clear and specific error messages
+    - Appropriate error types for different failure modes
+    - No security vulnerabilities in validation
+    - Consistent error handling across account types
+
+- [ ] **VAL-003** `test_validate_signer_success` - Account signer validation
+  - **🔧 FEATURES TO TEST**:
+    1. Validation that required accounts are signed
+    2. Signer status verification for transactions
+    3. Multiple signer requirement validation
+    4. Program derived account signer handling
+    5. Optional vs required signer differentiation
+    6. Signer authority level validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Required signers properly identified and validated
+    - Unsigned required accounts properly rejected
+    - PDA signer status correctly handled
+    - Multi-signature requirements enforced
+    - Clear distinction between signer types
+
+- [ ] **VAL-004** `test_validate_writable_success` - Writable account permission validation
+  - **🔧 FEATURES TO TEST**:
+    1. Validation that accounts requiring writes are writable
+    2. Read-only account protection enforcement
+    3. Writable permission verification for state changes
+    4. Token account writable validation
+    5. Pool state account write permission
+    6. Error handling for write permission violations
+  - **📊 EXPECTED OUTCOMES**:
+    - Writable accounts properly identified and validated
+    - Read-only accounts protected from modification attempts
+    - State-changing operations require proper write permissions
+    - Clear error messages for permission violations
+    - Consistent permission enforcement across operations
 
 #### Sub-category 5.2: Business Logic Validation
-- [ ] **VAL-005** `test_validate_swap_fee_success` - Valid fee range
-- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero validation
-- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation
-- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time validation
-- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool state validation
-- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pause state validation
+- [ ] **VAL-005** `test_validate_swap_fee_success` - Swap fee range and format validation
+  - **🔧 FEATURES TO TEST**:
+    1. Fee range validation (0 to maximum allowed)
+    2. Fee format validation (basis points)
+    3. Fee precision and decimal handling
+    4. Fee change validation and limits
+    5. Custom fee validation for special operations
+    6. Fee calculation accuracy validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid fee ranges accepted (e.g., 0-500 basis points)
+    - Invalid fees properly rejected with clear errors
+    - Fee calculations mathematically accurate
+    - Fee changes within allowed parameters
+    - Precision maintained throughout calculations
+
+- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero amount validation
+  - **🔧 FEATURES TO TEST**:
+    1. Rejection of zero amounts for deposits/withdrawals
+    2. Rejection of zero amounts for swaps
+    3. Minimum amount threshold validation
+    4. Amount overflow protection
+    5. Negative amount prevention
+    6. Amount precision and decimal validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Zero amounts properly rejected with appropriate errors
+    - Minimum thresholds enforced consistently
+    - Overflow and underflow protection working
+    - Negative amounts prevented
+    - Decimal precision maintained correctly
+
+- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation validation
+  - **🔧 FEATURES TO TEST**:
+    1. Prevention of same-token swap attempts
+    2. Token mint address comparison accuracy
+    3. Token A vs Token B differentiation
+    4. Token uniqueness in pool creation
+    5. Token validation for all operations
+    6. Error handling for identical token attempts
+  - **📊 EXPECTED OUTCOMES**:
+    - Same-token operations properly rejected
+    - Token mint addresses correctly compared
+    - Clear errors for token conflicts
+    - Pool operations maintain token distinction
+    - Consistent token validation across all functions
+
+- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time calculation and validation
+  - **🔧 FEATURES TO TEST**:
+    1. Wait time calculation accuracy for different actions
+    2. Custom wait time validation and limits
+    3. Wait time enforcement for delegate actions
+    4. Time remaining calculation accuracy
+    5. Wait time override validation and authorization
+    6. Timezone and timestamp handling
+  - **📊 EXPECTED OUTCOMES**:
+    - Wait times calculated correctly for all action types
+    - Custom wait times properly validated
+    - Time enforcement prevents premature execution
+    - Time calculations accurate and consistent
+    - Timezone handling correct and predictable
+
+- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool initialization state validation
+  - **🔧 FEATURES TO TEST**:
+    1. Pool initialization status verification
+    2. Pool state data integrity validation
+    3. Required pool parameters presence validation
+    4. Pool configuration completeness check
+    5. Pool readiness for operations validation
+    6. Error handling for uninitialized pools
+  - **📊 EXPECTED OUTCOMES**:
+    - Initialized pools properly identified and validated
+    - Uninitialized pools rejected with clear errors
+    - Pool state integrity verified before operations
+    - Configuration completeness enforced
+    - Operations only allowed on properly initialized pools
+
+- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pool pause state validation
+  - **🔧 FEATURES TO TEST**:
+    1. Pool pause status verification
+    2. Pause duration and expiration validation
+    3. Operation restriction enforcement during pause
+    4. Pause reason validation and categorization
+    5. Emergency pause vs scheduled pause differentiation
+    6. Pause override authorization validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Paused pools properly identified and operations blocked
+    - Pause status accurately determined from pool state
+    - Operations appropriately restricted during pause
+    - Pause duration correctly calculated and enforced
+    - Emergency vs scheduled pauses properly differentiated
 
 **Milestone 1.5:** ✅ Complete validation function coverage (Tests VAL-001 to VAL-010)
 
