@@ -88,61 +88,6 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 ## PHASE 1: HIGH PRIORITY TESTS 🚨
 *Critical business logic with significant coverage improvements*
 
-### Module 3: Client SDK (partial → 90% target)
-**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/client_sdk.rs`
-**Current Coverage:** 0% (0/89 lines) ⛔ **ZERO COVERAGE - HIGHEST PRIORITY**
-
-#### Sub-category 3.1: Client Initialization & Core Methods
-- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization
-- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy
-- [ ] **SDK-003** `test_create_pool_instruction` - Pool creation instruction building
-- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval
-- [ ] **SDK-005** `test_get_pool_state_not_found` - Non-existent pool handling
-
-**Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
-
----
-
-### Module 4: Processors/Utilities (0% → 85% target)
-**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/processors/utilities.rs`
-**Current Coverage:** 0% (0/179 lines) ⛔ **ZERO COVERAGE - CRITICAL PRIORITY**
-
-#### Sub-category 4.1: Core Utility Functions
-- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation
-- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation
-- [ ] **UTIL-003** `test_get_pool_info` - Pool information retrieval
-- [ ] **UTIL-004** `test_get_liquidity_info` - Liquidity information retrieval
-- [ ] **UTIL-005** `test_get_delegate_info` - Delegate information retrieval
-- [ ] **UTIL-006** `test_get_fee_info` - Fee information retrieval
-- [ ] **UTIL-007** `test_get_action_wait_time` - Action wait time calculation
-- [ ] **UTIL-008** `test_get_action_history` - Action history retrieval
-
-**Milestone 1.4:** ✅ Complete utility functions (Tests UTIL-001 to UTIL-008)
-
----
-
-### Module 5: Utils/Validation (8.9% → 85% target)
-**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/utils/validation.rs`
-**Current Coverage:** 8.9% (5/56 lines) ⛔ **VERY LOW COVERAGE - CRITICAL PRIORITY**
-
-#### Sub-category 5.1: Account Validation
-- [ ] **VAL-001** `test_validate_account_owner_success` - Correct owner validation
-- [ ] **VAL-002** `test_validate_account_owner_fails` - Wrong owner rejection
-- [ ] **VAL-003** `test_validate_signer_success` - Signer validation
-- [ ] **VAL-004** `test_validate_writable_success` - Writable account check
-
-#### Sub-category 5.2: Business Logic Validation
-- [ ] **VAL-005** `test_validate_swap_fee_success` - Valid fee range
-- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero validation
-- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation
-- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time validation
-- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool state validation
-- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pause state validation
-
-**Milestone 1.5:** ✅ Complete validation function coverage (Tests VAL-001 to VAL-010)
-
----
-
 ### Module 1: Liquidity Management (0% → 80% target)
 **Status:** ✅ Complete (9/9 completed) | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
 
@@ -262,6 +207,61 @@ test: Complete LIQ-XXX <description> - <summary of work done>
   - **🎯 RESULTS**: Successfully verified no-fee withdrawal behavior
 
 **Milestone 1.2:** ✅ Complete - Fee management functionality (5/5 tests completed)
+
+---
+
+### Module 3: Client SDK (partial → 90% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/client_sdk.rs`
+**Current Coverage:** 0% (0/89 lines) ⛔ **ZERO COVERAGE - HIGHEST PRIORITY**
+
+#### Sub-category 3.1: Client Initialization & Core Methods
+- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization
+- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy
+- [ ] **SDK-003** `test_create_pool_instruction` - Pool creation instruction building
+- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval
+- [ ] **SDK-005** `test_get_pool_state_not_found` - Non-existent pool handling
+
+**Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
+
+---
+
+### Module 4: Processors/Utilities (0% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/processors/utilities.rs`
+**Current Coverage:** 0% (0/179 lines) ⛔ **ZERO COVERAGE - CRITICAL PRIORITY**
+
+#### Sub-category 4.1: Core Utility Functions
+- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation
+- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation
+- [ ] **UTIL-003** `test_get_pool_info` - Pool information retrieval
+- [ ] **UTIL-004** `test_get_liquidity_info` - Liquidity information retrieval
+- [ ] **UTIL-005** `test_get_delegate_info` - Delegate information retrieval
+- [ ] **UTIL-006** `test_get_fee_info` - Fee information retrieval
+- [ ] **UTIL-007** `test_get_action_wait_time` - Action wait time calculation
+- [ ] **UTIL-008** `test_get_action_history` - Action history retrieval
+
+**Milestone 1.4:** ✅ Complete utility functions (Tests UTIL-001 to UTIL-008)
+
+---
+
+### Module 5: Utils/Validation (8.9% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/utils/validation.rs`
+**Current Coverage:** 8.9% (5/56 lines) ⛔ **VERY LOW COVERAGE - CRITICAL PRIORITY**
+
+#### Sub-category 5.1: Account Validation
+- [ ] **VAL-001** `test_validate_account_owner_success` - Correct owner validation
+- [ ] **VAL-002** `test_validate_account_owner_fails` - Wrong owner rejection
+- [ ] **VAL-003** `test_validate_signer_success` - Signer validation
+- [ ] **VAL-004** `test_validate_writable_success` - Writable account check
+
+#### Sub-category 5.2: Business Logic Validation
+- [ ] **VAL-005** `test_validate_swap_fee_success` - Valid fee range
+- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero validation
+- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation
+- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time validation
+- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool state validation
+- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pause state validation
+
+**Milestone 1.5:** ✅ Complete validation function coverage (Tests VAL-001 to VAL-010)
 
 ---
 
