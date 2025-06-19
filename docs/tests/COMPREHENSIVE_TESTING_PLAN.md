@@ -3,11 +3,11 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 29.76% (576/1935 lines covered)  
-**Target Coverage:** 85%+ (1,645+ lines covered)  
+**Current Coverage:** 47.74% (1013/2122 lines covered)  
+**Target Coverage:** 85%+ (1,804+ lines covered)  
 **Total Tests Implemented:** 68 passing tests  
-**Total Tests Needed:** ~42 additional tests  
-**Estimated Timeline:** 3-4 weeks
+**Total Tests Needed:** ~35 additional tests  
+**Estimated Timeline:** 2-3 weeks
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -45,15 +45,101 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 - Dash separator followed by summary of changes made
 
 ## Progress Overview
-- Current Coverage: 29.76%
+- Current Coverage: 47.74%
 - Target Coverage: 85%+
 - Total Tests Running: 68 passing tests
 - Tests Completed in Phase 1: 14/20
-- Estimated Timeline: 3-4 weeks
-- Additional Tests Needed: ~42
+- Estimated Timeline: 2-3 weeks
+- Additional Tests Needed: ~35
+
+## Current Coverage Breakdown by Module
+*Based on latest `cargo tarpaulin` analysis*
+
+### High Priority Modules (Critical Coverage Gaps):
+- **Client SDK**: 0% (0/89 lines) ⛔ **CRITICAL** - Zero coverage
+- **Processors/Utilities**: 0% (0/179 lines) ⛔ **CRITICAL** - Zero coverage  
+- **Utils/Validation**: 8.9% (5/56 lines) ⛔ **CRITICAL** - Very low coverage
+- **Processors/Swap**: 25% (51/204 lines) 🔴 **HIGH** - Large module, low coverage
+- **Processors/Delegate Actions**: 27.5% (53/193 lines) 🔴 **HIGH** - Large module, low coverage
+- **Processors/Delegates**: 30.5% (18/59 lines) 🔴 **HIGH** - Key functionality, low coverage
+
+### Medium Priority Modules (Partial Coverage):
+- **Error Handling**: 34.6% (9/26 lines) 🔶 **MEDIUM** - Core error handling
+- **Utils/Serialization**: 44.1% (15/34 lines) 🔶 **MEDIUM** - Data serialization
+- **Processors/Security**: 47.1% (8/17 lines) 🔶 **MEDIUM** - Security features
+
+### Well-Covered Modules (Good Coverage):
+- **Utils/Rent**: 62.5% (15/24 lines) ✅ **GOOD** - Rent calculations
+- **Processors/Liquidity**: 62.8% (187/298 lines) ✅ **GOOD** - Core liquidity management
+- **Processors/Fees**: 65.9% (27/41 lines) ✅ **GOOD** - Fee management
+- **Types/Pool State**: 67.7% (132/195 lines) ✅ **GOOD** - Pool state management
+- **Types/Delegate Actions**: 68.8% (11/16 lines) ✅ **GOOD** - Delegate action types
+- **Processors/Pool Creation**: 68.2% (394/578 lines) ✅ **GOOD** - Pool creation logic
+- **Main Lib**: 73.8% (48/65 lines) ✅ **EXCELLENT** - Core library functions
+- **Types/Errors**: 83.3% (40/48 lines) ✅ **EXCELLENT** - Error type definitions
+
+### Coverage Goals by Priority:
+1. **Phase 1**: Focus on Critical modules (0-30% coverage) → Target 70%+
+2. **Phase 2**: Improve Medium priority modules (30-50% coverage) → Target 75%+
+3. **Phase 3**: Polish Well-covered modules (60%+ coverage) → Target 85%+
 
 ## PHASE 1: HIGH PRIORITY TESTS 🚨
 *Critical business logic with significant coverage improvements*
+
+### Module 3: Client SDK (partial → 90% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/client_sdk.rs`
+**Current Coverage:** 0% (0/89 lines) ⛔ **ZERO COVERAGE - HIGHEST PRIORITY**
+
+#### Sub-category 3.1: Client Initialization & Core Methods
+- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization
+- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy
+- [ ] **SDK-003** `test_create_pool_instruction` - Pool creation instruction building
+- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval
+- [ ] **SDK-005** `test_get_pool_state_not_found` - Non-existent pool handling
+
+**Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
+
+---
+
+### Module 4: Processors/Utilities (0% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/processors/utilities.rs`
+**Current Coverage:** 0% (0/179 lines) ⛔ **ZERO COVERAGE - CRITICAL PRIORITY**
+
+#### Sub-category 4.1: Core Utility Functions
+- [ ] **UTIL-001** `test_get_pool_state_pda` - Pool state PDA derivation
+- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation
+- [ ] **UTIL-003** `test_get_pool_info` - Pool information retrieval
+- [ ] **UTIL-004** `test_get_liquidity_info` - Liquidity information retrieval
+- [ ] **UTIL-005** `test_get_delegate_info` - Delegate information retrieval
+- [ ] **UTIL-006** `test_get_fee_info` - Fee information retrieval
+- [ ] **UTIL-007** `test_get_action_wait_time` - Action wait time calculation
+- [ ] **UTIL-008** `test_get_action_history` - Action history retrieval
+
+**Milestone 1.4:** ✅ Complete utility functions (Tests UTIL-001 to UTIL-008)
+
+---
+
+### Module 5: Utils/Validation (8.9% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/utils/validation.rs`
+**Current Coverage:** 8.9% (5/56 lines) ⛔ **VERY LOW COVERAGE - CRITICAL PRIORITY**
+
+#### Sub-category 5.1: Account Validation
+- [ ] **VAL-001** `test_validate_account_owner_success` - Correct owner validation
+- [ ] **VAL-002** `test_validate_account_owner_fails` - Wrong owner rejection
+- [ ] **VAL-003** `test_validate_signer_success` - Signer validation
+- [ ] **VAL-004** `test_validate_writable_success` - Writable account check
+
+#### Sub-category 5.2: Business Logic Validation
+- [ ] **VAL-005** `test_validate_swap_fee_success` - Valid fee range
+- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero validation
+- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation
+- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time validation
+- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool state validation
+- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pause state validation
+
+**Milestone 1.5:** ✅ Complete validation function coverage (Tests VAL-001 to VAL-010)
+
+---
 
 ### Module 1: Liquidity Management (0% → 80% target)
 **Status:** ✅ Complete (9/9 completed) | **Priority:** Critical | **File:** `src/processors/liquidity.rs`
@@ -177,25 +263,12 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 
 ---
 
-### Module 3: Client SDK (partial → 90% target)
-**Status:** 🟡 In Progress | **Priority:** Critical | **File:** `src/client_sdk.rs`
-
-#### Sub-category 3.1: Client Initialization & Core Methods
-- [ ] **SDK-001** `test_pool_client_new` - PoolClient initialization
-- [ ] **SDK-002** `test_derive_pool_addresses` - PDA derivation accuracy
-- [ ] **SDK-003** `test_create_pool_instruction` - Pool creation instruction building
-- [ ] **SDK-004** `test_get_pool_state_success` - Pool state retrieval
-- [ ] **SDK-005** `test_get_pool_state_not_found` - Non-existent pool handling
-
-**Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
-
----
-
 ## PHASE 2: MEDIUM PRIORITY TESTS 🔶
 *Important features with partial or missing coverage*
 
-### Module 4: Consolidated Delegate Management (0% → 85% target)
+### Module 6: Consolidated Delegate Management (30.5% → 85% target)
 **Status:** 🔴 Not Started | **Priority:** High | **File:** `src/processors/delegates.rs`
+**Current Coverage:** 30.5% (18/59 lines) 🔴 **LOW COVERAGE - HIGH PRIORITY**
 
 #### Sub-category 4.1: Action Request & Execution
 - [ ] **DEL-001** `test_request_delegate_action_fee_change` - Fee change request
@@ -271,8 +344,9 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 
 ---
 
-### Module 5: Swap Fee Management (10.6% → 80% target)
+### Module 7: Swap Fee Management (25% → 80% target)
 **Status:** 🔴 Not Started | **Priority:** High | **File:** `src/processors/swap.rs`
+**Current Coverage:** 25% (51/204 lines) 🔴 **LOW COVERAGE - HIGH PRIORITY**
 
 #### Sub-category 5.1: Fee Change Through Delegate Actions
 - [ ] **SWAP-001** `test_fee_change_request_success` - Fee change request flow
@@ -316,27 +390,63 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 
 ---
 
-## PHASE 3: LOW PRIORITY TESTS 🔹
-*Edge cases, error handling, and comprehensive coverage*
+### Module 8: Delegate Actions Processing (27.5% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** High | **File:** `src/processors/delegate_actions.rs`
+**Current Coverage:** 27.5% (53/193 lines) 🔴 **LOW COVERAGE - HIGH PRIORITY**
 
-### Module 6: Validation Functions (0% → 85% target)
-**Status:** 🔴 Not Started | **Priority:** Low | **File:** `src/utils/validation.rs`
+#### Sub-category 8.1: Action Request Processing
+- [ ] **DELACT-001** `test_process_request_delegate_action_success` - Valid action request processing
+- [ ] **DELACT-002** `test_process_request_delegate_action_unauthorized` - Unauthorized request rejection
+- [ ] **DELACT-003** `test_process_request_delegate_action_invalid_params` - Invalid parameter validation
 
-#### Sub-category 6.1: Account Validation
-- [ ] **VAL-001** `test_validate_account_owner_success` - Correct owner validation
-- [ ] **VAL-002** `test_validate_account_owner_fails` - Wrong owner rejection
-- [ ] **VAL-003** `test_validate_signer_success` - Signer validation
-- [ ] **VAL-004** `test_validate_writable_success` - Writable account check
+#### Sub-category 8.2: Action Execution Processing
+- [ ] **DELACT-004** `test_process_execute_delegate_action_success` - Valid action execution
+- [ ] **DELACT-005** `test_process_execute_delegate_action_premature` - Premature execution prevention
+- [ ] **DELACT-006** `test_process_execute_delegate_action_expired` - Expired action handling
 
-#### Sub-category 6.2: Business Logic Validation
-- [ ] **VAL-005** `test_validate_swap_fee_success` - Valid fee range
-- [ ] **VAL-006** `test_validate_non_zero_amount_success` - Non-zero validation
-- [ ] **VAL-007** `test_validate_different_tokens_success` - Token differentiation
-- [ ] **VAL-008** `test_validate_wait_time_success` - Wait time validation
-- [ ] **VAL-009** `test_validate_pool_initialized_success` - Pool state validation
-- [ ] **VAL-010** `test_validate_pool_not_paused_success` - Pause state validation
+#### Sub-category 8.3: Action Revocation Processing
+- [ ] **DELACT-007** `test_process_revoke_action_success` - Valid action revocation
+- [ ] **DELACT-008** `test_process_revoke_action_unauthorized` - Unauthorized revocation prevention
+- [ ] **DELACT-009** `test_process_set_delegate_time_limits` - Time limit configuration
 
-**Milestone 3.1:** ✅ Complete validation function coverage (Tests VAL-001 to VAL-010)
+**Milestone 8.1:** ✅ Complete delegate actions processing (Tests DELACT-001 to DELACT-009)
+
+---
+
+## PHASE 3: MEDIUM PRIORITY TESTS 🔹
+*Medium coverage modules and edge cases*
+
+### Module 9: Error Handling & Serialization (34.6% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** Medium | **Files:** `src/error.rs`, `src/utils/serialization.rs`
+**Current Coverage:** Error: 34.6% (9/26), Serialization: 44.1% (15/34)
+
+#### Sub-category 9.1: Error Handling Coverage
+- [ ] **ERR-001** `test_pool_error_comprehensive_display` - Complete error display testing
+- [ ] **ERR-002** `test_pool_error_code_mapping` - Error code mapping validation
+- [ ] **ERR-003** `test_program_error_conversion` - ProgramError conversion testing
+- [ ] **ERR-004** `test_custom_error_scenarios` - Custom error scenario handling
+
+#### Sub-category 9.2: Serialization Coverage
+- [ ] **SER-001** `test_serialize_to_account_comprehensive` - Complete serialization testing
+- [ ] **SER-002** `test_prepare_account_data_edge_cases` - Account data preparation edge cases
+- [ ] **SER-003** `test_serialized_size_validation` - Size validation comprehensive testing
+- [ ] **SER-004** `test_serialization_error_handling` - Serialization error scenarios
+
+**Milestone 9.1:** ✅ Complete error handling and serialization coverage (Tests ERR-001 to SER-004)
+
+---
+
+### Module 10: Security Enhancements (47.1% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** Medium | **File:** `src/processors/security.rs`
+**Current Coverage:** 47.1% (8/17 lines) 🔶 **MEDIUM COVERAGE**
+
+#### Sub-category 10.1: Security Parameter Updates
+- [ ] **SEC-001** `test_comprehensive_security_update_edge_cases` - Edge case security updates
+- [ ] **SEC-002** `test_unauthorized_security_update_variations` - Unauthorized update variations
+- [ ] **SEC-003** `test_pool_pause_duration_limits` - Pause duration limit testing
+- [ ] **SEC-004** `test_security_parameter_validation` - Security parameter validation
+
+**Milestone 10.1:** ✅ Complete security enhancement coverage (Tests SEC-001 to SEC-004)
 
 ---
 
@@ -367,20 +477,24 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Milestone Tracking
 
-### Phase 1 Milestones
+### Phase 1 Milestones (Critical Modules)
 - [x] **M1.1** - Liquidity Management Complete (9/9 tests completed) ✅
 - [x] **M1.2** - Fee Management Complete (5/5 tests completed) ✅
-- [ ] **M1.3** - Client SDK Complete (0/5 tests completed)
-- [ ] **🎯 Phase 1 Complete** - All high priority tests passing (14/20 completed)
+- [ ] **M1.3** - Client SDK Complete (0/5 tests completed) ⛔ **CRITICAL - 0% coverage**
+- [ ] **M1.4** - Processors/Utilities Complete (0/8 tests completed) ⛔ **CRITICAL - 0% coverage**
+- [ ] **M1.5** - Utils/Validation Complete (0/10 tests completed) ⛔ **CRITICAL - 8.9% coverage**
+- [ ] **🎯 Phase 1 Complete** - All critical priority tests passing (14/37 completed)
 
-### Phase 2 Milestones
-- [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests)
-- [ ] **M2.2** - Swap Fee Management Complete (6 tests)
-- [ ] **🎯 Phase 2 Complete** - All medium priority tests passing
+### Phase 2 Milestones (High Priority Modules)
+- [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests) 🔴 **30.5% coverage**
+- [ ] **M2.2** - Swap Fee Management Complete (6 tests) 🔴 **25% coverage**
+- [ ] **M2.3** - Delegate Actions Processing Complete (9 tests) 🔴 **27.5% coverage**
+- [ ] **🎯 Phase 2 Complete** - All high priority tests passing (0/26 completed)
 
-### Phase 3 Milestones
-- [ ] **M3.1** - Validation Functions Complete (10 tests)
-- [ ] **🎯 Phase 3 Complete** - All low priority tests passing
+### Phase 3 Milestones (Medium Priority Modules)
+- [ ] **M3.1** - Error Handling & Serialization Complete (8 tests) 🔶 **34.6-44.1% coverage**
+- [ ] **M3.2** - Security Enhancements Complete (4 tests) 🔶 **47.1% coverage**
+- [ ] **🎯 Phase 3 Complete** - All medium priority tests passing (0/12 completed)
 
 ### Final Milestone
 - [ ] **🏆 PROJECT COMPLETE** - Target 85%+ coverage achieved
@@ -419,5 +533,13 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-18 (FEE-005 completed)*  
-*Next Review: After each completed milestone* 
+*Last Updated: 2025-06-19 (Coverage analysis update - Current: 47.74%)*  
+*Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout*  
+*Next Review: After completing critical 0% coverage modules*
+
+## Key Insights from Coverage Analysis:
+- **Significant Progress**: Coverage improved from 29.76% to 47.74% 
+- **68 Tests Passing**: All existing tests are working correctly
+- **Critical Gaps Identified**: 3 modules with 0-8.9% coverage need immediate attention
+- **Reduced Timeline**: With better baseline, estimated 2-3 weeks vs previous 3-4 weeks
+- **Clear Priorities**: Focus on Client SDK, Utilities, and Validation modules first 
