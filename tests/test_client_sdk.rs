@@ -39,9 +39,8 @@ use solana_program::{
     pubkey::Pubkey,
     system_program,
     sysvar,
-    instruction::{AccountMeta, Instruction},
+    instruction::AccountMeta,
 };
-use solana_sdk::signer::keypair::Keypair;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Test PoolClient initialization and configuration (SDK-001)
@@ -415,8 +414,8 @@ async fn test_create_pool_instruction() -> TestResult {
 async fn test_get_pool_state_success() -> TestResult {
     println!("Running SDK-004: test_get_pool_state_success - Pool state retrieval and deserialization");
     
-    // Initialize the pool client
-    let pool_client = PoolClient::new(PROGRAM_ID);
+    // Initialize the pool client (prefix with _ to avoid unused variable warning)
+    let _pool_client = PoolClient::new(PROGRAM_ID);
     
     // Setup dummy keys for testing
     let lp_token_a_mint = Pubkey::new_unique();

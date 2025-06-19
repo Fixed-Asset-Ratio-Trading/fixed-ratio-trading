@@ -37,8 +37,11 @@ pub mod tokens;
 pub mod pool_helpers;
 
 // Re-export commonly used types and functions
+#[allow(unused_imports)]
 pub use setup::*;
+#[allow(unused_imports)]
 pub use tokens::*;  
+#[allow(unused_imports)]
 pub use pool_helpers::*;
 
 // Re-export external dependencies commonly used in tests
@@ -137,6 +140,7 @@ pub mod constants {
     pub const DEFAULT_RATIO: u64 = 2;
     
     /// Test token decimal places
+    #[allow(dead_code)]
     pub const TOKEN_DECIMALS: u8 = 9;
     
     /// Default liquidity amounts for testing

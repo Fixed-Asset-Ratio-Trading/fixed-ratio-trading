@@ -47,6 +47,7 @@ use crate::common::{constants, TestResult};
 /// 
 /// # Returns
 /// Result indicating success or failure of mint creation
+#[allow(dead_code)]
 pub async fn create_mint(
     banks: &mut BanksClient,
     payer: &Keypair,
@@ -200,6 +201,7 @@ pub async fn get_token_balance(
 /// 
 /// # Returns
 /// Result indicating success or failure
+#[allow(dead_code)]
 pub async fn create_test_mints(
     banks: &mut BanksClient,
     payer: &Keypair,

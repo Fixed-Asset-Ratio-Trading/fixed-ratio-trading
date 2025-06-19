@@ -47,6 +47,7 @@ pub struct TestEnvironment {
 /// Complete pool test context
 /// 
 /// Contains a test environment plus pool-specific components
+#[allow(dead_code)]
 pub struct PoolTestContext {
     pub env: TestEnvironment,
     #[allow(dead_code)]
@@ -125,6 +126,7 @@ pub async fn start_test_environment_with_debug() -> TestEnvironment {
 /// 
 /// # Returns
 /// PoolTestContext with environment and all required keypairs
+#[allow(dead_code)]
 pub async fn setup_pool_test_context(with_debug_logging: bool) -> PoolTestContext {
     let env = if with_debug_logging {
         start_test_environment_with_debug().await
