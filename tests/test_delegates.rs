@@ -30,6 +30,7 @@ SOFTWARE.
 mod common;
 
 use common::*;
+use solana_program::program_error::ProgramError;
 
 /// Test successful delegate addition by pool owner
 #[tokio::test]
@@ -571,3 +572,143 @@ async fn test_delegate_limit_enforcement() -> TestResult {
     // Even if we hit limits, the test is successful as it demonstrates the constraint system
     Ok(())
 } 
+
+/// Test requesting fee change with valid parameters (DEL-001)
+#[tokio::test]
+async fn test_request_delegate_action_fee_change() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+
+    // Create a delegate keypair
+    let delegate = Keypair::new();
+
+    // Add delegate to pool (payer is the pool owner)
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &delegate.pubkey(),
+    ).await?;
+    
+    println!("✅ Pool owner successfully added delegate: {}", delegate.pubkey());
+    
+    // Get the current pool state to check initial settings
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get initial pool state");
+    let initial_fee_basis_points = pool_state.swap_fee_basis_points;
+    let new_fee_basis_points = 40; // 0.4%
+    
+    println!("Current pool fee: {} basis points", initial_fee_basis_points);
+    println!("Requesting fee change to: {} basis points", new_fee_basis_points);
+    
+    // Request a fee change action as the delegate
+    let request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut request_tx = Transaction::new_with_payer(&[request_ix], Some(&ctx.env.payer.pubkey()));
+    request_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    let request_result = ctx.env.banks_client.process_transaction(request_tx).await;
+    assert!(request_result.is_ok(), "Delegate fee change request should succeed: {:?}", request_result);
+    println!("✅ Delegate successfully requested fee change");
+    
+    // Verify action was recorded by getting updated pool state
+    let updated_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get updated pool state");
+    
+    // Check that the pending actions contain our fee change request
+    let mut found_pending_action = false;
+    let mut action_id = 0;
+    let mut wait_time_seconds = 0; // Time difference between execution and request
+    
+    for action in updated_pool_state.delegate_management.pending_actions.iter() {
+        if let (DelegateActionType::FeeChange, DelegateActionParams::FeeChange { new_fee_basis_points: pending_fee }) = (&action.action_type, &action.params) {
+            if action.delegate == delegate.pubkey() && pending_fee == &new_fee_basis_points {
+                found_pending_action = true;
+                action_id = action.action_id;
+                // Calculate wait time as difference between timestamps
+                wait_time_seconds = (action.execution_timestamp - action.request_timestamp) as u64;
+                break;
+            }
+        }
+    }
+    
+    assert!(found_pending_action, "Fee change action should be recorded in pending actions");
+    println!("✅ Fee change action was correctly recorded with ID: {}", action_id);
+    
+    // Verify the wait time is set correctly according to delegate time limits
+    let time_limits = updated_pool_state.delegate_management.get_delegate_time_limits(&delegate.pubkey())
+        .expect("Delegate time limits should exist");
+    
+    // Compare computed wait time to the delegate's configured wait time
+    assert_eq!(wait_time_seconds, time_limits.fee_change_wait_time, 
+        "Wait time should match delegate's fee_change_wait_time");
+    println!("✅ Action has correct wait time: {} seconds", wait_time_seconds);
+    
+    // Ensure fee is not changed until execution
+    assert_eq!(updated_pool_state.swap_fee_basis_points, initial_fee_basis_points,
+        "Fee should not change until action is executed");
+    println!("✅ Fee remains unchanged until action execution: {} basis points", updated_pool_state.swap_fee_basis_points);
+    
+    // Verify parameter validation works - try setting an invalid fee (above 0.5%)
+    let invalid_fee_basis_points = 51; // 0.51% - just above allowed max
+    
+    let invalid_request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: invalid_fee_basis_points
+            },
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut invalid_request_tx = Transaction::new_with_payer(
+        &[invalid_request_ix], 
+        Some(&ctx.env.payer.pubkey())
+    );
+    invalid_request_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    let invalid_result = ctx.env.banks_client.process_transaction(invalid_request_tx).await;
+    assert!(invalid_result.is_err(), "Request with invalid fee (above 0.5%) should fail");
+    println!("✅ Invalid fee request ({}%) correctly rejected", invalid_fee_basis_points as f64 / 100.0);
+    
+    println!("✅ DEL-001 test completed successfully");
+    Ok(())
+}
