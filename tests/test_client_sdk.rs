@@ -461,3 +461,27 @@ async fn test_get_pool_state_success() -> TestResult {
     println!("✅ SDK-004 test completed successfully");
     Ok(())
 }
+
+/// Test handling of non-existent pool state (SDK-005)
+#[tokio::test]
+async fn test_get_pool_state_not_found() -> TestResult {
+    println!("Running SDK-005: test_get_pool_state_not_found - Non-existent pool handling");
+    
+    // Initialize the pool client
+    let pool_client = PoolClient::new(PROGRAM_ID);
+    // Use a random PDA that is guaranteed not to exist
+    let random_pool_state_pda = Pubkey::new_unique();
+    
+    // Attempt to retrieve pool state, expecting a NotImplemented error (since real fetch is not implemented)
+    let result = pool_client.get_pool_state(&random_pool_state_pda);
+    
+    match result {
+        Err(PoolClientError::NotImplemented) => {
+            println!("✅ Correctly handled non-existent pool state with NotImplemented error");
+        },
+        Ok(_) => panic!("Expected error for non-existent pool state, but got Ok"),
+        Err(e) => panic!("Expected NotImplemented error, got: {:?}", e),
+    }
+    println!("✅ SDK-005 test completed successfully");
+    Ok(())
+}

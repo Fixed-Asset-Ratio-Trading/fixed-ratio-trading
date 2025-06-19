@@ -551,7 +551,7 @@ impl PoolClient {
     /// 
     /// In a real implementation, this would fetch and deserialize the pool state
     /// from the blockchain. For now, it returns a placeholder.
-    fn get_pool_state(&self, _pool_state_pda: &Pubkey) -> Result<PoolStateData, PoolClientError> {
+    pub fn get_pool_state(&self, _pool_state_pda: &Pubkey) -> Result<PoolStateData, PoolClientError> {
         // This is a placeholder implementation
         // In a real client, this would make an RPC call to fetch account data
         Err(PoolClientError::NotImplemented)
