@@ -36,12 +36,11 @@ pub fn process_request_delegate_action(
     params: DelegateActionParams,
 ) -> ProgramResult {
     msg!("Processing RequestDelegateAction: {:?}", action_type);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 3)?; // Expected: 3 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let delegate_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
     let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
@@ -104,12 +103,11 @@ pub fn process_execute_delegate_action(
     action_id: u64,
 ) -> ProgramResult {
     msg!("Processing ExecuteDelegateAction: {}", action_id);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 3)?; // Expected: 3 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let executor_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
     let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
@@ -278,12 +276,11 @@ pub fn process_revoke_action(
     action_id: u64,
 ) -> ProgramResult {
     msg!("Processing RevokeAction: {}", action_id);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 2)?; // Expected: 2 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let revoker_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
 
@@ -326,12 +323,11 @@ pub fn process_set_delegate_time_limits(
     time_limits: DelegateTimeLimits,
 ) -> ProgramResult {
     msg!("Processing SetDelegateTimeLimits for delegate: {}", delegate);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 2)?; // Expected: 2 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let owner_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
 
