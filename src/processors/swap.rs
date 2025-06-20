@@ -42,6 +42,20 @@ use crate::{
 /// slippage protection, and comprehensive security validations. The swap system maintains
 /// pool liquidity balance while collecting fees for pool operators.
 ///
+/// # System Pause Behavior
+/// This operation is **BLOCKED** when the system is paused. System pause
+/// takes precedence over pool-specific pause. Only the system authority
+/// can unpause via UnpauseSystem instruction.
+///
+/// # Security
+/// - Validates system is not paused before any state changes
+/// - Returns SystemPaused error if system is paused  
+/// - Logs pause status for audit trails
+/// - Existing pool pause validation continues to work after system pause check
+///
+/// # Arguments
+/// - `system_state_account`: Optional first account for system pause validation
+///
 /// # Purpose
 /// - Enables token exchange at fixed ratios between pool token pairs
 /// - Implements comprehensive slippage protection for users
@@ -432,6 +446,17 @@ pub fn process_swap(
 /// on all token swaps. The fee is expressed in basis points (1/100th of a percent) 
 /// and can range from 0% to 0.5% (0-50 basis points). This provides pool operators
 /// with revenue generation while maintaining competitive trading costs.
+///
+/// # System Pause Behavior
+/// This operation is **BLOCKED** when the system is paused. System pause
+/// takes precedence over pool-specific pause. Only the system authority
+/// can unpause via UnpauseSystem instruction.
+///
+/// # Security
+/// - Validates system is not paused before any state changes
+/// - Returns SystemPaused error if system is paused
+/// - Logs pause status for audit trails
+/// - Existing pool pause validation continues to work after system pause check
 ///
 /// # Purpose
 /// - Enables pool owners to configure revenue generation through trading fees

@@ -338,6 +338,83 @@ let pool_pause_request = request_delegate_action(DelegateActionType::PoolPause, 
 - **🎯 Governance**: Prevents gridlock from excessive simultaneous requests
 - **💾 Storage Optimization**: Limits on-chain account storage requirements
 
+## 🛑 System-Wide Pause Functionality
+
+The contract includes a comprehensive system-wide pause mechanism for emergency situations:
+
+### System Authority Control
+- **Pause System**: Authority can immediately pause all contract operations
+- **Unpause System**: Authority can resume all contract operations
+- **Emergency Response**: Instant response to security threats or critical bugs
+
+### When System is Paused
+- ❌ **Blocked**: ALL operations including swaps, liquidity, fees, pool creation, delegate actions
+- ✅ **Allowed**: System state queries, info retrieval, system unpause operation
+
+### Security Model
+- **Single Point of Control**: Simple authority-based control for emergency situations
+- **No Complex Governance**: No delegate voting or waiting periods during emergencies
+- **Clear Response Capability**: Immediate emergency stop with clear audit trail
+- **Hierarchical Precedence**: System pause takes precedence over pool-specific pause states
+
+### System Pause vs Pool Pause
+
+The system implements a layered pause architecture:
+
+```rust
+System Pause (Global) → Pool Pause (Individual) → Normal Operations
+     ↑ TAKES PRECEDENCE     ↑ EXISTING              ↑ NORMAL FLOW
+```
+
+**System Pause:**
+- 🌐 **Global**: Affects ALL pools and operations across the entire contract
+- ⚡ **Immediate**: No waiting periods or governance delays
+- 🔑 **Authority-Only**: Only system authority can pause/unpause
+- 🚨 **Emergency**: Designed for critical security situations
+
+**Pool Pause (Existing):**
+- 🎯 **Individual**: Affects specific pools only
+- 👥 **Delegate-Controlled**: Managed through delegate system
+- ⏱️ **Time-Delayed**: Includes waiting periods and governance features
+- 🏛️ **Governance**: Designed for routine governance and dispute resolution
+
+### Example Usage
+
+```rust
+// Emergency system pause (blocks ALL operations)
+let pause_instruction = PoolInstruction::PauseSystem {
+    reason: "Critical security vulnerability detected".to_string(),
+};
+
+// Resume operations after issue resolution
+let unpause_instruction = PoolInstruction::UnpauseSystem;
+```
+
+### Implementation Notes
+
+**For Developers:**
+- All operations now accept an optional system state account as the first account
+- When provided, system pause validation takes precedence over all other checks
+- When not provided, operations work normally (backward compatibility)
+- System pause errors are clearly distinguished from pool pause errors
+
+**Integration:**
+```rust
+// New operations with system pause support
+let accounts = vec![
+    system_state_account,  // Optional: for system pause validation
+    user_account,          // Required: user performing operation
+    pool_state_account,    // Required: pool being operated on
+    // ... other required accounts
+];
+```
+
+**Error Handling:**
+- `SystemPaused`: Returned when operation attempted during system pause
+- `SystemAlreadyPaused`: Returned when trying to pause already-paused system
+- `SystemNotPaused`: Returned when trying to unpause non-paused system
+- `UnauthorizedAccess`: Returned when non-authority attempts system pause/unpause
+
 ## Backward Compatibility
 
 The legacy two-instruction pattern is still supported but marked as deprecated:
@@ -441,6 +518,10 @@ You can migrate incrementally:
 - `AddDelegate` - Add authorized delegate
 - `RemoveDelegate` - Remove delegate authorization
 
+### System-Wide Pause Management
+- `PauseSystem` - **NEW**: Emergency pause of all contract operations
+- `UnpauseSystem` - **NEW**: Resume all contract operations after emergency
+
 ### Helper Utilities
 - `GetPoolStatePDA` - **NEW**: Compute pool state PDA address
 - `GetTokenVaultPDAs` - **NEW**: Compute token vault PDA addresses
@@ -474,6 +555,10 @@ const MAX_ACTION_WAIT_TIME: u64 = 259200;       // 72 hours maximum
 const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600; // 1 hour default for fee changes
 const MAX_PENDING_ACTIONS: usize = 6;           // Maximum pending actions across ALL delegates
 const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2; // Each delegate can have up to 2 concurrent actions
+
+// System-Wide Pause Constants
+const SYSTEM_STATE_LEN: usize = 245;            // SystemState account size
+const MAX_PAUSE_REASON_LENGTH: usize = 200;     // Maximum pause reason string length
 ```
 
 ## Error Handling

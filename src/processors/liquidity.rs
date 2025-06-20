@@ -78,6 +78,20 @@ use crate::utils::validation::validate_non_zero_amount;
 /// - Slippage protection through minimum LP token guarantees
 /// - Custom fee recipient specification for flexible fee distribution
 /// - Additional validation and error handling
+///
+/// # System Pause Behavior
+/// This operation is **BLOCKED** when the system is paused. System pause
+/// takes precedence over pool-specific pause. Only the system authority
+/// can unpause via UnpauseSystem instruction.
+///
+/// # Security
+/// - Validates system is not paused before any state changes
+/// - Returns SystemPaused error if system is paused
+/// - Logs pause status for audit trails
+/// - Existing pool pause validation continues to work after system pause check
+///
+/// # Arguments
+/// - `system_state_account`: Optional first account for system pause validation
 /// 
 /// # Features
 /// ## Slippage Protection
@@ -198,6 +212,20 @@ pub fn process_deposit_with_features(
 /// This function allows users to deposit tokens into the pool in exchange for LP (Liquidity Provider)
 /// tokens. The deposit maintains the pool's fixed ratio structure and provides users with proportional
 /// ownership tokens that can later be redeemed for underlying assets.
+///
+/// # System Pause Behavior
+/// This operation is **BLOCKED** when the system is paused. System pause
+/// takes precedence over pool-specific pause. Only the system authority
+/// can unpause via UnpauseSystem instruction.
+///
+/// # Security
+/// - Validates system is not paused before any state changes
+/// - Returns SystemPaused error if system is paused
+/// - Logs pause status for audit trails
+/// - Existing pool pause validation continues to work after system pause check
+///
+/// # Arguments
+/// - `system_state_account`: Optional first account for system pause validation
 ///
 /// # Arguments
 /// * `program_id` - The program ID of the contract
@@ -464,6 +492,20 @@ pub fn process_deposit(
 /// LP tokens burned and underlying tokens received, maintaining the pool's fixed ratio structure.
 /// The function includes slippage protection, fee collection, and comprehensive validation.
 /// Withdrawals must be initiated through the delegate system for security.
+///
+/// # System Pause Behavior
+/// This operation is **BLOCKED** when the system is paused. System pause
+/// takes precedence over pool-specific pause. Only the system authority
+/// can unpause via UnpauseSystem instruction.
+///
+/// # Security
+/// - Validates system is not paused before any state changes
+/// - Returns SystemPaused error if system is paused
+/// - Logs pause status for audit trails
+/// - Existing pool pause validation continues to work after system pause check
+///
+/// # Arguments
+/// - `system_state_account`: Optional first account for system pause validation
 ///
 /// # Purpose
 /// - Enables users to exit their liquidity positions by burning LP tokens
