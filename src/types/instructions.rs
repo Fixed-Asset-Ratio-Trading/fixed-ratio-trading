@@ -202,4 +202,17 @@ pub enum PoolInstruction {
     /// Maintains rent exemption for pool state account
     WithdrawFees,
     
+    /// Pause the entire system - blocks all operations except unpause
+    /// Only the system authority can execute this instruction
+    /// Takes precedence over all pool-specific pause states
+    PauseSystem {
+        /// Human-readable reason for the system pause
+        reason: String,
+    },
+    
+    /// Unpause the entire system - allows all operations to resume
+    /// Only the system authority can execute this instruction
+    /// Clears the system pause state completely
+    UnpauseSystem,
+    
 } 

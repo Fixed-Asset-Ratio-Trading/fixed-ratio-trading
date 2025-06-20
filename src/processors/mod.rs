@@ -8,6 +8,7 @@ pub mod swap;
 pub mod delegates;
 pub mod fees;
 pub mod security;
+pub mod system_pause;
 pub mod utilities;
 pub mod delegate_actions;
 
@@ -28,6 +29,9 @@ pub use fees::*;
 
 // Re-export security management functions
 pub use security::*;
+
+// Re-export system pause functions
+pub use system_pause::*;
 
 // Re-export utility functions
 pub use utilities::*;

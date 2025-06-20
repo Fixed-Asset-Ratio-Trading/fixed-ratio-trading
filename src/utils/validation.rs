@@ -3,6 +3,7 @@
 //! This module contains utilities for validating user inputs, account states, and program parameters.
 //! These functions provide common validation logic used throughout the program.
 
+use borsh::BorshDeserialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -13,6 +14,7 @@ use solana_program::{
 
 use crate::{
     error::PoolError,
+    state::SystemState,
     types::{PoolState, pool_state::PoolPauseReason},
 };
 
@@ -171,5 +173,28 @@ pub fn validate_pool_not_paused(pool_state: &mut PoolState, current_timestamp: i
         msg!("Pause ends at timestamp: {}", pool_state.pause_end_timestamp);
         return Err(PoolError::PoolPaused.into());
     }
+    Ok(())
+}
+
+/// Validates that the system is not paused for user operations.
+/// This must be called by ALL operations except unpause.
+/// This check takes precedence over pool-specific pause checks.
+///
+/// # Arguments
+/// * `system_state_account` - The system state account to check
+///
+/// # Returns
+/// * `ProgramResult` - Success if system is not paused, error if paused
+pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> ProgramResult {
+    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
+    
+    if system_state.is_paused {
+        msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
+        msg!("Pause reason: {}", system_state.pause_reason);
+        msg!("Paused at: {}", system_state.pause_timestamp);
+        msg!("Only system unpause is allowed");
+        return Err(PoolError::SystemPaused.into());
+    }
+    
     Ok(())
 } 

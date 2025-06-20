@@ -87,6 +87,7 @@ declare_id!("quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD");
 pub mod client_sdk;
 pub mod constants;
 pub mod error;
+pub mod state;
 pub mod types;
 pub mod utils;
 pub mod processors;
@@ -94,6 +95,7 @@ pub mod processors;
 // Re-export all modules for public API
 // IMPORTANT: These must be public re-exports to allow test access
 pub use constants::*;
+pub use state::*;
 pub use types::*;
 pub use utils::*;
 
@@ -126,6 +128,10 @@ use crate::processors::{
         process_execute_delegate_action,
         process_revoke_action,
         process_set_delegate_time_limits,
+    },
+    system_pause::{
+        process_pause_system,
+        process_unpause_system,
     },
     utilities::{
         get_pool_state_pda,
@@ -265,6 +271,12 @@ pub fn process_instruction(
             base_token_vault_bump_seed,
         } => process_initialize_pool_data(program_id, accounts, ratio_primary_per_base, 
             pool_authority_bump_seed, primary_token_vault_bump_seed, base_token_vault_bump_seed),
+
+        PoolInstruction::PauseSystem {
+            reason,
+        } => process_pause_system(program_id, accounts, reason),
+
+        PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
     }
 }
 

@@ -121,6 +121,22 @@ pub enum PoolError {
     /// Rate limit exceeded
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
+    
+    /// System is paused - all operations blocked except unpause
+    #[error("System is paused - all operations blocked except unpause")]
+    SystemPaused,
+    
+    /// System is already paused
+    #[error("System is already paused")]
+    SystemAlreadyPaused,
+    
+    /// System is not paused
+    #[error("System is not paused")]
+    SystemNotPaused,
+    
+    /// Unauthorized access to system controls
+    #[error("Unauthorized access to system controls")]
+    UnauthorizedAccess,
 }
 
 impl PoolError {
@@ -152,6 +168,10 @@ impl PoolError {
             PoolError::ActionAlreadyExecuted => 1020,
             PoolError::ActionExpired => 1021,
             PoolError::RateLimitExceeded => 1022,
+            PoolError::SystemPaused => 1023,
+            PoolError::SystemAlreadyPaused => 1024,
+            PoolError::SystemNotPaused => 1025,
+            PoolError::UnauthorizedAccess => 1026,
         }
     }
 }
