@@ -82,12 +82,11 @@ pub fn process_withdraw_fees(
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing WithdrawFees");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 5)?; // Expected: 5 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
     let _system_program = next_account_info(account_info_iter)?;

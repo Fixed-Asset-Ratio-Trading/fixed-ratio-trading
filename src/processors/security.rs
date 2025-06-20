@@ -87,12 +87,11 @@ pub fn process_update_security_params(
     is_paused: Option<bool>,
 ) -> ProgramResult {
     msg!("Processing UpdateSecurityParams");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 2)?; // Expected: 2 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
 

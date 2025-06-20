@@ -117,10 +117,8 @@ pub fn process_deposit_with_features(
     msg!("DEBUG: process_deposit_with_features: Amount: {}, Min LP out: {}, Custom fee recipient: {:?}", 
          amount, minimum_lp_tokens_out, fee_recipient);
     
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    if accounts.len() > 0 {
-        crate::utils::validation::validate_system_not_paused(&accounts[0])?;
-    }
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?; // Expected: 15 accounts minimum
     
     // Debug account validation (adjust count for system state account)
     if accounts.len() < 15 {
@@ -230,12 +228,11 @@ pub fn process_deposit(
     amount: u64,
 ) -> ProgramResult {
     msg!("Processing Deposit v2");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let user_signer = next_account_info(account_info_iter)?;
     let user_source_token_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
@@ -544,12 +541,11 @@ pub fn process_withdraw(
     lp_amount_to_burn: u64,
 ) -> ProgramResult {
     msg!("Processing Withdraw v2");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
+    
     let account_info_iter = &mut accounts.iter();
-
-    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
-    let system_state_account = next_account_info(account_info_iter)?;
-    crate::utils::validation::validate_system_not_paused(system_state_account)?;
-
     let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
     let user_source_lp_token_account = next_account_info(account_info_iter)?;   // User's LP token account (source of burn)
     let user_destination_token_account = next_account_info(account_info_iter)?; // User's account for receiving underlying tokens
