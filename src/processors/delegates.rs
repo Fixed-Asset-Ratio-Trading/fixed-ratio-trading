@@ -63,6 +63,10 @@ pub fn process_add_delegate(
     msg!("Processing AddDelegate for: {}", delegate);
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;
 
@@ -143,6 +147,10 @@ pub fn process_remove_delegate(
 ) -> ProgramResult {
     msg!("Processing RemoveDelegate for: {}", delegate);
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;

@@ -38,6 +38,10 @@ pub fn process_request_delegate_action(
     msg!("Processing RequestDelegateAction: {:?}", action_type);
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let delegate_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
     let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
@@ -101,6 +105,10 @@ pub fn process_execute_delegate_action(
 ) -> ProgramResult {
     msg!("Processing ExecuteDelegateAction: {}", action_id);
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let executor_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
@@ -272,6 +280,10 @@ pub fn process_revoke_action(
     msg!("Processing RevokeAction: {}", action_id);
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let revoker_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;
 
@@ -315,6 +327,10 @@ pub fn process_set_delegate_time_limits(
 ) -> ProgramResult {
     msg!("Processing SetDelegateTimeLimits for delegate: {}", delegate);
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let owner_account = next_account_info(account_info_iter)?;
     let pool_state_account = next_account_info(account_info_iter)?;

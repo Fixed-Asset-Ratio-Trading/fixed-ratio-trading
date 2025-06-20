@@ -144,6 +144,10 @@ pub fn process_swap(
     msg!("Processing Swap v2");
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let user_signer = next_account_info(account_info_iter)?;                     // User initiating the swap (signer)
     let user_input_token_account = next_account_info(account_info_iter)?;      // User's token account for the input token
     let user_output_token_account = next_account_info(account_info_iter)?;     // User's token account to receive the output token
@@ -522,6 +526,10 @@ pub fn process_set_swap_fee(
 ) -> ProgramResult {
     msg!("Processing SetSwapFee: {} basis points", fee_basis_points);
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let owner = next_account_info(account_info_iter)?;
     let pool_state = next_account_info(account_info_iter)?;

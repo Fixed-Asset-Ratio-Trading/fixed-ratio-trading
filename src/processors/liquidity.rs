@@ -117,14 +117,19 @@ pub fn process_deposit_with_features(
     msg!("DEBUG: process_deposit_with_features: Amount: {}, Min LP out: {}, Custom fee recipient: {:?}", 
          amount, minimum_lp_tokens_out, fee_recipient);
     
-    // Debug account validation
-    if accounts.len() < 14 {
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    if accounts.len() > 0 {
+        crate::utils::validation::validate_system_not_paused(&accounts[0])?;
+    }
+    
+    // Debug account validation (adjust count for system state account)
+    if accounts.len() < 15 {
         msg!("DEBUG: process_deposit_with_features: Insufficient accounts provided: {}", accounts.len());
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // Get user destination LP token account to check balance before and after
-    let user_destination_lp_token_account = &accounts[9]; // Based on standard deposit account order
+    let user_destination_lp_token_account = &accounts[10]; // Based on standard deposit account order (shifted by 1 for system state)
     msg!("DEBUG: process_deposit_with_features: About to read initial LP balance from account: {}", user_destination_lp_token_account.key);
     
     let initial_lp_balance = {
@@ -226,6 +231,10 @@ pub fn process_deposit(
 ) -> ProgramResult {
     msg!("Processing Deposit v2");
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let user_signer = next_account_info(account_info_iter)?;
     let user_source_token_account = next_account_info(account_info_iter)?;
@@ -536,6 +545,10 @@ pub fn process_withdraw(
 ) -> ProgramResult {
     msg!("Processing Withdraw v2");
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
     let user_source_lp_token_account = next_account_info(account_info_iter)?;   // User's LP token account (source of burn)

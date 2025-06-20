@@ -66,6 +66,10 @@ pub fn process_create_pool_state_account(
     msg!("DEBUG: process_create_pool_state_account: Entered");
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let payer = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_create_pool_state_account: Payer: {}", payer.key);
     let pool_state_pda_account = next_account_info(account_info_iter)?;
@@ -491,6 +495,10 @@ pub fn process_initialize_pool_data(
     msg!("DEBUG: process_initialize_pool_data: Entered");
     let account_info_iter = &mut accounts.iter();
 
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
+
     let payer = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_initialize_pool_data: Payer: {}", payer.key);
     let pool_state_pda_account = next_account_info(account_info_iter)?;
@@ -739,6 +747,10 @@ pub fn process_initialize_pool(
     // get updated after CPI account creation within the same instruction.
     
     let account_info_iter = &mut accounts.iter();
+
+    // ✅ CRITICAL: System pause validation (takes precedence over pool pause)
+    let system_state_account = next_account_info(account_info_iter)?;
+    crate::utils::validation::validate_system_not_paused(system_state_account)?;
 
     let payer = next_account_info(account_info_iter)?;
     let pool_state_pda_account = next_account_info(account_info_iter)?;
