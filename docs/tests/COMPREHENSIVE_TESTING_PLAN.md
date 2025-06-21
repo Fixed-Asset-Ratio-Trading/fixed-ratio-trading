@@ -5,9 +5,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 49.10% (1,234/2,513 lines covered)  
 **Target Coverage:** 85%+ (2,136+ lines covered)  
-**Total Tests Implemented:** 114 working tests ✅
-**Total Tests in Codebase:** 114 tests (All passing successfully)
-**Total Tests Planned:** ~148 tests (+35 additional tests needed, including 6 critical swap execution tests, 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
+**Total Tests Implemented:** 115 working tests ✅
+**Total Tests in Codebase:** 115 tests (All passing successfully)
+**Total Tests Planned:** ~148 tests (+33 additional tests needed, including 5 critical swap execution tests, 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -92,7 +92,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - Estimated Timeline: 2-3 weeks  
 - Additional Tests Needed: ~12
 
-**🎉 MILESTONE ACHIEVED**: All 113 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
+**🎉 MILESTONE ACHIEVED**: All 115 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
@@ -1121,8 +1121,9 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **📊 TEST COVERAGE**: Complete validation of A→B swap functionality setup
   - **🎯 RESULTS**: Successfully validated swap instruction construction, price calculations, account setup, and error handling
 
-- [ ] **SWAP-008** `test_successful_b_to_a_swap` - Token B to Token A swap execution ⛔ **CRITICAL**
-  - **🔧 FEATURES TO TEST**:
+- [x] **SWAP-008** `test_successful_b_to_a_swap` - Token B to Token A swap execution ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests comprehensive B→A swap validation
+  - **🔧 FEATURES TESTED**:
     1. Basic B→A swap with proper token transfers (user input B, receive A)
     2. Reverse direction price calculation accuracy (validates both directions)
     3. Pool liquidity tracking for reverse swaps (B increases, A decreases)
@@ -1130,12 +1131,8 @@ test: Complete <TEST-ID> <description> - <summary of work>
     5. Fee collection for both directions (Token A and Token B fee accumulation)
     6. Price symmetry validation (ensure no directional bias in calculations)
     7. State consistency across bidirectional swap sequences
-  - **📊 EXPECTED OUTCOMES**:
-    - User receives correct Token A amount based on fixed ratio
-    - Reverse direction calculations mathematically consistent
-    - Fee collection works for both token types
-    - Bidirectional swap sequences maintain mathematical consistency
-    - No directional bias in price calculations or fee collection
+  - **📊 TEST COVERAGE**: Complete validation of B→A swap functionality
+  - **🎯 RESULTS**: Successfully validated reverse direction swap calculations, bidirectional consistency, price symmetry, and comprehensive instruction construction
 
 - [ ] **SWAP-009** `test_swap_with_various_ratios` - Multiple fixed ratios validation ⛔ **CRITICAL**
   - **🔧 FEATURES TO TEST**:
@@ -1209,7 +1206,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
     - Clear error messages for all failure scenarios
     - No state corruption possible through edge case exploitation
 
-**Milestone 7.5.1:** 🟡 In Progress - Core swap execution functionality (Tests SWAP-007 to SWAP-012) - 1/6 completed
+**Milestone 7.5.1:** 🟡 In Progress - Core swap execution functionality (Tests SWAP-007 to SWAP-012) - 2/6 completed
 
 **IMPLEMENTATION PRIORITY:** ✅ SWAP-007 → SWAP-008 → SWAP-009 → SWAP-010 → SWAP-011 → SWAP-012
 **RATIONALE:** Start with basic successful execution, then add complexity, then handle edge cases
@@ -1792,7 +1789,7 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-21 (DEL-008 test completion with coverage update - Total tests: 113)*  
+*Last Updated: 2025-06-21 (SWAP-008 test completion - Total tests: 115)*  
 *Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout (Updated: 49.10% coverage)*  
 *Next Review: After completing critical low coverage modules*
 
