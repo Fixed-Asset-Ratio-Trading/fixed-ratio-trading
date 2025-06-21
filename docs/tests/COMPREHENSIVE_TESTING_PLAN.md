@@ -6,10 +6,12 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Current Coverage:** 51.32% (1090/2122 lines covered)  
 **Target Coverage:** 85%+ (1,804+ lines covered)  
 **Total Tests Implemented:** 93 passing tests (+16 system pause tests)  
-**Total Tests Needed:** ~10 additional tests  
+**Total Tests Planned:** ~107 tests (+14 new pause system tests)
 **Estimated Timeline:** 1-2 weeks
 
 **Update (2025-01-XX)**: Added comprehensive system pause test suite (SYSTEM-PAUSE-001 to SYSTEM-PAUSE-004) with 16 tests covering system-wide pause functionality, emergency controls, and hierarchical pause behavior.
+
+**Update (Phase 6 Complete)**: Removed old duration-based pause test infrastructure and added comprehensive documentation for new pause system. Added Module 12 (Pool-Specific Swap Pause) with 6 tests and Module 13 (Automatic Withdrawal Protection) with 8 tests, covering the new simplified pause architecture with swap-only controls and automatic MEV protection.
 
 **Update (2025-06-19)**: Added the DEL-001, DEL-002, and DEL-003 tests for delegate actions (fee change, withdrawal, and pool pause requests), improving coverage for the Consolidated Delegate Management module from 30.5% to 45.8%.
 **Update (2025-06-19)**: Added the SDK-001 test for client SDK initialization and configuration, beginning to address the Client SDK module (0% coverage).
@@ -617,13 +619,16 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     3. Validating parameter validation by rejecting zero amount withdrawal
     4. Confirming balance validation happens at execution time, not request time
 
-- [x] **DEL-003** `test_request_delegate_action_pool_pause` - Pool pause request ✅ **COMPLETED**
-  - **✅ COMPLETED**: Successfully tests delegate pool pause request and validation
-  - **🔧 FEATURES TESTED**:
-    1. Requesting pool pause with valid duration (2 hours) and reason (SecurityConcern)
+- [ ] **DEL-003** `test_request_delegate_action_pool_pause` - Pool pause request 🔴 **NEEDS REDOING**
+  - **❌ REMOVED IN PHASE 6**: Old duration-based test removed, needs to be replaced with new pause system
+  - **🔧 FEATURES TO IMPLEMENT**:
+    1. Requesting PausePoolSwaps action (no duration parameters - simplified architecture)
     2. Verifying action is properly recorded with correct wait time
     3. Confirming pool remains active until action execution
-    4. Validating parameter validation by rejecting both too short and too long pause durations
+    4. Testing UnpausePoolSwaps action for complete cycle
+    5. Validating no auto-unpause behavior (manual control only)
+    6. Ensuring governance separation (no reason handling at core level)
+  - **📝 NOTE**: This test needs to be reimplemented for the new simplified pause system documented in Module 12 (POOL-PAUSE-001 through POOL-PAUSE-006)
 
 - [x] **DEL-004** `test_execute_delegate_action_success` - Action execution framework ✅ **COMPLETED**
   - **✅ COMPLETED**: Successfully validates delegate action execution framework and security
@@ -682,7 +687,7 @@ test: Complete LIQ-XXX <description> - <summary of work done>
   - Test revoking while pending execution
   - Verify state consistency
 
-**Milestone 4.1:** ✅ Complete consolidated delegate management (Tests DEL-001 to DEL-011)
+**Milestone 4.1:** 🟡 Complete consolidated delegate management (Tests DEL-001 to DEL-011) - **DEL-003 needs redoing for new pause system**
 
 ---
 
@@ -979,6 +984,237 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 
 ---
 
+### Module 12: Pool-Specific Swap Pause (0% → 90% target)
+**Status:** 🔴 Not Started | **Priority:** **HIGH** | **Files:** `src/processors/delegate_actions.rs`, `src/processors/swap.rs`
+**Current Coverage:** 0% (new functionality) ⛔ **ZERO COVERAGE - NEW FEATURE**
+
+#### Sub-category 12.1: Pool Swap Pause Operations
+- [ ] **POOL-PAUSE-001** `test_delegate_pause_swaps_only` - Delegate pause affects only swaps, not deposits/withdrawals
+  - **🔧 FEATURES TO TEST**:
+    1. Delegate can request PausePoolSwaps action through proper wait time process
+    2. Pool swap pause only affects swap operations (process_swap blocked)
+    3. Deposit operations continue normally during pool swap pause
+    4. Withdrawal operations continue normally during pool swap pause
+    5. Pool swap pause is independent of system-wide pause (both can coexist)
+    6. Swap pause state persists indefinitely until manually unpaused
+  - **📊 EXPECTED OUTCOMES**:
+    - Swap operations return PoolSwapsPaused error when paused
+    - Deposit and withdrawal operations continue to work normally
+    - Pool pause status is properly tracked in pool state
+    - No auto-unpause behavior (manual control only)
+    - Clear separation between system pause and pool pause
+
+- [ ] **POOL-PAUSE-002** `test_pool_pause_status_query` - Public pause status visibility and transparency
+  - **🔧 FEATURES TO TEST**:
+    1. GetPoolPauseStatus instruction provides public visibility into pause state
+    2. Query distinguishes between delegate pause and withdrawal protection
+    3. Query shows pause initiator, timestamp, and governance information
+    4. Query works during both active and paused states
+    5. Query provides clear guidance on which operations are available
+    6. Race condition documentation for large withdrawal scenarios
+  - **📊 EXPECTED OUTCOMES**:
+    - Public users can query pool pause status before attempting operations
+    - Clear distinction between temporary MEV protection and delegate pause
+    - Comprehensive logging shows all pause details and governance info
+    - Real-time transparency into pool operational status
+    - Proper guidance for users during different pause states
+
+- [ ] **POOL-PAUSE-003** `test_delegate_unpause_cycle` - Complete pause/unpause cycle with manual controls
+  - **🔧 FEATURES TO TEST**:
+    1. Delegate can request UnpausePoolSwaps action through proper wait time process
+    2. Complete pause/unpause cycle works correctly (pause → wait → execute → unpause → wait → execute)
+    3. Pool owner can cancel pending pause/unpause requests (override capability)
+    4. Wait time enforcement for both pause and unpause actions
+    5. State transitions are properly tracked and audited
+    6. Pool returns to normal swap operation after unpause
+  - **📊 EXPECTED OUTCOMES**:
+    - Complete pause/unpause governance cycle works as designed
+    - Wait times properly enforced for both pause and unpause
+    - Owner override capability provides emergency control
+    - State consistency maintained throughout the cycle
+    - Proper audit trail of all pause/unpause actions
+
+- [ ] **POOL-PAUSE-004** `test_indefinite_pause_no_auto_unpause` - Indefinite pause without auto-unpause
+  - **🔧 FEATURES TO TEST**:
+    1. Pool swap pause continues indefinitely until manually unpaused
+    2. No automatic unpause based on time or other triggers
+    3. Pool state persistence across multiple transactions and time periods
+    4. Long-term pause behavior and state consistency
+    5. Manual unpause is the only way to resume swap operations
+    6. System pause and pool pause operate independently
+  - **📊 EXPECTED OUTCOMES**:
+    - Pool remains paused indefinitely without auto-unpause
+    - Manual unpause action is required to resume operations
+    - Pool state consistent across extended pause periods
+    - Independent operation of system vs pool pause controls
+    - Predictable and reliable pause behavior
+
+- [ ] **POOL-PAUSE-005** `test_pause_governance_separation` - Validate that governance is handled by delegate contracts
+  - **🔧 FEATURES TO TEST**:
+    1. Core contract handles only pause mechanism (no reason storage/validation)
+    2. Delegate contracts manage their own governance, reasons, and decision logic
+    3. Simple PausePoolSwaps/UnpausePoolSwaps actions without complex parameters
+    4. No reason enum or duration parameters at core contract level
+    5. Architectural simplification benefits and clean separation of concerns
+    6. Delegate governance flexibility and extensibility
+  - **📊 EXPECTED OUTCOMES**:
+    - Clean separation between pause mechanism and governance logic
+    - Delegate contracts have full control over their own governance processes
+    - Core contract focused on pure pause/unpause functionality
+    - Simplified architecture with minimal data overhead
+    - Maximum flexibility for different delegate governance models
+
+#### Sub-category 12.2: Integration with Existing Systems
+- [ ] **POOL-PAUSE-006** `test_system_pause_override` - System pause takes precedence over pool pause
+  - **🔧 FEATURES TO TEST**:
+    1. System pause blocks all operations regardless of pool pause state
+    2. Pool pause status irrelevant when system is paused
+    3. System unpause restores respect for pool pause state
+    4. Hierarchical pause behavior (system → pool → operation)
+    5. Clear error messaging about which pause level is active
+    6. State consistency during combined pause scenarios
+  - **📊 EXPECTED OUTCOMES**:
+    - System pause completely overrides pool pause
+    - Clear hierarchy of pause controls
+    - Appropriate error messages for each pause level
+    - State consistency across all pause combinations
+    - Proper behavior restoration after system unpause
+
+**Milestone 12.1:** ✅ Complete pool-specific swap pause functionality (Tests POOL-PAUSE-001 to POOL-PAUSE-006)
+
+---
+
+### Module 13: Automatic Withdrawal Protection (0% → 90% target)
+**Status:** 🔴 Not Started | **Priority:** **HIGH** | **Files:** `src/processors/liquidity.rs`, `src/processors/utilities.rs`
+**Current Coverage:** 0% (new functionality) ⛔ **ZERO COVERAGE - NEW FEATURE**
+
+#### Sub-category 13.1: Large Withdrawal Protection
+- [ ] **WITHDRAWAL-PROTECTION-001** `test_large_withdrawal_automatic_protection` - Large withdrawal automatic protection (≥5% threshold)
+  - **🔧 FEATURES TO TEST**:
+    1. Withdrawals ≥5% of pool liquidity automatically trigger swap pause protection
+    2. Temporary swap pause prevents MEV attacks and front-running during large withdrawals
+    3. Protection automatically initiates before withdrawal execution begins
+    4. Swap operations are blocked during large withdrawal processing
+    5. Protection includes proper accounting of withdrawal percentage calculation
+    6. Clear messaging about MEV protection activation during large withdrawals
+  - **📊 EXPECTED OUTCOMES**:
+    - Large withdrawals (≥5%) automatically pause swaps temporarily
+    - MEV protection prevents front-running and sandwich attacks
+    - Withdrawal percentage calculated correctly against total pool liquidity
+    - Clear distinction between protection pause and delegate pause
+    - Proper state tracking during automatic protection
+
+- [ ] **WITHDRAWAL-PROTECTION-002** `test_small_withdrawal_no_protection` - Small withdrawal no protection (< 5% threshold)
+  - **🔧 FEATURES TO TEST**:
+    1. Withdrawals < 5% of pool liquidity do not trigger automatic protection
+    2. Small withdrawals process normally without any swap pause
+    3. Swap operations continue normally during small withdrawal processing
+    4. No unnecessary protection overhead for routine withdrawals
+    5. Proper threshold calculation and boundary testing (4.9% vs 5.1%)
+    6. Performance optimization for common small withdrawal scenarios
+  - **📊 EXPECTED OUTCOMES**:
+    - Small withdrawals (< 5%) process without MEV protection
+    - No unnecessary swap pause for routine operations
+    - Performance optimized for common withdrawal scenarios
+    - Clear threshold boundary behavior
+    - Normal operation for the majority of withdrawals
+
+- [ ] **WITHDRAWAL-PROTECTION-003** `test_withdrawal_protection_with_delegate_pause` - Integration with delegate pause system
+  - **🔧 FEATURES TO TEST**:
+    1. Delegate pause actions cannot override automatic withdrawal protection
+    2. Automatic protection takes precedence during large withdrawal processing
+    3. Delegate pause requests are properly handled when protection is active
+    4. Clear error messaging when delegate actions conflict with protection
+    5. Integration between manual delegate controls and automatic protection
+    6. State consistency when both protection types are relevant
+  - **📊 EXPECTED OUTCOMES**:
+    - Automatic protection cannot be interrupted by delegate actions
+    - Clear conflict resolution when both protections are relevant
+    - Proper error messaging for conflicting actions
+    - State consistency across protection types
+    - Integration preserves security guarantees
+
+#### Sub-category 13.2: Protection Lifecycle Management
+- [ ] **WITHDRAWAL-PROTECTION-004** `test_withdrawal_failure_cleanup` - Withdrawal failure cleanup verification
+  - **🔧 FEATURES TO TEST**:
+    1. Automatic protection cleanup occurs regardless of withdrawal success/failure
+    2. Failed withdrawals properly clear protection state and re-enable swaps
+    3. Error scenarios maintain protection cleanup (fail-safe design)
+    4. State consistency after withdrawal failure with automatic cleanup
+    5. No stuck protection state under any failure conditions
+    6. Proper error propagation while maintaining cleanup guarantees
+  - **📊 EXPECTED OUTCOMES**:
+    - Protection always clears regardless of withdrawal outcome
+    - Swaps automatically re-enabled after any withdrawal completion
+    - Fail-safe design prevents stuck protection states
+    - State consistency maintained under all error conditions
+    - Reliable cleanup under all scenarios
+
+- [ ] **WITHDRAWAL-PROTECTION-005** `test_concurrent_withdrawals_protection` - Concurrent withdrawal protection handling
+  - **🔧 FEATURES TO TEST**:
+    1. Multiple large withdrawal attempts are properly sequenced and protected
+    2. Protection state correctly managed during concurrent operations
+    3. Queue management for multiple protection requests
+    4. State consistency when multiple users attempt large withdrawals
+    5. Fair processing and protection for concurrent large withdrawals
+    6. No protection bypass or race conditions during concurrent access
+  - **📊 EXPECTED OUTCOMES**:
+    - Concurrent large withdrawals are properly protected in sequence
+    - No race conditions in protection state management
+    - Fair processing for multiple large withdrawal requests
+    - State consistency maintained under concurrent load
+    - Security guarantees preserved under all access patterns
+
+- [ ] **WITHDRAWAL-PROTECTION-006** `test_withdrawal_protection_status_visibility` - Protection status visibility and transparency
+  - **🔧 FEATURES TO TEST**:
+    1. GetPoolPauseStatus query shows withdrawal protection status during large withdrawals
+    2. Real-time status visibility during automatic MEV protection
+    3. Clear distinction between temporary protection and delegate pause
+    4. Race condition documentation and user guidance during large withdrawals
+    5. Transparent communication of protection duration and reasoning
+    6. Public visibility into automatic security measures
+  - **📊 EXPECTED OUTCOMES**:
+    - Users can query real-time protection status during large withdrawals
+    - Clear documentation of race condition as expected behavior
+    - Transparent communication about automatic security measures
+    - Real-time visibility provides user confidence in security
+    - Proper guidance during temporary protection periods
+
+#### Sub-category 13.3: Performance and Edge Cases
+- [ ] **WITHDRAWAL-PROTECTION-007** `test_protection_threshold_boundary_conditions` - Exact threshold behavior
+  - **🔧 FEATURES TO TEST**:
+    1. Exact 5% threshold behavior (4.99% vs 5.00% vs 5.01%)
+    2. Edge cases with very small or very large pools
+    3. Rounding and precision handling in percentage calculations
+    4. Protection behavior with edge case liquidity amounts
+    5. Mathematical accuracy under all pool size conditions
+    6. Consistent threshold application across different token decimals
+  - **📊 EXPECTED OUTCOMES**:
+    - Exact threshold behavior is predictable and documented
+    - Edge cases are handled consistently and safely
+    - Mathematical precision maintained under all conditions
+    - No unexpected protection activation/deactivation
+    - Consistent behavior across different pool configurations
+
+- [ ] **WITHDRAWAL-PROTECTION-008** `test_protection_with_system_pause` - Integration with system-wide pause
+  - **🔧 FEATURES TO TEST**:
+    1. System pause overrides automatic withdrawal protection
+    2. Large withdrawals are blocked entirely when system is paused
+    3. Protection state handling during system pause/unpause cycles
+    4. Hierarchical pause behavior with withdrawal protection
+    5. Proper cleanup when system pause interrupts withdrawal protection
+    6. State consistency across system pause and withdrawal protection interactions
+  - **📊 EXPECTED OUTCOMES**:
+    - System pause takes complete precedence over withdrawal protection
+    - Large withdrawals properly blocked during system pause
+    - Clean integration between hierarchical pause systems
+    - State consistency maintained across all pause interactions
+    - Proper behavior restoration after system unpause
+
+**Milestone 13.1:** ✅ Complete automatic withdrawal protection functionality (Tests WITHDRAWAL-PROTECTION-001 to WITHDRAWAL-PROTECTION-008)
+
+---
+
 ## Testing Infrastructure & Utilities
 
 ### Common Test Patterns
@@ -1020,7 +1256,9 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests) 🔴 **30.5% coverage**
 - [ ] **M2.2** - Swap Fee Management Complete (6 tests) 🔴 **25% coverage**
 - [ ] **M2.3** - Delegate Actions Processing Complete (9 tests) 🔴 **27.5% coverage**
-- [ ] **🎯 Phase 2 Complete** - All high priority tests passing (0/26 completed)
+- [ ] **M2.4** - Pool-Specific Swap Pause Complete (6 tests) 🔴 **0% coverage - NEW FEATURE**
+- [ ] **M2.5** - Automatic Withdrawal Protection Complete (8 tests) 🔴 **0% coverage - NEW FEATURE**
+- [ ] **🎯 Phase 2 Complete** - All high priority tests passing (0/40 completed)
 
 ### Phase 3 Milestones (Medium Priority Modules)
 - [ ] **M3.1** - Error Handling & Serialization Complete (8 tests) 🔶 **34.6-44.1% coverage**
