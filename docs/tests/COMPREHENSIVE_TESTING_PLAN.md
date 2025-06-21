@@ -5,9 +5,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 47.37% (1,188/2,508 lines covered)  
 **Target Coverage:** 85%+ (2,132+ lines covered)  
-**Total Tests Implemented:** 101 working tests ✅  
-**Total Tests in Codebase:** 101 tests (81 tokio::test + 13 tests in tests/ + 7 tests in src/)  
-**Total Tests Planned:** ~125 tests (+24 additional tests needed)
+**Total Tests Implemented:** 102 working tests ✅  
+**Total Tests in Codebase:** 102 tests (82 tokio::test + 13 tests in tests/ + 7 tests in src/)  
+**Total Tests Planned:** ~125 tests (+23 additional tests needed)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -22,6 +22,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Update (2025-06-19)**: Added the SDK-003 test for pool creation instruction building, further improving the Client SDK module coverage.
 **Update (2025-06-19)**: Added the SDK-004 test for pool state data structure validation, completing tests for PoolStateData representation and structure.
 **Update (2025-06-19)**: Added the SDK-005 test for handling of non-existent pool state.
+**Update (2025-06-21)**: Added the UTIL-002 test for token vault PDA derivation validation, improving coverage for the Processors/Utilities module.
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -61,10 +62,10 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 ## Progress Overview
 - Current Coverage: 47.37%
 - Target Coverage: 85%+
-- Total Tests Running: 101 passing tests
-- Tests Completed in Phase 1: 24/37 (65% complete)
+- Total Tests Running: 102 passing tests
+- Tests Completed in Phase 1: 25/37 (68% complete)
 - Estimated Timeline: 2-3 weeks
-- Additional Tests Needed: ~24
+- Additional Tests Needed: ~23
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
@@ -323,20 +324,19 @@ test: Complete LIQ-XXX <description> - <summary of work done>
     - Improved error handling and validation
     - Added performance benchmarking for realistic scenarios
 
-- [ ] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation for both tokens
-  - **🔧 FEATURES TO TEST**:
+- [x] **UTIL-002** `test_get_token_vault_pdas` - Token vault PDA derivation for both tokens ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests comprehensive token vault PDA derivation
+  - **🔧 FEATURES TESTED**:
     1. Token A vault PDA derivation with correct seeds
     2. Token B vault PDA derivation with correct seeds
     3. Differentiation between A and B vault addresses
-    4. Bump seed calculation for both vaults
+    4. Bump seed calculation for both vaults (240-255 range validation)
     5. Validation that vaults are unique per pool
     6. Error handling for invalid token mint addresses
-  - **📊 EXPECTED OUTCOMES**:
-    - Two distinct vault PDAs generated per pool
-    - Each vault PDA correctly associated with its token
-    - Proper bump seeds calculated for both vaults
-    - Vault addresses unique across different pools
-    - Clear error messages for invalid inputs
+    7. PDA consistency across multiple derivations
+    8. Performance characteristics for multiple calls
+  - **📊 TEST COVERAGE**: Complete validation of token vault PDAs
+  - **🎯 RESULTS**: Successfully verified all vault PDA derivations, uniqueness, and error handling
 
 - [ ] **UTIL-003** `test_get_pool_info` - Comprehensive pool information retrieval
   - **🔧 FEATURES TO TEST**:
