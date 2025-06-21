@@ -73,6 +73,37 @@ pub fn process_request_delegate_action(
     // Validate action parameters
     validate_action_params(&action_type, &params)?;
 
+    // Additional validation for pause/unpause actions with withdrawal protection awareness
+    match action_type {
+        DelegateActionType::PausePoolSwaps => {
+            if pool_state.swaps_paused {
+                if pool_state.withdrawal_protection_active {
+                    msg!("Cannot request pause: Pool is under automatic withdrawal protection");
+                    msg!("Large withdrawal in progress - wait for completion before requesting pause");
+                    return Err(PoolError::PoolSwapsAlreadyPaused.into());
+                } else {
+                    msg!("Cannot request pause: Swaps already paused by delegate action");
+                    return Err(PoolError::PoolSwapsAlreadyPaused.into());
+                }
+            }
+        },
+        DelegateActionType::UnpausePoolSwaps => {
+            if !pool_state.swaps_paused {
+                msg!("Cannot request unpause: Swaps are not currently paused");
+                return Err(PoolError::PoolSwapsNotPaused.into());
+            }
+            if pool_state.withdrawal_protection_active {
+                msg!("Cannot request unpause: Pool is under automatic withdrawal protection");
+                msg!("Large withdrawal in progress - protection will auto-clear upon completion");
+                msg!("Delegate actions cannot override automatic MEV protection");
+                return Err(PoolError::PoolSwapsAlreadyPaused.into());
+            }
+        },
+        _ => {
+            // No additional validation needed for other action types
+        }
+    }
+
     // Create the pending action
     let pending_action = PendingDelegateAction::new(
         *delegate_account.key,
@@ -225,6 +256,18 @@ pub fn process_execute_delegate_action(
         },
         DelegateActionType::PausePoolSwaps => {
             if let DelegateActionParams::PausePoolSwaps = action.params {
+                // Check if swaps are already paused
+                if pool_state.swaps_paused {
+                    if pool_state.withdrawal_protection_active {
+                        msg!("Cannot pause swaps: Currently under automatic withdrawal protection");
+                        msg!("Wait for large withdrawal to complete, then retry pause action");
+                        return Err(PoolError::PoolSwapsAlreadyPaused.into());
+                    } else {
+                        msg!("Swaps are already paused by delegate action");
+                        return Err(PoolError::PoolSwapsAlreadyPaused.into());
+                    }
+                }
+                
                 // Set pause state to new swaps_paused field
                 pool_state.swaps_paused = true;
                 pool_state.swaps_pause_requested_by = Some(action.delegate);
@@ -236,6 +279,20 @@ pub fn process_execute_delegate_action(
         },
         DelegateActionType::UnpausePoolSwaps => {
             if let DelegateActionParams::UnpausePoolSwaps = action.params {
+                // Check if swaps are not paused
+                if !pool_state.swaps_paused {
+                    msg!("Swaps are not currently paused");
+                    return Err(PoolError::PoolSwapsNotPaused.into());
+                }
+                
+                // Check if this is withdrawal protection (delegates cannot override)
+                if pool_state.withdrawal_protection_active {
+                    msg!("Cannot unpause: Currently under automatic withdrawal protection");
+                    msg!("Large withdrawal in progress - protection will auto-clear upon completion");
+                    msg!("Delegate unpause actions cannot override automatic MEV protection");
+                    return Err(PoolError::PoolSwapsAlreadyPaused.into());
+                }
+                
                 // Clear pause state
                 pool_state.swaps_paused = false;
                 pool_state.swaps_pause_requested_by = None;

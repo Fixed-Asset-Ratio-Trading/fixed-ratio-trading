@@ -134,6 +134,9 @@ pub fn get_token_vault_pdas(
 /// Logs structured pool information for debugging, testing, and frontend integration.
 /// Outputs all critical pool state data in a human-readable format.
 /// 
+/// **⚠️ RACE CONDITION NOTICE**: Pool status reflects real-time state.
+/// Temporary pause during large withdrawals (≥5% threshold) is expected behavior.
+/// 
 /// # Account Layout (Read-Only)
 /// 0. Pool State PDA (read-only)
 /// 
@@ -163,6 +166,26 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Is Paused: {}", pool_state.is_paused);
     msg!("Swaps Paused: {}", pool_state.swaps_paused);
     msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
+    
+    // Enhanced operations status with race condition awareness
+    msg!("=== OPERATIONS STATUS ===");
+    msg!("Deposits: ENABLED");
+    msg!("Withdrawals: ENABLED");
+    
+    if pool_state.swaps_paused {
+        if pool_state.withdrawal_protection_active {
+            msg!("Swaps: TEMPORARILY PAUSED (MEV Protection during large withdrawal)");
+            msg!("  - Auto-clearing protection, not delegate action");
+            msg!("  - Will resume automatically after withdrawal completion");
+        } else {
+            msg!("Swaps: PAUSED (Delegate Action)");
+            msg!("  - Requires manual unpause by delegate");
+            msg!("  - Governed by delegate contract");
+        }
+    } else {
+        msg!("Swaps: ENABLED");
+    }
+    
     msg!("===============================");
     
     Ok(())
@@ -173,6 +196,11 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Purpose
 /// Provides public visibility into pool operation status, distinguishing between
 /// system-wide pause and pool-specific swap pause for user transparency.
+/// 
+/// **⚠️ RACE CONDITION NOTICE**: This query returns real-time status.
+/// During large withdrawals (≥5% of pool), you may see temporary 
+/// "swaps paused" status due to automatic MEV protection.
+/// This is **expected behavior** and will auto-clear after withdrawal completion.
 /// 
 /// # Account Layout (Read-Only)
 /// 0. Pool State PDA (read-only)
@@ -190,14 +218,29 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
     
     if pool_state_data.swaps_paused {
-        msg!("=== PAUSE DETAILS ===");
-        msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
-        msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
-        msg!("Governance: Managed by delegate contract");
-        msg!("Note: No auto-unpause - requires manual unpause action");
+        // Distinguish between temporary withdrawal protection and delegate pause
+        if pool_state_data.withdrawal_protection_active {
+            msg!("=== TEMPORARY WITHDRAWAL PROTECTION ===");
+            msg!("Swaps temporarily paused during large withdrawal (≥5% of pool)");
+            msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+            msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
+            msg!("Protection will auto-clear after withdrawal completion");
+            msg!("NOTE: This is MEV protection, not a delegate action");
+        } else {
+            msg!("=== DELEGATE PAUSE ===");
+            msg!("Swaps paused by delegate action");
+            msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+            msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
+            msg!("Governance: Managed by delegate contract");
+            msg!("Note: No auto-unpause - requires manual unpause action");
+        }
     }
     
     msg!("==================");
+    
+    // RACE CONDITION: Users querying status during large withdrawals
+    // may see temporary pause state. This is acceptable and provides
+    // accurate real-time transparency into pool operations.
     
     Ok(())
 }
