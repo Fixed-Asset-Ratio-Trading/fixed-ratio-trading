@@ -3,12 +3,12 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 51.32% (1090/2122 lines covered)  
-**Target Coverage:** 85%+ (1,804+ lines covered)  
-**Total Tests Implemented:** 88 working tests + 1 system pause test ✅  
-**Total Tests in Codebase:** 89 tests (88 working, 1 system pause working, 15 system pause failing due to missing initialization)  
-**Total Tests Planned:** ~107 tests (+14 new pause system tests)
-**Estimated Timeline:** 1-2 weeks
+**Current Coverage:** 47.37% (1,188/2,508 lines covered)  
+**Target Coverage:** 85%+ (2,132+ lines covered)  
+**Total Tests Implemented:** 101 working tests ✅  
+**Total Tests in Codebase:** 101 tests (81 tokio::test + 13 tests in tests/ + 7 tests in src/)  
+**Total Tests Planned:** ~125 tests (+24 additional tests needed)
+**Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
 
@@ -59,37 +59,37 @@ test: Complete LIQ-XXX <description> - <summary of work done>
 - Dash separator followed by summary of changes made
 
 ## Progress Overview
-- Current Coverage: 51.32%
+- Current Coverage: 47.37%
 - Target Coverage: 85%+
-- Total Tests Running: 76 passing tests
-- Tests Completed in Phase 1: 19/20
+- Total Tests Running: 101 passing tests
+- Tests Completed in Phase 1: 24/37 (65% complete)
 - Estimated Timeline: 2-3 weeks
-- Additional Tests Needed: ~26
+- Additional Tests Needed: ~24
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
 
 ### High Priority Modules (Critical Coverage Gaps):
-- **Client SDK**: 21.3% (19/89 lines) 🔶 **IMPROVING** - Coverage improving
-- **Processors/Utilities**: 0% (0/179 lines) ⛔ **CRITICAL** - Zero coverage  
-- **Utils/Validation**: 8.9% (5/56 lines) ⛔ **CRITICAL** - Very low coverage
-- **Processors/Swap**: 25% (51/204 lines) 🔴 **HIGH** - Large module, low coverage
-- **Processors/Delegate Actions**: 27.5% (53/193 lines) 🔴 **HIGH** - Large module, low coverage
-- **Processors/Delegates**: 45.8% (27/59 lines) 🔶 **MEDIUM** - Improved coverage
+- **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved
+- **Processors/Utilities**: 17.9% (39/218 lines) 🔴 **HIGH** - Low coverage  
+- **Utils/Validation**: 30.0% (21/70 lines) 🔶 **MEDIUM** - Coverage improved
+- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, very low coverage
+- **Processors/Delegate Actions**: 32.7% (73/223 lines) 🔶 **MEDIUM** - Coverage improved
+- **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage
 
 ### Medium Priority Modules (Partial Coverage):
-- **Error Handling**: 34.6% (9/26 lines) 🔶 **MEDIUM** - Core error handling
+- **Error Handling**: 30.3% (10/33 lines) 🔶 **MEDIUM** - Core error handling
 - **Utils/Serialization**: 44.1% (15/34 lines) 🔶 **MEDIUM** - Data serialization
-- **Processors/Security**: 47.1% (8/17 lines) 🔶 **MEDIUM** - Security features
+- **Processors/Security**: 50.0% (9/18 lines) 🔶 **MEDIUM** - Security features
 
 ### Well-Covered Modules (Good Coverage):
 - **Utils/Rent**: 62.5% (15/24 lines) ✅ **GOOD** - Rent calculations
-- **Processors/Liquidity**: 62.8% (187/298 lines) ✅ **GOOD** - Core liquidity management
-- **Processors/Fees**: 65.9% (27/41 lines) ✅ **GOOD** - Fee management
-- **Types/Pool State**: 67.7% (132/195 lines) ✅ **GOOD** - Pool state management
-- **Types/Delegate Actions**: 68.8% (11/16 lines) ✅ **GOOD** - Delegate action types
-- **Processors/Pool Creation**: 68.2% (394/578 lines) ✅ **GOOD** - Pool creation logic
-- **Main Lib**: 73.8% (48/65 lines) ✅ **EXCELLENT** - Core library functions
+- **Processors/Liquidity**: 66.6% (235/353 lines) ✅ **GOOD** - Core liquidity management
+- **Processors/Fees**: 66.7% (28/42 lines) ✅ **GOOD** - Fee management
+- **Types/Pool State**: 79.2% (133/168 lines) ✅ **EXCELLENT** - Pool state management
+- **Types/Delegate Actions**: 81.3% (13/16 lines) ✅ **EXCELLENT** - Delegate action types
+- **Processors/Pool Creation**: 69.6% (403/579 lines) ✅ **GOOD** - Pool creation logic
+- **Main Lib**: 82.6% (57/69 lines) ✅ **EXCELLENT** - Core library functions
 - **Types/Errors**: 83.3% (40/48 lines) ✅ **EXCELLENT** - Error type definitions
 
 ### Coverage Goals by Priority:
@@ -1315,13 +1315,13 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-19 (Coverage analysis update - Current: 47.74%)*  
+*Last Updated: 2025-06-21 (Coverage analysis update - Current: 47.37%)*  
 *Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout*  
-*Next Review: After completing critical 0% coverage modules*
+*Next Review: After completing critical low coverage modules*
 
 ## Key Insights from Coverage Analysis:
-- **Significant Progress**: Coverage improved from 29.76% to 47.74% 
-- **68 Tests Passing**: All existing tests are working correctly
-- **Critical Gaps Identified**: 3 modules with 0-8.9% coverage need immediate attention
-- **Reduced Timeline**: With better baseline, estimated 2-3 weeks vs previous 3-4 weeks
-- **Clear Priorities**: Focus on Client SDK, Utilities, and Validation modules first 
+- **Significant Progress**: Coverage now at 47.37% (1,188/2,508 lines covered)
+- **101 Tests Passing**: All existing tests are working correctly
+- **Critical Gaps Identified**: Processors/Swap module has very low coverage (5.1%)
+- **Improved Module Coverage**: Client SDK improved to 47.2%, Validation to 30.0%
+- **Clear Priorities**: Focus on Processors/Swap as highest priority, then Utilities 
