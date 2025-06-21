@@ -179,6 +179,13 @@ pub enum PoolInstruction {
         // No parameters needed - reads from pool state account
     },
     
+    /// Get current pool pause status (publicly readable)
+    /// Returns swap pause status, deposit/withdrawal status, and pause details
+    /// Distinguishes between system-wide pause and pool-specific swap pause
+    GetPoolPauseStatus {
+        // No parameters needed - reads from pool state account
+    },
+    
     /// Returns detailed liquidity information for both tokens
     /// Useful for calculating exchange rates and available liquidity
     GetLiquidityInfo {

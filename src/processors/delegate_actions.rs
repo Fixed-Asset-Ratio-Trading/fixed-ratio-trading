@@ -66,7 +66,8 @@ pub fn process_request_delegate_action(
     let wait_time = match action_type {
         DelegateActionType::FeeChange => time_limits.fee_change_wait_time,
         DelegateActionType::Withdrawal => time_limits.withdraw_wait_time,
-        DelegateActionType::PoolPause => time_limits.pause_wait_time,
+        DelegateActionType::PausePoolSwaps => time_limits.pause_wait_time,
+        DelegateActionType::UnpausePoolSwaps => time_limits.pause_wait_time,
     };
 
     // Validate action parameters
@@ -222,14 +223,26 @@ pub fn process_execute_delegate_action(
                 msg!("Fee withdrawal successful: {} tokens of mint {}", amount, token_mint);
             }
         },
-        DelegateActionType::PoolPause => {
-            if let DelegateActionParams::PoolPause { reason } = action.params {
-                // Set pause state
-                pool_state.is_paused = true;
-                // ❌ NOTE: This PoolPause logic will be removed in Phase 2 - keeping for now to avoid compilation errors
+        DelegateActionType::PausePoolSwaps => {
+            if let DelegateActionParams::PausePoolSwaps = action.params {
+                // Set pause state to new swaps_paused field
+                pool_state.swaps_paused = true;
+                pool_state.swaps_pause_requested_by = Some(action.delegate);
+                pool_state.swaps_pause_initiated_timestamp = clock.unix_timestamp;
                 
-                msg!("Pool paused indefinitely (no duration)");
-                msg!("Pause reason: {:?}", reason);
+                msg!("Pool swaps paused indefinitely (no auto-unpause)");
+                msg!("Paused by delegate: {}", action.delegate);
+            }
+        },
+        DelegateActionType::UnpausePoolSwaps => {
+            if let DelegateActionParams::UnpausePoolSwaps = action.params {
+                // Clear pause state
+                pool_state.swaps_paused = false;
+                pool_state.swaps_pause_requested_by = None;
+                pool_state.swaps_pause_initiated_timestamp = 0;
+                
+                msg!("Pool swaps unpaused");
+                msg!("Unpaused by delegate: {}", action.delegate);
             }
         },
     }
@@ -356,10 +369,15 @@ fn validate_action_params(
                 return Err(PoolError::InvalidActionParameters.into());
             }
         },
-        (DelegateActionType::PoolPause, DelegateActionParams::PoolPause { reason }) => {
+        (DelegateActionType::PausePoolSwaps, DelegateActionParams::PausePoolSwaps) => {
             // ❌ REMOVED: Duration validation (time-based pause system removal)
             // Basic validation that reason is provided (enum validation handles this)
-            msg!("Pool pause requested with reason: {:?}", reason);
+            msg!("Pool pause requested");
+        },
+        (DelegateActionType::UnpausePoolSwaps, DelegateActionParams::UnpausePoolSwaps) => {
+            // ❌ REMOVED: Duration validation (time-based pause system removal)
+            // Basic validation that reason is provided (enum validation handles this)
+            msg!("Pool unpause requested");
         },
         (action_type, params) => {
             msg!("Mismatched action type and parameters: {:?} {:?}", action_type, params);

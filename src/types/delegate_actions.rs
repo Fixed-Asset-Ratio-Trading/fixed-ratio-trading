@@ -8,8 +8,10 @@ pub enum DelegateActionType {
     FeeChange,
     /// Withdraw accumulated fees
     Withdrawal,
-    /// Pause pool operations
-    PoolPause,
+    /// Pause swap operations for this specific pool (deposits/withdrawals continue)
+    PausePoolSwaps,
+    /// Unpause swap operations for this specific pool  
+    UnpausePoolSwaps,
 }
 
 impl Default for DelegateActionType {
@@ -33,11 +35,11 @@ pub enum DelegateActionParams {
         /// Amount to withdraw
         amount: u64,
     },
-    /// Pool pause parameters
-    PoolPause {
-        /// Reason for pausing
-        reason: PauseReason,
-    },
+    /// Simple pause request - no reason required at this contract level
+    /// Delegate contracts handle their own governance and reason tracking
+    PausePoolSwaps,
+    /// Simple unpause request - no parameters needed
+    UnpausePoolSwaps,
 }
 
 impl Default for DelegateActionParams {
@@ -46,22 +48,6 @@ impl Default for DelegateActionParams {
             new_fee_basis_points: 0,
         }
     }
-}
-
-/// Reasons for pausing the pool
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Default)]
-pub enum PauseReason {
-    #[default]
-    /// Dispute over the fixed ratio accuracy or fairness
-    RatioDispute,
-    /// Security concern requiring investigation
-    SecurityConcern,
-    /// Governance action or proposal execution
-    GovernanceAction,
-    /// Manual intervention by authorized delegate
-    ManualIntervention,
-    /// Emergency response to detected issues
-    Emergency,
 }
 
 /// Represents a pending delegate action
@@ -88,7 +74,7 @@ pub struct DelegateTimeLimits {
     pub fee_change_wait_time: u64,
     /// Wait time for withdrawals (in seconds)
     pub withdraw_wait_time: u64,
-    /// Wait time for pool pausing (in seconds)
+    /// Wait time for pool pausing/unpausing (in seconds)
     pub pause_wait_time: u64,
 }
 

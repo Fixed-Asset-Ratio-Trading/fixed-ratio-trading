@@ -128,13 +128,14 @@ pub fn get_token_vault_pdas(
 // TEST-SPECIFIC VIEW/GETTER INSTRUCTIONS
 // ================================================================================================
 
-/// **VIEW INSTRUCTION**: Returns comprehensive pool state information.
+/// **VIEW INSTRUCTION**: Returns comprehensive pool information
 /// 
-/// This function provides easy access to all pool state data in a structured format.
-/// Ideal for testing, debugging, frontend integration, and transparency.
+/// # Purpose
+/// Logs structured pool information for debugging, testing, and frontend integration.
+/// Outputs all critical pool state data in a human-readable format.
 /// 
-/// # Arguments
-/// * `accounts` - Must contain pool state account as first account
+/// # Account Layout (Read-Only)
+/// 0. Pool State PDA (read-only)
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive pool information
@@ -160,8 +161,43 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
     msg!("Is Initialized: {}", pool_state.is_initialized);
     msg!("Is Paused: {}", pool_state.is_paused);
+    msg!("Swaps Paused: {}", pool_state.swaps_paused);
     msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
     msg!("===============================");
+    
+    Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns current pool pause status - publicly accessible
+/// 
+/// # Purpose
+/// Provides public visibility into pool operation status, distinguishing between
+/// system-wide pause and pool-specific swap pause for user transparency.
+/// 
+/// # Account Layout (Read-Only)
+/// 0. Pool State PDA (read-only)
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs comprehensive pause status information
+pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
+    let pool_state_account = &accounts[0];
+    let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    // Log comprehensive pause status for public visibility
+    msg!("=== POOL STATUS ===");
+    msg!("Swaps: {}", if pool_state_data.swaps_paused { "PAUSED" } else { "ENABLED" });
+    msg!("Deposits: ENABLED");  // Always enabled (only system pause affects)
+    msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
+    
+    if pool_state_data.swaps_paused {
+        msg!("=== PAUSE DETAILS ===");
+        msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+        msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
+        msg!("Governance: Managed by delegate contract");
+        msg!("Note: No auto-unpause - requires manual unpause action");
+    }
+    
+    msg!("==================");
     
     Ok(())
 }
@@ -364,7 +400,8 @@ pub fn get_action_wait_time(pool_state: &PoolState, delegate: &Pubkey, action_ty
         match action_type {
             DelegateActionType::FeeChange => Some(time_limits.fee_change_wait_time),
             DelegateActionType::Withdrawal => Some(time_limits.withdraw_wait_time),
-            DelegateActionType::PoolPause => Some(time_limits.pause_wait_time),
+            DelegateActionType::PausePoolSwaps => Some(time_limits.pause_wait_time),
+            DelegateActionType::UnpausePoolSwaps => Some(time_limits.pause_wait_time),
         }
     } else {
         None

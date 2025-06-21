@@ -137,6 +137,7 @@ use crate::processors::{
         get_pool_state_pda,
         get_token_vault_pdas,
         get_pool_info,
+        get_pool_pause_status,
         get_liquidity_info,
         get_delegate_info,
         get_fee_info,
@@ -245,6 +246,8 @@ pub fn process_instruction(
         } => get_token_vault_pdas(program_id, pool_state_pda),
 
         PoolInstruction::GetPoolInfo {} => get_pool_info(accounts),
+
+        PoolInstruction::GetPoolPauseStatus {} => get_pool_pause_status(accounts),
 
         PoolInstruction::GetLiquidityInfo {} => get_liquidity_info(accounts),
 

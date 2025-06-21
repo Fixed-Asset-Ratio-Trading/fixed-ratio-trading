@@ -337,6 +337,10 @@ pub struct PoolState {
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
     pub is_paused: bool,
+    // Pool-specific swap pause controls (separate from system pause)
+    pub swaps_paused: bool,
+    pub swaps_pause_requested_by: Option<Pubkey>,
+    pub swaps_pause_initiated_timestamp: i64,
     pub delegate_management: DelegateManagement,
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
@@ -367,6 +371,9 @@ impl Default for PoolState {
             is_initialized: false,
             rent_requirements: RentRequirements::default(),
             is_paused: false,
+            swaps_paused: false,
+            swaps_pause_requested_by: None,
+            swaps_pause_initiated_timestamp: 0,
             delegate_management: DelegateManagement::default(),
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
@@ -398,6 +405,11 @@ impl PoolState {
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // is_paused
+        // New swap-specific pause fields
+        1 +  // swaps_paused
+        33 + // swaps_pause_requested_by (Option<Pubkey> = 1 + 32)
+        8 +  // swaps_pause_initiated_timestamp
+        
         DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
