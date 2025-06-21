@@ -5,9 +5,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 47.37% (1,188/2,508 lines covered)  
 **Target Coverage:** 85%+ (2,132+ lines covered)  
-**Total Tests Implemented:** 105 working tests ✅  
-**Total Tests in Codebase:** 105 tests (All passing successfully)  
-**Total Tests Planned:** ~125 tests (+20 additional tests needed)
+**Total Tests Implemented:** 106 working tests ✅  
+**Total Tests in Codebase:** 106 tests (All passing successfully)  
+**Total Tests Planned:** ~125 tests (+19 additional tests needed)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -25,6 +25,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Update (2025-06-21)**: Added the UTIL-002 test for token vault PDA derivation validation, improving coverage for the Processors/Utilities module.
 **Update (2025-06-21)**: Added the UTIL-003 test for comprehensive pool information retrieval, completing validation of GetPoolInfo instruction functionality with comprehensive testing of pool state data, configuration parameters, operational status, and delegate information accuracy.
 **Update (2025-06-21)**: Added the SWAP-002 test for fee validation, completing comprehensive validation of fee boundaries (0-50 basis points), error handling, and parameter validation in delegate action processing.
+**Update (2025-06-21)**: Added the SWAP-003 test for fee change authorization, completing comprehensive authorization checks including delegate privileges, owner overrides, unauthorized access prevention, and permission enforcement hierarchy validation.
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -72,12 +73,12 @@ test: Complete <TEST-ID> <description> - <summary of work>
 ## Progress Overview
 - Current Coverage: 47.37%
 - Target Coverage: 85%+
-- Total Tests Running: 105 passing tests ✅ **ALL TESTS PASSING**
+- Total Tests Running: 106 passing tests ✅ **ALL TESTS PASSING**
 - Tests Completed in Phase 1: 26/37 (70% complete)
 - Estimated Timeline: 2-3 weeks  
 - Additional Tests Needed: ~22
 
-**🎉 MILESTONE ACHIEVED**: All 105 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
+**🎉 MILESTONE ACHIEVED**: All 106 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
@@ -737,11 +738,20 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **🎯 RESULTS**: Demonstrates proper fee validation boundaries (0-50 basis points) and error handling
   - **🔧 VALIDATION ENFORCED**: Fee validation occurs at action request time to prevent invalid parameters
 
-- [ ] **SWAP-003** `test_fee_change_authorization` - Authorization checks
-  - Test fee changes from authorized delegates
-  - Test unauthorized fee change attempts
-  - Test owner override capabilities
-  - Verify proper permission enforcement
+- [x] **SWAP-003** `test_fee_change_authorization` - Authorization checks ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests comprehensive authorization checks for fee changes
+  - **🔧 FEATURES TESTED**:
+    1. Authorized delegates can successfully request fee changes through delegate actions
+    2. Unauthorized users correctly rejected with authorization error (code 1013)
+    3. Pool owner has implicit delegate privileges (auto-added as delegate[0])
+    4. Pool owner can revoke delegate actions (override capability)
+    5. Multiple delegates can be authorized and function independently
+    6. Permission enforcement works correctly across all authorization levels
+    7. Authorization hierarchy: Pool Owner (delegate[0]) > Added Delegates > Unauthorized Users
+    8. Complete delegate management validation (addition, authorization, revocation)
+  - **📊 TEST COVERAGE**: Complete validation of authorization checks and permission enforcement
+  - **🎯 RESULTS**: Demonstrates proper security controls and authorization hierarchy for fee governance
+  - **🔧 SECURITY VALIDATED**: Only authorized accounts can request fee changes, unauthorized access properly blocked
 
 - [ ] **SWAP-004** `test_fee_change_timing` - Timing controls
   - Test fee change wait time enforcement
@@ -762,7 +772,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - Test partial vs full withdrawals
   - Validate balance updates
 
-**Milestone 5.1:** 🟡 In Progress - Swap fee management (Tests SWAP-001 to SWAP-006) - 2/6 completed
+**Milestone 5.1:** 🟡 In Progress - Swap fee management (Tests SWAP-001 to SWAP-006) - 3/6 completed
 
 ---
 

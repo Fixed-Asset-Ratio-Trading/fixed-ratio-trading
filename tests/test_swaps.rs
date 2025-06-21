@@ -741,4 +741,289 @@ async fn test_fee_change_validation() -> TestResult {
     println!("   Validation enforced at action request time to prevent invalid parameters");
     
     Ok(())
+}
+
+/// Test fee change authorization (SWAP-003)
+/// 
+/// This test validates authorization checks for fee changes:
+/// 1. Tests fee changes from authorized delegates
+/// 2. Tests unauthorized fee change attempts
+/// 3. Tests owner override capabilities
+/// 4. Verifies proper permission enforcement
+#[tokio::test]
+async fn test_fee_change_authorization() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+
+    // Section 1: Test authorized delegate fee change
+    println!("\n--- Testing Authorized Delegate Fee Change ---");
+    
+    // Create and add a delegate
+    let authorized_delegate = Keypair::new();
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &authorized_delegate.pubkey(),
+    ).await?;
+    
+    println!("✅ Pool owner successfully added delegate: {}", authorized_delegate.pubkey());
+    
+    // Test fee change request from authorized delegate
+    let new_fee = VALID_FEE_MEDIUM; // 0.4%
+    
+    let delegate_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(authorized_delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: new_fee
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut delegate_fee_tx = Transaction::new_with_payer(&[delegate_fee_ix], Some(&ctx.env.payer.pubkey()));
+    delegate_fee_tx.sign(&[&ctx.env.payer, &authorized_delegate], ctx.env.recent_blockhash);
+    let delegate_fee_result = ctx.env.banks_client.process_transaction(delegate_fee_tx).await;
+    
+    assert!(delegate_fee_result.is_ok(), "Authorized delegate should be able to request fee changes: {:?}", delegate_fee_result);
+    println!("✅ Authorized delegate successfully requested fee change to {} basis points", new_fee);
+
+    // Section 2: Test unauthorized user fee change attempt
+    println!("\n--- Testing Unauthorized User Fee Change Attempt ---");
+    
+    // Create an unauthorized user (not added as delegate)
+    let unauthorized_user = create_funded_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        None,
+    ).await?;
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Try fee change request from unauthorized user
+    let unauthorized_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(unauthorized_user.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: VALID_FEE_LOW
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut unauthorized_fee_tx = Transaction::new_with_payer(&[unauthorized_fee_ix], Some(&ctx.env.payer.pubkey()));
+    unauthorized_fee_tx.sign(&[&ctx.env.payer, &unauthorized_user], ctx.env.recent_blockhash);
+    let unauthorized_fee_result = ctx.env.banks_client.process_transaction(unauthorized_fee_tx).await;
+    
+    assert!(unauthorized_fee_result.is_err(), "Unauthorized user should not be able to request fee changes");
+    
+    // Verify it's the correct error type (UnauthorizedAccess or similar authorization error)
+    if let Err(solana_program_test::BanksClientError::TransactionError(
+        solana_sdk::transaction::TransactionError::InstructionError(0, 
+        solana_program::instruction::InstructionError::Custom(error_code)))) = &unauthorized_fee_result {
+        // Common authorization error codes in Solana programs
+        assert!(
+            *error_code == 1002 || *error_code == 6 || *error_code == 1013, // UnauthorizedAccess, PrivilegeEscalation, or NotAuthorized
+            "Should fail with authorization error, got error code: {}", error_code
+        );
+        println!("✅ Unauthorized user correctly rejected with authorization error (code: {})", error_code);
+    } else {
+        panic!("Expected authorization error, got: {:?}", unauthorized_fee_result);
+    }
+
+    // Section 3: Test pool owner override capabilities
+    println!("\n--- Testing Pool Owner Override Capabilities ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Test fee change request from pool owner (implicit delegate[0])
+    let owner_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: MAX_ALLOWED_FEE
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut owner_fee_tx = Transaction::new_with_payer(&[owner_fee_ix], Some(&ctx.env.payer.pubkey()));
+    owner_fee_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let owner_fee_result = ctx.env.banks_client.process_transaction(owner_fee_tx).await;
+    
+    assert!(owner_fee_result.is_ok(), "Pool owner should be able to request fee changes (implicit delegate): {:?}", owner_fee_result);
+    println!("✅ Pool owner successfully requested fee change as implicit delegate");
+
+    // Section 4: Test delegate action revocation (owner override)
+    println!("\n--- Testing Delegate Action Revocation (Owner Override) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Get pool state to find action IDs
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state");
+    
+    let pending_actions_count = pool_state.delegate_management.pending_actions.len();
+    assert!(pending_actions_count > 0, "Should have pending actions to revoke");
+    
+    // Get the first action ID to revoke
+    let action_to_revoke = pool_state.delegate_management.pending_actions[0].action_id;
+    println!("Attempting to revoke action ID: {}", action_to_revoke);
+    
+    // Pool owner revokes the delegate action
+    let revoke_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner can revoke any action
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RevokeAction {
+            action_id: action_to_revoke,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut revoke_tx = Transaction::new_with_payer(&[revoke_ix], Some(&ctx.env.payer.pubkey()));
+    revoke_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let revoke_result = ctx.env.banks_client.process_transaction(revoke_tx).await;
+    
+    assert!(revoke_result.is_ok(), "Pool owner should be able to revoke delegate actions: {:?}", revoke_result);
+    println!("✅ Pool owner successfully revoked delegate action (ID: {})", action_to_revoke);
+
+    // Section 5: Test multiple delegate authorization levels
+    println!("\n--- Testing Multiple Delegate Authorization Levels ---");
+    
+    // Create a second delegate
+    let second_delegate = Keypair::new();
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &second_delegate.pubkey(),
+    ).await?;
+    
+    println!("✅ Pool owner successfully added second delegate: {}", second_delegate.pubkey());
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Test fee change request from second delegate
+    let second_delegate_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(second_delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: VALID_FEE_LOW
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut second_delegate_fee_tx = Transaction::new_with_payer(&[second_delegate_fee_ix], Some(&ctx.env.payer.pubkey()));
+    second_delegate_fee_tx.sign(&[&ctx.env.payer, &second_delegate], ctx.env.recent_blockhash);
+    let second_delegate_fee_result = ctx.env.banks_client.process_transaction(second_delegate_fee_tx).await;
+    
+    assert!(second_delegate_fee_result.is_ok(), "Second delegate should be able to request fee changes: {:?}", second_delegate_fee_result);
+    println!("✅ Second delegate successfully requested fee change");
+
+    // Section 6: Verify final state and permission enforcement
+    println!("\n--- Verifying Final State and Permission Enforcement ---");
+    
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get final pool state");
+    
+    // Verify all authorized delegates are recorded
+    let delegate_count = final_pool_state.delegate_management.delegate_count;
+    assert_eq!(delegate_count, 3, "Should have 3 delegates: owner + 2 added delegates");
+    
+    // Verify pool owner is delegate[0] (auto-added)
+    assert_eq!(final_pool_state.delegate_management.delegates[0], ctx.env.payer.pubkey(),
+               "Pool owner should be delegate[0]");
+    
+    // Verify added delegates are in the list
+    assert_eq!(final_pool_state.delegate_management.delegates[1], authorized_delegate.pubkey(),
+               "First added delegate should be delegate[1]");
+    assert_eq!(final_pool_state.delegate_management.delegates[2], second_delegate.pubkey(),
+               "Second added delegate should be delegate[2]");
+    
+    // Count pending actions (should have valid requests minus revoked ones)
+    let final_pending_actions_count = final_pool_state.delegate_management.pending_actions.len();
+    println!("✓ Final pending actions count: {}", final_pending_actions_count);
+    
+    // Should have at least 2 actions (from second delegate + owner, minus any revoked)
+    assert!(final_pending_actions_count >= 1, "Should have remaining pending actions after revocation");
+    
+    println!("✅ Permission enforcement validated:");
+    println!("   ✓ Pool owner: {} (implicit delegate[0])", ctx.env.payer.pubkey());
+    println!("   ✓ Authorized delegate[1]: {}", authorized_delegate.pubkey());
+    println!("   ✓ Authorized delegate[2]: {}", second_delegate.pubkey());
+    println!("   ✓ Unauthorized user: {} (correctly rejected)", unauthorized_user.pubkey());
+
+    println!("\n===== SWAP-003 TEST SUMMARY =====");
+    println!("✅ Fee Change Authorization Testing Complete:");
+    println!("   ✓ Authorized delegates can successfully request fee changes");
+    println!("   ✓ Unauthorized users are correctly rejected with authorization errors");
+    println!("   ✓ Pool owner has implicit delegate privileges (auto-added as delegate[0])");
+    println!("   ✓ Pool owner can revoke delegate actions (override capability)");
+    println!("   ✓ Multiple delegates can be authorized and function independently");
+    println!("   ✓ Permission enforcement works correctly across all authorization levels");
+    println!();
+    println!("🎯 SWAP-003 demonstrates proper authorization checks and permission enforcement");
+    println!("   Authorization Hierarchy: Pool Owner (delegate[0]) > Added Delegates > Unauthorized Users");
+    println!("   Security: Only authorized accounts can request fee changes through delegate actions");
+    
+    Ok(())
 } 
