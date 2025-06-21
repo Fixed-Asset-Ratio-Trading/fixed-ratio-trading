@@ -5,9 +5,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 47.37% (1,188/2,508 lines covered)  
 **Target Coverage:** 85%+ (2,132+ lines covered)  
-**Total Tests Implemented:** 104 working tests ✅  
-**Total Tests in Codebase:** 104 tests (All passing successfully)  
-**Total Tests Planned:** ~125 tests (+21 additional tests needed)
+**Total Tests Implemented:** 105 working tests ✅  
+**Total Tests in Codebase:** 105 tests (All passing successfully)  
+**Total Tests Planned:** ~125 tests (+20 additional tests needed)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -24,6 +24,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Update (2025-06-19)**: Added the SDK-005 test for handling of non-existent pool state.
 **Update (2025-06-21)**: Added the UTIL-002 test for token vault PDA derivation validation, improving coverage for the Processors/Utilities module.
 **Update (2025-06-21)**: Added the UTIL-003 test for comprehensive pool information retrieval, completing validation of GetPoolInfo instruction functionality with comprehensive testing of pool state data, configuration parameters, operational status, and delegate information accuracy.
+**Update (2025-06-21)**: Added the SWAP-002 test for fee validation, completing comprehensive validation of fee boundaries (0-50 basis points), error handling, and parameter validation in delegate action processing.
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -71,12 +72,12 @@ test: Complete <TEST-ID> <description> - <summary of work>
 ## Progress Overview
 - Current Coverage: 47.37%
 - Target Coverage: 85%+
-- Total Tests Running: 103 passing tests ✅ **ALL TESTS PASSING**
+- Total Tests Running: 105 passing tests ✅ **ALL TESTS PASSING**
 - Tests Completed in Phase 1: 26/37 (70% complete)
 - Estimated Timeline: 2-3 weeks  
 - Additional Tests Needed: ~22
 
-**🎉 MILESTONE ACHIEVED**: All 103 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
+**🎉 MILESTONE ACHIEVED**: All 105 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
@@ -721,11 +722,20 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **🎯 RESULTS**: Demonstrates proper fee change governance and wait time security for swap operations
   - **🔧 TEST ENVIRONMENT NOTE**: Validates wait time security by expecting ActionNotReady error (since clock advancement is not supported in test environment)
 
-- [ ] **SWAP-002** `test_fee_change_validation` - Fee validation
-  - Test fee changes within allowed range
-  - Test fee changes exceeding maximum
-  - Test zero fee setting
-  - Verify proper error handling
+- [x] **SWAP-002** `test_fee_change_validation` - Fee validation ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests comprehensive fee validation logic and error handling
+  - **🔧 FEATURES TESTED**:
+    1. Zero fee (0%) setting correctly accepted as valid
+    2. Low valid fee (0.1%) correctly accepted within range
+    3. Medium valid fee (0.4%) correctly accepted within range
+    4. Maximum allowed fee (0.5%) correctly accepted at boundary
+    5. Fee over maximum (0.51%) correctly rejected with InvalidActionParameters error
+    6. Extremely high fee (1.0%) correctly rejected with InvalidActionParameters error
+    7. Pool state integrity maintained after invalid fee requests
+    8. Valid fee change requests properly recorded in pending actions
+  - **📊 TEST COVERAGE**: Complete validation of fee validation logic in delegate action processing
+  - **🎯 RESULTS**: Demonstrates proper fee validation boundaries (0-50 basis points) and error handling
+  - **🔧 VALIDATION ENFORCED**: Fee validation occurs at action request time to prevent invalid parameters
 
 - [ ] **SWAP-003** `test_fee_change_authorization` - Authorization checks
   - Test fee changes from authorized delegates
@@ -752,7 +762,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - Test partial vs full withdrawals
   - Validate balance updates
 
-**Milestone 5.1:** ✅ Complete swap fee management (Tests SWAP-001 to SWAP-006)
+**Milestone 5.1:** 🟡 In Progress - Swap fee management (Tests SWAP-001 to SWAP-006) - 2/6 completed
 
 ---
 

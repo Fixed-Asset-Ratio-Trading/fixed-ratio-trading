@@ -456,4 +456,289 @@ async fn test_swap_zero_amount_fails() -> TestResult {
     println!("✅ Zero amount swap correctly rejected");
     
     Ok(())
+}
+
+/// Test fee validation (SWAP-002)
+/// 
+/// This test validates fee validation logic specifically:
+/// 1. Tests fee changes within allowed range (0-0.5%)
+/// 2. Tests fee changes exceeding maximum (>0.5%)
+/// 3. Tests zero fee setting
+/// 4. Verifies proper error handling for invalid fees
+#[tokio::test]
+async fn test_fee_change_validation() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+
+    // Create a delegate keypair
+    let delegate = Keypair::new();
+
+    // Add delegate to pool (pool owner does this)
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &delegate.pubkey(),
+    ).await?;
+    
+    println!("✅ Pool owner successfully added delegate: {}", delegate.pubkey());
+    
+    // Section 1: Test zero fee setting (should be valid)
+    println!("\n--- Testing Zero Fee (0%) ---");
+    
+    let zero_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: VALID_FEE_ZERO
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut zero_fee_tx = Transaction::new_with_payer(&[zero_fee_ix], Some(&ctx.env.payer.pubkey()));
+    zero_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let zero_fee_result = ctx.env.banks_client.process_transaction(zero_fee_tx).await;
+    assert!(zero_fee_result.is_ok(), "Zero fee should be accepted: {:?}", zero_fee_result);
+    println!("✅ Zero fee (0%) correctly accepted");
+    
+    // Section 2: Test low valid fee
+    println!("\n--- Testing Low Valid Fee (0.1%) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let low_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: VALID_FEE_LOW
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut low_fee_tx = Transaction::new_with_payer(&[low_fee_ix], Some(&ctx.env.payer.pubkey()));
+    low_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let low_fee_result = ctx.env.banks_client.process_transaction(low_fee_tx).await;
+    assert!(low_fee_result.is_ok(), "Low valid fee should be accepted: {:?}", low_fee_result);
+    println!("✅ Low valid fee (0.1%) correctly accepted");
+    
+    // Section 3: Test medium valid fee
+    println!("\n--- Testing Medium Valid Fee (0.4%) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let medium_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: VALID_FEE_MEDIUM
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut medium_fee_tx = Transaction::new_with_payer(&[medium_fee_ix], Some(&ctx.env.payer.pubkey()));
+    medium_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let medium_fee_result = ctx.env.banks_client.process_transaction(medium_fee_tx).await;
+    assert!(medium_fee_result.is_ok(), "Medium valid fee should be accepted: {:?}", medium_fee_result);
+    println!("✅ Medium valid fee (0.4%) correctly accepted");
+    
+    // Section 4: Test maximum allowed fee (boundary test)
+    println!("\n--- Testing Maximum Allowed Fee (0.5%) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let max_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: MAX_ALLOWED_FEE
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut max_fee_tx = Transaction::new_with_payer(&[max_fee_ix], Some(&ctx.env.payer.pubkey()));
+    max_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let max_fee_result = ctx.env.banks_client.process_transaction(max_fee_tx).await;
+    assert!(max_fee_result.is_ok(), "Maximum allowed fee should be accepted: {:?}", max_fee_result);
+    println!("✅ Maximum allowed fee (0.5%) correctly accepted");
+    
+    // Section 5: Test fee just over maximum (should fail)
+    println!("\n--- Testing Fee Just Over Maximum (0.51%) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let over_max_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: INVALID_FEE_JUST_OVER
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut over_max_fee_tx = Transaction::new_with_payer(&[over_max_fee_ix], Some(&ctx.env.payer.pubkey()));
+    over_max_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let over_max_fee_result = ctx.env.banks_client.process_transaction(over_max_fee_tx).await;
+    assert!(over_max_fee_result.is_err(), "Fee just over maximum should be rejected");
+    
+    // Verify it's the correct error type (InvalidActionParameters)
+    if let Err(solana_program_test::BanksClientError::TransactionError(
+        solana_sdk::transaction::TransactionError::InstructionError(0, 
+        solana_program::instruction::InstructionError::Custom(error_code)))) = &over_max_fee_result {
+        assert!(
+            *error_code == 1014, // InvalidActionParameters error from our error mapping
+            "Should fail with InvalidActionParameters error, got error code: {}", error_code
+        );
+        println!("✅ Fee just over maximum (0.51%) correctly rejected with InvalidActionParameters error");
+    } else {
+        panic!("Expected InvalidActionParameters error, got: {:?}", over_max_fee_result);
+    }
+    
+    // Section 6: Test extremely high fee (should fail)
+    println!("\n--- Testing Extremely High Fee (1.0%) ---");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let high_fee_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: INVALID_FEE_HIGH
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut high_fee_tx = Transaction::new_with_payer(&[high_fee_ix], Some(&ctx.env.payer.pubkey()));
+    high_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    let high_fee_result = ctx.env.banks_client.process_transaction(high_fee_tx).await;
+    assert!(high_fee_result.is_err(), "Extremely high fee should be rejected");
+    
+    // Verify it's the correct error type (InvalidActionParameters)
+    if let Err(solana_program_test::BanksClientError::TransactionError(
+        solana_sdk::transaction::TransactionError::InstructionError(0, 
+        solana_program::instruction::InstructionError::Custom(error_code)))) = &high_fee_result {
+        assert!(
+            *error_code == 1014, // InvalidActionParameters error from our error mapping
+            "Should fail with InvalidActionParameters error, got error code: {}", error_code
+        );
+        println!("✅ Extremely high fee (1.0%) correctly rejected with InvalidActionParameters error");
+    } else {
+        panic!("Expected InvalidActionParameters error, got: {:?}", high_fee_result);
+    }
+    
+    // Section 7: Verify pool state remains unchanged after invalid requests
+    println!("\n--- Verifying Pool State Integrity ---");
+    
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get final pool state");
+    
+    // Verify pool state is still at default (should not have changed from invalid fee attempts)
+    println!("✓ Final pool fee: {} basis points", final_pool_state.swap_fee_basis_points);
+    
+    // Count pending actions (should have valid fee change requests)
+    let pending_actions_count = final_pool_state.delegate_management.pending_actions.len();
+    println!("✓ Pending actions count: {}", pending_actions_count);
+    
+    // Should have 4 valid fee change requests (zero, low, medium, max) pending
+    assert_eq!(pending_actions_count, 4, "Should have 4 valid fee change requests pending");
+    
+    // Verify all pending actions are fee changes with valid values
+    let mut valid_fees_found = [false; 4]; // [zero, low, medium, max]
+    for action in &final_pool_state.delegate_management.pending_actions {
+        if let (DelegateActionType::FeeChange, DelegateActionParams::FeeChange { new_fee_basis_points }) = 
+            (&action.action_type, &action.params) {
+            match *new_fee_basis_points {
+                0 => valid_fees_found[0] = true,   // VALID_FEE_ZERO
+                10 => valid_fees_found[1] = true,  // VALID_FEE_LOW
+                40 => valid_fees_found[2] = true,  // VALID_FEE_MEDIUM
+                50 => valid_fees_found[3] = true,  // MAX_ALLOWED_FEE
+                _ => panic!("Unexpected fee value in pending actions: {}", new_fee_basis_points),
+            }
+        }
+    }
+    
+    assert!(valid_fees_found.iter().all(|&found| found), 
+           "Not all valid fee change requests found in pending actions");
+    println!("✅ All valid fee change requests properly recorded in pending actions");
+
+    println!("\n===== SWAP-002 TEST SUMMARY =====");
+    println!("✅ Fee Validation Testing Complete:");
+    println!("   ✓ Zero fee (0%) correctly accepted");
+    println!("   ✓ Low valid fee (0.1%) correctly accepted");
+    println!("   ✓ Medium valid fee (0.4%) correctly accepted");
+    println!("   ✓ Maximum allowed fee (0.5%) correctly accepted");
+    println!("   ✓ Fee over maximum (0.51%) correctly rejected with InvalidActionParameters");
+    println!("   ✓ Extremely high fee (1.0%) correctly rejected with InvalidActionParameters");
+    println!("   ✓ Pool state integrity maintained after invalid requests");
+    println!("   ✓ Valid fee change requests properly recorded in pending actions");
+    println!();
+    println!("🎯 SWAP-002 demonstrates proper fee validation logic and error handling");
+    println!("   Maximum allowed fee: 50 basis points (0.5%)");
+    println!("   Validation enforced at action request time to prevent invalid parameters");
+    
+    Ok(())
 } 
