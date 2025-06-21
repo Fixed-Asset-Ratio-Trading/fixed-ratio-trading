@@ -64,6 +64,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
+    system_instruction,
 };
 use spl_token::{
     instruction as token_instruction,
@@ -272,7 +273,7 @@ pub fn process_deposit(
     let lp_token_b_mint_account = next_account_info(account_info_iter)?;
     let user_destination_lp_token_account = next_account_info(account_info_iter)?;
     
-    let _system_program_account = next_account_info(account_info_iter)?;
+    let system_program_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let _rent = &Rent::from_account_info(rent_sysvar_account)?;
@@ -476,10 +477,16 @@ pub fn process_deposit(
         &[pool_state_pda_seeds],
     )?;
 
-    // TODO: Implement proper fee collection with separate fee account
-    // Temporarily disabled to avoid account data corruption
-    // Fee collection should be done to a separate account, not the pool state PDA
-    msg!("Note: Deposit fee collection temporarily disabled for testing");
+    // Transfer deposit fee to pool state PDA
+    if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("Insufficient SOL for deposit fee. User lamports: {}", user_signer.lamports());
+        return Err(ProgramError::InsufficientFunds);
+    }
+    invoke(
+        &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+    )?;
+    msg!("Deposit fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
 
     Ok(())
 }

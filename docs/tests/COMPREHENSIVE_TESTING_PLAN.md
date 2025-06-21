@@ -1325,3 +1325,51 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 - **Critical Gaps Identified**: Processors/Swap module has very low coverage (5.1%)
 - **Improved Module Coverage**: Client SDK improved to 47.2%, Validation to 30.0%
 - **Clear Priorities**: Focus on Processors/Swap as highest priority, then Utilities 
+
+## Testing Standards and Policies
+
+### Critical Policy: Never Hard-Code Disabled Features for Testing
+
+**STRICT POLICY**: ⛔ **NEVER DISABLE PRODUCTION FEATURES FOR TESTING**
+
+**🚫 PROHIBITED PRACTICES:**
+- Hard-coding disabled feature flags or TODO comments to bypass functionality
+- Commenting out fee collection, security checks, or validation logic 
+- Using "temporarily disabled for testing" approaches in production code
+- Disabling critical functionality to make tests pass
+
+**✅ REQUIRED PRACTICES:**
+- **Test with full functionality enabled**: All tests must work with production features active
+- **Proper test setup**: Provide adequate SOL, token accounts, and test data to handle fees
+- **Robust test design**: Tests should be designed to work with the complete feature set
+- **Feature-complete validation**: Verify all intended functionality works as designed
+
+**📝 EXAMPLE VIOLATIONS (CORRECTED):**
+```rust
+// ❌ WRONG - Hard-coded disabled features
+msg!("Note: Deposit fee collection temporarily disabled for testing");
+
+// ✅ CORRECT - Fully functional implementation  
+if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+    msg!("Insufficient SOL for deposit fee. User lamports: {}", user_signer.lamports());
+    return Err(ProgramError::InsufficientFunds);
+}
+invoke(
+    &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
+    &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+)?;
+```
+
+**🎯 RATIONALE:**
+- **Production Safety**: Ensures deployed code has the same behavior as tested code
+- **Feature Reliability**: Validates that all features work correctly in realistic conditions
+- **Security Assurance**: Prevents security features from being accidentally disabled
+- **Quality Standards**: Maintains high testing standards and code confidence
+
+**📋 ENFORCEMENT:**
+- All code reviews must verify no disabled features
+- Tests must demonstrate full functionality
+- Any disabled features require explicit architectural approval
+- CI/CD pipelines should reject disabled production features
+
+This policy prevents the dangerous practice of disabling features to make tests pass, ensuring our testing validates the actual production behavior.
