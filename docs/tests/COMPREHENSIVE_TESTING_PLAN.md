@@ -5,9 +5,9 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 ## Executive Summary
 **Current Coverage:** 47.37% (1,188/2,508 lines covered)  
 **Target Coverage:** 85%+ (2,132+ lines covered)  
-**Total Tests Implemented:** 113 working tests ✅
-**Total Tests in Codebase:** 113 tests (All passing successfully)
-**Total Tests Planned:** ~125 tests (+12 additional tests needed)
+**Total Tests Implemented:** 114 working tests ✅
+**Total Tests in Codebase:** 114 tests (All passing successfully)
+**Total Tests Planned:** ~125 tests (+11 additional tests needed)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -34,6 +34,8 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Update (2025-06-21)**: Added the SWAP-006 test for fee withdrawal through delegate actions, completing comprehensive fee withdrawal governance testing including request flow validation, authorization checks, amount validation, and integration with the delegate action system.
 
 **Update (2025-06-21)**: Completed DEL-003 `test_request_delegate_action_pool_pause` - comprehensive pool pause request testing with new simplified pause system. This test validates PausePoolSwaps action requests (no duration parameters), action recording with proper wait times, state integrity maintenance, UnpausePoolSwaps validation logic, manual control requirements, governance separation, and wait time security enforcement. Total test count increased to 112 tests, all passing.
+
+**Update (2025-06-21)**: Completed DEL-007 `test_unauthorized_action_request_fails` - comprehensive unauthorized action request prevention testing. This test validates that unauthorized users cannot request delegate actions (fee changes, withdrawals, pool pause), verifies proper error codes (1013) are returned, ensures no state changes occur from unauthorized attempts, confirms authorization hierarchy works correctly, and validates that authorized delegates continue to function properly. Total test count increased to 114 tests, all passing.
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -81,12 +83,12 @@ test: Complete <TEST-ID> <description> - <summary of work>
 ## Progress Overview
 - Current Coverage: 47.37%
 - Target Coverage: 85%+
-- Total Tests Running: 110 passing tests ✅ **ALL TESTS PASSING**
-- Tests Completed in Phase 1: 26/37 (70% complete)
+- Total Tests Running: 114 passing tests ✅ **ALL TESTS PASSING**
+- Tests Completed in Phase 1: 27/37 (73% complete)
 - Estimated Timeline: 2-3 weeks  
-- Additional Tests Needed: ~22
+- Additional Tests Needed: ~21
 
-**🎉 MILESTONE ACHIEVED**: All 113 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
+**🎉 MILESTONE ACHIEVED**: All 114 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
 ## Current Coverage Breakdown by Module
 *Based on latest `cargo tarpaulin` analysis*
@@ -689,11 +691,19 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **🎯 RESULTS**: Demonstrates robust time limit configuration with comprehensive validation
 
 #### Sub-category 4.3: Security & Validation
-- [ ] **DEL-007** `test_unauthorized_action_request_fails` - Authorization checks
-  - Test action requests from non-delegates
-  - Verify unauthorized requests are rejected
-  - Ensure proper error codes are returned
-  - Validate no state changes occur
+- [x] **DEL-007** `test_unauthorized_action_request_fails` - Authorization checks ✅ **COMPLETED**
+  - **✅ COMPLETED**: Successfully tests comprehensive unauthorized action request prevention
+  - **🔧 FEATURES TESTED**:
+    1. Fee change requests from unauthorized users properly rejected with error code 1013
+    2. Withdrawal requests from unauthorized users properly rejected with error code 1013
+    3. Pool pause requests from unauthorized users properly rejected with error code 1013
+    4. Different categories of unauthorized users (random users, non-delegates) all rejected
+    5. Pool state protection - no state changes occur from unauthorized attempts
+    6. Authorization hierarchy validation - pool owner implicit delegate privileges confirmed
+    7. Control testing - authorized delegate requests continue to work correctly
+    8. Edge cases and boundary conditions properly handled
+  - **📊 TEST COVERAGE**: Complete validation of authorization enforcement across all delegate action types
+  - **🎯 RESULTS**: Demonstrates comprehensive security - unauthorized access properly blocked while preserving valid governance functionality
 
 - [ ] **DEL-008** `test_early_execution_prevention` - Wait time enforcement
   - Test executing actions before wait time
@@ -720,7 +730,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - Test revoking while pending execution
   - Verify state consistency
 
-**Milestone 4.1:** 🟡 In Progress - Consolidated delegate management (Tests DEL-001 to DEL-011) - 6/11 completed
+**Milestone 4.1:** 🟡 In Progress - Consolidated delegate management (Tests DEL-001 to DEL-011) - 7/11 completed
 
 ---
 
