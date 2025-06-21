@@ -7,7 +7,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Target Coverage:** 85%+ (2,136+ lines covered)  
 **Total Tests Implemented:** 113 working tests ✅
 **Total Tests in Codebase:** 113 tests (All passing successfully)
-**Total Tests Planned:** ~125 tests (+12 additional tests needed)
+**Total Tests Planned:** ~148 tests (+35 additional tests needed, including 6 critical swap execution tests, 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -98,10 +98,10 @@ test: Complete <TEST-ID> <description> - <summary of work>
 *Based on latest `cargo tarpaulin` analysis*
 
 ### High Priority Modules (Critical Coverage Gaps):
-- **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved
-- **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, slight improvement  
+- **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved (SDK-006 to SDK-012 tests planned for 75%+ target)
+- **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, slight improvement (UTIL-009 to UTIL-018 tests planned for 50%+ target)  
 - **Utils/Validation**: 30.0% (21/70 lines) 🔶 **MEDIUM** - Coverage stable
-- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, very low coverage
+- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, very low coverage (SWAP-007 to SWAP-012 tests planned)
 - **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage
 
 ### Medium Priority Modules (Partial Coverage):
@@ -250,9 +250,9 @@ test: Complete <TEST-ID> <description> - <summary of work>
 
 ---
 
-### Module 3: Client SDK (partial → 90% target)
-**Status:** 🟡 In Progress | **Priority:** **CRITICAL** | **File:** `src/client_sdk.rs`
-**Current Coverage:** 18.7% (17/89 lines) 🟠 **LOW COVERAGE - HIGHEST PRIORITY**
+### Module 3: Client SDK (47.2% → 75% target)
+**Status:** 🟡 In Progress | **Priority:** **HIGH** | **File:** `src/client_sdk.rs`
+**Current Coverage:** 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved, targeting 75%+
 
 #### Sub-category 3.1: Client Initialization & Core Methods
 - [x] **SDK-001** `test_pool_client_new` - PoolClient initialization and configuration ✅ **COMPLETED**
@@ -323,7 +323,124 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **📊 TEST COVERAGE**: Error case for missing pool state in client SDK
   - **🎯 RESULTS**: Correctly returns NotImplemented error, no panics, client remains in valid state
 
-**Milestone 1.3:** ✅ Complete core SDK functionality (Tests SDK-001 to SDK-005)
+#### Sub-category 3.2: Instruction Building Methods ⛔ **CRITICAL MISSING COVERAGE**
+- [ ] **SDK-006** `test_deposit_instruction` - Deposit instruction building ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Deposit instruction data serialization with correct parameters
+    2. Account metadata construction for deposit operations
+    3. Validation of deposit token mint against pool configuration
+    4. User account and pool vault account setup
+    5. LP token mint handling and account preparation
+    6. Error handling for invalid deposit tokens
+    7. Instruction parameter validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid deposit instructions properly constructed
+    - Invalid deposit tokens rejected with InvalidDepositToken error
+    - All required accounts included with correct flags
+    - Instruction data properly serialized
+    - LP token handling correctly implemented
+
+- [ ] **SDK-007** `test_deposit_with_features_instruction` - Enhanced deposit instruction ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Enhanced deposit instruction with slippage protection
+    2. Minimum LP tokens out parameter validation
+    3. Optional fee recipient parameter handling
+    4. Advanced instruction data serialization
+    5. Account metadata for enhanced deposit features
+    6. Slippage protection parameter validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Enhanced deposit instructions properly constructed
+    - Slippage protection parameters correctly included
+    - Optional fee recipient handling working
+    - All enhanced features properly serialized
+    - Advanced account setup correctly implemented
+
+- [ ] **SDK-008** `test_withdraw_instruction` - Withdraw instruction building ⛔ **MISSING** - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - **🔧 FEATURES TO TEST**:
+    1. Withdraw instruction data serialization
+    2. LP token burning parameter handling
+    3. Withdraw token mint validation
+    4. User LP account and destination account setup
+    5. Pool vault account configuration
+    6. Instruction parameter validation for withdrawals
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid withdraw instructions properly constructed
+    - LP token burning parameters correctly handled
+    - Destination account setup working correctly
+    - All withdrawal accounts properly configured
+    - Instruction data accurately serialized
+  - **⚠️ WORKAROUND REQUIRED**: Must implement GitHub Issue #31960 buffer serialization pattern for withdrawal account state updates
+
+- [ ] **SDK-009** `test_swap_instruction` - Swap instruction building ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Swap instruction data serialization
+    2. Input/output token account configuration
+    3. Slippage protection with minimum amount out
+    4. Token direction handling (A→B vs B→A)
+    5. Account metadata for swap operations
+    6. Swap parameter validation
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid swap instructions properly constructed
+    - Token direction correctly determined and handled
+    - Slippage protection parameters included
+    - Input/output accounts correctly configured
+    - All swap parameters properly validated
+
+#### Sub-category 3.3: Configuration & Error Handling ⛔ **CRITICAL MISSING COVERAGE**
+- [ ] **SDK-010** `test_pool_config_validation` - PoolConfig constructor validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Valid pool configuration creation with proper parameters
+    2. Zero ratio rejection with InvalidRatio error
+    3. Identical token rejection with IdenticalTokens error
+    4. Parameter validation and edge cases
+    5. Configuration validation consistency
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid configurations accepted and created successfully
+    - Zero ratios properly rejected with InvalidRatio error
+    - Identical tokens rejected with IdenticalTokens error
+    - All validation edge cases properly handled
+    - Consistent validation behavior across all scenarios
+
+- [ ] **SDK-011** `test_error_handling_and_conversion` - Error types and conversion ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. PoolClientError display formatting
+    2. Error conversion from std::io::Error
+    3. Error conversion from BorshSerialize errors
+    4. Error message clarity and user-friendliness
+    5. Error type consistency across SDK functions
+  - **📊 EXPECTED OUTCOMES**:
+    - All error types display clear, helpful messages
+    - Error conversions work correctly for all source types
+    - Error messages provide actionable information
+    - Consistent error handling across all SDK functions
+    - Proper error trait implementations
+
+#### Sub-category 3.4: Testing Utilities ⛔ **CRITICAL MISSING COVERAGE**
+- [ ] **SDK-012** `test_testing_utilities` - Built-in testing helper functions ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. `create_test_pool_config()` utility function
+    2. `create_test_keypairs()` utility function
+    3. Test utility parameter validation
+    4. Helper function consistency and reliability
+    5. Testing utility integration with main SDK functions
+  - **📊 EXPECTED OUTCOMES**:
+    - Test utilities create valid, usable configurations
+    - Helper functions generate consistent test data
+    - Utility functions integrate properly with SDK
+    - Test configurations work with all SDK functions
+    - Reliable test setup for development and CI
+
+**Milestone 1.3:** 🟡 In Progress - Client SDK functionality (Tests SDK-001 to SDK-012) - 5/12 completed
+
+**CRITICAL COVERAGE GAP FOR 60%+ TARGET:** Tests SDK-006 to SDK-012 are essential for reaching 60%+ coverage as they test core instruction building methods, configuration validation, and error handling currently with minimal coverage
+
+**IMPLEMENTATION PRIORITY FOR 60%+ COVERAGE:**
+1. **SDK-006 to SDK-009** (4 tests) - Instruction building methods (high-impact functions)
+2. **SDK-010** (1 test) - PoolConfig validation (constructor and validation logic)
+3. **SDK-011** (1 test) - Error handling and conversion (error trait implementations)
+4. **SDK-012** (1 test) - Testing utilities (helper functions for development)
+
+**COVERAGE IMPACT:** Completing all SDK tests expected to increase Client SDK coverage from 47.2% to 75%+, well exceeding the 60% target
 
 ---
 
@@ -459,7 +576,145 @@ test: Complete <TEST-ID> <description> - <summary of work>
     - Historical parameters preserved and accessible
     - Performance metrics provide useful insights
 
-**Milestone 1.4:** 🟡 In Progress - Utility functions (Tests UTIL-001 to UTIL-008) - 3/8 completed
+- [ ] **UTIL-009** `test_get_pool_pause_status` - Pool pause status transparency ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Pool pause status retrieval for public transparency
+    2. Distinction between delegate pause and withdrawal protection
+    3. Pause initiator, timestamp, and governance information
+    4. Query functionality during both active and paused states
+    5. Clear guidance on which operations are available
+    6. Race condition documentation for large withdrawal scenarios
+  - **📊 EXPECTED OUTCOMES**:
+    - Public users can query pool pause status before operations
+    - Clear distinction between temporary MEV protection and delegate pause
+    - Comprehensive logging shows pause details and governance info
+    - Real-time transparency into pool operational status
+    - Proper guidance for users during different pause states
+
+#### Sub-category 4.2: Validation Utility Functions ⛔ **CRITICAL MISSING COVERAGE**
+- [ ] **UTIL-010** `test_validate_account_owner` - Account ownership validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Validation of account owner against expected program ID
+    2. System program owned account validation
+    3. Token program owned account validation
+    4. Custom program owned account validation
+    5. Error handling for incorrect ownership
+    6. Batch validation for multiple accounts
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid owner accounts pass validation
+    - Incorrect owners properly rejected with IncorrectProgramId error
+    - System and token program accounts properly validated
+    - Clear error messages for ownership mismatches
+    - Performance efficient for batch validation
+
+- [ ] **UTIL-011** `test_validate_signer` - Signer requirement validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Validation that required accounts are signed
+    2. Error handling for missing signatures
+    3. Context-specific signer validation
+    4. Multiple signer requirement validation
+    5. Clear error messages for signature failures
+  - **📊 EXPECTED OUTCOMES**:
+    - Required signers properly validated
+    - Missing signatures rejected with MissingRequiredSignature error
+    - Context information included in error messages
+    - Consistent validation across all operations
+
+- [ ] **UTIL-012** `test_validate_writable` - Writable permission validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Validation that state-changing accounts are writable
+    2. Error handling for read-only account write attempts
+    3. Context-specific writable validation
+    4. Clear error messages for permission violations
+  - **📊 EXPECTED OUTCOMES**:
+    - Writable accounts properly identified and validated
+    - Read-only accounts protected from modification attempts
+    - InvalidAccountData error for write permission violations
+    - Context information included in error messages
+
+- [ ] **UTIL-013** `test_validate_swap_fee` - Swap fee range validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Fee range validation (0 to 50 basis points maximum)
+    2. Fee format validation (u16 basis points)
+    3. Error handling for fees exceeding maximum
+    4. Boundary testing (exactly 50 basis points should pass)
+    5. Edge case testing (fees above maximum should fail)
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid fees (0-50 basis points) accepted
+    - Invalid fees (>50 basis points) rejected with InvalidArgument error
+    - Clear error messages showing maximum allowed fee
+    - Boundary conditions properly handled
+
+- [ ] **UTIL-014** `test_validate_non_zero_amount` - Non-zero amount validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Rejection of zero amounts with context-specific errors
+    2. Amount validation for deposits, withdrawals, swaps
+    3. Context-specific error messaging
+    4. Consistent validation across all operations
+  - **📊 EXPECTED OUTCOMES**:
+    - Zero amounts properly rejected with InvalidArgument error
+    - Context information included in error messages
+    - Consistent validation behavior across operations
+    - Clear guidance on minimum amounts
+
+- [ ] **UTIL-015** `test_validate_different_tokens` - Token differentiation validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Prevention of same-token operations
+    2. Token mint address comparison accuracy
+    3. Error handling for identical token attempts
+    4. Clear error messages for token conflicts
+  - **📊 EXPECTED OUTCOMES**:
+    - Same-token operations properly rejected with InvalidArgument error
+    - Token mint addresses correctly compared
+    - Clear error messages showing conflicting tokens
+    - Consistent validation across pool operations
+
+- [ ] **UTIL-016** `test_validate_wait_time` - Wait time boundary validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Wait time range validation (300 to 259200 seconds)
+    2. Boundary testing (exactly 300 and 259200 should pass)
+    3. Error handling for out-of-range wait times
+    4. Custom error type validation (InvalidWaitTime)
+  - **📊 EXPECTED OUTCOMES**:
+    - Valid wait times (5 minutes to 72 hours) accepted
+    - Invalid wait times rejected with InvalidWaitTime error
+    - Clear error messages showing allowed range
+    - Boundary conditions properly handled
+
+- [ ] **UTIL-017** `test_validate_pool_initialized` - Pool initialization validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Pool initialization status verification
+    2. Error handling for uninitialized pools
+    3. Pool state data integrity validation
+    4. Operations blocked on uninitialized pools
+  - **📊 EXPECTED OUTCOMES**:
+    - Initialized pools properly validated
+    - Uninitialized pools rejected with UninitializedAccount error
+    - Pool state integrity verified before operations
+    - Clear error messages for uninitialized state
+
+- [ ] **UTIL-018** `test_validate_pool_not_paused` - Pool pause validation ⛔ **MISSING**
+  - **🔧 FEATURES TO TEST**:
+    1. Pool pause status verification
+    2. Error handling for paused pools
+    3. Operation restriction enforcement during pause
+    4. Clear error messages for paused state
+  - **📊 EXPECTED OUTCOMES**:
+    - Paused pools properly identified
+    - Operations blocked on paused pools with PoolPaused error
+    - Clear error messages for pause state
+    - Consistent pause validation across operations
+
+**Milestone 1.4:** 🟡 In Progress - Utility functions (Tests UTIL-001 to UTIL-018) - 3/18 completed
+
+**CRITICAL COVERAGE GAP:** Tests UTIL-009 to UTIL-018 are essential for reaching 50%+ coverage as they test significant utility functions currently with 0% coverage
+
+**IMPLEMENTATION PRIORITY FOR 50%+ COVERAGE:**
+1. **UTIL-004 to UTIL-008** (5 tests) - Complete existing planned tests  
+2. **UTIL-009** (1 test) - Missing critical function `get_pool_pause_status`
+3. **UTIL-010 to UTIL-018** (9 tests) - Validation utilities with 0% coverage
+
+**COVERAGE IMPACT:** Completing all UTIL tests expected to increase Processors/Utilities coverage from 20.6% to 65%+
 
 ---
 
@@ -841,6 +1096,127 @@ test: Complete <TEST-ID> <description> - <summary of work>
   - **🔧 ARCHITECTURE VALIDATED**: Two-phase withdrawal system with wait times, authorization hierarchy, and execution-time validation
 
 **Milestone 5.1:** ✅ Complete - Swap fee management (Tests SWAP-001 to SWAP-006) - 6/6 completed
+
+---
+
+### Module 7.5: Core Swap Execution (5.1% → 85% target)
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **File:** `src/processors/swap.rs`
+**Current Coverage:** 5.1% (11/217 lines) ⛔ **VERY LOW COVERAGE - CRITICAL PRIORITY**
+
+**FOCUS:** Core swap functionality testing (successful execution, price calculations, liquidity tracking)
+**RATIONALE:** While fee management is well-tested, the actual swap execution logic has minimal coverage
+
+#### Sub-category 7.5.1: Successful Swap Execution
+- [ ] **SWAP-007** `test_successful_a_to_b_swap` - Token A to Token B swap execution ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. Basic A→B swap with proper token transfers (user input A, receive B)
+    2. Fixed-ratio price calculation accuracy (e.g., 2:1, 3:2, 5:3 ratios)
+    3. Pool liquidity tracking updates (A increases, B decreases by correct amounts)
+    4. User balance verification (correct input deducted, correct output received)
+    5. Fee collection during real swap execution (not just mathematical calculation)
+    6. SOL fee collection (1000 lamports to pool PDA)
+    7. Pool state serialization after swap (prevent PDA data corruption)
+    8. Multiple consecutive swaps maintaining state consistency
+  - **📊 EXPECTED OUTCOMES**:
+    - User receives correct Token B amount based on fixed ratio
+    - Pool liquidity balances updated accurately
+    - Trading fees collected and tracked separately from liquidity
+    - SOL processing fee transferred to pool PDA
+    - All state changes properly serialized and persisted
+
+- [ ] **SWAP-008** `test_successful_b_to_a_swap` - Token B to Token A swap execution ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. Basic B→A swap with proper token transfers (user input B, receive A)
+    2. Reverse direction price calculation accuracy (validates both directions)
+    3. Pool liquidity tracking for reverse swaps (B increases, A decreases)
+    4. Bidirectional consistency (A→B→A should return to original amount minus fees)
+    5. Fee collection for both directions (Token A and Token B fee accumulation)
+    6. Price symmetry validation (ensure no directional bias in calculations)
+    7. State consistency across bidirectional swap sequences
+  - **📊 EXPECTED OUTCOMES**:
+    - User receives correct Token A amount based on fixed ratio
+    - Reverse direction calculations mathematically consistent
+    - Fee collection works for both token types
+    - Bidirectional swap sequences maintain mathematical consistency
+    - No directional bias in price calculations or fee collection
+
+- [ ] **SWAP-009** `test_swap_with_various_ratios` - Multiple fixed ratios validation ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. 1:1 ratio swaps (equal exchange) with proper calculations
+    2. 2:1 ratio swaps (Token A worth 2 Token B) with accuracy
+    3. 3:2 ratio swaps (fractional ratios) with precision
+    4. 5:3 ratio swaps (complex ratios) with mathematical correctness
+    5. Large ratio swaps (100:1) with overflow protection
+    6. Price calculation accuracy across all ratio types
+    7. Liquidity tracking consistency across different ratios
+    8. Fee calculation accuracy independent of ratio complexity
+  - **📊 EXPECTED OUTCOMES**:
+    - All fixed ratios calculate prices correctly
+    - Mathematical precision maintained across ratio complexity
+    - No arithmetic overflow/underflow in ratio calculations
+    - Fee calculations independent of ratio values
+    - Liquidity tracking accurate for all ratio types
+
+#### Sub-category 7.5.2: Slippage Protection & Price Validation
+- [ ] **SWAP-010** `test_slippage_protection_boundaries` - Slippage tolerance validation ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. Exact minimum output scenarios (boundary testing - swap succeeds)
+    2. Just below minimum output (boundary testing - swap fails with slippage error)
+    3. Various slippage tolerances (0.1%, 1%, 5%, 10%) with accurate calculations
+    4. Zero slippage tolerance (must receive exact calculated amount)
+    5. Market impact simulation with different input amounts
+    6. Slippage error message accuracy and clarity
+    7. State preservation when slippage protection triggers (no partial swaps)
+  - **📊 EXPECTED OUTCOMES**:
+    - Exact minimum amounts pass slippage protection
+    - Below minimum amounts properly rejected with InvalidSwapAmount error
+    - Various slippage tolerances correctly calculated and enforced
+    - Zero slippage works for exact amount scenarios
+    - No partial state changes when slippage protection triggers
+
+- [ ] **SWAP-011** `test_swap_liquidity_constraints` - Pool liquidity boundary testing ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. Sufficient liquidity scenarios (swap succeeds with proper balance updates)
+    2. Exactly sufficient liquidity (boundary testing - uses all available output tokens)
+    3. Insufficient liquidity by 1 token (boundary testing - swap fails)
+    4. Large swap amounts requiring significant liquidity (stress testing)
+    5. Pool liquidity tracking accuracy after large swaps
+    6. Multiple consecutive swaps depleting pool liquidity gradually
+    7. Liquidity error message accuracy and user guidance
+  - **📊 EXPECTED OUTCOMES**:
+    - Sufficient liquidity swaps complete successfully
+    - Exactly sufficient liquidity handled correctly (boundary case)
+    - Insufficient liquidity properly rejected with InsufficientFunds error
+    - Pool liquidity tracking accurate after all swap sizes
+    - Clear error messages guide users on liquidity constraints
+
+#### Sub-category 7.5.3: Edge Cases & Error Handling
+- [ ] **SWAP-012** `test_swap_edge_cases_and_security` - Comprehensive edge case and security testing ⛔ **CRITICAL**
+  - **🔧 FEATURES TO TEST**:
+    1. Zero amount input validation (should fail with InvalidSwapAmount)
+    2. Maximum amount input testing (near u64::MAX with overflow protection)
+    3. Wrong token account mints (should fail with InvalidAccountData)
+    4. Mismatched vault accounts (should fail with InvalidAccountData)
+    5. Invalid PDA seeds (should fail with InvalidAccountData)
+    6. Incorrect program IDs (should fail with IncorrectProgramId)
+    7. Missing required signatures (should fail with MissingRequiredSignature)
+    8. Account ownership validation (user must own token accounts)
+    9. Pool initialization validation (swap fails if pool not initialized)
+    10. Pause status validation (swap fails if pool or system paused)
+    11. Arithmetic boundary testing (prevent overflow/underflow)
+    12. PDA authority validation (proper signing for pool vault transfers)
+  - **📊 EXPECTED OUTCOMES**:
+    - All edge cases properly handled with appropriate error types
+    - Security validations prevent unauthorized or malformed operations
+    - Arithmetic operations safe from overflow/underflow attacks
+    - Clear error messages for all failure scenarios
+    - No state corruption possible through edge case exploitation
+
+**Milestone 7.5.1:** ✅ Complete core swap execution functionality (Tests SWAP-007 to SWAP-012) - 0/6 completed
+
+**IMPLEMENTATION PRIORITY:** SWAP-007 → SWAP-008 → SWAP-009 → SWAP-010 → SWAP-011 → SWAP-012
+**RATIONALE:** Start with basic successful execution, then add complexity, then handle edge cases
+**COVERAGE IMPACT:** Expected to increase Processors/Swap coverage from 5.1% to 85%+
 
 ---
 
@@ -1513,6 +1889,11 @@ serialize_to_account(&pool_state_data, pool_state_account)?;
 **⚠️ CRITICAL TESTS REQUIRING WORKAROUND:**
 The following tests create accounts via CPI and immediately write withdrawal-related data, requiring the workaround:
 
+**Module 3: Client SDK**
+- [ ] **SDK-008** `test_withdraw_instruction` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Tests withdraw instruction building with actual withdrawal scenarios
+  - Must use buffer serialization for withdrawal state management
+
 **Module 4: Processors/Utilities**
 - [ ] **UTIL-004** `test_get_liquidity_info` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
   - Creates token accounts and processes withdrawal scenarios
@@ -1648,4 +2029,4 @@ Before implementing any test marked with **🔧 WITHDRAWAL WORKAROUND REQUIRED**
 - Inconsistent test behavior and failures
 - Production data loss in withdrawal operations
 
-**📋 TOTAL AFFECTED TESTS:** 32 tests require the GitHub Issue #31960 workaround implementation
+**📋 TOTAL AFFECTED TESTS:** 33 tests require the GitHub Issue #31960 workaround implementation
