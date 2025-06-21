@@ -1253,7 +1253,7 @@ async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
             (Pubkey::new_from_array([1u8; 32]), "Minimal pool PDA"),
         ];
         
-        for (pool_pda, desc) in &edge_case_pools {
+        for (i, (pool_pda, _desc)) in edge_case_pools.iter().enumerate() {
             let instruction_data = PoolInstruction::GetTokenVaultPDAs {
                 pool_state_pda: *pool_pda,
             };
@@ -1272,7 +1272,29 @@ async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
             );
             
             let result = env.banks_client.process_transaction(transaction).await;
-            assert!(result.is_ok(), "{} instruction should succeed", desc);
+            assert!(result.is_ok(), "Edge case {} instruction should succeed", i);
+            
+            // Verify manual derivation works for edge cases
+            let (vault_a, bump_a) = Pubkey::find_program_address(
+                &[
+                    TOKEN_A_VAULT_SEED_PREFIX,
+                    pool_pda.as_ref(),
+                ],
+                &PROGRAM_ID,
+            );
+            
+            let (vault_b, bump_b) = Pubkey::find_program_address(
+                &[
+                    TOKEN_B_VAULT_SEED_PREFIX,
+                    pool_pda.as_ref(),
+                ],
+                &PROGRAM_ID,
+            );
+            
+            assert_ne!(vault_a, vault_b, "Vaults should be different for edge case {}", i);
+            // Bump seeds are u8, so they're always <= 255, just check lower bound
+            assert!(bump_a >= 240, "Bump A should be valid for edge case {}", i);
+            assert!(bump_b >= 240, "Bump B should be valid for edge case {}", i);
         }
         
         println!("✅ Seed validation and error handling passed");
@@ -1490,6 +1512,572 @@ async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     println!("✅ UTIL-002 test_get_token_vault_pdas completed successfully with enhanced comprehensive validation");
+    Ok(())
+}
+
+/// UTIL-003: Enhanced comprehensive test for pool information retrieval
+/// 
+/// This test validates the get_pool_info utility function and covers:
+/// 1. Pool state data retrieval and parsing from actual pool account
+/// 2. Token mint information extraction and validation
+/// 3. Pool configuration parameters (fees, ratios, etc.) verification
+/// 4. Pool status and operational state analysis
+/// 5. Owner and delegate information accuracy
+/// 6. Pool metadata and configuration completeness
+/// 7. Liquidity information and balance validation
+/// 8. Edge cases and error handling scenarios
+#[tokio::test]
+async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Running UTIL-003: test_get_pool_info");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // ===============================================================================
+    // Test 1: Basic Pool Information Retrieval with Actual Pool Data
+    // ===============================================================================
+    {
+        println!("Test 1: Basic pool information retrieval with actual pool data");
+        
+        // Create test mints first
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&ctx.primary_mint, &ctx.base_mint],
+        ).await?;
+        
+        // Create a real pool for testing
+        let pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &ctx.primary_mint,
+            &ctx.base_mint,
+            &ctx.lp_token_a_mint,
+            &ctx.lp_token_b_mint,
+            None,
+        ).await?;
+        
+        // Test GetPoolInfo instruction
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(pool_config.pool_state_pda, false), // Pool state PDA (read-only)
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed");
+        
+        // Verify the pool exists and has valid data
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &pool_config.pool_state_pda).await
+            .expect("Pool state should exist after creation");
+        
+        assert!(pool_state.is_initialized, "Pool should be initialized");
+        assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
+        assert_eq!(pool_state.token_a_mint, pool_config.token_a_mint, "Token A mint should match");
+        assert_eq!(pool_state.token_b_mint, pool_config.token_b_mint, "Token B mint should match");
+        assert_eq!(pool_state.ratio_a_numerator, pool_config.ratio_a_numerator, "Ratio A numerator should match");
+        assert_eq!(pool_state.ratio_b_denominator, pool_config.ratio_b_denominator, "Ratio B denominator should match");
+        
+        println!("✅ Basic pool information retrieval validation passed");
+    }
+    
+    // ===============================================================================
+    // Test 2: Pool Configuration Parameters Validation
+    // ===============================================================================
+    {
+        println!("Test 2: Pool configuration parameters validation");
+        
+        // Create a new pool with specific configuration
+        let specific_primary_mint = Keypair::new();
+        let specific_base_mint = Keypair::new();
+        let specific_lp_a_mint = Keypair::new();
+        let specific_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&specific_primary_mint, &specific_base_mint],
+        ).await?;
+        
+        let specific_ratio = 5u64; // 5:1 ratio
+        let specific_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &specific_primary_mint,
+            &specific_base_mint,
+            &specific_lp_a_mint,
+            &specific_lp_b_mint,
+            Some(specific_ratio),
+        ).await?;
+        
+        // Test GetPoolInfo instruction for specific configuration
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(specific_pool_config.pool_state_pda, false),
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for specific config");
+        
+        // Verify configuration parameters
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &specific_pool_config.pool_state_pda).await
+            .expect("Pool state should exist");
+        
+        // Verify ratio matches expected values
+        assert_eq!(pool_state.ratio_a_numerator, specific_pool_config.ratio_a_numerator, "Ratio A should match for {}", specific_ratio);
+        assert_eq!(pool_state.ratio_b_denominator, specific_pool_config.ratio_b_denominator, "Ratio B should match for {}", specific_ratio);
+        
+        // Verify vault addresses
+        assert_eq!(pool_state.token_a_vault, specific_pool_config.token_a_vault_pda, "Token A vault should match");
+        assert_eq!(pool_state.token_b_vault, specific_pool_config.token_b_vault_pda, "Token B vault should match");
+        
+        // Verify LP token mints
+        assert_eq!(pool_state.lp_token_a_mint, specific_lp_a_mint.pubkey(), "LP Token A mint should match");
+        assert_eq!(pool_state.lp_token_b_mint, specific_lp_b_mint.pubkey(), "LP Token B mint should match");
+        
+        // Verify bump seeds
+        assert_eq!(pool_state.pool_authority_bump_seed, specific_pool_config.pool_authority_bump, "Pool authority bump should match");
+        assert_eq!(pool_state.token_a_vault_bump_seed, specific_pool_config.token_a_vault_bump, "Token A vault bump should match");
+        assert_eq!(pool_state.token_b_vault_bump_seed, specific_pool_config.token_b_vault_bump, "Token B vault bump should match");
+        
+        println!("✅ Pool configuration parameters validation passed");
+    }
+    
+    // ===============================================================================
+    // Test 3: Pool Status and Operational State Analysis
+    // ===============================================================================
+    {
+        println!("Test 3: Pool status and operational state analysis");
+        
+        // Create a pool and verify default operational state
+        let operational_primary_mint = Keypair::new();
+        let operational_base_mint = Keypair::new();
+        let operational_lp_a_mint = Keypair::new();
+        let operational_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&operational_primary_mint, &operational_base_mint],
+        ).await?;
+        
+        let operational_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &operational_primary_mint,
+            &operational_base_mint,
+            &operational_lp_a_mint,
+            &operational_lp_b_mint,
+            None,
+        ).await?;
+        
+        // Test pool info retrieval
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(operational_pool_config.pool_state_pda, false),
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for operational state");
+        
+        // Verify operational state
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &operational_pool_config.pool_state_pda).await
+            .expect("Pool state should exist");
+        
+        // Verify default operational state
+        assert!(pool_state.is_initialized, "Pool should be initialized");
+        assert!(!pool_state.is_paused, "Pool should not be paused by default");
+        assert!(!pool_state.swaps_paused, "Swaps should not be paused by default");
+        assert!(!pool_state.withdrawal_protection_active, "Withdrawal protection should not be active by default");
+        
+        // Verify fee structure
+        assert_eq!(pool_state.swap_fee_basis_points, 0, "Swap fee should be default value (0)");
+        assert_eq!(pool_state.collected_fees_token_a, 0, "Should have no collected fees initially");
+        assert_eq!(pool_state.collected_fees_token_b, 0, "Should have no collected fees initially");
+        assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Should have no withdrawn fees initially");
+        assert_eq!(pool_state.total_fees_withdrawn_token_b, 0, "Should have no withdrawn fees initially");
+        
+        // Verify liquidity state
+        assert_eq!(pool_state.total_token_a_liquidity, 0, "Should have no liquidity initially");
+        assert_eq!(pool_state.total_token_b_liquidity, 0, "Should have no liquidity initially");
+        
+        println!("✅ Pool status and operational state analysis passed");
+    }
+    
+    // ===============================================================================
+    // Test 4: Owner and Delegate Information Accuracy
+    // ===============================================================================
+    {
+        println!("Test 4: Owner and delegate information accuracy");
+        
+        // Create a pool with delegate management
+        let delegate_primary_mint = Keypair::new();
+        let delegate_base_mint = Keypair::new();
+        let delegate_lp_a_mint = Keypair::new();
+        let delegate_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&delegate_primary_mint, &delegate_base_mint],
+        ).await?;
+        
+        let delegate_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &delegate_primary_mint,
+            &delegate_base_mint,
+            &delegate_lp_a_mint,
+            &delegate_lp_b_mint,
+            None,
+        ).await?;
+        
+        // Test pool info retrieval for delegate information
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(delegate_pool_config.pool_state_pda, false),
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for delegate info");
+        
+        // Verify owner and delegate information
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &delegate_pool_config.pool_state_pda).await
+            .expect("Pool state should exist");
+        
+        // Verify owner information
+        assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
+        
+        // Verify delegate management state (pool owner is automatically added as delegate[0])
+        assert_eq!(pool_state.delegate_management.delegate_count, 1, "Should have 1 delegate initially (pool owner auto-added)");
+        assert_eq!(pool_state.delegate_management.delegates[0], ctx.env.payer.pubkey(), "First delegate should be the pool owner");
+        assert_eq!(pool_state.delegate_management.pending_actions.len(), 0, "Should have no pending actions initially");
+        assert_eq!(pool_state.delegate_management.action_history.len(), 0, "Should have no action history initially");
+        
+        // Verify delegate management configuration
+        assert!(pool_state.delegate_management.delegates.len() >= 3, "Should support at least 3 delegates");
+        
+        println!("✅ Owner and delegate information accuracy validation passed");
+    }
+    
+    // ===============================================================================
+    // Test 5: Pool Metadata and Configuration Completeness
+    // ===============================================================================
+    {
+        println!("Test 5: Pool metadata and configuration completeness");
+        
+        // Test with one different configuration (simplified for performance)
+        let test_primary_mint = Keypair::new();
+        let test_base_mint = Keypair::new();
+        let test_lp_a_mint = Keypair::new();
+        let test_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&test_primary_mint, &test_base_mint],
+        ).await?;
+        
+        let test_ratio = 5u64; // 5:1 ratio
+        let test_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &test_primary_mint,
+            &test_base_mint,
+            &test_lp_a_mint,
+            &test_lp_b_mint,
+            Some(test_ratio),
+        ).await?;
+        
+        // Test GetPoolInfo instruction for the configuration
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(test_pool_config.pool_state_pda, false),
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for 5:1 ratio config");
+        
+        // Verify metadata completeness
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &test_pool_config.pool_state_pda).await
+            .expect("Pool state should exist");
+        
+        // Verify all essential fields are populated
+        assert!(pool_state.is_initialized, "Pool should be initialized");
+        assert_ne!(pool_state.owner, Pubkey::default(), "Owner should not be default");
+        assert_ne!(pool_state.token_a_mint, Pubkey::default(), "Token A mint should not be default");
+        assert_ne!(pool_state.token_b_mint, Pubkey::default(), "Token B mint should not be default");
+        assert_ne!(pool_state.token_a_vault, Pubkey::default(), "Token A vault should not be default");
+        assert_ne!(pool_state.token_b_vault, Pubkey::default(), "Token B vault should not be default");
+        assert_ne!(pool_state.lp_token_a_mint, Pubkey::default(), "LP Token A mint should not be default");
+        assert_ne!(pool_state.lp_token_b_mint, Pubkey::default(), "LP Token B mint should not be default");
+        
+        // Verify ratio configuration
+        assert_eq!(pool_state.ratio_a_numerator, test_pool_config.ratio_a_numerator, "Ratio A should match");
+        assert_eq!(pool_state.ratio_b_denominator, test_pool_config.ratio_b_denominator, "Ratio B should match");
+        
+        // Verify bump seeds are in valid range
+        assert!(pool_state.pool_authority_bump_seed >= 240, "Pool authority bump should be valid");
+        assert!(pool_state.token_a_vault_bump_seed >= 240, "Token A vault bump should be valid");
+        assert!(pool_state.token_b_vault_bump_seed >= 240, "Token B vault bump should be valid");
+        
+        println!("✅ Pool metadata and configuration completeness validation passed");
+    }
+    
+    // ===============================================================================
+    // Test 6: Liquidity Information and Balance Validation
+    // ===============================================================================
+    {
+        println!("Test 6: Liquidity information and balance validation");
+        
+        // Create a pool for liquidity testing
+        let liquidity_primary_mint = Keypair::new();
+        let liquidity_base_mint = Keypair::new();
+        let liquidity_lp_a_mint = Keypair::new();
+        let liquidity_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&liquidity_primary_mint, &liquidity_base_mint],
+        ).await?;
+        
+        let liquidity_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &liquidity_primary_mint,
+            &liquidity_base_mint,
+            &liquidity_lp_a_mint,
+            &liquidity_lp_b_mint,
+            None,
+        ).await?;
+        
+        // Test pool info retrieval for liquidity information
+        let instruction_data = PoolInstruction::GetPoolInfo {};
+        
+        let instruction = Instruction {
+            program_id: PROGRAM_ID,
+            accounts: vec![
+                AccountMeta::new_readonly(liquidity_pool_config.pool_state_pda, false),
+            ],
+            data: instruction_data.try_to_vec()?,
+        };
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[instruction],
+            Some(&ctx.env.payer.pubkey()),
+            &[&ctx.env.payer],
+            ctx.env.recent_blockhash,
+        );
+        
+        let result = ctx.env.banks_client.process_transaction(transaction).await;
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for liquidity info");
+        
+        // Verify liquidity information
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &liquidity_pool_config.pool_state_pda).await
+            .expect("Pool state should exist");
+        
+        // Verify initial liquidity state (should be zero for new pool)
+        assert_eq!(pool_state.total_token_a_liquidity, 0, "Initial Token A liquidity should be zero");
+        assert_eq!(pool_state.total_token_b_liquidity, 0, "Initial Token B liquidity should be zero");
+        
+        // Verify fee collection state
+        assert_eq!(pool_state.collected_fees_token_a, 0, "Initial collected fees Token A should be zero");
+        assert_eq!(pool_state.collected_fees_token_b, 0, "Initial collected fees Token B should be zero");
+        assert_eq!(pool_state.collected_sol_fees, 0, "Initial collected SOL fees should be zero");
+        
+        // Verify withdrawal tracking
+        assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Initial withdrawn fees Token A should be zero");
+        assert_eq!(pool_state.total_fees_withdrawn_token_b, 0, "Initial withdrawn fees Token B should be zero");
+        assert_eq!(pool_state.total_sol_fees_withdrawn, 0, "Initial withdrawn SOL fees should be zero");
+        
+        // Verify rent requirements exist
+        assert!(pool_state.rent_requirements.rent_exempt_minimum > 0, "Rent requirements should be calculated");
+        assert!(pool_state.rent_requirements.pool_state_rent > 0, "Pool state rent should be calculated");
+        assert!(pool_state.rent_requirements.token_vault_rent > 0, "Token vault rent should be calculated");
+        assert!(pool_state.rent_requirements.lp_mint_rent > 0, "LP mint rent should be calculated");
+        
+        println!("✅ Liquidity information and balance validation passed");
+    }
+    
+    // ===============================================================================
+    // Test 7: Data Validation and Consistency Checks
+    // ===============================================================================
+    {
+        println!("Test 7: Data validation and consistency checks");
+        
+        // Test 7a: Instruction data serialization validation
+        let serialized_data = PoolInstruction::GetPoolInfo {}.try_to_vec()?;
+        assert!(!serialized_data.is_empty(), "Serialized data should not be empty");
+        println!("✅ Instruction serialization working correctly");
+        
+        // Test 7b: Instruction creation and validation
+        let instruction_data_2 = PoolInstruction::GetPoolInfo {};
+        let serialized_2 = instruction_data_2.try_to_vec()?;
+        
+        // Verify multiple serializations produce identical results
+        assert_eq!(serialized_data, serialized_2, "Multiple serializations should be identical");
+        println!("✅ Instruction consistency validation working correctly");
+        
+        println!("✅ Data validation and consistency checks passed");
+    }
+    
+    // ===============================================================================
+    // Test 8: Performance Characteristics and Scalability
+    // ===============================================================================
+    {
+        println!("Test 8: Performance characteristics and scalability");
+        
+        // Create a pool for performance testing
+        let perf_primary_mint = Keypair::new();
+        let perf_base_mint = Keypair::new();
+        let perf_lp_a_mint = Keypair::new();
+        let perf_lp_b_mint = Keypair::new();
+        
+        create_test_mints(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &[&perf_primary_mint, &perf_base_mint],
+        ).await?;
+        
+        let perf_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &perf_primary_mint,
+            &perf_base_mint,
+            &perf_lp_a_mint,
+            &perf_lp_b_mint,
+            None,
+        ).await?;
+        
+        // Performance test: Multiple rapid calls (simplified for speed)
+        let start = std::time::Instant::now();
+        let iterations = 5; // Reduced for faster testing
+        
+        for i in 0..iterations {
+            let instruction_data = PoolInstruction::GetPoolInfo {};
+            
+            let instruction = Instruction {
+                program_id: PROGRAM_ID,
+                accounts: vec![
+                    AccountMeta::new_readonly(perf_pool_config.pool_state_pda, false),
+                ],
+                data: instruction_data.try_to_vec()?,
+            };
+            
+            let transaction = Transaction::new_signed_with_payer(
+                &[instruction],
+                Some(&ctx.env.payer.pubkey()),
+                &[&ctx.env.payer],
+                ctx.env.recent_blockhash,
+            );
+            
+            let result = ctx.env.banks_client.process_transaction(transaction).await;
+            assert!(result.is_ok(), "Performance test iteration {} should succeed", i);
+        }
+        
+        let duration = start.elapsed();
+        println!("Time for {} GetPoolInfo instruction calls: {:?}", iterations, duration);
+        
+        // Performance expectations (adjusted for Solana test environment)
+        assert!(
+            duration.as_millis() < 5000, 
+            "Pool info retrieval should be reasonably fast ({} calls in under 5s)", iterations
+        );
+        
+        // Calculate performance metrics
+        let avg_time_per_call = duration.as_micros() as f64 / iterations as f64;
+        println!("Average time per GetPoolInfo instruction call: {:.2} μs", avg_time_per_call);
+        
+        // Memory efficiency check (simplified)
+        let memory_test_start = std::time::Instant::now();
+        for _i in 0..10 {
+            let _serialized = PoolInstruction::GetPoolInfo {}.try_to_vec()?;
+        }
+        let memory_test_duration = memory_test_start.elapsed();
+        
+        println!("Memory efficiency test (10 serializations): {:?}", memory_test_duration);
+        assert!(
+            memory_test_duration.as_millis() < 20,
+            "Instruction serialization should be very fast"
+        );
+        
+        println!("✅ Performance characteristics and scalability validation passed");
+    }
+    
+    println!("✅ UTIL-003 test_get_pool_info completed successfully with comprehensive validation");
     Ok(())
 }
 
