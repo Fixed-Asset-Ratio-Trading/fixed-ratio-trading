@@ -3109,3 +3109,419 @@ async fn test_unauthorized_action_request_fails() -> TestResult {
     
     Ok(())
 }
+
+/// Test early execution prevention - wait time enforcement (DEL-008)
+/// 
+/// This test validates that delegate actions cannot be executed before their wait time expires:
+/// 1. Request delegate actions (fee change, withdrawal, pool pause)
+/// 2. Attempt to execute them immediately (should fail with ActionNotReady error)
+/// 3. Verify proper error codes are returned (1016)
+/// 4. Validate wait time calculation accuracy
+/// 5. Ensure pool state remains protected during early execution attempts
+/// 
+/// Note: Implements GitHub Issue #31960 buffer serialization workaround for state management
+#[tokio::test]
+async fn test_early_execution_prevention() -> TestResult {
+    // Setup test environment
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool with default config
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+    
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+    
+    // Add a delegate to the pool
+    let delegate = Keypair::new();
+    add_delegate(&mut ctx.env.banks_client, &ctx.env.payer, ctx.env.recent_blockhash, 
+        &config.pool_state_pda, &delegate.pubkey()).await?;
+    println!("✅ Added delegate: {}", delegate.pubkey());
+    
+    // Get initial pool state for later comparison
+    let initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get initial pool state");
+    let initial_fee_basis_points = initial_pool_state.swap_fee_basis_points;
+    let initial_pause_state = initial_pool_state.is_paused;
+    println!("✓ Initial pool fee: {} basis points", initial_fee_basis_points);
+    println!("✓ Initial pause state: {}", initial_pause_state);
+    
+    // Section 1: Test Fee Change Early Execution Prevention
+    println!("\n--- Testing Fee Change Early Execution Prevention ---");
+    
+    // 1.1 Request fee change action
+    let new_fee_basis_points = 30; // 0.3%
+    
+    let fee_change_request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut request_fee_tx = Transaction::new_with_payer(&[fee_change_request_ix], Some(&ctx.env.payer.pubkey()));
+    request_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    ctx.env.banks_client.process_transaction(request_fee_tx).await?;
+    
+    // 1.2 Get the fee change action ID and verify wait time calculation
+    let pool_state_after_fee_request = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after fee request");
+    
+    let mut fee_change_action_id = 0;
+    let mut fee_request_timestamp = 0;
+    let mut fee_execution_timestamp = 0;
+    
+    // Find the fee change action in pending actions
+    for action in &pool_state_after_fee_request.delegate_management.pending_actions {
+        if let (DelegateActionType::FeeChange, DelegateActionParams::FeeChange { new_fee_basis_points: fee_points }) = 
+            (&action.action_type, &action.params) 
+        {
+            if action.delegate == delegate.pubkey() && *fee_points == new_fee_basis_points {
+                fee_change_action_id = action.action_id;
+                fee_request_timestamp = action.request_timestamp;
+                fee_execution_timestamp = action.execution_timestamp;
+                break;
+            }
+        }
+    }
+    
+    // Validate wait time calculation accuracy (should be 72 hours = 259,200 seconds by default)
+    let expected_wait_time = 259_200; // 72 hours in seconds
+    let calculated_wait_time = fee_execution_timestamp - fee_request_timestamp;
+    assert_eq!(calculated_wait_time as u64, expected_wait_time, 
+        "Fee change wait time calculation should be accurate");
+    
+    println!("✓ Fee change action requested with ID: {} and wait time: {} seconds", 
+             fee_change_action_id, calculated_wait_time);
+    println!("✅ Wait time calculation accuracy verified: {} seconds (72 hours)", calculated_wait_time);
+    
+    // 1.3 Attempt immediate execution (should fail with ActionNotReady)
+    let execute_fee_change_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::ExecuteDelegateAction {
+            action_id: fee_change_action_id
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut execute_fee_tx = Transaction::new_with_payer(&[execute_fee_change_ix], Some(&ctx.env.payer.pubkey()));
+    execute_fee_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    // Process transaction - this should fail with ActionNotReady error (code 1016)
+    let fee_execution_result = ctx.env.banks_client.process_transaction(execute_fee_tx).await;
+    
+    // Verify proper error code (1016 = ActionNotReady)
+    match fee_execution_result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::Custom(1016)))) => {
+            println!("✅ Fee change early execution correctly prevented with ActionNotReady error (1016)");
+        },
+        Err(other_error) => {
+            println!("❌ Unexpected error for fee change early execution: {:?}", other_error);
+            return Err(other_error.into());
+        },
+        Ok(_) => {
+            println!("❌ Fee change early execution should have failed but succeeded");
+            return Err(BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)));
+        }
+    }
+    
+    // 1.4 Verify pool state protection - fee should remain unchanged
+    let pool_state_after_fee_attempt = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after fee execution attempt");
+    
+    assert_eq!(pool_state_after_fee_attempt.swap_fee_basis_points, initial_fee_basis_points, 
+        "Pool fee should remain unchanged after early execution attempt");
+    println!("✅ Pool fee correctly protected: {} basis points (unchanged)", initial_fee_basis_points);
+    
+    // Section 2: Test Withdrawal Early Execution Prevention
+    println!("\n--- Testing Withdrawal Early Execution Prevention ---");
+    
+    // 2.1 Request withdrawal action
+    let withdrawal_amount = 500_000; // 0.5 tokens (6 decimals)
+    
+    let withdrawal_request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::Withdrawal,
+            params: DelegateActionParams::Withdrawal { 
+                amount: withdrawal_amount,
+                token_mint: config.token_a_mint,
+            },
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut request_withdrawal_tx = Transaction::new_with_payer(&[withdrawal_request_ix], Some(&ctx.env.payer.pubkey()));
+    request_withdrawal_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    ctx.env.banks_client.process_transaction(request_withdrawal_tx).await?;
+    
+    // 2.2 Get the withdrawal action ID and verify wait time calculation
+    let pool_state_after_withdrawal_request = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after withdrawal request");
+    
+    let mut withdrawal_action_id = 0;
+    let mut withdrawal_request_timestamp = 0;
+    let mut withdrawal_execution_timestamp = 0;
+    
+    // Find the withdrawal action in pending actions
+    for action in &pool_state_after_withdrawal_request.delegate_management.pending_actions {
+        if let (DelegateActionType::Withdrawal, DelegateActionParams::Withdrawal { amount, token_mint }) = 
+            (&action.action_type, &action.params) 
+        {
+            if action.delegate == delegate.pubkey() && 
+               *amount == withdrawal_amount && 
+               *token_mint == config.token_a_mint 
+            {
+                withdrawal_action_id = action.action_id;
+                withdrawal_request_timestamp = action.request_timestamp;
+                withdrawal_execution_timestamp = action.execution_timestamp;
+                break;
+            }
+        }
+    }
+    
+    // Validate wait time calculation accuracy for withdrawal
+    let withdrawal_calculated_wait_time = withdrawal_execution_timestamp - withdrawal_request_timestamp;
+    assert_eq!(withdrawal_calculated_wait_time as u64, expected_wait_time, 
+        "Withdrawal wait time calculation should be accurate");
+    
+    println!("✓ Withdrawal action requested with ID: {} and wait time: {} seconds", 
+             withdrawal_action_id, withdrawal_calculated_wait_time);
+    println!("✅ Withdrawal wait time calculation accuracy verified: {} seconds", withdrawal_calculated_wait_time);
+    
+    // 2.3 Create token account for withdrawal attempt (even though it will fail early)
+    let recipient_token_account = Keypair::new();
+    let recipient = Keypair::new().pubkey();
+    
+    create_token_account(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &recipient_token_account,
+        &config.token_a_mint,
+        &recipient,
+    ).await?;
+    
+    // 2.4 Attempt immediate withdrawal execution (should fail with ActionNotReady)
+    let execute_withdrawal_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+            AccountMeta::new(recipient_token_account.pubkey(), false), // Recipient token account
+            AccountMeta::new_readonly(spl_token::id(), false), // Token program ID
+            AccountMeta::new(config.token_a_vault_pda, false), // Token vault (source of funds)
+        ],
+        data: PoolInstruction::ExecuteDelegateAction {
+            action_id: withdrawal_action_id,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut execute_withdrawal_tx = Transaction::new_with_payer(&[execute_withdrawal_ix], Some(&ctx.env.payer.pubkey()));
+    execute_withdrawal_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    // Process transaction - this should fail with ActionNotReady error (code 1016)
+    let withdrawal_execution_result = ctx.env.banks_client.process_transaction(execute_withdrawal_tx).await;
+    
+    // Verify proper error code (1016 = ActionNotReady)
+    match withdrawal_execution_result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::Custom(1016)))) => {
+            println!("✅ Withdrawal early execution correctly prevented with ActionNotReady error (1016)");
+        },
+        Err(other_error) => {
+            println!("❌ Unexpected error for withdrawal early execution: {:?}", other_error);
+            return Err(other_error.into());
+        },
+        Ok(_) => {
+            println!("❌ Withdrawal early execution should have failed but succeeded");
+            return Err(BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)));
+        }
+    }
+    
+    println!("✅ Withdrawal early execution properly blocked by wait time enforcement");
+    
+    // Section 3: Test Pool Pause Early Execution Prevention
+    println!("\n--- Testing Pool Pause Early Execution Prevention ---");
+    
+    // 3.1 Request pool pause action (new simplified system)
+    let pause_request_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::PausePoolSwaps,
+            params: DelegateActionParams::PausePoolSwaps,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut request_pause_tx = Transaction::new_with_payer(&[pause_request_ix], Some(&ctx.env.payer.pubkey()));
+    request_pause_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    ctx.env.banks_client.process_transaction(request_pause_tx).await?;
+    
+    // 3.2 Get the pause action ID and verify wait time calculation
+    let pool_state_after_pause_request = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after pause request");
+    
+    let mut pause_action_id = 0;
+    let mut pause_request_timestamp = 0;
+    let mut pause_execution_timestamp = 0;
+    
+    // Find the pause action in pending actions
+    for action in &pool_state_after_pause_request.delegate_management.pending_actions {
+        if let (DelegateActionType::PausePoolSwaps, DelegateActionParams::PausePoolSwaps) = 
+            (&action.action_type, &action.params) 
+        {
+            if action.delegate == delegate.pubkey() {
+                pause_action_id = action.action_id;
+                pause_request_timestamp = action.request_timestamp;
+                pause_execution_timestamp = action.execution_timestamp;
+                break;
+            }
+        }
+    }
+    
+    // Validate wait time calculation accuracy for pause
+    let pause_calculated_wait_time = pause_execution_timestamp - pause_request_timestamp;
+    assert_eq!(pause_calculated_wait_time as u64, expected_wait_time, 
+        "Pause wait time calculation should be accurate");
+    
+    println!("✓ Pool pause action requested with ID: {} and wait time: {} seconds", 
+             pause_action_id, pause_calculated_wait_time);
+    println!("✅ Pause wait time calculation accuracy verified: {} seconds", pause_calculated_wait_time);
+    
+    // 3.3 Attempt immediate pause execution (should fail with ActionNotReady)
+    let execute_pause_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate.pubkey(), true), // Delegate as signer
+            AccountMeta::new(config.pool_state_pda, false), // Pool state account
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+        ],
+        data: PoolInstruction::ExecuteDelegateAction {
+            action_id: pause_action_id,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut execute_pause_tx = Transaction::new_with_payer(&[execute_pause_ix], Some(&ctx.env.payer.pubkey()));
+    execute_pause_tx.sign(&[&ctx.env.payer, &delegate], ctx.env.recent_blockhash);
+    
+    // Process transaction - this should fail with ActionNotReady error (code 1016)
+    let pause_execution_result = ctx.env.banks_client.process_transaction(execute_pause_tx).await;
+    
+    // Verify proper error code (1016 = ActionNotReady)
+    match pause_execution_result {
+        Err(BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::Custom(1016)))) => {
+            println!("✅ Pool pause early execution correctly prevented with ActionNotReady error (1016)");
+        },
+        Err(other_error) => {
+            println!("❌ Unexpected error for pause early execution: {:?}", other_error);
+            return Err(other_error.into());
+        },
+        Ok(_) => {
+            println!("❌ Pool pause early execution should have failed but succeeded");
+            return Err(BanksClientError::TransactionError(TransactionError::InstructionError(0, InstructionError::InvalidInstructionData)));
+        }
+    }
+    
+    // 3.4 Verify pool state protection - pause state should remain unchanged
+    let pool_state_after_pause_attempt = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after pause execution attempt");
+    
+    assert_eq!(pool_state_after_pause_attempt.is_paused, initial_pause_state, 
+        "Pool pause state should remain unchanged after early execution attempt");
+    println!("✅ Pool pause state correctly protected: {} (unchanged)", initial_pause_state);
+    
+    // Section 4: Comprehensive Wait Time Validation
+    println!("\n--- Comprehensive Wait Time Validation ---");
+    
+    // 4.1 Verify all actions have consistent wait times
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get final pool state");
+    
+    let mut wait_times = vec![];
+    for action in &final_pool_state.delegate_management.pending_actions {
+        let wait_time = action.execution_timestamp - action.request_timestamp;
+        wait_times.push(wait_time as u64);
+    }
+    
+    // All wait times should be exactly 72 hours (259,200 seconds) for default delegate limits
+    for (i, &wait_time) in wait_times.iter().enumerate() {
+        assert_eq!(wait_time, expected_wait_time, 
+            "Action {} should have consistent wait time of {} seconds", i, expected_wait_time);
+    }
+    
+    println!("✅ All {} pending actions have consistent wait times: {} seconds", 
+             wait_times.len(), expected_wait_time);
+    
+    // 4.2 Verify pending actions are properly tracked
+    let expected_pending_count = 3; // Fee change, withdrawal, pause
+    assert_eq!(final_pool_state.delegate_management.pending_actions.len(), expected_pending_count,
+        "Should have exactly {} pending actions", expected_pending_count);
+    
+    println!("✅ Pending actions properly tracked: {} actions waiting for execution", expected_pending_count);
+    
+    // 4.3 Verify no actions were prematurely moved to history
+    let mut premature_history_actions = 0;
+    for record in &final_pool_state.delegate_management.action_history {
+        // Check if any of our test actions ended up in history (they shouldn't have)
+        if record.action_id == fee_change_action_id || 
+           record.action_id == withdrawal_action_id || 
+           record.action_id == pause_action_id {
+            premature_history_actions += 1;
+        }
+    }
+    
+    assert_eq!(premature_history_actions, 0, 
+        "No test actions should be in history before wait time expiration");
+    println!("✅ No premature actions in history: wait time enforcement working correctly");
+    
+    println!("\n===== DEL-008 TEST SUMMARY =====");
+    println!("✅ Successfully validated early execution prevention and wait time enforcement:");
+    println!("   1. Fee Change Actions: Early execution blocked ✓ | Error code 1016 ✓ | State protected ✓");
+    println!("   2. Withdrawal Actions: Early execution blocked ✓ | Error code 1016 ✓ | Setup validated ✓");  
+    println!("   3. Pool Pause Actions: Early execution blocked ✓ | Error code 1016 ✓ | State protected ✓");
+    println!("   4. Wait Time Accuracy: All actions have 72-hour wait times (259,200 seconds) ✓");
+    println!("   5. State Protection: Pool remains unchanged during early execution attempts ✓");
+    println!("   6. Action Tracking: {} pending actions properly maintained ✓", expected_pending_count);
+    println!("");
+    println!("🔒 This test confirms that the wait time enforcement mechanism prevents premature execution.");
+    println!("   All delegate actions are properly secured with 72-hour governance delays.");
+    println!("   Early execution attempts are consistently blocked with ActionNotReady error (1016).");
+    
+    Ok(())
+}
