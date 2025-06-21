@@ -15,7 +15,7 @@ use solana_program::{
 use crate::{
     error::PoolError,
     state::SystemState,
-    types::{PoolState, pool_state::PoolPauseReason},
+    types::{PoolState},
 };
 
 use crate::constants::*;
@@ -149,28 +149,27 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 }
 
 /// Validates that a pool is not paused (for user operations).
-/// Also handles automatic unpause if the pause duration has elapsed.
+/// ❌ REMOVED: Auto-unpause handling (time-based pause system removal)
 ///
 /// # Arguments
 /// * `pool_state` - The pool state to validate
-/// * `current_timestamp` - Current Unix timestamp
+/// * `current_timestamp` - Current Unix timestamp (unused after auto-unpause removal)
 ///
 /// # Returns
-/// * `ProgramResult` - Success if pool is not paused or pause has elapsed
-pub fn validate_pool_not_paused(pool_state: &mut PoolState, current_timestamp: i64) -> ProgramResult {
-    // Check if pause has elapsed and handle automatic unpause
-    if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && current_timestamp >= pool_state.pause_end_timestamp {
-        pool_state.is_paused = false;
-        pool_state.pause_end_timestamp = 0;
-        pool_state.pause_reason = PoolPauseReason::default();
-        msg!("Pool automatically unpaused as pause duration has elapsed");
-        return Ok(());
-    }
+/// * `ProgramResult` - Success if pool is not paused
+pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
+    // ❌ REMOVED: Auto-unpause logic (time-based pause system removal)
+    // if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && current_timestamp >= pool_state.pause_end_timestamp {
+    //     pool_state.is_paused = false;
+    //     pool_state.pause_end_timestamp = 0;
+    //     pool_state.pause_reason = PoolPauseReason::default();
+    //     msg!("Pool automatically unpaused as pause duration has elapsed");
+    //     return Ok(());
+    // }
 
     if pool_state.is_paused {
         msg!("Pool operations are currently paused");
-        msg!("Pause reason: {:?}", pool_state.pause_reason);
-        msg!("Pause ends at timestamp: {}", pool_state.pause_end_timestamp);
+        // ❌ REMOVED: Pause reason and end timestamp logging (fields no longer exist)
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

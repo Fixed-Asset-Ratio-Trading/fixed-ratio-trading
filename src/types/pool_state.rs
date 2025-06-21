@@ -17,153 +17,6 @@ use crate::{
 };
 use super::delegate_actions::{DelegateTimeLimits, PendingDelegateAction};
 
-/// Enumerated reasons for pool pause requests.
-/// 
-/// This enum provides structured categorization of pause requests to enable
-/// different governance and bonding mechanisms based on the type of issue.
-/// Designed for integration with higher-layer governance contracts.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, PartialEq, Default)]
-pub enum PoolPauseReason {
-    #[default]
-    /// Dispute over the fixed ratio accuracy or fairness
-    RatioDispute,
-    /// Insufficient bonding by pool participants
-    InsufficientBond,
-    /// General security concern requiring investigation
-    SecurityConcern,
-    /// Governance action or proposal execution
-    GovernanceAction,
-    /// Manual intervention by authorized delegate
-    ManualIntervention,
-    /// Emergency response to detected issues
-    Emergency,
-}
-
-/// Individual pool pause request structure.
-/// 
-/// Represents a delegate's request to pause pool operations for a specific duration.
-/// Designed as a primitive for governance contracts to implement sophisticated
-/// dispute resolution, bonding mechanisms, and automated pool management.
-/// 
-/// # Design Principles:
-/// - Separate timing from withdrawal requests for independent governance
-/// - Owner cancellation capability for emergency resolution
-/// - Structured reasons for automated governance integration
-/// - Maximum 72-hour duration to prevent indefinite pausing
-/// 
-/// # Timing Model:
-/// - Request submitted at `request_timestamp`
-/// - Becomes active after `wait_time` seconds (1 minute to 72 hours)
-/// - Remains active for `duration_seconds` (1 minute to 72 hours)
-/// - Can be cancelled by delegate or owner before activation
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Copy, Default)]
-pub struct PoolPauseRequest {
-    /// Delegate who submitted the pause request
-    pub delegate: Pubkey,
-    /// Structured reason for the pause request
-    pub reason: PoolPauseReason,
-    /// Timestamp when the request was submitted (Unix timestamp)
-    pub request_timestamp: i64,
-    /// Solana slot when the request was submitted (for audit trails)
-    pub request_slot: u64,
-    /// Wait time before pause becomes active (60 to 259200 seconds)
-    pub wait_time: u64,
-    /// Duration of the pause once active (60 to 259200 seconds)
-    pub duration_seconds: u64,
-}
-
-impl PoolPauseRequest {
-    /// Create a new pool pause request with validation.
-    /// 
-    /// # Arguments:
-    /// * `delegate` - Pubkey of the requesting delegate
-    /// * `reason` - Structured reason for the pause
-    /// * `request_timestamp` - Current Unix timestamp
-    /// * `request_slot` - Current Solana slot
-    /// * `wait_time` - Delay before pause activation (60-259200 seconds)
-    /// * `duration_seconds` - Duration of pause (60-259200 seconds)
-    /// 
-    /// # Validation:
-    /// - Wait time must be between 1 minute and 72 hours
-    /// - Duration must be between 1 minute and 72 hours
-    pub fn new(
-        delegate: Pubkey,
-        reason: PoolPauseReason,
-        request_timestamp: i64,
-        request_slot: u64,
-        wait_time: u64,
-        duration_seconds: u64,
-    ) -> Result<Self, crate::PoolError> {
-        // Validate wait time (1 minute to 72 hours)
-        if wait_time < 60 || wait_time > 259200 {
-            return Err(crate::PoolError::InvalidWaitTime { wait_time });
-        }
-        
-        // Validate duration (1 minute to 72 hours)
-        if duration_seconds < 60 || duration_seconds > 259200 {
-            return Err(crate::PoolError::InvalidWaitTime { wait_time: duration_seconds });
-        }
-
-        Ok(Self {
-            delegate,
-            reason,
-            request_timestamp,
-            request_slot,
-            wait_time,
-            duration_seconds,
-        })
-    }
-
-    pub fn get_packed_len() -> usize {
-        32 + // delegate (Pubkey)
-        1 +  // reason (PoolPauseReason enum)
-        8 +  // request_timestamp (i64)
-        8 +  // request_slot (u64)
-        8 +  // wait_time (u64)
-        8    // duration_seconds (u64)
-    }
-    
-    /// Check if the pause request is ready to become active.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - `true` if enough time has passed since request submission
-    /// - `false` if still within the wait period
-    pub fn is_ready_to_activate(&self, current_timestamp: i64) -> bool {
-        current_timestamp >= self.request_timestamp + self.wait_time as i64
-    }
-    
-    /// Check if the pause is currently active.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - `true` if pause is active (past wait time, within duration)
-    /// - `false` if pause hasn't started or has expired
-    pub fn is_active(&self, current_timestamp: i64) -> bool {
-        let activation_time = self.request_timestamp + self.wait_time as i64;
-        let expiration_time = activation_time + self.duration_seconds as i64;
-        
-        current_timestamp >= activation_time && current_timestamp < expiration_time
-    }
-    
-    /// Check if the pause has expired.
-    /// 
-    /// # Arguments:
-    /// * `current_timestamp` - Current Unix timestamp for comparison
-    /// 
-    /// # Returns:
-    /// - `true` if pause duration has fully elapsed
-    /// - `false` if pause is still pending or active
-    pub fn is_expired(&self, current_timestamp: i64) -> bool {
-        let expiration_time = self.request_timestamp + self.wait_time as i64 + self.duration_seconds as i64;
-        current_timestamp >= expiration_time
-    }
-}
-
 /// Represents a withdrawal request with time delay for enhanced security.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, Copy)]
 pub struct WithdrawalRequest {
@@ -484,8 +337,6 @@ pub struct PoolState {
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
     pub is_paused: bool,
-    pub pause_end_timestamp: i64,  // Unix timestamp when pause ends (0 if not paused)
-    pub pause_reason: PoolPauseReason,  // Reason for current pause
     pub delegate_management: DelegateManagement,
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
@@ -516,8 +367,6 @@ impl Default for PoolState {
             is_initialized: false,
             rent_requirements: RentRequirements::default(),
             is_paused: false,
-            pause_end_timestamp: 0,
-            pause_reason: PoolPauseReason::default(),
             delegate_management: DelegateManagement::default(),
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
@@ -549,8 +398,6 @@ impl PoolState {
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // is_paused
-        8 +  // pause_end_timestamp
-        1 +  // pause_reason (enum)
         DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b

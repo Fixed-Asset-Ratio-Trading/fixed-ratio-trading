@@ -35,8 +35,6 @@ pub enum DelegateActionParams {
     },
     /// Pool pause parameters
     PoolPause {
-        /// Duration of the pause in seconds
-        duration: u64,
         /// Reason for pausing
         reason: PauseReason,
     },

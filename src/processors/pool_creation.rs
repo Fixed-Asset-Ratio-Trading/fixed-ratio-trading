@@ -1021,9 +1021,6 @@ pub fn process_initialize_pool(
     pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
     pool_state_data.is_paused = false;
-    // **CRITICAL: Initialize ALL pause-related fields**
-    pool_state_data.pause_end_timestamp = 0;
-    pool_state_data.pause_reason = PoolPauseReason::default();
     pool_state_data.rent_requirements = RentRequirements::new(rent);
     pool_state_data.delegate_management = DelegateManagement::new(*payer.key, 0);
     pool_state_data.collected_fees_token_a = 0;

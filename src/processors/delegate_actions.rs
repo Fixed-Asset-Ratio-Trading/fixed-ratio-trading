@@ -16,13 +16,11 @@ use crate::{
     error::PoolError,
     types::{
         PoolState,
-        pool_state::PoolPauseReason,
         delegate_actions::{
             DelegateActionType,
             DelegateActionParams,
             DelegateTimeLimits,
             PendingDelegateAction,
-            PauseReason,
         },
     },
     constants::{MAX_SWAP_FEE_BASIS_POINTS, POOL_STATE_SEED_PREFIX},
@@ -120,14 +118,6 @@ pub fn process_execute_delegate_action(
 
     // Load pool state
     let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
-
-    // Check if pool needs to be automatically unpaused
-    if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && clock.unix_timestamp >= pool_state.pause_end_timestamp {
-        pool_state.is_paused = false;
-        pool_state.pause_end_timestamp = 0;
-        pool_state.pause_reason = PoolPauseReason::default();
-        msg!("Pool automatically unpaused as pause duration has elapsed");
-    }
 
     // Get the pending action
     let action = pool_state.delegate_management.get_pending_action(action_id)
@@ -233,25 +223,12 @@ pub fn process_execute_delegate_action(
             }
         },
         DelegateActionType::PoolPause => {
-            if let DelegateActionParams::PoolPause { duration, reason } = action.params {
+            if let DelegateActionParams::PoolPause { reason } = action.params {
                 // Set pause state
                 pool_state.is_paused = true;
-                // Convert PauseReason to PoolPauseReason
-                pool_state.pause_reason = match reason {
-                    PauseReason::RatioDispute => PoolPauseReason::RatioDispute,
-                    PauseReason::SecurityConcern => PoolPauseReason::SecurityConcern,
-                    PauseReason::GovernanceAction => PoolPauseReason::GovernanceAction,
-                    PauseReason::ManualIntervention => PoolPauseReason::ManualIntervention,
-                    PauseReason::Emergency => PoolPauseReason::Emergency,
-                };
+                // ❌ NOTE: This PoolPause logic will be removed in Phase 2 - keeping for now to avoid compilation errors
                 
-                // Calculate and set pause end timestamp
-                pool_state.pause_end_timestamp = clock.unix_timestamp
-                    .checked_add(duration as i64)
-                    .ok_or(ProgramError::ArithmeticOverflow)?;
-                
-                msg!("Pool paused for {} seconds until timestamp {}", 
-                     duration, pool_state.pause_end_timestamp);
+                msg!("Pool paused indefinitely (no duration)");
                 msg!("Pause reason: {:?}", reason);
             }
         },
@@ -379,11 +356,10 @@ fn validate_action_params(
                 return Err(PoolError::InvalidActionParameters.into());
             }
         },
-        (DelegateActionType::PoolPause, DelegateActionParams::PoolPause { duration, .. }) => {
-            if *duration < 60 || *duration > 259200 {
-                msg!("Invalid pause duration: {}", duration);
-                return Err(PoolError::InvalidActionParameters.into());
-            }
+        (DelegateActionType::PoolPause, DelegateActionParams::PoolPause { reason }) => {
+            // ❌ REMOVED: Duration validation (time-based pause system removal)
+            // Basic validation that reason is provided (enum validation handles this)
+            msg!("Pool pause requested with reason: {:?}", reason);
         },
         (action_type, params) => {
             msg!("Mismatched action type and parameters: {:?} {:?}", action_type, params);
