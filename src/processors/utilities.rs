@@ -145,6 +145,13 @@ pub fn get_token_vault_pdas(
 pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DEBUG: get_pool_info: Retrieving comprehensive pool information");
     
+    // ✅ SYSTEM PAUSE COMPLIANCE: Read-only operation - exempt from blocking
+    crate::utils::system_pause_compliance::validate_operation_compliance(
+        accounts, 
+        "GetPoolInfo", 
+        true // Read-only operation
+    )?;
+    
     let pool_state_account = &accounts[0];
     let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
@@ -208,6 +215,13 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive pause status information
 pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
+    // ✅ SYSTEM PAUSE COMPLIANCE: Read-only operation - exempt from blocking
+    crate::utils::system_pause_compliance::validate_operation_compliance(
+        accounts, 
+        "GetPoolPauseStatus", 
+        true // Read-only operation - users need transparency during system pause
+    )?;
+    
     let pool_state_account = &accounts[0];
     let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
     

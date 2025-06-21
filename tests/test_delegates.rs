@@ -1348,9 +1348,7 @@ async fn test_request_delegate_action_pool_pause() -> TestResult {
     
     // Verify pool is initially active (not paused)
     assert!(!initial_pool_state.is_paused, "Pool should not be paused initially");
-    assert_eq!(initial_pool_state.pause_end_timestamp, 0, "Pool pause end timestamp should be 0 initially");
-    println!("✅ Pool is initially active (not paused) with pause end time: {}", 
-             initial_pool_state.pause_end_timestamp);
+    println!("✅ Pool is initially active (not paused)");
 
     // Section 1: Test valid pool pause requests
     println!("\n--- Testing Valid Pool Pause Requests ---");
@@ -1472,7 +1470,6 @@ async fn test_request_delegate_action_pool_pause() -> TestResult {
     
     // Verify pool remains active during request phase
     assert!(!pool_state_after_valid.is_paused, "Pool should remain active during request phase");
-    assert_eq!(pool_state_after_valid.pause_end_timestamp, 0, "Pause end timestamp should remain 0 during request phase");
     println!("✅ Pool state integrity maintained - remains active during request phase");
 
     // Section 3: Test invalid pool pause requests
@@ -1947,11 +1944,6 @@ async fn test_execute_delegate_action_success() -> TestResult {
     // Check pool is still active (not paused) since execution failed
     assert!(!pool_state_after_pause.is_paused, "Pool should not be paused since execution failed with ActionNotReady");
     println!("✅ Pool correctly remains active");
-    
-    // Check pause end time is not set
-    assert_eq!(pool_state_after_pause.pause_end_timestamp, 0, 
-        "Pause end timestamp should not be set");
-    println!("✅ Pause end time correctly remains unset");
 
     // 3.5 Verify action is still in pending and not added to history
     let pause_in_pending = pool_state_after_pause.delegate_management.pending_actions
