@@ -502,54 +502,25 @@
   - **REMOVE** functions that validate `pause_end_timestamp`
   - **REMOVE** auto-unpause test scenarios
 
-#### **Task 6.3: Replace with New Pool Pause Tests**
-- **File**: `tests/test_pool_pause.rs` (new)
-- **Changes**:
-  ```rust
-  #[tokio::test]
-  async fn test_delegate_pause_swaps_only() {
-      // 1. Delegate requests pool swap pause with reason
-      // 2. Wait for execution period
-      // 3. Execute pause
-      // 4. Verify swaps fail with PoolSwapsPaused error
-      // 5. Verify deposits still work
-      // 6. Verify withdrawals still work
-      // 7. Verify no auto-unpause occurs
-  }
-  
-  #[tokio::test]
-  async fn test_pool_pause_status_query() {
-      // 1. Pause pool swaps
-      // 2. Query GetPoolPauseStatus
-      // 3. Verify status shows swaps paused, deposits/withdrawals enabled
-      // 4. Verify pause details (who, when, reason) are visible
-      // 5. Verify no end timestamp shown (indefinite pause)
-  }
-  
-  #[tokio::test]
-  async fn test_delegate_unpause_cycle() {
-      // 1. Pause pool swaps → wait → execute
-      // 2. Request unpause → wait → execute
-      // 3. Verify swaps work again
-      // 4. Verify deposits/withdrawals worked throughout
-      // 5. Verify manual unpause required (no auto-unpause)
-  }
-  
-  #[tokio::test]
-  async fn test_indefinite_pause_no_auto_unpause() {
-      // 1. Pause pool swaps
-      // 2. Wait much longer than old "duration" would have been
-      // 3. Verify swaps remain paused (no auto-unpause)
-      // 4. Verify manual unpause is required
-  }
-  
-  #[tokio::test]
-  async fn test_pause_reason_validation() {
-      // 1. Test valid reason strings (1-200 chars)
-      // 2. Test invalid reason strings (too long, empty)
-      // 3. Verify proper error handling
-  }
-  ```
+#### **Task 6.3: Document New Pool Pause Tests**
+- **File**: `docs/tests/COMPREHENSIVE_TESTING_PLAN.md`
+  - **Changes**:
+  - Add new test module section: **Module 11: Pool-Specific Swap Pause (0% → 90% target)**
+  - Document five comprehensive tests following UTIL-002 format:
+    - **POOL-PAUSE-001**: `test_delegate_pause_swaps_only` - Delegate pause affects only swaps, not deposits/withdrawals
+    - **POOL-PAUSE-002**: `test_pool_pause_status_query` - Public pause status visibility and transparency
+    - **POOL-PAUSE-003**: `test_delegate_unpause_cycle` - Complete pause/unpause cycle with manual controls
+    - **POOL-PAUSE-004**: `test_indefinite_pause_no_auto_unpause` - Indefinite pause without auto-unpause
+    - **POOL-PAUSE-005**: `test_pause_reason_validation` - Pause reason string validation and error handling
+  - Each test documented with:
+    - **🔧 FEATURES TO TEST** section with numbered technical specifications (minimum 6 per test)
+    - **📊 EXPECTED OUTCOMES** section with bullet-pointed results (minimum 5 per test)
+    - Swap-only pause validation (deposits/withdrawals unaffected)
+    - Delegate action wait time enforcement
+    - Manual control validation (no auto-unpause)
+    - Public status query functionality
+    - Error handling for invalid pause reasons
+    - Integration with existing delegate management system
 
 #### **Task 6.4: Update Existing Delegate Tests**
 - **File**: `tests/test_delegates.rs`
