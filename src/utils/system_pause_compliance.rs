@@ -66,9 +66,9 @@
 //!
 //! This compliance framework integrates with the layered pause architecture:
 //! 
-//! ```
-//! System Pause (Global) → Pool Pause (Individual) → Operation Logic
-//!      ↑ THIS FRAMEWORK    ↑ EXISTING               ↑ BUSINESS LOGIC
+//! ```text
+//! System Pause (Global) -> Pool Pause (Individual) -> Operation Logic
+//!      ^ THIS FRAMEWORK    ^ EXISTING               ^ BUSINESS LOGIC
 //! ```
 
 use solana_program::{

@@ -33,28 +33,25 @@ use common::*;
 use fixed_ratio_trading::{
     PoolInstruction,
     types::{
-        delegate_actions::*,
+        delegate_actions::{DelegateActionType, DelegateActionParams},
         pool_state::PoolState,
     },
     ID as PROGRAM_ID,
 };
 
 // Test constants for DEL-001 (Fee Change Action)
-const DEFAULT_INITIAL_FEE: u16 = 25; // 0.25% - typical initial fee
 const VALID_FEE_LOW: u16 = 10; // 0.1% - low valid fee
 const VALID_FEE_MEDIUM: u16 = 40; // 0.4% - medium valid fee  
 const VALID_FEE_ZERO: u16 = 0; // 0% - zero fee (should be valid)
 const MAX_ALLOWED_FEE: u16 = 50; // 0.5% - maximum allowed fee (boundary)
 const INVALID_FEE_JUST_OVER: u16 = 51; // 0.51% - just over maximum
 const INVALID_FEE_HIGH: u16 = 100; // 1.0% - clearly invalid
-const INVALID_FEE_EXTREME: u16 = 10000; // 100% - extremely invalid
 
 // Test constants for DEL-002 (Withdrawal Action)
 const SMALL_WITHDRAWAL_AMOUNT: u64 = 100_000; // 0.1 tokens (6 decimals)
 const MEDIUM_WITHDRAWAL_AMOUNT: u64 = 1_000_000; // 1 token (6 decimals)
 const LARGE_WITHDRAWAL_AMOUNT: u64 = 10_000_000; // 10 tokens (6 decimals)
 const INITIAL_LIQUIDITY_AMOUNT: u64 = 100_000_000; // 100 tokens for liquidity
-const SWAP_AMOUNT_FOR_FEES: u64 = 5_000_000; // 5 tokens for generating fees
 const ZERO_WITHDRAWAL_AMOUNT: u64 = 0; // Invalid zero amount
 const EXCESSIVE_WITHDRAWAL_AMOUNT: u64 = 1_000_000_000_000; // Unrealistically large amount
 use solana_program::{
@@ -1004,8 +1001,8 @@ async fn test_request_delegate_action_withdrawal() -> TestResult {
     
     // For this test, we'll simulate that there are collectable fees available
     // In a real environment, these would be generated through swaps
-    let simulated_token_a_fees = initial_token_a_fees.max(LARGE_WITHDRAWAL_AMOUNT);
-    let simulated_token_b_fees = initial_token_b_fees.max(LARGE_WITHDRAWAL_AMOUNT);
+    let _simulated_token_a_fees = initial_token_a_fees.max(LARGE_WITHDRAWAL_AMOUNT);
+    let _simulated_token_b_fees = initial_token_b_fees.max(LARGE_WITHDRAWAL_AMOUNT);
     
     println!("✅ Pool initialized with available balances for withdrawal testing");
     
@@ -1623,10 +1620,7 @@ async fn test_execute_delegate_action_success() -> TestResult {
     // Section 3: Test Pool Pause Action execution
     println!("\n--- Testing Pool Pause Action Execution ---");
     
-    // 3.1 Request pool pause action
-    let pause_duration = 3600u64; // 1 hour in seconds
-    let pause_reason = PauseReason::SecurityConcern;
-    
+    // 3.1 Request pool pause action (new simplified system)
     let request_pause_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
@@ -1635,11 +1629,8 @@ async fn test_execute_delegate_action_success() -> TestResult {
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
         ],
         data: PoolInstruction::RequestDelegateAction {
-            action_type: DelegateActionType::PoolPause,
-            params: DelegateActionParams::PoolPause { 
-                duration: pause_duration,
-                reason: pause_reason
-            },
+            action_type: DelegateActionType::PausePoolSwaps,
+            params: DelegateActionParams::PausePoolSwaps,
         }.try_to_vec().unwrap(),
     };
     
@@ -1659,13 +1650,10 @@ async fn test_execute_delegate_action_success() -> TestResult {
     
     // Find the pause action in pending actions
     for action in &pool_state_after_pause_request.delegate_management.pending_actions {
-        if let (DelegateActionType::PoolPause, DelegateActionParams::PoolPause { duration, reason }) = 
+        if let (DelegateActionType::PausePoolSwaps, DelegateActionParams::PausePoolSwaps) = 
             (&action.action_type, &action.params) 
         {
-            if action.delegate == delegate.pubkey() && 
-               *duration == pause_duration && 
-               *reason == pause_reason
-            {
+            if action.delegate == delegate.pubkey() {
                 pause_action_id = action.action_id;
                 pause_wait_time = (action.execution_timestamp - action.request_timestamp) as u64;
                 break;

@@ -131,16 +131,16 @@ pub fn process_deposit_with_features(
          amount, minimum_lp_tokens_out, fee_recipient);
     
     // ✅ SYSTEM PAUSE: Backward compatible validation
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?; // Expected: 15 accounts minimum
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
     
-    // Debug account validation (adjust count for system state account)
-    if accounts.len() < 15 {
+    // Debug account validation
+    if accounts.len() < 14 {
         msg!("DEBUG: process_deposit_with_features: Insufficient accounts provided: {}", accounts.len());
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // Get user destination LP token account to check balance before and after
-    let user_destination_lp_token_account = &accounts[10]; // Based on standard deposit account order (shifted by 1 for system state)
+    let user_destination_lp_token_account = &accounts[9]; // Based on standard deposit account order
     msg!("DEBUG: process_deposit_with_features: About to read initial LP balance from account: {}", user_destination_lp_token_account.key);
     
     let initial_lp_balance = {
