@@ -85,7 +85,7 @@
   - Replace `PoolPause` with `PausePoolSwaps` and `UnpausePoolSwaps` in `DelegateActionType` enum
   - Replace old `PoolPause` params with new variants in `DelegateActionParams`
   - Remove duration-based pause parameters completely
-  - Add reason field for transparency
+  - **ARCHITECTURAL SIMPLIFICATION**: Remove reason handling entirely - delegate contracts manage their own governance and reasons
   ```rust
   #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq)]
   pub enum DelegateActionType {
@@ -104,10 +104,11 @@
   pub enum DelegateActionParams {
       // ... existing params ...
       
-      PausePoolSwaps {
-          reason: String, // Human-readable reason for pause (max 200 chars)
-      },
+      /// Simple pause request - no reason required at this contract level
+      /// Delegate contracts handle their own governance and reason tracking
+      PausePoolSwaps,
       
+      /// Simple unpause request - no parameters needed
       UnpausePoolSwaps,
       
       // ❌ REMOVE: PoolPause { duration, reason }, (old time-based version)
@@ -120,7 +121,7 @@
   - Add `swaps_paused` field to distinguish from system pause
   - Add `swaps_pause_requested_by` field to track who initiated current pause
   - Add `swaps_pause_initiated_timestamp` for audit trails
-  - Add `swaps_pause_reason` for transparency
+  - **SIMPLIFIED**: No reason storage - delegate contracts handle governance and reasons
   ```rust
   #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
   pub struct PoolState {
@@ -130,7 +131,8 @@
       pub swaps_paused: bool,
       pub swaps_pause_requested_by: Option<Pubkey>,
       pub swaps_pause_initiated_timestamp: i64,
-      pub swaps_pause_reason: Option<String>,
+      
+      // ❌ REMOVED: swaps_pause_reason - delegate contracts handle governance and reasons
       
       // ❌ REMOVE: pause_end_timestamp: i64,
       // ❌ REMOVE: pause_reason: PoolPauseReason,
@@ -163,7 +165,7 @@
     - Implement `PausePoolSwaps` and `UnpausePoolSwaps` action types
     - Validate pause requests (can't pause if swaps already paused, etc.)
     - Validate unpause requests (can't unpause if swaps not paused, etc.)
-    - Store reason for pause for transparency
+    - **SIMPLIFIED**: No reason validation - delegate contracts handle governance
   - Replace `process_execute_delegate_action()`:
     - Remove old duration-based pause execution completely
     - Implement `PausePoolSwaps` execution (set `swaps_paused = true`, no end timestamp)
@@ -173,7 +175,7 @@
   - Replace `validate_action_params()`:
     - Remove old `PoolPause` validation completely
     - Add validation for new `PausePoolSwaps` and `UnpausePoolSwaps` types
-    - Validate reason string length (max 200 chars)
+    - **SIMPLIFIED**: No reason validation - much cleaner code
 
 #### **Task 3.2: Update Swap Processor for Pool Pause**
 - **File**: `src/processors/swap.rs`
@@ -205,10 +207,8 @@
           msg!("Pool swaps are currently paused by delegate");
           msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
           msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
-          if let Some(reason) = &pool_state_data.swaps_pause_reason {
-              msg!("Reason: {}", reason);
-          }
           msg!("Note: Deposits and withdrawals are still available");
+          msg!("Note: Delegate contract manages pause governance and reasons");
           return Err(PoolError::PoolSwapsPaused.into());
       }
       
@@ -304,7 +304,6 @@
           pool_state.swaps_paused = true;
           pool_state.swaps_pause_requested_by = Some(*withdrawer);
           pool_state.swaps_pause_initiated_timestamp = Clock::get()?.unix_timestamp;
-          pool_state.swaps_pause_reason = Some("Automatic slippage protection during large withdrawal".to_string());
           
           // Mark this as a temporary withdrawal protection pause
           pool_state.withdrawal_protection_active = true;
@@ -319,7 +318,6 @@
       if pool_state.withdrawal_protection_active {
           pool_state.swaps_paused = false;
           pool_state.swaps_pause_requested_by = None;
-          pool_state.swaps_pause_reason = None;
           pool_state.withdrawal_protection_active = false;
           
           msg!("Withdrawal protection completed - swaps re-enabled");
@@ -341,10 +339,11 @@
       pub swaps_paused: bool,
       pub swaps_pause_requested_by: Option<Pubkey>,
       pub swaps_pause_initiated_timestamp: i64,
-      pub swaps_pause_reason: Option<String>,
       
       // Automatic withdrawal protection
       pub withdrawal_protection_active: bool,
+      
+      // ❌ REMOVED: swaps_pause_reason - delegate contracts handle governance and reasons
       
       // ❌ REMOVE: pause_end_timestamp: i64,
       // ❌ REMOVE: pause_reason: PoolPauseReason,
@@ -399,9 +398,7 @@
           msg!("=== PAUSE DETAILS ===");
           msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
           msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
-          if let Some(reason) = &pool_state_data.swaps_pause_reason {
-              msg!("Reason: {}", reason);
-          }
+          msg!("Governance: Managed by delegate contract");
           msg!("Note: No auto-unpause - requires manual unpause action");
       }
       
@@ -469,8 +466,7 @@
       #[error("Pool swaps are not currently paused")]
       PoolSwapsNotPaused = 4002,
       
-      #[error("Invalid pause reason (must be 1-200 characters)")]
-      InvalidPauseReason = 4003,
+      // ❌ REMOVED: InvalidPauseReason - delegate contracts handle governance and reasons
   }
   ```
 
@@ -511,7 +507,7 @@
     - **POOL-PAUSE-002**: `test_pool_pause_status_query` - Public pause status visibility and transparency
     - **POOL-PAUSE-003**: `test_delegate_unpause_cycle` - Complete pause/unpause cycle with manual controls
     - **POOL-PAUSE-004**: `test_indefinite_pause_no_auto_unpause` - Indefinite pause without auto-unpause
-    - **POOL-PAUSE-005**: `test_pause_reason_validation` - Pause reason string validation and error handling
+    - **POOL-PAUSE-005**: `test_pause_governance_separation` - Validate that governance is handled by delegate contracts
   - Each test documented with:
     - **🔧 FEATURES TO TEST** section with numbered technical specifications (minimum 6 per test)
     - **📊 EXPECTED OUTCOMES** section with bullet-pointed results (minimum 5 per test)
@@ -519,7 +515,7 @@
     - Delegate action wait time enforcement
     - Manual control validation (no auto-unpause)
     - Public status query functionality
-    - Error handling for invalid pause reasons
+    - **SIMPLIFIED**: No reason validation - delegate contracts handle governance
     - Integration with existing delegate management system
 
 #### **Task 6.4: Update Existing Delegate Tests**
@@ -609,6 +605,7 @@
 10. **Automatic Slippage Protection**: Large withdrawals automatically pause swaps temporarily
 11. **MEV Prevention**: No front-running or sandwich attacks during protected withdrawals
 12. **Fail-Safe Design**: Protection cleanup happens regardless of withdrawal success/failure
+13. **🎯 Architectural Simplification**: No reason handling at core contract level - delegate smart contracts manage their own governance, reasons, and decision logic for maximum flexibility and minimal data overhead
 
 ## ⚠️ **IMPLEMENTATION NOTES**
 
@@ -619,5 +616,6 @@
 - **Coexistence**: Pool pause and system pause are independent (system pause overrides pool pause)
 - **Delegate Control**: Delegates control pool-specific pause, not system-wide pause
 - **Simplification**: Removing duration/auto-unpause makes system much simpler and more predictable
+- **🎯 ARCHITECTURAL SIMPLIFICATION**: No reason storage/validation at this contract level - delegate smart contracts handle their own governance, reasons, and decision-making logic. This keeps the core pause mechanism clean and focused.
 
 This focused refactor **completely removes the confusing time-based pause system** and replaces it with a simple, predictable **swap-only pause** that lasts until manually unpaused, while ensuring deposits/withdrawals are never affected by pool-level pause controls. 
