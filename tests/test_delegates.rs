@@ -33,7 +33,7 @@ use common::*;
 use fixed_ratio_trading::{
     PoolInstruction,
     types::{
-        delegate_actions::{DelegateActionType, DelegateActionParams},
+        delegate_actions::{DelegateActionType, DelegateActionParams, DelegateTimeLimits},
         pool_state::PoolState,
     },
     ID as PROGRAM_ID,
@@ -2242,9 +2242,470 @@ async fn test_revoke_action_success() -> TestResult {
     Ok(())
 }
 
-// ❌ REMOVED IN PHASE 6: test_request_delegate_action_pool_pause()
-//
-// Old duration-based pool pause test completely removed.
-// New test coverage documented in COMPREHENSIVE_TESTING_PLAN.md:
-// - Module 12: Pool-Specific Swap Pause (POOL-PAUSE-001 through POOL-PAUSE-006) 
-// - Module 13: Automatic Withdrawal Protection (WITHDRAWAL-PROTECTION-001 through 008)
+/// Test setting custom delegate time limits for different action types (DEL-006)
+/// 
+/// This comprehensive test validates the delegate time limit configuration functionality:
+/// 1. Testing setting custom wait times for each action type (fee change, withdrawal, pause)
+/// 2. Verifying limits are within allowed range (300-259200 seconds = 5 minutes to 72 hours)
+/// 3. Ensuring limits are applied per-delegate and persist correctly
+/// 4. Validating default limits for new delegates (259200 seconds = 72 hours)
+/// 5. Testing boundary conditions and error handling for out-of-range limits
+/// 6. Confirming only pool owner can set delegate time limits
+/// 7. Verifying time limits affect action wait times correctly
+/// 
+/// Note: This test requires the GitHub Issue #31960 workaround for buffer serialization
+/// when writing pool state data after time limit modifications.
+#[tokio::test]
+async fn test_set_delegate_time_limits() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints and pool
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        &ctx.lp_token_a_mint,
+        &ctx.lp_token_b_mint,
+        None,
+    ).await?;
+
+    // Create multiple delegate keypairs for testing
+    let delegate1 = Keypair::new();
+    let delegate2 = Keypair::new();
+    let non_delegate = Keypair::new();
+
+    // Add delegates to pool (payer is the pool owner)
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &delegate1.pubkey(),
+    ).await?;
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    add_delegate(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &config.pool_state_pda,
+        &delegate2.pubkey(),
+    ).await?;
+    
+    println!("✅ Successfully added delegates: {} and {}", delegate1.pubkey(), delegate2.pubkey());
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+
+    // Section 1: Verify default time limits for new delegates
+    println!("\n--- Section 1: Verifying Default Time Limits for New Delegates ---");
+    
+    let initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get initial pool state");
+    
+    // Check default time limits for delegate1
+    let default_limits_delegate1 = initial_pool_state.delegate_management.get_delegate_time_limits(&delegate1.pubkey())
+        .expect("Delegate1 should have default time limits");
+    
+    assert_eq!(default_limits_delegate1.fee_change_wait_time, 259200, "Default fee change wait time should be 72 hours");
+    assert_eq!(default_limits_delegate1.withdraw_wait_time, 259200, "Default withdrawal wait time should be 72 hours");
+    assert_eq!(default_limits_delegate1.pause_wait_time, 259200, "Default pause wait time should be 72 hours");
+    
+    // Check default time limits for delegate2
+    let default_limits_delegate2 = initial_pool_state.delegate_management.get_delegate_time_limits(&delegate2.pubkey())
+        .expect("Delegate2 should have default time limits");
+    
+    assert_eq!(default_limits_delegate2.fee_change_wait_time, 259200, "Default fee change wait time should be 72 hours");
+    assert_eq!(default_limits_delegate2.withdraw_wait_time, 259200, "Default withdrawal wait time should be 72 hours");
+    assert_eq!(default_limits_delegate2.pause_wait_time, 259200, "Default pause wait time should be 72 hours");
+    
+    println!("✅ Default time limits verified for both delegates:");
+    println!("   Fee Change: {} seconds (72 hours)", default_limits_delegate1.fee_change_wait_time);
+    println!("   Withdrawal: {} seconds (72 hours)", default_limits_delegate1.withdraw_wait_time);
+    println!("   Pause: {} seconds (72 hours)", default_limits_delegate1.pause_wait_time);
+
+    // Section 2: Test setting custom time limits within valid range
+    println!("\n--- Section 2: Testing Custom Time Limits Within Valid Range ---");
+    
+    // Define custom time limits for delegate1 (all different values within range)
+    let custom_limits_delegate1 = DelegateTimeLimits {
+        fee_change_wait_time: 3600,   // 1 hour
+        withdraw_wait_time: 7200,     // 2 hours
+        pause_wait_time: 14400,       // 4 hours
+    };
+    
+    println!("Setting custom limits for delegate1:");
+    println!("   Fee Change: {} seconds (1 hour)", custom_limits_delegate1.fee_change_wait_time);
+    println!("   Withdrawal: {} seconds (2 hours)", custom_limits_delegate1.withdraw_wait_time);
+    println!("   Pause: {} seconds (4 hours)", custom_limits_delegate1.pause_wait_time);
+    
+    let set_limits_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate1.pubkey(),
+            time_limits: custom_limits_delegate1,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut set_limits_tx = Transaction::new_with_payer(&[set_limits_ix], Some(&ctx.env.payer.pubkey()));
+    set_limits_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let set_limits_result = ctx.env.banks_client.process_transaction(set_limits_tx).await;
+    assert!(set_limits_result.is_ok(), "Setting custom time limits should succeed: {:?}", set_limits_result);
+    println!("✅ Custom time limits set successfully for delegate1");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Verify the custom limits were applied correctly using GitHub Issue #31960 workaround
+    let pool_state_after_custom = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after setting custom limits");
+    
+    let updated_limits_delegate1 = pool_state_after_custom.delegate_management.get_delegate_time_limits(&delegate1.pubkey())
+        .expect("Delegate1 should have updated time limits");
+    
+    assert_eq!(updated_limits_delegate1.fee_change_wait_time, 3600, "Fee change wait time should be updated to 1 hour");
+    assert_eq!(updated_limits_delegate1.withdraw_wait_time, 7200, "Withdrawal wait time should be updated to 2 hours");
+    assert_eq!(updated_limits_delegate1.pause_wait_time, 14400, "Pause wait time should be updated to 4 hours");
+    
+    // Verify delegate2 still has default limits (per-delegate enforcement)
+    let unchanged_limits_delegate2 = pool_state_after_custom.delegate_management.get_delegate_time_limits(&delegate2.pubkey())
+        .expect("Delegate2 should still have default time limits");
+    
+    assert_eq!(unchanged_limits_delegate2.fee_change_wait_time, 259200, "Delegate2 fee change wait time should remain default");
+    assert_eq!(unchanged_limits_delegate2.withdraw_wait_time, 259200, "Delegate2 withdrawal wait time should remain default");
+    assert_eq!(unchanged_limits_delegate2.pause_wait_time, 259200, "Delegate2 pause wait time should remain default");
+    
+    println!("✅ Custom time limits applied correctly and per-delegate isolation verified");
+
+    // Section 3: Test boundary conditions (minimum and maximum allowed values)
+    println!("\n--- Section 3: Testing Boundary Conditions ---");
+    
+    // Test minimum allowed values (300 seconds = 5 minutes)
+    let minimum_limits = DelegateTimeLimits {
+        fee_change_wait_time: 300,   // 5 minutes (minimum)
+        withdraw_wait_time: 300,     // 5 minutes (minimum)
+        pause_wait_time: 300,        // 5 minutes (minimum)
+    };
+    
+    println!("Testing minimum allowed limits (5 minutes each)");
+    let min_limits_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate2.pubkey(),
+            time_limits: minimum_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut min_limits_tx = Transaction::new_with_payer(&[min_limits_ix], Some(&ctx.env.payer.pubkey()));
+    min_limits_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let min_limits_result = ctx.env.banks_client.process_transaction(min_limits_tx).await;
+    assert!(min_limits_result.is_ok(), "Setting minimum allowed limits should succeed: {:?}", min_limits_result);
+    println!("✅ Minimum boundary limits set successfully");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Test maximum allowed values (259200 seconds = 72 hours)
+    let maximum_limits = DelegateTimeLimits {
+        fee_change_wait_time: 259200,   // 72 hours (maximum)
+        withdraw_wait_time: 259200,     // 72 hours (maximum)
+        pause_wait_time: 259200,        // 72 hours (maximum)
+    };
+    
+    println!("Testing maximum allowed limits (72 hours each)");
+    let max_limits_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate1.pubkey(),
+            time_limits: maximum_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut max_limits_tx = Transaction::new_with_payer(&[max_limits_ix], Some(&ctx.env.payer.pubkey()));
+    max_limits_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let max_limits_result = ctx.env.banks_client.process_transaction(max_limits_tx).await;
+    assert!(max_limits_result.is_ok(), "Setting maximum allowed limits should succeed: {:?}", max_limits_result);
+    println!("✅ Maximum boundary limits set successfully");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+
+    // Section 4: Test invalid time limits (out of allowed range)
+    println!("\n--- Section 4: Testing Invalid Time Limits (Out of Range) ---");
+    
+    // Test below minimum (299 seconds < 300 seconds minimum)
+    let below_minimum_limits = DelegateTimeLimits {
+        fee_change_wait_time: 299,   // Below 5 minutes minimum
+        withdraw_wait_time: 7200,    // Valid
+        pause_wait_time: 14400,      // Valid
+    };
+    
+    println!("Testing below minimum limits (299 seconds) - expecting rejection");
+    let below_min_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate1.pubkey(),
+            time_limits: below_minimum_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut below_min_tx = Transaction::new_with_payer(&[below_min_ix], Some(&ctx.env.payer.pubkey()));
+    below_min_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let below_min_result = ctx.env.banks_client.process_transaction(below_min_tx).await;
+    assert!(below_min_result.is_err(), "Setting below minimum limits should fail");
+    println!("✅ Below minimum limits correctly rejected");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Test above maximum (259201 seconds > 259200 seconds maximum)
+    let above_maximum_limits = DelegateTimeLimits {
+        fee_change_wait_time: 7200,     // Valid
+        withdraw_wait_time: 259201,     // Above 72 hours maximum
+        pause_wait_time: 14400,         // Valid
+    };
+    
+    println!("Testing above maximum limits (259201 seconds) - expecting rejection");
+    let above_max_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate2.pubkey(),
+            time_limits: above_maximum_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut above_max_tx = Transaction::new_with_payer(&[above_max_ix], Some(&ctx.env.payer.pubkey()));
+    above_max_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let above_max_result = ctx.env.banks_client.process_transaction(above_max_tx).await;
+    assert!(above_max_result.is_err(), "Setting above maximum limits should fail");
+    println!("✅ Above maximum limits correctly rejected");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+
+    // Section 5: Test authorization (only pool owner can set limits)
+    println!("\n--- Section 5: Testing Authorization (Only Pool Owner Can Set Limits) ---");
+    
+    // Create unauthorized user
+    let unauthorized_user = create_funded_user(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        None,
+    ).await?;
+    
+    let valid_custom_limits = DelegateTimeLimits {
+        fee_change_wait_time: 1800,   // 30 minutes
+        withdraw_wait_time: 3600,     // 1 hour
+        pause_wait_time: 7200,        // 2 hours
+    };
+    
+    println!("Testing unauthorized user attempting to set delegate time limits - expecting rejection");
+    let unauthorized_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(unauthorized_user.pubkey(), true), // Unauthorized user
+            AccountMeta::new(config.pool_state_pda, false),     // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate1.pubkey(),
+            time_limits: valid_custom_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut unauthorized_tx = Transaction::new_with_payer(&[unauthorized_ix], Some(&unauthorized_user.pubkey()));
+    unauthorized_tx.sign(&[&unauthorized_user], ctx.env.recent_blockhash);
+    let unauthorized_result = ctx.env.banks_client.process_transaction(unauthorized_tx).await;
+    assert!(unauthorized_result.is_err(), "Unauthorized user should not be able to set delegate time limits");
+    println!("✅ Unauthorized user correctly rejected");
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+
+    // Section 6: Test setting limits for non-existent delegate
+    println!("\n--- Section 6: Testing Setting Limits for Non-Existent Delegate ---");
+    
+    println!("Testing setting limits for non-delegate user - may succeed (limits stored regardless of delegate status)");
+    let non_delegate_limits_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: non_delegate.pubkey(),
+            time_limits: valid_custom_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut non_delegate_limits_tx = Transaction::new_with_payer(&[non_delegate_limits_ix], Some(&ctx.env.payer.pubkey()));
+    non_delegate_limits_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let non_delegate_result = ctx.env.banks_client.process_transaction(non_delegate_limits_tx).await;
+    
+    match non_delegate_result {
+        Ok(_) => {
+            println!("✅ Setting limits for non-delegate succeeded (limits stored for future use)");
+        },
+        Err(_) => {
+            println!("✅ Setting limits for non-delegate rejected (validation enforced)");
+        }
+    }
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+
+    // Section 7: Verify time limits affect action wait times correctly
+    println!("\n--- Section 7: Verifying Time Limits Affect Action Wait Times ---");
+    
+    // Set specific time limits for delegate2 to test action timing
+    let test_timing_limits = DelegateTimeLimits {
+        fee_change_wait_time: 1800,   // 30 minutes
+        withdraw_wait_time: 3600,     // 1 hour  
+        pause_wait_time: 7200,        // 2 hours
+    };
+    
+    let timing_limits_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(ctx.env.payer.pubkey(), true), // Pool owner
+            AccountMeta::new(config.pool_state_pda, false), // Pool state
+        ],
+        data: PoolInstruction::SetDelegateTimeLimits {
+            delegate: delegate2.pubkey(),
+            time_limits: test_timing_limits,
+        }.try_to_vec().unwrap(),
+    };
+    
+    let mut timing_limits_tx = Transaction::new_with_payer(&[timing_limits_ix], Some(&ctx.env.payer.pubkey()));
+    timing_limits_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    let timing_result = ctx.env.banks_client.process_transaction(timing_limits_tx).await;
+    assert!(timing_result.is_ok(), "Setting timing test limits should succeed: {:?}", timing_result);
+    
+    // Get fresh blockhash for next transaction
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    // Create a fee change action to test timing
+    let fee_change_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(delegate2.pubkey(), true), 
+            AccountMeta::new(config.pool_state_pda, false), 
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), 
+        ],
+        data: PoolInstruction::RequestDelegateAction {
+            action_type: DelegateActionType::FeeChange,
+            params: DelegateActionParams::FeeChange { 
+                new_fee_basis_points: 25 // 0.25%
+            },
+        }.try_to_vec().unwrap(),
+    };
+    let mut fee_change_tx = Transaction::new_with_payer(&[fee_change_ix], Some(&ctx.env.payer.pubkey()));
+    fee_change_tx.sign(&[&ctx.env.payer, &delegate2], ctx.env.recent_blockhash);
+    let fee_change_result = ctx.env.banks_client.process_transaction(fee_change_tx).await;
+    assert!(fee_change_result.is_ok(), "Fee change action should succeed: {:?}", fee_change_result);
+    
+    // Verify the action uses the custom wait time
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get final pool state");
+    
+    // Find the fee change action for delegate2
+    let mut fee_change_action_found = false;
+    for action in &final_pool_state.delegate_management.pending_actions {
+        if action.delegate == delegate2.pubkey() && matches!(action.action_type, DelegateActionType::FeeChange) {
+            let actual_wait_time = (action.execution_timestamp - action.request_timestamp) as u64;
+            assert_eq!(actual_wait_time, 1800, "Fee change action should use custom wait time of 1800 seconds");
+            fee_change_action_found = true;
+            println!("✅ Fee change action uses custom wait time: {} seconds (30 minutes)", actual_wait_time);
+            break;
+        }
+    }
+    assert!(fee_change_action_found, "Fee change action should be found in pending actions");
+
+    // Section 8: Final verification of all delegate time limits
+    println!("\n--- Section 8: Final Verification of All Delegate Time Limits ---");
+    
+    let final_verification_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get final verification pool state");
+    
+    // Verify delegate1 has maximum limits (from Section 3)
+    let final_limits_delegate1 = final_verification_state.delegate_management.get_delegate_time_limits(&delegate1.pubkey())
+        .expect("Delegate1 should have final time limits");
+    
+    assert_eq!(final_limits_delegate1.fee_change_wait_time, 259200, "Delegate1 should have maximum fee change wait time");
+    assert_eq!(final_limits_delegate1.withdraw_wait_time, 259200, "Delegate1 should have maximum withdrawal wait time");
+    assert_eq!(final_limits_delegate1.pause_wait_time, 259200, "Delegate1 should have maximum pause wait time");
+    
+    // Verify delegate2 has test timing limits (from Section 7)
+    let final_limits_delegate2 = final_verification_state.delegate_management.get_delegate_time_limits(&delegate2.pubkey())
+        .expect("Delegate2 should have final time limits");
+    
+    assert_eq!(final_limits_delegate2.fee_change_wait_time, 1800, "Delegate2 should have 30-minute fee change wait time");
+    assert_eq!(final_limits_delegate2.withdraw_wait_time, 3600, "Delegate2 should have 1-hour withdrawal wait time");
+    assert_eq!(final_limits_delegate2.pause_wait_time, 7200, "Delegate2 should have 2-hour pause wait time");
+    
+    println!("✅ Final verification complete:");
+    println!("   Delegate1 - Fee: {}s, Withdrawal: {}s, Pause: {}s", 
+             final_limits_delegate1.fee_change_wait_time, 
+             final_limits_delegate1.withdraw_wait_time, 
+             final_limits_delegate1.pause_wait_time);
+    println!("   Delegate2 - Fee: {}s, Withdrawal: {}s, Pause: {}s", 
+             final_limits_delegate2.fee_change_wait_time, 
+             final_limits_delegate2.withdraw_wait_time, 
+             final_limits_delegate2.pause_wait_time);
+
+    println!("\n===== DEL-006 TEST SUMMARY =====");
+    println!("✅ Delegate Time Limits Configuration Testing Complete:");
+    println!("   ✓ Default limits: All new delegates start with 72-hour wait times");
+    println!("   ✓ Custom limits: Successfully set different wait times per action type");
+    println!("   ✓ Per-delegate: Time limits applied independently for each delegate");
+    println!("   ✓ Boundary validation: 5-minute minimum and 72-hour maximum enforced");
+    println!("   ✓ Range validation: Out-of-range values properly rejected");
+    println!("   ✓ Authorization: Only pool owner can set delegate time limits");
+    println!("   ✓ Action timing: Custom wait times correctly applied to delegate actions");
+    println!("   ✓ State persistence: Time limits persist correctly using buffer serialization workaround");
+    println!();
+    println!("🎯 DEL-006 demonstrates robust time limit configuration with comprehensive validation");
+    
+    Ok(())
+}
