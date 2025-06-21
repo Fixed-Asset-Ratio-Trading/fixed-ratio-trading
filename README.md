@@ -185,46 +185,47 @@ let fee_ix = PoolInstruction::GetFeeInfo;
 - 👥 **Delegate Info**: Delegate list, wait times, withdrawal history
 - 💸 **Fee Info**: Fee rates, collected fees, available balances
 
-### **NEW: Individual Pool Ratio Pausing**
-Added sophisticated delegate-controlled pool pausing system for governance integration:
+### **NEW: Pool-Specific Swap Pause System**
+Simplified delegate-controlled swap pause system with clean architecture:
 
 ```rust
-// Delegate requests pool pause for dispute resolution
-let pause_request_ix = PoolInstruction::RequestPoolPause {
-    reason: PoolPauseReason::RatioDispute,
-    duration_seconds: 3600, // 1 hour pause
+// Delegate requests swap pause (indefinite until manual unpause)
+let pause_request_ix = PoolInstruction::RequestDelegateAction {
+    action_type: DelegateActionType::PausePoolSwaps,
+    params: DelegateActionParams::PausePoolSwaps,
 };
 
-// Owner or delegate can cancel before activation
-let cancel_pause_ix = PoolInstruction::CancelPoolPause;
+// Delegate requests swap unpause (manual control only)
+let unpause_request_ix = PoolInstruction::RequestDelegateAction {
+    action_type: DelegateActionType::UnpausePoolSwaps,
+    params: DelegateActionParams::UnpausePoolSwaps,
+};
 
-// Owner configures delegate-specific wait times
-let set_wait_time_ix = PoolInstruction::SetPoolPauseWaitTime {
-    delegate: delegate_pubkey,
-    wait_time: 3600, // 1 hour delay before activation
+// Execute pause/unpause after wait time
+let execute_ix = PoolInstruction::ExecuteDelegateAction {
+    action_id: pending_action_id,
+};
+
+// Owner can revoke any pending pause/unpause request
+let revoke_ix = PoolInstruction::RevokeAction {
+    action_id: pending_action_id,
 };
 ```
 
 **Features:**
-- 🔄 **Individual Delegate Control**: Each delegate can pause pools independently
-- ⏱️ **Configurable Timing**: 1 minute to 72 hours wait times and durations
-- 🏛️ **Governance Integration**: Structured reasons for dispute resolution
-- 🛡️ **Owner Override**: Pool owner can cancel any delegate's pause request
-- 🎯 **Bonding Support**: Designed for integration with bonding mechanisms
+- 🎯 **Swap-Only Impact**: Pool pause only affects swap operations (deposits/withdrawals continue normally)
+- ⏱️ **Time-Delayed Governance**: Configurable wait periods before execution
+- 🛡️ **Owner Override**: Pool owner can cancel any delegate's pause/unpause request
+- 🏛️ **Clean Architecture**: No reason storage at core level - delegate contracts handle governance
+- 🔄 **Manual Control**: No auto-unpause - requires explicit unpause action
+- 💧 **MEV Protection**: Automatic temporary pause during large withdrawals (≥5% of pool)
 
-**Pause Reasons:**
-- `RatioDispute` - Dispute over fixed ratio accuracy or fairness
-- `InsufficientBond` - Insufficient bonding by pool participants
-- `SecurityConcern` - General security concern requiring investigation
-- `GovernanceAction` - Governance action or proposal execution
-- `ManualIntervention` - Manual intervention by authorized delegate
-- `Emergency` - Emergency response to detected issues
-
-**Timing Model:**
-1. **Request**: Delegate submits pause request with reason and duration
-2. **Wait Period**: Configurable delay (1 minute to 72 hours) before activation
-3. **Active Period**: Pool operations paused for specified duration
-4. **Auto-Expiry**: Pause automatically lifts after duration completes
+**Architectural Simplification:**
+- ✅ **No Duration Parameters**: Pause lasts indefinitely until manually unpaused
+- ✅ **No Reason Enums**: Delegate smart contracts manage their own governance logic
+- ✅ **No Auto-Unpause**: Predictable manual control only
+- ✅ **Swap-Only Scope**: Deposits and withdrawals unaffected by pool pause
+- ✅ **Governance Separation**: Core contract handles pause mechanism, delegates handle governance
 
 **Use Cases:**
 - 💰 **Bonding Mechanisms**: Pause pool until bond requirements are met
@@ -275,7 +276,8 @@ let time_limits_ix = PoolInstruction::SetDelegateTimeLimits {
 **Action Types:**
 - `FeeChange` - Modify swap fee rates (0-0.5%)
 - `Withdrawal` - Request fee withdrawal to delegate
-- `PoolPause` - Pause pool operations
+- `PausePoolSwaps` - Pause swap operations only (deposits/withdrawals continue)
+- `UnpausePoolSwaps` - Resume swap operations (manual control)
 
 **Benefits:**
 - ✅ **Simpler Integration**: Fewer instructions to handle

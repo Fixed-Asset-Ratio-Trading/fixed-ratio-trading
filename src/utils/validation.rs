@@ -149,27 +149,20 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 }
 
 /// Validates that a pool is not paused (for user operations).
-/// ❌ REMOVED: Auto-unpause handling (time-based pause system removal)
+/// 
+/// **NEW PAUSE SYSTEM**: Simple pool-level pause validation without auto-unpause.
+/// Pool pause persists indefinitely until manually unpaused by delegate action.
 ///
 /// # Arguments
 /// * `pool_state` - The pool state to validate
-/// * `current_timestamp` - Current Unix timestamp (unused after auto-unpause removal)
+/// * `_current_timestamp` - Timestamp (unused in new system, kept for compatibility)
 ///
 /// # Returns
-/// * `ProgramResult` - Success if pool is not paused
+/// * `ProgramResult` - Success if pool is not paused, error if paused
 pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
-    // ❌ REMOVED: Auto-unpause logic (time-based pause system removal)
-    // if pool_state.is_paused && pool_state.pause_end_timestamp > 0 && current_timestamp >= pool_state.pause_end_timestamp {
-    //     pool_state.is_paused = false;
-    //     pool_state.pause_end_timestamp = 0;
-    //     pool_state.pause_reason = PoolPauseReason::default();
-    //     msg!("Pool automatically unpaused as pause duration has elapsed");
-    //     return Ok(());
-    // }
-
     if pool_state.is_paused {
-        msg!("Pool operations are currently paused");
-        // ❌ REMOVED: Pause reason and end timestamp logging (fields no longer exist)
+        msg!("Pool operations are currently paused (indefinite until manual unpause)");
+        msg!("Use delegate action to unpause pool operations");
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

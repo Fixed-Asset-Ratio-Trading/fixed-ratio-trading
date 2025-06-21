@@ -427,14 +427,12 @@ fn validate_action_params(
             }
         },
         (DelegateActionType::PausePoolSwaps, DelegateActionParams::PausePoolSwaps) => {
-            // ❌ REMOVED: Duration validation (time-based pause system removal)
-            // Basic validation that reason is provided (enum validation handles this)
-            msg!("Pool pause requested");
+            // Simple pause action - no parameters needed for new pause system
+            msg!("Pool pause requested (swap-only, indefinite until manual unpause)");
         },
         (DelegateActionType::UnpausePoolSwaps, DelegateActionParams::UnpausePoolSwaps) => {
-            // ❌ REMOVED: Duration validation (time-based pause system removal)
-            // Basic validation that reason is provided (enum validation handles this)
-            msg!("Pool unpause requested");
+            // Simple unpause action - no parameters needed for new pause system
+            msg!("Pool unpause requested (swap-only)");
         },
         (action_type, params) => {
             msg!("Mismatched action type and parameters: {:?} {:?}", action_type, params);
