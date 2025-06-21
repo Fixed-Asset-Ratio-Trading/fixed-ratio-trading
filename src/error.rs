@@ -137,6 +137,19 @@ pub enum PoolError {
     /// Unauthorized access to system controls
     #[error("Unauthorized access to system controls")]
     UnauthorizedAccess,
+    
+    // Pool-specific pause error types (Phase 2 addition)
+    /// Pool swaps are currently paused by delegate
+    #[error("Pool swaps are currently paused by delegate")]
+    PoolSwapsPaused,
+    
+    /// Pool swaps are already paused
+    #[error("Pool swaps are already paused")]
+    PoolSwapsAlreadyPaused,
+    
+    /// Pool swaps are not currently paused
+    #[error("Pool swaps are not currently paused")]
+    PoolSwapsNotPaused,
 }
 
 impl PoolError {
@@ -172,6 +185,9 @@ impl PoolError {
             PoolError::SystemAlreadyPaused => 1024,
             PoolError::SystemNotPaused => 1025,
             PoolError::UnauthorizedAccess => 1026,
+            PoolError::PoolSwapsPaused => 1027,
+            PoolError::PoolSwapsAlreadyPaused => 1028,
+            PoolError::PoolSwapsNotPaused => 1029,
         }
     }
 }

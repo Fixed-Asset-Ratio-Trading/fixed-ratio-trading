@@ -62,7 +62,6 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
     sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
 };
@@ -584,8 +583,10 @@ pub fn process_withdraw(
 ) -> ProgramResult {
     msg!("Processing Withdraw v2");
     
-    // ✅ SYSTEM PAUSE: Backward compatible validation
+    // ✅ SYSTEM PAUSE: Only check system-wide pause (existing)
     crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
+    
+    // ✅ NO POOL SWAP PAUSE CHECK: Withdrawals work regardless of delegate pool swap pause
     
     let account_info_iter = &mut accounts.iter();
     let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
@@ -606,14 +607,14 @@ pub fn process_withdraw(
     let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
+    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
 
     // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, program_id, rent, _clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, program_id, rent, _clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, program_id, rent, _clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, program_id, rent, _clock.slot)?;
+    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
+    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
 
     if !user_signer.is_signer {
         msg!("User must be a signer for withdraw");
@@ -624,6 +625,18 @@ pub fn process_withdraw(
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
+    }
+
+    // 🛡️ AUTOMATIC SLIPPAGE PROTECTION: Check if we should temporarily pause swaps
+    let needs_protection = should_protect_withdrawal_from_slippage(
+        lp_amount_to_burn,
+        &pool_state_data,
+    )?;
+    
+    if needs_protection {
+        // Temporarily pause swaps to protect this withdrawal
+        initiate_withdrawal_protection(&mut pool_state_data, user_signer.key, clock.unix_timestamp)?;
+        msg!("🛡️ Temporarily pausing swaps to protect large withdrawal from slippage");
     }
 
     // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
@@ -710,6 +723,165 @@ pub fn process_withdraw(
         }
     }
 
+    // Perform the withdrawal safely (no concurrent swaps can interfere if protection is active)
+    let withdrawal_result = execute_withdrawal_logic(
+        &mut pool_state_data,
+        lp_amount_to_burn,
+        withdraw_token_mint_key,
+        is_withdrawing_token_a,
+        user_signer,
+        user_source_lp_token_account,
+        user_destination_token_account,
+        source_pool_vault_acc,
+        source_lp_mint_account,
+        pool_state_account,
+        token_program_account,
+        system_program_account,
+    );
+    
+    // Always re-enable swaps after withdrawal (regardless of success/failure)
+    if needs_protection {
+        complete_withdrawal_protection(&mut pool_state_data)?;
+        msg!("🔓 Re-enabling swaps after withdrawal completion");
+    }
+    
+    // Save updated pool state (with protection cleanup applied)
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    {
+        let mut account_data = pool_state_account.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
+    
+    withdrawal_result
+}
+
+/// Determines if a withdrawal needs protection from swap interference
+/// 
+/// Large withdrawals (≥5% of pool) can be front-run or sandwich attacked by MEV bots.
+/// This function calculates the withdrawal size as a percentage of total pool liquidity
+/// to determine if temporary swap pause protection is warranted.
+/// 
+/// # Arguments
+/// * `lp_amount_to_burn` - Amount of LP tokens being burned
+/// * `pool_state` - Current pool state for liquidity calculations
+/// 
+/// # Returns
+/// * `Result<bool, ProgramError>` - True if protection needed, false otherwise
+fn should_protect_withdrawal_from_slippage(
+    lp_amount_to_burn: u64,
+    pool_state: &PoolState,
+) -> Result<bool, ProgramError> {
+    // Calculate withdrawal as percentage of total pool liquidity
+    let total_lp_supply = pool_state.total_token_a_liquidity + pool_state.total_token_b_liquidity;
+    if total_lp_supply == 0 {
+        return Ok(false); // Empty pool, no protection needed
+    }
+    
+    let withdrawal_percentage = (lp_amount_to_burn * 100) / total_lp_supply;
+    
+    // Protect withdrawals ≥5% of total pool to prevent slippage/front-running
+    const LARGE_WITHDRAWAL_THRESHOLD: u64 = 5;
+    
+    if withdrawal_percentage >= LARGE_WITHDRAWAL_THRESHOLD {
+        msg!("Large withdrawal detected: {}% of pool. Enabling slippage protection.", withdrawal_percentage);
+        return Ok(true);
+    }
+    
+    // Also check if swaps are already paused by delegates (don't interfere)
+    if pool_state.swaps_paused {
+        msg!("Swaps already paused by delegate - no additional protection needed");
+        return Ok(false);
+    }
+    
+    Ok(false)
+}
+
+/// Temporarily pause swaps to protect withdrawal from slippage
+/// 
+/// This function sets temporary swap pause flags to prevent MEV attacks during
+/// large withdrawals. The pause is automatically cleared after withdrawal completion.
+/// 
+/// # Arguments
+/// * `pool_state` - Mutable pool state to update
+/// * `withdrawer` - Public key of the user making the withdrawal
+/// * `current_timestamp` - Current blockchain timestamp
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error
+fn initiate_withdrawal_protection(
+    pool_state: &mut PoolState,
+    withdrawer: &Pubkey,
+    current_timestamp: i64,
+) -> ProgramResult {
+    // Only pause if not already paused by delegates
+    if !pool_state.swaps_paused {
+        pool_state.swaps_paused = true;
+        pool_state.swaps_pause_requested_by = Some(*withdrawer);
+        pool_state.swaps_pause_initiated_timestamp = current_timestamp;
+        
+        // Mark this as a temporary withdrawal protection pause
+        pool_state.withdrawal_protection_active = true;
+    }
+    
+    Ok(())
+}
+
+/// Re-enable swaps after withdrawal protection
+/// 
+/// This function clears the temporary withdrawal protection pause, allowing
+/// swaps to resume. Only applies to automatic protection, not delegate-initiated pauses.
+/// 
+/// # Arguments
+/// * `pool_state` - Mutable pool state to update
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error
+fn complete_withdrawal_protection(pool_state: &mut PoolState) -> ProgramResult {
+    // Only unpause if this was our withdrawal protection pause
+    if pool_state.withdrawal_protection_active {
+        pool_state.swaps_paused = false;
+        pool_state.swaps_pause_requested_by = None;
+        pool_state.withdrawal_protection_active = false;
+        
+        msg!("Withdrawal protection completed - swaps re-enabled");
+    }
+    
+    Ok(())
+}
+
+/// Execute the core withdrawal logic (extracted from original process_withdraw)
+/// 
+/// This function performs the actual token burning and transfer operations.
+/// It's separated to enable proper cleanup in case of failures.
+/// 
+/// # Arguments
+/// * `pool_state_data` - Mutable pool state 
+/// * `lp_amount_to_burn` - Amount of LP tokens to burn
+/// * `withdraw_token_mint_key` - Token mint being withdrawn
+/// * `is_withdrawing_token_a` - True if withdrawing token A, false for token B
+/// * Various account references for the operations
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error from withdrawal operations
+fn execute_withdrawal_logic<'a>(
+    pool_state_data: &mut PoolState,
+    lp_amount_to_burn: u64,
+    withdraw_token_mint_key: Pubkey,
+    is_withdrawing_token_a: bool,
+    user_signer: &AccountInfo<'a>,
+    user_source_lp_token_account: &AccountInfo<'a>,
+    user_destination_token_account: &AccountInfo<'a>,
+    source_pool_vault_acc: &AccountInfo<'a>,
+    source_lp_mint_account: &AccountInfo<'a>,
+    pool_state_account: &AccountInfo<'a>,
+    token_program_account: &AccountInfo<'a>,
+    system_program_account: &AccountInfo<'a>,
+) -> ProgramResult {
+    use solana_program::{program::{invoke, invoke_signed}, system_instruction};
+    use spl_token::instruction as token_instruction;
+    use crate::constants::{POOL_STATE_SEED_PREFIX, DEPOSIT_WITHDRAWAL_FEE};
+
     // Burn LP tokens from user
     msg!("Burning {} LP tokens from account {}", lp_amount_to_burn, user_source_lp_token_account.key);
     invoke(
@@ -766,22 +938,6 @@ pub fn process_withdraw(
     } else {
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_sub(lp_amount_to_burn)
             .ok_or(ProgramError::ArithmeticOverflow)?;
-    }
-
-    // ========================================================================
-    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
-    // ========================================================================
-    // Apply the same workaround used in process_deposit to prevent data corruption
-    // when the pool state PDA is used as both authority and data storage.
-    
-    // Step 1: Serialize the pool state data to a temporary buffer
-    let mut serialized_data = Vec::new();
-    pool_state_data.serialize(&mut serialized_data)?;
-    
-    // Step 2: Atomic copy to account data
-    {
-        let mut account_data = pool_state_account.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
     }
     
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);

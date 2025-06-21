@@ -341,6 +341,12 @@ pub struct PoolState {
     pub swaps_paused: bool,
     pub swaps_pause_requested_by: Option<Pubkey>,
     pub swaps_pause_initiated_timestamp: i64,
+    
+    // Automatic withdrawal protection
+    pub withdrawal_protection_active: bool,
+    
+    // ❌ REMOVED: swaps_pause_reason - delegate contracts handle governance and reasons
+    
     pub delegate_management: DelegateManagement,
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
@@ -374,6 +380,7 @@ impl Default for PoolState {
             swaps_paused: false,
             swaps_pause_requested_by: None,
             swaps_pause_initiated_timestamp: 0,
+            withdrawal_protection_active: false,
             delegate_management: DelegateManagement::default(),
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
@@ -409,6 +416,7 @@ impl PoolState {
         1 +  // swaps_paused
         33 + // swaps_pause_requested_by (Option<Pubkey> = 1 + 32)
         8 +  // swaps_pause_initiated_timestamp
+        1 +  // withdrawal_protection_active
         
         DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a

@@ -157,7 +157,7 @@ pub fn process_swap(
 ) -> ProgramResult {
     msg!("Processing Swap v2");
     
-    // ✅ SYSTEM PAUSE: Backward compatible validation
+    // ✅ SYSTEM PAUSE: Check system-wide pause first (existing)
     crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?; // Expected: 12 accounts minimum
     
     let account_info_iter = &mut accounts.iter();
@@ -165,6 +165,9 @@ pub fn process_swap(
     let user_input_token_account = next_account_info(account_info_iter)?;      // User's token account for the input token
     let user_output_token_account = next_account_info(account_info_iter)?;     // User's token account to receive the output token
     let pool_state_account = next_account_info(account_info_iter)?;              // Pool state PDA
+
+    // ✅ POOL SWAP PAUSE: Check pool-specific swap pause (NEW)
+    validate_pool_swaps_not_paused(pool_state_account)?;
 
     // Accounts needed for Pool State PDA seeds derivation for signing
     let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_a_mint (must match pool_state_data.token_a_mint)
@@ -602,5 +605,31 @@ pub fn process_set_swap_fee(
          old_fee, fee_basis_points,
          old_fee as f64 / 100.0, fee_basis_points as f64 / 100.0);
 
+    Ok(())
+}
+
+/// Validates that pool swaps are not paused (granular pool check)
+/// 
+/// This function provides pool-specific swap pause validation, separate from system-wide pause.
+/// It allows deposits and withdrawals to continue while blocking only swap operations when
+/// delegate-initiated pool pause is active.
+/// 
+/// # Arguments
+/// * `pool_state_account` - Pool state PDA account containing pause status
+/// 
+/// # Returns
+/// * `ProgramResult` - Success if swaps are enabled, error if paused
+fn validate_pool_swaps_not_paused(pool_state_account: &AccountInfo) -> ProgramResult {
+    let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
+    
+    if pool_state_data.swaps_paused {
+        msg!("Pool swaps are currently paused by delegate");
+        msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+        msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
+        msg!("Note: Deposits and withdrawals are still available");
+        msg!("Note: Delegate contract manages pause governance and reasons");
+        return Err(PoolError::PoolSwapsPaused.into());
+    }
+    
     Ok(())
 } 
