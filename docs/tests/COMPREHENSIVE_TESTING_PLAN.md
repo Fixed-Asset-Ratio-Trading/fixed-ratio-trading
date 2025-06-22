@@ -7,7 +7,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 **Target Coverage:** 85%+ (2,136+ lines covered)  
 **Total Tests Implemented:** 119 working tests ✅
 **Total Tests in Codebase:** 119 tests (All passing successfully)
-**Total Tests Planned:** ~148 tests (+29 additional tests needed, including 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
+**Total Tests Planned:** ~158 tests (+39 additional tests needed, including 10 critical processor execution tests, 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -94,9 +94,9 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - Current Coverage: 49.42%
 - Target Coverage: 85%+
 - Total Tests Running: 119 passing tests ✅ **ALL TESTS PASSING**
-- Tests Completed in Phase 1: 30/37 (81% complete)
+- Tests Completed in Phase 1: 30/47 (64% complete) 
 - Estimated Timeline: 2-3 weeks  
-- Additional Tests Needed: ~29
+- Additional Tests Needed: ~39 (including 10 critical processor execution tests)
 
 **🎉 MILESTONE ACHIEVED**: All 119 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
@@ -107,7 +107,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved (SDK-006 to SDK-012 tests planned for 75%+ target)
 - **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, slight improvement (UTIL-009 to UTIL-018 tests planned for 50%+ target)  
 - **Utils/Validation**: 30.0% (21/70 lines) 🔶 **MEDIUM** - Coverage stable
-- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, NO coverage improvement despite SWAP test completion (tests focus on instruction validation, not processor execution)
+- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, NO coverage improvement despite SWAP test completion. **REQUIRES PROCESSOR EXECUTION TESTS** (SWAP-PROC-001 to SWAP-PROC-010) to achieve 62.7%+ coverage target
 - **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage
 
 ### Medium Priority Modules (Partial Coverage):
@@ -1208,9 +1208,177 @@ test: Complete <TEST-ID> <description> - <summary of work>
 
 **Milestone 7.5.1:** ✅ Complete - Core swap execution functionality (Tests SWAP-007 to SWAP-012) - 6/6 completed
 
+**⚠️ COVERAGE REALITY:** Tests SWAP-007 to SWAP-012 provided **NO coverage improvement** (remained at 5.1%) because they focused on instruction validation rather than processor execution.
+
 **IMPLEMENTATION PRIORITY:** ✅ SWAP-007 → ✅ SWAP-008 → ✅ SWAP-009 → ✅ SWAP-010 → ✅ SWAP-011 → ✅ SWAP-012
 **RATIONALE:** Start with basic successful execution, then add complexity, then handle edge cases
-**COVERAGE IMPACT:** Expected to increase Processors/Swap coverage from 5.1% to 85%+
+**COVERAGE IMPACT:** Expected to increase Processors/Swap coverage from 5.1% to 85%+ - **NOT ACHIEVED**
+
+#### Sub-category 7.5.4: **ACTUAL PROCESSOR EXECUTION TESTS** ⛔ **CRITICAL - NEW REQUIREMENT**
+**Status:** 🔴 Not Started | **Priority:** **CRITICAL** | **Requirement:** Each test must add minimum 3% coverage (6+ lines out of 217)
+
+**CRITICAL REQUIREMENT:** All tests must execute actual processor functions (`process_swap`, `process_set_swap_fee`, `validate_pool_swaps_not_paused`) rather than instruction validation.
+
+- [ ] **SWAP-PROC-001** `test_process_swap_a_to_b_execution` - Direct process_swap execution for A→B swaps ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (lines ~150-500, ~150+ lines available)
+  - **🎯 COVERAGE TARGET**: Execute account parsing, validation, price calculation, token transfers, state updates (25+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Complete account info parsing and validation (user signer, token accounts, pool state, vaults)
+    2. Pool state deserialization and initialization verification
+    3. Token mint matching and vault account validation
+    4. Direction determination logic (A→B swap path)
+    5. User token account validation (mint, owner, balance checks)
+    6. Fixed-ratio price calculation execution (A→B formula)
+    7. Slippage protection validation and enforcement
+    8. Trading fee calculation and collection (configurable rate)
+    9. Pool liquidity validation for output tokens
+    10. Actual token transfers (user→vault, vault→user with PDA signing)
+    11. Pool state liquidity tracking updates
+    12. Fee accumulation tracking in pool state
+    13. Buffer serialization workaround for state persistence
+    14. SOL swap fee collection and transfer
+  - **📊 EXPECTED COVERAGE**: 25+ lines (11.5% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Coverage analysis shows process_swap function lines executed
+
+- [ ] **SWAP-PROC-002** `test_process_swap_b_to_a_execution` - Direct process_swap execution for B→A swaps ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (lines ~150-500, covering B→A code path)
+  - **🎯 COVERAGE TARGET**: Execute different direction logic, validation paths, state updates (20+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Direction determination logic (B→A swap path)
+    2. Different vault account ordering validation
+    3. Fixed-ratio price calculation execution (B→A formula)
+    4. Reverse direction fee calculation and collection
+    5. Different pool liquidity validation (Token A availability)
+    6. Token transfers in reverse direction
+    7. Pool state updates for B→A swaps (different liquidity tracking)
+    8. Fee accumulation in opposite token type
+    9. Cross-validation with A→B test for bidirectional consistency
+  - **📊 EXPECTED COVERAGE**: 20+ lines (9.2% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Coverage analysis shows B→A specific code paths executed
+
+- [ ] **SWAP-PROC-003** `test_process_swap_insufficient_liquidity_execution` - Direct execution of liquidity validation failure ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (liquidity check and error handling paths)
+  - **🎯 COVERAGE TARGET**: Execute liquidity validation, error paths, state protection (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Pool state parsing and liquidity tracking access
+    2. Output token liquidity validation execution
+    3. Insufficient liquidity detection logic
+    4. Error path execution (InsufficientFunds error)
+    5. State consistency validation (no partial updates on failure)
+    6. Early termination logic before token transfers
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Liquidity validation and error handling paths covered
+
+- [ ] **SWAP-PROC-004** `test_process_swap_insufficient_user_funds_execution` - Direct execution of user balance validation failure ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (user account validation and error paths)
+  - **🎯 COVERAGE TARGET**: Execute user account parsing, balance checks, error handling (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. User input token account data unpacking
+    2. User balance validation against swap amount
+    3. Insufficient user funds detection logic
+    4. Error path execution (InsufficientFunds error)
+    5. Account ownership validation
+    6. Token mint validation
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: User validation and error handling paths covered
+
+- [ ] **SWAP-PROC-005** `test_process_swap_slippage_protection_execution` - Direct execution of slippage validation failure ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (slippage check and error paths)
+  - **🎯 COVERAGE TARGET**: Execute price calculation, slippage validation, error handling (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Price calculation execution (full calculation path)
+    2. Slippage tolerance comparison logic
+    3. Minimum amount out validation
+    4. Slippage exceeded error generation
+    5. Invalid swap amount error with proper parameters
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Slippage protection and calculation paths covered
+
+- [ ] **SWAP-PROC-006** `test_process_set_swap_fee_execution` - Direct process_set_swap_fee execution ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_set_swap_fee` function (lines ~549-620, ~70+ lines available)
+  - **🎯 COVERAGE TARGET**: Execute owner validation, fee validation, state updates (15+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Account parsing (owner, pool state)
+    2. Owner signature validation
+    3. Pool state deserialization
+    4. Owner authorization verification
+    5. Fee rate validation (0-50 basis points range)
+    6. Swap fee configuration update
+    7. Buffer serialization workaround for state persistence
+    8. Fee change logging and transparency
+    9. Old vs new fee comparison and logging
+  - **📊 EXPECTED COVERAGE**: 15+ lines (6.9% of Processors/Swap module)
+  - **🎯 VERIFICATION**: process_set_swap_fee function execution verified
+
+- [ ] **SWAP-PROC-007** `test_process_set_swap_fee_unauthorized_execution` - Direct unauthorized fee setting execution ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_set_swap_fee` function (authorization validation and error paths)
+  - **🎯 COVERAGE TARGET**: Execute authorization checks, error handling (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Non-owner account validation attempt
+    2. Owner authorization check execution
+    3. Authorization failure detection
+    4. Error path execution (InvalidAccountData error)
+    5. State protection (no fee changes on failure)
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Authorization validation and error paths covered
+
+- [ ] **SWAP-PROC-008** `test_process_set_swap_fee_invalid_rate_execution` - Direct invalid fee rate execution ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_set_swap_fee` function (fee validation and error paths)
+  - **🎯 COVERAGE TARGET**: Execute fee validation logic, boundary checks, error handling (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Fee rate boundary validation execution
+    2. Maximum fee limit checking (50 basis points)
+    3. Invalid fee rate detection logic
+    4. Error path execution (InvalidArgument error)
+    5. Range validation and error messaging
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Fee validation and boundary check paths covered
+
+- [ ] **SWAP-PROC-009** `test_validate_pool_swaps_not_paused_execution` - Direct pool pause validation execution ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `validate_pool_swaps_not_paused` function (lines ~622-635, ~13+ lines available)
+  - **🎯 COVERAGE TARGET**: Execute pause status checking, validation logic (10+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Pool state data deserialization for pause status
+    2. Swaps pause status validation logic
+    3. Pause validation success path
+    4. Pause detection and error generation
+    5. Delegate pause information logging
+    6. Pause timestamp and reason extraction
+    7. Pool swaps paused error generation
+  - **📊 EXPECTED COVERAGE**: 10+ lines (4.6% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Pool pause validation function execution verified
+
+- [ ] **SWAP-PROC-010** `test_process_swap_with_zero_fees_execution` - Direct execution with zero fee configuration ⛔ **CRITICAL**
+  - **🔧 PROCESSOR TARGET**: `process_swap` function (zero fee calculation path)
+  - **🎯 COVERAGE TARGET**: Execute zero fee logic, special case handling (8+ lines minimum)
+  - **🔧 FEATURES TO TEST**:
+    1. Zero fee rate configuration loading
+    2. Zero fee calculation logic execution
+    3. Fee amount validation (should be 0)
+    4. Amount after fee calculation (should equal input)
+    5. Fee tracking with zero amounts
+    6. State updates with no fee collection
+  - **📊 EXPECTED COVERAGE**: 8+ lines (3.7% of Processors/Swap module)
+  - **🎯 VERIFICATION**: Zero fee calculation paths covered
+
+**Milestone 7.5.4:** 🔴 **CRITICAL PRIORITY** - Actual Processor Execution Tests (Tests SWAP-PROC-001 to SWAP-PROC-010) - 0/10 completed
+
+**IMPLEMENTATION PRIORITY FOR PROCESSOR COVERAGE:**
+1. **SWAP-PROC-001** (25+ lines) - Core process_swap A→B execution  
+2. **SWAP-PROC-002** (20+ lines) - Core process_swap B→A execution
+3. **SWAP-PROC-006** (15+ lines) - process_set_swap_fee execution
+4. **SWAP-PROC-009** (10+ lines) - validate_pool_swaps_not_paused execution
+5. **SWAP-PROC-003 to SWAP-PROC-005, SWAP-PROC-007, SWAP-PROC-008, SWAP-PROC-010** (8+ lines each) - Error paths and edge cases
+
+**TOTAL EXPECTED COVERAGE IMPROVEMENT:** 125+ lines (57.6% of Processors/Swap module)
+**TARGET ACHIEVEMENT:** From 5.1% to 62.7%+ coverage in Processors/Swap module
+
+**CRITICAL SUCCESS CRITERIA:**
+- ✅ Each test must execute actual processor functions (not instruction validation)
+- ✅ Each test must add minimum 6+ lines coverage (3% of 217 total lines)
+- ✅ Tests must cover different execution paths through the processor code
+- ✅ Full account setup with proper mocking for actual function execution
+- ✅ State verification to ensure processor logic is actually running
 
 ---
 
@@ -1733,11 +1901,11 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 - [x] **M1.1** - Liquidity Management Complete (9/9 tests completed) ✅
 - [x] **M1.2** - Fee Management Complete (5/5 tests completed) ✅
 - [x] **M1.3** - Client SDK Complete (5/5 tests completed) ✅ 
-- [ ] **M1.4** - Processors/Utilities Complete (3/8 tests completed) 🔴 **CRITICAL**
+- [ ] **M1.4** - Processors/Utilities Complete (3/18 tests completed) 🔴 **CRITICAL**
 - [ ] **M1.5** - Utils/Validation Complete (0/10 tests completed) ⛔ **CRITICAL**
+- [ ] **M1.6** - Processors/Swap Processor Execution Complete (0/10 tests completed) ⛔ **CRITICAL PRIORITY**
 
-
-- [ ] **🎯 Phase 1 Complete** - All critical priority tests passing (22/37 completed)
+- [ ] **🎯 Phase 1 Complete** - All critical priority tests passing (22/47 completed)
 
 ### Phase 2 Milestones (High Priority Modules)
 - [ ] **M2.1** - Consolidated Delegate Management Complete (11 tests) 🟡 **45.8% coverage** - 6/11 completed
@@ -1798,7 +1966,7 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 - **119 Tests Passing**: All existing tests are working correctly
 - **SWAP Tests Complete but No Coverage Gain**: All 6 SWAP tests (SWAP-007 to SWAP-012) complete, but Processors/Swap coverage unchanged at 5.1%
 - **Coverage Gap Identified**: SWAP tests focused on instruction validation, not actual processor execution
-- **Next Priorities**: Focus on Processors/Utilities (20.6% coverage), actual swap processor execution tests, and SDK instruction tests 
+- **Next Priorities**: CRITICAL - Processors/Swap processor execution tests (SWAP-PROC-001 to SWAP-PROC-010), then Processors/Utilities (20.6% coverage) and SDK instruction tests 
 
 ## Testing Standards and Policies
 
@@ -1932,6 +2100,38 @@ The following tests create accounts via CPI and immediately write withdrawal-rel
   - Direct fee withdrawal testing
   - Must use buffer serialization for withdrawal state updates
 
+**Module 7.5.4: Actual Processor Execution Tests**
+- [ ] **SWAP-PROC-001** `test_process_swap_a_to_b_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Direct process_swap execution with state updates
+  - Must use buffer serialization for pool state updates, fee tracking, and liquidity management
+- [ ] **SWAP-PROC-002** `test_process_swap_b_to_a_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Direct process_swap execution with different direction state updates
+  - Must use buffer serialization for pool state updates and fee accumulation
+- [ ] **SWAP-PROC-003** `test_process_swap_insufficient_liquidity_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Error path testing for process_swap with state access
+  - Must use buffer serialization for state validation and error handling
+- [ ] **SWAP-PROC-004** `test_process_swap_insufficient_user_funds_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Error path testing for process_swap with account validation
+  - Must use buffer serialization for user account and pool state validation
+- [ ] **SWAP-PROC-005** `test_process_swap_slippage_protection_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Error path testing for process_swap with price calculation state access
+  - Must use buffer serialization for slippage validation and state consistency
+- [ ] **SWAP-PROC-006** `test_process_set_swap_fee_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Direct process_set_swap_fee execution with fee configuration updates
+  - Must use buffer serialization for fee state updates and pool configuration changes
+- [ ] **SWAP-PROC-007** `test_process_set_swap_fee_unauthorized_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Error path testing for process_set_swap_fee with authorization validation
+  - Must use buffer serialization for authorization state validation
+- [ ] **SWAP-PROC-008** `test_process_set_swap_fee_invalid_rate_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Error path testing for process_set_swap_fee with fee validation
+  - Must use buffer serialization for fee validation and boundary checks
+- [ ] **SWAP-PROC-009** `test_validate_pool_swaps_not_paused_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Direct pool pause validation with state deserialization
+  - Must use buffer serialization for pause state validation and consistency
+- [ ] **SWAP-PROC-010** `test_process_swap_with_zero_fees_execution` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
+  - Direct process_swap execution with zero fee configuration
+  - Must use buffer serialization for fee calculation state and pool updates
+
 **Module 8: Delegate Actions Processing**
 - [ ] **DELACT-001** `test_process_request_delegate_action_success` - 🔧 **WITHDRAWAL WORKAROUND REQUIRED**
   - Processes withdrawal action requests
@@ -2023,4 +2223,4 @@ Before implementing any test marked with **🔧 WITHDRAWAL WORKAROUND REQUIRED**
 - Inconsistent test behavior and failures
 - Production data loss in withdrawal operations
 
-**📋 TOTAL AFFECTED TESTS:** 33 tests require the GitHub Issue #31960 workaround implementation
+**📋 TOTAL AFFECTED TESTS:** 43 tests require the GitHub Issue #31960 workaround implementation
