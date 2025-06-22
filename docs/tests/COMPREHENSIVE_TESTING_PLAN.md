@@ -1431,6 +1431,17 @@ test: Complete <TEST-ID> <description> - <summary of work>
 **Status:** 🟢 **COMPLETE** ✅ (16/16 tests working) | **Priority:** **COMPLETED** | **Files:** `src/processors/system_pause.rs`, `src/state/system_state.rs`
 **Current Coverage:** 100% (16/16 tests working) ✅ **ALL TESTS WORKING AND COMPLETE**
 
+**🎉 OPTIMIZATION COMPLETED**: Split large test file into two smaller files to prevent DeadlineExceeded errors:
+- **`test_system_pause_basic.rs`**: Tests 001-008 (Basic functionality + first operation blocking tests)
+- **`test_system_pause_advanced.rs`**: Tests 009-016 (Advanced operation blocking + read-only + resume tests)
+
+**Benefits of Split:**
+- ✅ Reduced individual test file size from 1091 lines to ~550 lines each
+- ✅ Should prevent DeadlineExceeded errors during test execution
+- ✅ Both files compile successfully with minimal warnings
+- ✅ Maintains all 16 tests with identical functionality
+- ✅ Easier to manage and debug individual test categories
+
 **🎉 ACHIEVEMENT: All System Pause Tests Complete**  
 **Success:** All 16 tests now working successfully, demonstrating the architectural gap while providing complete test coverage  
 **Status:** Tests provide comprehensive coverage of system pause functionality and clearly document the missing initialization instruction  
@@ -1947,6 +1958,12 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 *Next Review: After completing critical low coverage modules*
 
 **Update (2025-06-22)**: **MAJOR PROGRESS ACHIEVED** - SWAP-PROC-001 and SWAP-PROC-002 successfully fixed with GitHub Issue #31960 workaround! Fixed mint address mismatch that was causing `Custom(3)` errors. Both tests now successfully add liquidity (10M Token A + 5M Token B) and reach core processor logic. **REMAINING ISSUE**: `BorshIoError("Unknown")` at swap execution indicates need for buffer serialization workaround in `process_swap` function. Tests now execute significantly deeper into the processor and are on track to achieve the target 25+ lines coverage once final buffer serialization issue is resolved. Total test count: 121 tests (120 passing, 1 failing in utilities).
+
+**Update (2025-06-22)**: **TEST FILE OPTIMIZATION COMPLETED** - Successfully split the large `test_system_pause.rs` file (1091 lines) into two smaller, more manageable files to prevent DeadlineExceeded errors:
+- `test_system_pause_basic.rs` (8 tests, ~550 lines) - Basic functionality and first operation blocking tests
+- `test_system_pause_advanced.rs` (8 tests, ~550 lines) - Advanced operation blocking, read-only, and resume tests
+
+All 16 system pause tests remain fully functional with identical behavior. Both split files compile successfully with only minor unused variable warnings. This optimization should significantly reduce the DeadlineExceeded errors that were occurring during test execution.
 
 ## Key Insights from Coverage Analysis:
 - **Significant Progress**: Coverage now at 49.42% (1,242/2,513 lines covered)

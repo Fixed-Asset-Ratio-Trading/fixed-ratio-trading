@@ -22,19 +22,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-//! # System Pause Comprehensive Tests
+//! # System Pause Advanced Tests (Part 2 of 2)
 //! 
-//! This module contains comprehensive tests for the system-wide pause functionality.
-//! System pause takes precedence over pool pause and affects all operations across
-//! the entire contract.
+//! This module contains the remaining 8 system pause tests covering:
+//! - Operation blocking when system is paused (Tests 009-010)
+//! - Read-only operations during pause (Tests 011-013)
+//! - System resume after unpause (Tests 014-016)
+//!
+//! Split from original test_system_pause.rs to reduce test file size and
+//! prevent DeadlineExceeded errors during test execution.
 //!
 //! Test Coverage:
-//! - Basic system pause/unpause functionality
-//! - Authority validation and access control
-//! - Operation blocking when system is paused
-//! - Read-only operations during pause
-//! - System resume after unpause
-//! - Multiple pause/unpause cycles
+//! - SYSTEM-PAUSE-009: Delegate actions blocked when paused
+//! - SYSTEM-PAUSE-010: Pool creation blocked when paused
+//! - SYSTEM-PAUSE-011: Read-only queries work when paused
+//! - SYSTEM-PAUSE-012: Pool info accessible when paused
+//! - SYSTEM-PAUSE-013: System state accessible when paused
+//! - SYSTEM-PAUSE-014: Operations resume after unpause
+//! - SYSTEM-PAUSE-015: System state cleared after unpause
+//! - SYSTEM-PAUSE-016: Multiple pause/unpause cycles
 
 mod common;
 
@@ -45,10 +51,6 @@ use fixed_ratio_trading::{SystemState, PoolInstruction};
 // ================================================================================================
 // HELPER FUNCTIONS FOR SYSTEM PAUSE OPERATIONS
 // ================================================================================================
-
-
-
-
 
 /// Create and initialize a system state account using a create and initialize pattern
 /// 
@@ -177,411 +179,9 @@ async fn get_system_state(
     }
 }
 
-/// Test a swap operation while system is paused (should fail)
-async fn test_swap_when_paused(
-    banks: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: solana_sdk::hash::Hash,
-    system_state_account: &Pubkey,
-    pool_config: &PoolConfig,
-) -> TestResult {
-    // Create dummy accounts for swap test
-    let user_token_a_account = Keypair::new();
-    let user_token_b_account = Keypair::new();
-    
-    let swap_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new_readonly(*system_state_account, false), // System state (first account)
-            AccountMeta::new(payer.pubkey(), true),                  // User (signer)
-            AccountMeta::new(pool_config.pool_state_pda, false),     // Pool state
-            AccountMeta::new(user_token_a_account.pubkey(), false),  // User token A account
-            AccountMeta::new(user_token_b_account.pubkey(), false),  // User token B account
-            AccountMeta::new(pool_config.token_a_vault_pda, false),  // Token A vault
-            AccountMeta::new(pool_config.token_b_vault_pda, false),  // Token B vault
-            AccountMeta::new_readonly(spl_token::id(), false),       // Token program
-        ],
-        data: PoolInstruction::Swap {
-            input_token_mint: pool_config.token_a_mint,
-            amount_in: 1000,
-            minimum_amount_out: 100,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut transaction = Transaction::new_with_payer(&[swap_ix], Some(&payer.pubkey()));
-    transaction.sign(&[payer], recent_blockhash);
-    banks.process_transaction(transaction).await
-}
-
 // ================================================================================================
-// SYSTEM-PAUSE-001: BASIC SYSTEM PAUSE FUNCTIONALITY
+// SYSTEM-PAUSE-009 to 010: OPERATION BLOCKING WHEN PAUSED (Part 2)
 // ================================================================================================
-
-/// Test successful system pause operation
-/// 
-/// This test demonstrates the system pause functionality using a pre-initialized SystemState account.
-#[tokio::test]
-async fn test_pause_system_success() -> TestResult {
-    let mut env = start_test_environment().await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-    ).await?;
-    
-    println!("🧪 Testing system pause - demonstrates need for SystemState initialization");
-
-    // Attempt to pause the system (this will fail because account is uninitialized)
-    let pause_reason = "Emergency maintenance";
-    let pause_result = pause_system(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        pause_reason,
-    ).await;
-
-    // The operation should fail because the account doesn't have proper SystemState data
-    match pause_result {
-        Ok(_) => {
-            println!("❌ System pause succeeded unexpectedly - this indicates the test setup is wrong");
-            panic!("System pause should fail with uninitialized account");
-        },
-        Err(e) => {
-            println!("✅ System pause failed as expected due to uninitialized SystemState account");
-            println!("   Error: {:?}", e);
-            println!("   This demonstrates the need for an InitializeSystemState instruction");
-            
-            // This is the expected behavior - the pause fails because the SystemState
-            // account exists but doesn't contain valid SystemState data
-        }
-    }
-    
-    println!("✅ SYSTEM-PAUSE-001 test completed successfully!");
-    Ok(())
-}
-
-/// Test successful system unpause operation
-#[tokio::test]
-async fn test_unpause_system_success() -> TestResult {
-    let mut env = start_test_environment().await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-    ).await?;
-
-    println!("🧪 Testing system unpause - demonstrates need for initialization");
-    
-    // Try to unpause an uninitialized system (should fail gracefully)
-    let unpause_result = unpause_system(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-    ).await;
-
-    // Should fail because the account isn't properly initialized
-    match unpause_result {
-        Ok(_) => {
-            println!("❌ System unpause succeeded unexpectedly");
-            panic!("System unpause should fail with uninitialized account");
-        },
-        Err(e) => {
-            println!("✅ System unpause failed as expected due to uninitialized SystemState account");
-            println!("   Error: {:?}", e);
-            println!("   This demonstrates the need for proper SystemState initialization");
-        }
-    }
-
-    println!("✅ SYSTEM-PAUSE-002 test completed successfully!");
-    println!("   Confirmed need for SystemState initialization instruction");
-    
-    Ok(())
-}
-
-/// Test unauthorized pause attempt fails
-#[tokio::test]
-async fn test_pause_system_unauthorized_fails() -> TestResult {
-    let mut env = start_test_environment().await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-    ).await?;
-
-    // Create unauthorized user
-    let unauthorized_user = create_funded_user(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        None,
-    ).await?;
-
-    println!("🧪 Testing unauthorized pause attempt - demonstrates need for initialization");
-
-    // Try to pause system with unauthorized user (should fail)
-    let result = pause_system(
-        &mut env.banks_client,
-        &unauthorized_user,
-        env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        "Unauthorized attempt",
-    ).await;
-
-    // Should fail because the account isn't properly initialized (not because of authorization)
-    assert!(result.is_err(), "Unauthorized pause should fail");
-    
-    println!("✅ Pause attempt failed as expected due to uninitialized SystemState");
-    println!("   With proper initialization, this would fail due to authorization");
-    println!("✅ SYSTEM-PAUSE-003 test completed successfully!");
-    
-    Ok(())
-}
-
-/// Test pause already paused system fails
-#[tokio::test]
-async fn test_pause_already_paused_fails() -> TestResult {
-    let mut env = start_test_environment().await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-    ).await?;
-
-    println!("🧪 Testing double pause attempt - demonstrates need for initialization");
-
-    // Try to pause the uninitialized system (should fail)
-    let result = pause_system(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        "First pause",
-    ).await;
-
-    assert!(result.is_err(), "Pause should fail due to uninitialized account");
-    
-    println!("✅ Pause attempt failed as expected due to uninitialized SystemState");
-    println!("   With proper initialization, this would test double pause prevention");
-    println!("✅ SYSTEM-PAUSE-004 test completed successfully!");
-    
-    Ok(())
-}
-
-/// Test unpause not paused system fails
-#[tokio::test]
-async fn test_unpause_not_paused_fails() -> TestResult {
-    let mut env = start_test_environment().await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-    ).await?;
-
-    println!("🧪 Testing unpause not paused system - demonstrates need for initialization");
-
-    // Try to unpause the uninitialized system (should fail)
-    let result = unpause_system(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-    ).await;
-
-    assert!(result.is_err(), "Unpause should fail due to uninitialized account");
-    
-    println!("✅ Unpause attempt failed as expected due to uninitialized SystemState");
-    println!("   With proper initialization, this would test unpause-not-paused prevention");
-    println!("✅ SYSTEM-PAUSE-005 test completed successfully!");
-    
-    Ok(())
-}
-
-// ================================================================================================
-// SYSTEM-PAUSE-002: OPERATION BLOCKING WHEN PAUSED
-// ================================================================================================
-
-/// Test all swap operations are blocked when system is paused
-#[tokio::test]
-async fn test_all_swaps_blocked_when_system_paused() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create a test pool
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    let pool_config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
-    ).await?;
-
-    println!("🧪 Testing swap operations with empty SystemState - demonstrates backward compatibility");
-
-    // Test swap operation (should work because system pause validation skips uninitialized accounts)
-    let _swap_result = test_swap_when_paused(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        &pool_config,
-    ).await;
-
-    // The swap will likely fail for other reasons (missing accounts), but not due to system pause
-    println!("✅ Swap operation behaves correctly with uninitialized SystemState");
-    println!("   System pause validation is backward compatible (skips invalid accounts)");
-    println!("   With proper initialization, paused systems would block all operations");
-    println!("✅ SYSTEM-PAUSE-006 test completed successfully!");
-    
-    Ok(())
-}
-
-/// Test all liquidity operations are blocked when system is paused
-#[tokio::test]
-async fn test_all_liquidity_operations_blocked_when_system_paused() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create a test pool
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    let pool_config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
-    ).await?;
-
-    println!("🧪 Testing liquidity operations with empty SystemState - demonstrates need for initialization");
-
-    // Try to pause the system (will fail due to uninitialized SystemState)
-    let pause_result = pause_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        "Maintenance",
-    ).await;
-
-    // Expect the pause to fail due to uninitialized SystemState
-    match pause_result {
-        Ok(_) => {
-            println!("❌ System pause succeeded unexpectedly");
-            panic!("System pause should fail with uninitialized account");
-        },
-        Err(_) => {
-            println!("✅ System pause failed as expected due to uninitialized SystemState");
-            println!("   With proper initialization, liquidity operations would be blocked during pause");
-            println!("   Liquidity operations (deposits/withdrawals) respect system pause when properly initialized");
-        }
-    }
-
-    println!("✅ SYSTEM-PAUSE-007 test completed successfully!");
-    
-    Ok(())
-}
-
-/// Test all fee operations are blocked when system is paused
-#[tokio::test]
-async fn test_all_fee_operations_blocked_when_system_paused() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create system state account (empty, demonstrates limitation)
-    let system_state_keypair = create_empty_system_state_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create a test pool
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    let pool_config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
-    ).await?;
-
-    println!("🧪 Testing fee operations with empty SystemState - demonstrates need for initialization");
-
-    // Try to pause the system (will fail due to uninitialized SystemState)
-    let pause_result = pause_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_state_keypair.pubkey(),
-        "Maintenance",
-    ).await;
-
-    // Expect the pause to fail due to uninitialized SystemState
-    match pause_result {
-        Ok(_) => {
-            println!("❌ System pause succeeded unexpectedly");
-            panic!("System pause should fail with uninitialized account");
-        },
-        Err(_) => {
-            println!("✅ System pause failed as expected due to uninitialized SystemState");
-            println!("   With proper initialization, fee operations would be blocked during pause");
-            println!("   Fee operations (withdrawals, adjustments) respect system pause when properly initialized");
-        }
-    }
-
-    println!("✅ SYSTEM-PAUSE-008 test completed successfully!");
-    
-    Ok(())
-}
 
 /// Test all delegate actions are blocked when system is paused
 #[tokio::test]
@@ -693,7 +293,7 @@ async fn test_pool_creation_blocked_when_system_paused() -> TestResult {
 }
 
 // ================================================================================================
-// SYSTEM-PAUSE-003: READ-ONLY OPERATIONS DURING PAUSE
+// SYSTEM-PAUSE-011 to 013: READ-ONLY OPERATIONS DURING PAUSE
 // ================================================================================================
 
 /// Test read-only queries work when system is paused
@@ -869,7 +469,7 @@ async fn test_system_state_accessible_when_system_paused() -> TestResult {
 }
 
 // ================================================================================================
-// SYSTEM-PAUSE-004: SYSTEM RESUME AFTER UNPAUSE
+// SYSTEM-PAUSE-014 to 016: SYSTEM RESUME AFTER UNPAUSE  
 // ================================================================================================
 
 /// Test all operations resume after unpause
@@ -1086,6 +686,3 @@ async fn test_multiple_pause_unpause_cycles() -> TestResult {
     
     Ok(())
 }
-
- 
- 
