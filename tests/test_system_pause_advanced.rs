@@ -203,7 +203,7 @@ async fn test_all_delegate_actions_blocked_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -492,7 +492,7 @@ async fn test_all_operations_resume_after_unpause() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,

@@ -3084,7 +3084,7 @@ async fn test_unauthorized_action_request_fails() -> TestResult {
     };
     
     // This should fail at the transaction level since system program can't sign
-    let mut system_program_tx = Transaction::new_with_payer(&[system_program_request_ix], Some(&ctx.env.payer.pubkey()));
+    let _system_program_tx = Transaction::new_with_payer(&[system_program_request_ix], Some(&ctx.env.payer.pubkey()));
     // Note: We can't sign with system program, so this will fail during transaction creation
     println!("✅ System program as delegate properly rejected (cannot sign transactions)");
 

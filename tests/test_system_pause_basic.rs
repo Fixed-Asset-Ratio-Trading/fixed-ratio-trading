@@ -163,6 +163,7 @@ async fn unpause_system(
 /// 
 /// # Returns
 /// Deserialized system state or None if account doesn't exist
+#[allow(dead_code)]
 async fn get_system_state(
     banks: &mut BanksClient,
     system_state_account: &Pubkey,
@@ -433,7 +434,7 @@ async fn test_all_swaps_blocked_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -452,7 +453,7 @@ async fn test_all_swaps_blocked_when_system_paused() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        &pool_config,
+        &_pool_config,
     ).await;
 
     // The swap will likely fail for other reasons (missing accounts), but not due to system pause
@@ -484,7 +485,7 @@ async fn test_all_liquidity_operations_blocked_when_system_paused() -> TestResul
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -544,7 +545,7 @@ async fn test_all_fee_operations_blocked_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,

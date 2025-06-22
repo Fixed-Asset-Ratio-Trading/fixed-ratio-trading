@@ -1630,10 +1630,10 @@ async fn test_fee_collection_accuracy() -> TestResult {
     // Test 4: Fee balance tracking structure validation
     println!("\n--- Test 4: Fee Balance Tracking Structure Validation ---");
     
-    // Verify the pool state has proper fee tracking fields with correct data types
-    assert!(initial_pool_state.collected_fees_token_a >= 0, "Token A fee tracking field should exist and be non-negative");
-    assert!(initial_pool_state.collected_fees_token_b >= 0, "Token B fee tracking field should exist and be non-negative");
-    assert!(initial_pool_state.swap_fee_basis_points >= 0, "Fee rate field should exist and be non-negative");
+    // Verify the pool state has proper fee tracking fields (u64 types are always >= 0)
+    println!("Token A fee tracking field: {}", initial_pool_state.collected_fees_token_a);
+    println!("Token B fee tracking field: {}", initial_pool_state.collected_fees_token_b);
+    println!("Fee rate field: {}", initial_pool_state.swap_fee_basis_points);
     assert!(initial_pool_state.swap_fee_basis_points <= 50, "Fee rate should be within valid range (0-50 bp)");
     
     // Test fee tracking field capacity
@@ -3358,7 +3358,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     println!("✅ Pool created successfully with 2:1 ratio");
 
     // Setup user with tokens and liquidity
-    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
+    let (_user, user_primary_token_account, _user_base_token_account) = setup_test_user(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -4624,7 +4624,7 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
 
         let mut pause_validation_tx = Transaction::new_with_payer(&[pause_validation_ix], Some(&user.pubkey()));
         pause_validation_tx.sign(&[&user], ctx.env.recent_blockhash);
-        let pause_validation_result = ctx.env.banks_client.process_transaction(pause_validation_tx).await;
+        let _pause_validation_result = ctx.env.banks_client.process_transaction(pause_validation_tx).await;
         
         // Should work until pause is executed (pause is still pending)
         // May fail due to liquidity constraints, but that's different from pause validation
