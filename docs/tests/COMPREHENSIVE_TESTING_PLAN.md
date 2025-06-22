@@ -3,7 +3,7 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 49.42% (1,242/2,513 lines covered)  
+**Current Coverage:** 49.10% (1,234/2,513 lines covered)  
 **Target Coverage:** 85%+ (2,136+ lines covered)  
 **Total Tests Implemented:** 121 working tests ✅ (**2 tests need rework for coverage**)
 **Total Tests in Codebase:** 121 tests (120 passing, 1 failing)
@@ -91,7 +91,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - Include specific technical details and metrics
 
 ## Progress Overview
-- Current Coverage: 49.42%
+- Current Coverage: 49.10%
 - Target Coverage: 85%+
 - Total Tests Running: 120 tests total (119 passing, 1 failing)
 - Tests Completed in Phase 1: 30/47 (64% complete) 
@@ -105,25 +105,25 @@ test: Complete <TEST-ID> <description> - <summary of work>
 
 ### High Priority Modules (Critical Coverage Gaps):
 - **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved (SDK-006 to SDK-012 tests planned for 75%+ target)
-- **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, slight improvement (UTIL-009 to UTIL-018 tests planned for 50%+ target)  
+- **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, stable (UTIL-009 to UTIL-018 tests planned for 50%+ target)  
 - **Utils/Validation**: 30.0% (21/70 lines) 🔶 **MEDIUM** - Coverage stable
 - **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, NO coverage improvement despite SWAP test completion. **REQUIRES PROCESSOR EXECUTION TESTS** (SWAP-PROC-001 to SWAP-PROC-010) to achieve 62.7%+ coverage target
-- **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage
+- **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage, stable
 
 ### Medium Priority Modules (Partial Coverage):
-- **Processors/Delegate Actions**: 45.7% (102/223 lines) 🟠 **IMPROVING** - Significant improvement from DEL-008
-- **Error Handling**: 42.4% (14/33 lines) 🔶 **IMPROVING** - Core error handling, notable improvement
-- **Utils/Serialization**: 44.1% (15/34 lines) 🔶 **MEDIUM** - Data serialization
-- **Processors/Security**: 50.0% (9/18 lines) 🔶 **MEDIUM** - Security features
+- **Processors/Delegate Actions**: 45.7% (102/223 lines) 🟠 **IMPROVING** - Significant improvement maintained
+- **Error Handling**: 42.4% (14/33 lines) 🔶 **IMPROVING** - Core error handling, stable
+- **Utils/Serialization**: 44.1% (15/34 lines) 🔶 **MEDIUM** - Data serialization, stable
+- **Processors/Security**: 50.0% (9/18 lines) 🔶 **MEDIUM** - Security features, stable
 
 ### Well-Covered Modules (Good Coverage):
 - **Utils/Rent**: 62.5% (15/24 lines) ✅ **GOOD** - Rent calculations
-- **Processors/Liquidity**: 66.6% (235/353 lines) ✅ **GOOD** - Core liquidity management
+- **Processors/Liquidity**: 66.5% (238/358 lines) ✅ **GOOD** - Core liquidity management (slight improvement)
 - **Processors/Fees**: 66.7% (28/42 lines) ✅ **GOOD** - Fee management
-- **Types/Pool State**: 79.2% (133/168 lines) ✅ **EXCELLENT** - Pool state management
+- **Types/Pool State**: 81.0% (136/168 lines) ✅ **EXCELLENT** - Pool state management (slight improvement)
 - **Types/Delegate Actions**: 81.3% (13/16 lines) ✅ **EXCELLENT** - Delegate action types
-- **Processors/Pool Creation**: 69.6% (403/579 lines) ✅ **GOOD** - Pool creation logic
-- **Main Lib**: 88.4% (61/69 lines) ✅ **EXCELLENT** - Core library functions, improved coverage
+- **Processors/Pool Creation**: 68.2% (395/579 lines) ✅ **GOOD** - Pool creation logic (decreased by -1.38%)
+- **Main Lib**: 88.4% (61/69 lines) ✅ **EXCELLENT** - Core library functions
 - **Types/Errors**: 83.3% (40/48 lines) ✅ **EXCELLENT** - Error type definitions
 
 ### Coverage Goals by Priority:
@@ -1953,21 +1953,17 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-22 (SWAP-PROC-002 test completion - Total tests: 121)*  
-*Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout (Updated: 49.42% coverage)*  
+*Last Updated: 2025-06-22 (Latest tarpaulin coverage analysis)*  
+*Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout (Updated: 49.10% coverage)*  
 *Next Review: After completing critical low coverage modules*
 
-**Update (2025-06-22)**: **MAJOR PROGRESS ACHIEVED** - SWAP-PROC-001 and SWAP-PROC-002 successfully fixed with GitHub Issue #31960 workaround! Fixed mint address mismatch that was causing `Custom(3)` errors. Both tests now successfully add liquidity (10M Token A + 5M Token B) and reach core processor logic. **REMAINING ISSUE**: `BorshIoError("Unknown")` at swap execution indicates need for buffer serialization workaround in `process_swap` function. Tests now execute significantly deeper into the processor and are on track to achieve the target 25+ lines coverage once final buffer serialization issue is resolved. Total test count: 121 tests (120 passing, 1 failing in utilities).
-
-**Update (2025-06-22)**: **TEST FILE OPTIMIZATION COMPLETED** - Successfully split the large `test_system_pause.rs` file (1091 lines) into two smaller, more manageable files to prevent DeadlineExceeded errors:
-- `test_system_pause_basic.rs` (8 tests, ~550 lines) - Basic functionality and first operation blocking tests
-- `test_system_pause_advanced.rs` (8 tests, ~550 lines) - Advanced operation blocking, read-only, and resume tests
-
-All 16 system pause tests remain fully functional with identical behavior. Both split files compile successfully with only minor unused variable warnings. This optimization should significantly reduce the DeadlineExceeded errors that were occurring during test execution.
+**Update (2025-06-22)**: **COVERAGE UPDATE** - Latest analysis shows coverage at 49.10% (1,234/2,513 lines covered) with a slight decrease of -0.32% from previous run. Pool creation module decreased by -1.38%, while most other modules remained stable. Total test count: 121 tests (120 passing, 1 failing in utilities).
 
 ## Key Insights from Coverage Analysis:
-- **Significant Progress**: Coverage now at 49.42% (1,242/2,513 lines covered)
+- **Current Status**: Coverage at 49.10% (1,234/2,513 lines covered) - slight decrease of -0.32%
 - **120 Tests Passing**: All existing tests are working correctly  
+- **Pool Creation Decline**: 68.2% coverage (down -1.38%) - may indicate test optimization or code changes
+- **Stable Modules**: Most modules maintained their coverage levels with no significant changes
 - **CRITICAL COVERAGE ISSUE**: All SWAP tests (SWAP-007 to SWAP-012 + SWAP-PROC-001/002) complete, but Processors/Swap coverage **UNCHANGED** at 5.1%
 - **Root Cause Identified**: Tests hit early returns at liquidity validation, never reach core processor logic
 - **Solution Required**: Tests must add liquidity first, then execute swaps to reach actual processor execution paths (lines 310-450+)
