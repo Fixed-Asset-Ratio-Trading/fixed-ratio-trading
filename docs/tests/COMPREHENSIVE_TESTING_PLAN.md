@@ -3,11 +3,11 @@
 File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 ## Executive Summary
-**Current Coverage:** 49.10% (1,234/2,513 lines covered)  
+**Current Coverage:** 49.42% (1,242/2,513 lines covered)  
 **Target Coverage:** 85%+ (2,136+ lines covered)  
 **Total Tests Implemented:** 119 working tests ✅
 **Total Tests in Codebase:** 119 tests (All passing successfully)
-**Total Tests Planned:** ~148 tests (+32 additional tests needed, including 4 critical swap execution tests, 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
+**Total Tests Planned:** ~148 tests (+29 additional tests needed, including 10 critical utility validation tests, and 7 critical SDK instruction/validation tests, with 1 additional test requiring withdrawal workaround)
 **Estimated Timeline:** 2-3 weeks
 
 **🎉 MAJOR ACHIEVEMENT:** System Pause Tests Complete - All 16/16 system pause tests now working (100% success rate)! Tests provide comprehensive coverage while consistently demonstrating the missing SystemState initialization instruction as the core architectural gap.
@@ -45,7 +45,7 @@ File Name : COMPREHENSIVE_TESTING_PLAN.md
 
 **Update (2025-06-21)**: Completed SWAP-012 `test_swap_edge_cases_and_security` - comprehensive edge case and security testing. This test validates zero amount input validation, maximum amount input testing with overflow protection, wrong token account mints validation, mismatched vault accounts security, invalid PDA seeds validation, incorrect program IDs protection, missing required signatures enforcement, account ownership validation, pool initialization validation, pause status validation, arithmetic boundary testing, and PDA authority validation. The test demonstrates comprehensive security and edge case protection with proper input validation, account validation, PDA validation, authorization enforcement, state validation, and arithmetic protection against overflow/underflow attacks. Total test count increased to 119 tests, all passing.
 
-**Coverage Impact**: SWAP-007 through SWAP-012 implementation addresses critical gaps in Processors/Swap module coverage, providing comprehensive validation of core swap functionality setup, instruction construction, price calculation accuracy, slippage protection boundaries, liquidity constraint management, and comprehensive edge case and security validation for fixed-ratio trading systems.
+**Coverage Impact**: SWAP-007 through SWAP-012 implementation completed but **DID NOT improve Processors/Swap coverage** (remained at 5.1%). These tests focused on instruction construction, parameter validation, price calculations, and edge case handling rather than executing the actual `process_swap` function. While valuable for validation logic, they do not address the critical gap in swap processor execution coverage. **Additional tests needed to actually execute swap processor functions.**
 
 ## Testing Philosophy & Bug Fix Policy
 
@@ -91,12 +91,12 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - Include specific technical details and metrics
 
 ## Progress Overview
-- Current Coverage: 47.37%
+- Current Coverage: 49.42%
 - Target Coverage: 85%+
 - Total Tests Running: 119 passing tests ✅ **ALL TESTS PASSING**
-- Tests Completed in Phase 1: 27/37 (73% complete)
+- Tests Completed in Phase 1: 30/37 (81% complete)
 - Estimated Timeline: 2-3 weeks  
-- Additional Tests Needed: ~12
+- Additional Tests Needed: ~29
 
 **🎉 MILESTONE ACHIEVED**: All 119 implemented tests are now passing successfully, demonstrating robust contract functionality and comprehensive validation coverage.
 
@@ -107,7 +107,7 @@ test: Complete <TEST-ID> <description> - <summary of work>
 - **Client SDK**: 47.2% (42/89 lines) 🔶 **IMPROVING** - Coverage significantly improved (SDK-006 to SDK-012 tests planned for 75%+ target)
 - **Processors/Utilities**: 20.6% (45/218 lines) 🔴 **HIGH** - Low coverage, slight improvement (UTIL-009 to UTIL-018 tests planned for 50%+ target)  
 - **Utils/Validation**: 30.0% (21/70 lines) 🔶 **MEDIUM** - Coverage stable
-- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, very low coverage (SWAP-007 to SWAP-012 tests planned)
+- **Processors/Swap**: 5.1% (11/217 lines) ⛔ **CRITICAL** - Large module, NO coverage improvement despite SWAP test completion (tests focus on instruction validation, not processor execution)
 - **Processors/Delegates**: 31.1% (19/61 lines) 🔶 **MEDIUM** - Moderate coverage
 
 ### Medium Priority Modules (Partial Coverage):
@@ -1789,16 +1789,16 @@ async fn test_name() -> Result<(), Box<dyn std::error::Error>> {
 
 ---
 
-*Last Updated: 2025-06-21 (SWAP-009 test completion - Total tests: 116)*  
-*Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout (Updated: 49.10% coverage)*  
+*Last Updated: 2025-06-22 (SWAP-012 test completion - Total tests: 119)*  
+*Coverage Analysis Run: cargo tarpaulin --verbose --out Stdout (Updated: 49.42% coverage)*  
 *Next Review: After completing critical low coverage modules*
 
 ## Key Insights from Coverage Analysis:
-- **Significant Progress**: Coverage now at 47.37% (1,188/2,508 lines covered)
-- **101 Tests Passing**: All existing tests are working correctly
-- **Critical Gaps Identified**: Processors/Swap module has very low coverage (5.1%)
-- **Improved Module Coverage**: Client SDK improved to 47.2%, Validation to 30.0%
-- **Clear Priorities**: Focus on Processors/Swap as highest priority, then Utilities 
+- **Significant Progress**: Coverage now at 49.42% (1,242/2,513 lines covered)
+- **119 Tests Passing**: All existing tests are working correctly
+- **SWAP Tests Complete but No Coverage Gain**: All 6 SWAP tests (SWAP-007 to SWAP-012) complete, but Processors/Swap coverage unchanged at 5.1%
+- **Coverage Gap Identified**: SWAP tests focused on instruction validation, not actual processor execution
+- **Next Priorities**: Focus on Processors/Utilities (20.6% coverage), actual swap processor execution tests, and SDK instruction tests 
 
 ## Testing Standards and Policies
 
