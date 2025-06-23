@@ -1,0 +1,39 @@
+FROM --platform=linux/arm64 ubuntu:24.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libudev-dev \
+    libssl-dev \
+    git \
+    curl \
+    wget \
+    clang \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Clone and build Solana from source for ARM64 compatibility
+WORKDIR /opt
+RUN git clone https://github.com/solana-labs/solana.git
+WORKDIR /opt/solana
+
+# Checkout a stable version that works with ARM64
+RUN git checkout v1.17.0
+
+# Build Solana tools
+RUN ./scripts/cargo-install-all.sh .
+ENV PATH="/opt/solana/bin:${PATH}"
+
+# Install jq for the deploy script
+RUN apt-get update && apt-get install -y jq && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"] 

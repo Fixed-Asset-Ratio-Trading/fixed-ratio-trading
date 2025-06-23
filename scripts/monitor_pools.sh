@@ -2,8 +2,20 @@
 # Monitor Fixed Ratio Trading Pools from Command Line
 # Displays real-time pool information and statistics
 
+# Find the project root directory (where Cargo.toml is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Verify we found the correct project directory
+if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
+    echo "❌ Error: Could not find Cargo.toml in project root: $PROJECT_ROOT"
+    echo "   Please run this script from the fixed-ratio-trading project directory or its subdirectories"
+    exit 1
+fi
+
 echo "📊 Fixed Ratio Trading Pool Monitor"
 echo "===================================="
+echo "📂 Project Root: $PROJECT_ROOT"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -24,6 +36,7 @@ show_header() {
     clear
     echo -e "${BOLD}${BLUE}📊 Fixed Ratio Trading Pool Monitor${NC}"
     echo -e "${BLUE}====================================${NC}"
+    echo -e "${CYAN}Project: $PROJECT_ROOT${NC}"
     echo -e "${CYAN}RPC: $RPC_URL${NC}"
     echo -e "${CYAN}Program: $PROGRAM_ID${NC}"
     echo -e "${CYAN}Updated: $(date)${NC}"
@@ -34,7 +47,7 @@ show_header() {
 check_validator() {
     if ! curl -s $RPC_URL -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' > /dev/null 2>&1; then
         echo -e "${RED}❌ Validator not running at $RPC_URL${NC}"
-        echo "   Please start the validator first: ./deploy_local.sh"
+        echo "   Please start the validator first: $PROJECT_ROOT/scripts/deploy_local.sh"
         return 1
     fi
     return 0
@@ -44,7 +57,7 @@ check_validator() {
 check_program() {
     if ! solana program show $PROGRAM_ID --url $RPC_URL > /dev/null 2>&1; then
         echo -e "${RED}❌ Program not deployed${NC}"
-        echo "   Please deploy the program first: ./deploy_local.sh"
+        echo "   Please deploy the program first: $PROJECT_ROOT/scripts/deploy_local.sh"
         return 1
     fi
     return 0
@@ -106,7 +119,7 @@ show_pool_stats() {
         echo -e "${YELLOW}💡 For detailed pool info, use the web dashboard${NC}"
     else
         echo -e "${YELLOW}📭 No pools found${NC}"
-        echo -e "${YELLOW}   Create pools with: ./create_sample_pools.sh${NC}"
+        echo -e "${YELLOW}   Create pools with: $PROJECT_ROOT/scripts/create_sample_pools.sh${NC}"
     fi
     
     echo ""
@@ -117,8 +130,8 @@ show_info() {
     echo -e "${BOLD}🔗 Quick Links${NC}"
     echo "---------------"
     echo -e "${CYAN}🌐 Web Dashboard: http://localhost:3000${NC}"
-    echo -e "${CYAN}📊 Start Dashboard: ./start_dashboard.sh${NC}"
-    echo -e "${CYAN}🏊‍♂️ Create Pools: ./create_sample_pools.sh${NC}"
+    echo -e "${CYAN}📊 Start Dashboard: $PROJECT_ROOT/scripts/start_dashboard.sh${NC}"
+    echo -e "${CYAN}🏊‍♂️ Create Pools: $PROJECT_ROOT/scripts/create_sample_pools.sh${NC}"
     echo -e "${CYAN}🛑 Stop Validator: pkill -f solana-test-validator${NC}"
     echo ""
     

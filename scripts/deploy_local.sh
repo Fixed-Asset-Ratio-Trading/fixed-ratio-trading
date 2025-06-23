@@ -4,8 +4,20 @@
 
 set -e
 
+# Find the project root directory (where Cargo.toml is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Verify we found the correct project directory
+if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
+    echo "❌ Error: Could not find Cargo.toml in project root: $PROJECT_ROOT"
+    echo "   Please run this script from the fixed-ratio-trading project directory or its subdirectories"
+    exit 1
+fi
+
 echo "🚀 Fixed Ratio Trading - Local Deployment Script"
 echo "================================================="
+echo "📂 Project Root: $PROJECT_ROOT"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -27,6 +39,7 @@ echo ""
 
 # Step 1: Build the program
 echo -e "${YELLOW}🔨 Building Solana program...${NC}"
+cd "$PROJECT_ROOT"
 cargo build-bpf --manifest-path Cargo.toml --bpf-out-dir target/deploy
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Build successful${NC}"
@@ -89,7 +102,7 @@ echo -e "${GREEN}  Balance: $BALANCE SOL${NC}"
 
 # Step 7: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
-solana program deploy target/deploy/fixed_ratio_trading.so --program-id $PROGRAM_ID
+solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id $PROGRAM_ID
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Program deployed successfully!${NC}"
     echo -e "${GREEN}   Program ID: $PROGRAM_ID${NC}"
@@ -114,7 +127,7 @@ fi
 
 # Step 9: Save deployment info
 echo -e "${YELLOW}💾 Saving deployment information...${NC}"
-cat > deployment_info.json << EOF
+cat > "$PROJECT_ROOT/deployment_info.json" << EOF
 {
   "program_id": "$PROGRAM_ID",
   "rpc_url": "$RPC_URL",
@@ -139,9 +152,9 @@ echo "  📋 Program ID: $PROGRAM_ID"
 echo "  💳 Wallet: $WALLET_ADDRESS"
 echo ""
 echo -e "${YELLOW}📝 Next Steps:${NC}"
-echo "  1. Open web dashboard: ./start_dashboard.sh"
-echo "  2. Create test pools: ./create_sample_pools.sh"
-echo "  3. Monitor pools: ./monitor_pools.sh"
+echo "  1. Open web dashboard: $PROJECT_ROOT/scripts/start_dashboard.sh"
+echo "  2. Create test pools: $PROJECT_ROOT/scripts/create_sample_pools.sh"
+echo "  3. Monitor pools: $PROJECT_ROOT/scripts/monitor_pools.sh"
 echo ""
 echo -e "${YELLOW}🛑 To stop validator:${NC}"
 echo "  kill $VALIDATOR_PID"

@@ -2,8 +2,23 @@
 # Create Sample Pools for Dashboard Testing
 # This script runs selected tests to create pools that the dashboard can display
 
+# Find the project root directory (where Cargo.toml is located)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Verify we found the correct project directory
+if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
+    echo "❌ Error: Could not find Cargo.toml in project root: $PROJECT_ROOT"
+    echo "   Please run this script from the fixed-ratio-trading project directory or its subdirectories"
+    exit 1
+fi
+
 echo "🏊‍♂️ Creating Sample Pools for Dashboard"
 echo "======================================="
+echo "📂 Project Root: $PROJECT_ROOT"
+
+# Change to project directory for cargo commands
+cd "$PROJECT_ROOT"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -23,7 +38,7 @@ echo ""
 echo -e "${YELLOW}🔍 Checking if validator is running...${NC}"
 if ! curl -s $RPC_URL -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' > /dev/null 2>&1; then
     echo -e "${RED}❌ Local validator not running. Please start it first:${NC}"
-    echo "  ./deploy_local.sh"
+    echo "  $PROJECT_ROOT/scripts/deploy_local.sh"
     exit 1
 fi
 
@@ -38,7 +53,7 @@ if solana program show $PROGRAM_ID --url $RPC_URL > /dev/null 2>&1; then
     echo -e "${GREEN}✅ Program is deployed${NC}"
 else
     echo -e "${RED}❌ Program not deployed. Please deploy it first:${NC}"
-    echo "  ./deploy_local.sh"
+    echo "  $PROJECT_ROOT/scripts/deploy_local.sh"
     exit 1
 fi
 
@@ -83,7 +98,7 @@ echo -e "${YELLOW}🔧 Alternative: Creating pools programmatically...${NC}"
 
 # Simple Node.js script to create a test pool (if Node.js is available)
 if command -v node &> /dev/null; then
-    cat > create_test_pool.js << 'EOF'
+    cat > "$PROJECT_ROOT/create_test_pool.js" << 'EOF'
 const { Connection, Keypair, PublicKey, Transaction, SystemProgram } = require('@solana/web3.js');
 
 async function createTestPool() {
@@ -125,12 +140,13 @@ EOF
 
     if command -v npm &> /dev/null; then
         echo "📦 Installing dependencies..."
+        cd "$PROJECT_ROOT"
         npm install @solana/web3.js > /dev/null 2>&1
         node create_test_pool.js
         rm create_test_pool.js package*.json node_modules/ -rf 2>/dev/null
     else
         echo -e "${YELLOW}⚠️  Node.js found but npm not available${NC}"
-        rm create_test_pool.js 2>/dev/null
+        rm "$PROJECT_ROOT/create_test_pool.js" 2>/dev/null
     fi
 else
     echo -e "${YELLOW}⚠️  Node.js not available for programmatic pool creation${NC}"
@@ -141,7 +157,7 @@ echo -e "${GREEN}🎉 Sample pool creation process completed!${NC}"
 echo -e "${GREEN}==========================================${NC}"
 echo ""
 echo -e "${BLUE}📊 Next steps:${NC}"
-echo "  1. Open the dashboard: ./start_dashboard.sh"
+echo "  1. Open the dashboard: $PROJECT_ROOT/scripts/start_dashboard.sh"
 echo "  2. Visit: http://localhost:3000"
 echo "  3. Click 'Refresh' to scan for pools"
 echo ""
