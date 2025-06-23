@@ -3,7 +3,7 @@ Project based verificaiton prompts for AI systems
 
 =====================================================================
 Verify the project code works as described in the readme.md file 
-located in the root dicectory of the project.
+located in the root directory of the project.
 =====================================================================
 Verify no one can drain the pool without a trade or using LP tokens 
 and no invalid or forged tokens can be used to drain the pool. 
