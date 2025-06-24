@@ -1,0 +1,32 @@
+FROM ubuntu:24.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libudev-dev \
+    libssl-dev \
+    git \
+    curl \
+    wget \
+    clang \
+    cmake \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Solana CLI and BPF toolchain
+RUN sh -c "$(curl -sSfL https://release.solana.com/v1.18.26/install)"
+ENV PATH="/root/.local/share/solana/install/active_release/bin:${PATH}"
+
+# Install Solana BPF toolchain
+RUN solana-install init v1.18.26
+
+# Set working directory
+WORKDIR /workspace
+
+# Default command
+CMD ["/bin/bash"] 
