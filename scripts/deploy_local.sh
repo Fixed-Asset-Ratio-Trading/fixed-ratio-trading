@@ -40,7 +40,7 @@ echo ""
 # Step 1: Build the program
 echo -e "${YELLOW}🔨 Building Solana program...${NC}"
 cd "$PROJECT_ROOT"
-cargo build-bpf --manifest-path Cargo.toml --bpf-out-dir target/deploy
+RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Build successful${NC}"
 else
@@ -60,7 +60,6 @@ fi
 echo -e "${YELLOW}🏁 Starting local Solana validator...${NC}"
 solana-test-validator \
     --rpc-port 8899 \
-    --rpc-pubsub-enable \
     --compute-unit-limit 1000000 \
     --reset \
     --quiet &
