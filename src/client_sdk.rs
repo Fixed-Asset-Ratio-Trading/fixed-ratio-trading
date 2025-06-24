@@ -80,7 +80,7 @@ use solana_program::{
 };
 use borsh::BorshSerialize;
 use crate::{
-    PoolInstruction,
+    types::instructions::PoolInstruction,
     POOL_STATE_SEED_PREFIX,
     TOKEN_A_VAULT_SEED_PREFIX,
     TOKEN_B_VAULT_SEED_PREFIX,
