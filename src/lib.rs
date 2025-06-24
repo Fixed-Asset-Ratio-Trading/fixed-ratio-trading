@@ -76,12 +76,17 @@ SOFTWARE.
 use borsh::BorshDeserialize;
 use solana_program::{
     account_info::AccountInfo,
+    entrypoint,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
     declare_id,
 };
 
-declare_id!("quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD");
+declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+
+// Declare the entrypoint
+#[cfg(not(feature = "no-entrypoint"))]
+entrypoint!(process_instruction);
 
 // Module declarations
 pub mod client_sdk;

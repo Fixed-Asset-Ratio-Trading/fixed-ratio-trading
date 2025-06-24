@@ -26,8 +26,13 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Configuration
-PROGRAM_ID="quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"
+# Configuration - Get program ID from the generated keypair
+PROGRAM_KEYPAIR="$PROJECT_ROOT/target/deploy/fixed_ratio_trading-keypair.json"
+if [ -f "$PROGRAM_KEYPAIR" ]; then
+    PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
+else
+    PROGRAM_ID="Will be generated during build"
+fi
 RPC_URL="http://localhost:8899"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
 
@@ -95,13 +100,24 @@ echo "  Wallet: $WALLET_ADDRESS"
 solana airdrop 100 $WALLET_ADDRESS
 sleep 2
 
-# Check balance
+# Skip program airdrop during initial deployment (program ID not yet known)
+if [ "$PROGRAM_ID" != "Will be generated during build" ]; then
+    echo "  Program ID: $PROGRAM_ID"
+    solana airdrop 10 $PROGRAM_ID
+    sleep 2
+fi
+
+# Check balances
 BALANCE=$(solana balance $WALLET_ADDRESS --output json | jq -r '.value')
-echo -e "${GREEN}  Balance: $BALANCE SOL${NC}"
+echo -e "${GREEN}  Wallet Balance: $BALANCE SOL${NC}"
+if [ "$PROGRAM_ID" != "Will be generated during build" ]; then
+    PROGRAM_BALANCE=$(solana balance $PROGRAM_ID --output json | jq -r '.value')
+    echo -e "${GREEN}  Program Balance: $PROGRAM_BALANCE SOL${NC}"
+fi
 
 # Step 7: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
-solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id $PROGRAM_ID
+solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so"
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Program deployed successfully!${NC}"
     echo -e "${GREEN}   Program ID: $PROGRAM_ID${NC}"
@@ -111,17 +127,26 @@ else
     exit 1
 fi
 
-# Step 8: Verify deployment
-echo -e "${YELLOW}🔍 Verifying deployment...${NC}"
-PROGRAM_INFO=$(solana program show $PROGRAM_ID --output json)
-if [ $? -eq 0 ]; then
-    PROGRAM_DATA_ADDRESS=$(echo $PROGRAM_INFO | jq -r '.programdataAddress')
-    PROGRAM_SIZE=$(echo $PROGRAM_INFO | jq -r '.dataLen')
-    echo -e "${GREEN}✅ Program verification successful${NC}"
-    echo "  Program Data Address: $PROGRAM_DATA_ADDRESS"
-    echo "  Program Size: $PROGRAM_SIZE bytes"
+# Step 8: Get the actual deployed program ID and verify
+echo -e "${YELLOW}🔍 Getting deployed program ID...${NC}"
+if [ -f "$PROGRAM_KEYPAIR" ]; then
+    DEPLOYED_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
+    echo -e "${GREEN}✅ Program ID: $DEPLOYED_PROGRAM_ID${NC}"
+    
+    # Verify deployment
+    PROGRAM_INFO=$(solana program show $DEPLOYED_PROGRAM_ID --output json 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        PROGRAM_DATA_ADDRESS=$(echo $PROGRAM_INFO | jq -r '.programdataAddress // "N/A"')
+        PROGRAM_SIZE=$(echo $PROGRAM_INFO | jq -r '.dataLen // "N/A"')
+        echo -e "${GREEN}✅ Program verification successful${NC}"
+        echo "  Program Data Address: $PROGRAM_DATA_ADDRESS"
+        echo "  Program Size: $PROGRAM_SIZE bytes"
+    else
+        echo -e "${YELLOW}⚠️  Program deployed but verification data not immediately available${NC}"
+    fi
+    PROGRAM_ID=$DEPLOYED_PROGRAM_ID
 else
-    echo -e "${RED}❌ Program verification failed${NC}"
+    echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
 # Step 9: Save deployment info

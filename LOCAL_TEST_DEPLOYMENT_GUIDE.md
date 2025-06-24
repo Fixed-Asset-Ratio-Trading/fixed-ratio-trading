@@ -108,7 +108,9 @@ solana-test-validator --rpc-port 8900 ...
 ```
 
 ### Program ID
-The contract uses a fixed Program ID: `quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD`
+The contract is deployed with Program ID: `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn`
+
+> **Note**: When you deploy locally, Solana will generate a new program ID automatically. You'll need to update `src/lib.rs` with the `declare_id!()` macro and update all scripts and dashboard files with the new program ID.
 
 ## 🛠️ Manual Operations
 
@@ -277,5 +279,28 @@ Once you have the local setup working:
 5. **Deploy to Devnet** - When ready, deploy to Solana devnet
 
 ---
+
+## 🎓 Key Learnings - Solana 2.2.12 Deployment
+
+After resolving deployment issues with Solana 2.2.12, here are the key points:
+
+### ✅ What Works (Proper Method)
+1. **Build Command**: Use `cargo build-sbf` (not `cargo build-bpf`)
+2. **Deployment**: Use `solana program deploy target/deploy/program.so` (let Solana handle the program ID)
+3. **Entrypoint**: Must include `entrypoint!(process_instruction);` in lib.rs
+4. **Program ID**: Update `declare_id!()` after deployment with the generated program ID
+
+### ❌ What Doesn't Work (Avoid These)
+1. Don't specify `--program-id` or `--keypair` for initial deployments
+2. Don't use mismatched program IDs between code and keypair
+3. Don't rely on Docker for compilation (native works fine now)
+4. Don't skip the entrypoint macro
+
+### 🔄 Proper Workflow
+1. Clean build: `cargo clean && cargo build-sbf`
+2. Start validator: `solana-test-validator --reset &`
+3. Deploy: `solana program deploy target/deploy/program.so`
+4. Update code with new program ID from deployment output
+5. Update all scripts and dashboard files with new program ID
 
 **🎉 Congratulations!** You now have a fully functional Fixed Ratio Trading deployment with comprehensive monitoring capabilities. 

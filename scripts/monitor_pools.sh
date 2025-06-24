@@ -28,7 +28,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 RPC_URL="http://localhost:8899"
-PROGRAM_ID="quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"
+PROGRAM_ID="4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"
 REFRESH_INTERVAL=5
 
 # Function to clear screen and show header

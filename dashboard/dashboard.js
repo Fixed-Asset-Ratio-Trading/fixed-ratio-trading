@@ -4,7 +4,7 @@
 // Configuration
 const CONFIG = {
     rpcUrl: 'http://localhost:8899',
-    programId: 'quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD',
+    programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
     refreshInterval: 10000, // 10 seconds
     poolStateSeedPrefix: 'pool_state_v2',
 };

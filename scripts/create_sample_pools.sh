@@ -46,7 +46,7 @@ echo -e "${GREEN}✅ Validator is running${NC}"
 
 # Check if program is deployed
 echo -e "${YELLOW}🔍 Checking if program is deployed...${NC}"
-PROGRAM_ID="quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"
+PROGRAM_ID="4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"
 
 # Simple check using solana CLI
 if solana program show $PROGRAM_ID --url $RPC_URL > /dev/null 2>&1; then
@@ -116,7 +116,7 @@ async function createTestPool() {
     }
     
     // Check if program exists
-    const programId = new PublicKey('quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD');
+    const programId = new PublicKey('4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn');
     try {
         const programAccount = await connection.getAccountInfo(programId);
         if (programAccount) {
