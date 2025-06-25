@@ -4,7 +4,7 @@
 // Configuration
 const CONFIG = {
     rpcUrl: 'http://localhost:8899',
-    expectedWallet: '3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f',
+    expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
     commitment: 'confirmed'
 };
 
@@ -28,14 +28,14 @@ async function initializeApp() {
         // Initialize Solana connection
         connection = new solanaWeb3.Connection(CONFIG.rpcUrl, CONFIG.commitment);
         
-        // Check if Phantom is installed
-        if (!window.solana) {
-            showStatus('error', 'Phantom wallet not detected. Please install Phantom wallet extension.');
+        // Check if Backpack is installed
+        if (!window.backpack) {
+            showStatus('error', 'Backpack wallet not detected. Please install Backpack wallet extension.');
             return;
         }
         
         // Check if already connected
-        if (window.solana.isConnected) {
+        if (window.backpack.isConnected) {
             await handleWalletConnected();
         }
         
@@ -69,18 +69,18 @@ function setupFormListeners() {
 }
 
 /**
- * Connect to Phantom wallet
+ * Connect to Backpack wallet
  */
 async function connectWallet() {
     try {
-        if (!window.solana) {
-            showStatus('error', 'Phantom wallet not installed. Please install the Phantom browser extension.');
+        if (!window.backpack) {
+            showStatus('error', 'Backpack wallet not installed. Please install the Backpack browser extension.');
             return;
         }
         
-        showStatus('info', 'Connecting to Phantom wallet...');
+        showStatus('info', 'Connecting to Backpack wallet...');
         
-        const response = await window.solana.connect();
+        const response = await window.backpack.connect();
         await handleWalletConnected();
         
         console.log('✅ Wallet connected:', response.publicKey.toString());
@@ -95,7 +95,7 @@ async function connectWallet() {
  */
 async function handleWalletConnected() {
     try {
-        wallet = window.solana;
+        wallet = window.backpack;
         isConnected = true;
         
         const publicKey = wallet.publicKey.toString();
@@ -109,10 +109,10 @@ async function handleWalletConnected() {
         
         // Check if this is the expected wallet
         if (publicKey === CONFIG.expectedWallet) {
-            showStatus('success', `✅ Connected with deployment wallet: ${publicKey.slice(0, 20)}...`);
+            showStatus('success', `✅ Connected with Backpack deployment wallet: ${publicKey.slice(0, 20)}...`);
             document.getElementById('wallet-avatar').textContent = '🎯';
         } else {
-            showStatus('info', `ℹ️ Connected with wallet: ${publicKey.slice(0, 20)}... (Note: This is not the deployment wallet)`);
+            showStatus('info', `ℹ️ Connected with Backpack wallet: ${publicKey.slice(0, 20)}... (Note: This is not the deployment wallet)`);
         }
         
         // Check balance
@@ -135,8 +135,8 @@ async function handleWalletConnected() {
  */
 async function disconnectWallet() {
     try {
-        if (window.solana) {
-            await window.solana.disconnect();
+        if (window.backpack) {
+            await window.backpack.disconnect();
         }
         
         // Reset state
@@ -146,7 +146,7 @@ async function disconnectWallet() {
         // Update UI
         document.getElementById('wallet-info').style.display = 'none';
         document.getElementById('wallet-disconnected').style.display = 'flex';
-        document.getElementById('connect-wallet-btn').textContent = 'Connect Phantom Wallet';
+        document.getElementById('connect-wallet-btn').textContent = 'Connect Backpack Wallet';
         document.getElementById('connect-wallet-btn').onclick = connectWallet;
         
         // Update form state

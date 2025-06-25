@@ -26,6 +26,11 @@ NC='\033[0m' # No Color
 echo "🚀 Fixed Ratio Trading - Local Deployment Script"
 echo "================================================="
 echo "📂 Project Root: $PROJECT_ROOT"
+echo ""
+echo -e "${BLUE}🎒 Note: This script is configured for Backpack wallet${NC}"
+echo -e "${BLUE}   Backpack Address: 5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t${NC}"
+echo -e "${BLUE}   Ngrok Static Domain: https://fixed.ngrok.app${NC}"
+echo -e "${BLUE}   Run './scripts/setup_backpack_keypair.sh' first if you need the keypair file${NC}"
 
 # Check for required tools
 echo -e "${YELLOW}🔧 Checking required tools...${NC}"
@@ -120,6 +125,44 @@ echo "  Validator PID: $VALIDATOR_PID"
 echo -e "${YELLOW}⏳ Waiting for validator to start...${NC}"
 sleep 8
 
+# Step 4.5: Start ngrok service
+echo -e "${YELLOW}🌐 Starting ngrok service...${NC}"
+
+# Check if ngrok is installed
+if ! command -v ngrok >/dev/null 2>&1; then
+    echo -e "${YELLOW}⚠️  ngrok not found. Installing ngrok first may be required for external access${NC}"
+    echo "  You can install ngrok from https://ngrok.com/download"
+    echo "  Note: Static domain 'fixed.ngrok.app' requires a paid ngrok plan"
+else
+    # Kill any existing ngrok processes
+    pkill -f "ngrok" || true
+    sleep 2
+    
+    echo "  Starting ngrok tunnel with static domain for localhost:8899..."
+    ngrok http 8899 --hostname=fixed.ngrok.app > /dev/null 2>&1 &
+    NGROK_PID=$!
+    
+    # Wait for ngrok to start
+    sleep 5
+    
+    # Use static ngrok URL
+    NGROK_URL="https://fixed.ngrok.app"
+    echo -e "${GREEN}✅ Ngrok tunnel started with static domain: $NGROK_URL${NC}"
+    echo "  Ngrok PID: $NGROK_PID"
+    
+    # Test ngrok endpoint with health check
+    echo -e "${YELLOW}🔍 Testing ngrok static endpoint...${NC}"
+    if command -v curl >/dev/null 2>&1; then
+        if curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "$NGROK_URL" | grep -q "ok"; then
+            echo -e "${GREEN}✅ Ngrok static endpoint is responding correctly${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Ngrok endpoint may not be fully ready yet, or tunneling still starting...${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  curl not found. Cannot test ngrok endpoint automatically${NC}"
+    fi
+fi
+
 # Step 5: Configure Solana CLI
 echo -e "${YELLOW}⚙️  Configuring Solana CLI...${NC}"
 solana config set --url $RPC_URL
@@ -137,19 +180,29 @@ if [ ! -f "$KEYPAIR_PATH" ]; then
     solana-keygen new --no-bip39-passphrase --outfile $KEYPAIR_PATH
 fi
 
-# Step 7: Airdrop SOL
-echo -e "${YELLOW}💰 Airdropping SOL...${NC}"
-WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
-echo "  Wallet: $WALLET_ADDRESS"
-solana airdrop 100 $WALLET_ADDRESS
+# Step 7: Airdrop SOL to Backpack wallet
+echo -e "${YELLOW}💰 Airdropping SOL to Backpack wallet...${NC}"
+BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
+DEFAULT_WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
+echo "  Default Wallet: $DEFAULT_WALLET_ADDRESS"
+echo "  Backpack Wallet: $BACKPACK_WALLET"
+
+# Airdrop to both wallets
+echo "  Airdropping to default wallet..."
+solana airdrop 100 $DEFAULT_WALLET_ADDRESS
+sleep 2
+echo "  Airdropping to Backpack wallet..."
+solana airdrop 100 $BACKPACK_WALLET
 sleep 2
 
 # Skip program airdrop to avoid account conflicts during deployment
 # (The program will be funded as needed during deployment)
 
 # Check balances
-BALANCE=$(solana balance $WALLET_ADDRESS --output json | jq -r '.value')
-echo -e "${GREEN}  Wallet Balance: $BALANCE SOL${NC}"
+DEFAULT_BALANCE=$(solana balance $DEFAULT_WALLET_ADDRESS --output json | jq -r '.value')
+BACKPACK_BALANCE=$(solana balance $BACKPACK_WALLET --output json | jq -r '.value')
+echo -e "${GREEN}  Default Wallet Balance: $DEFAULT_BALANCE SOL${NC}"
+echo -e "${GREEN}  Backpack Wallet Balance: $BACKPACK_BALANCE SOL${NC}"
 
 # Step 8: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
@@ -334,8 +387,13 @@ cat > "$PROJECT_ROOT/deployment_info.json" << EOF
   "wallet_address": "$WALLET_ADDRESS",
   "deployment_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "validator_pid": $VALIDATOR_PID,
+  "ngrok_pid": "$NGROK_PID",
+  "ngrok_url": "https://fixed.ngrok.app",
   "program_data_address": "$PROGRAM_DATA_ADDRESS",
-  "program_size": $PROGRAM_SIZE
+  "program_size": $PROGRAM_SIZE,
+  "backpack_wallet": "$BACKPACK_WALLET",
+  "default_wallet_balance": "$DEFAULT_BALANCE",
+  "backpack_wallet_balance": "$BACKPACK_BALANCE"
 }
 EOF
 
@@ -377,27 +435,31 @@ if [ -n "$PYTHON_CMD" ]; then
     if kill -0 $DASHBOARD_PID 2>/dev/null; then
         echo -e "${GREEN}✅ Dashboard server started (PID: $DASHBOARD_PID)${NC}"
         
-        # Step 12: Open Firefox in private mode automatically
+        # Step 12: Open Chrome in incognito mode automatically
         echo ""
-        echo -e "${YELLOW}🦊 Opening Firefox in private mode to dashboard...${NC}"
+        echo -e "${YELLOW}🌐 Opening Chrome in incognito mode to dashboard...${NC}"
         
-        # Open Firefox in private mode (cross-platform)
+        # Open Chrome in incognito mode (cross-platform)
         if command -v open > /dev/null 2>&1; then
-            # macOS - try private mode first, fallback to regular
-            echo "  Attempting to open Firefox in private mode..."
-            open -a Firefox --args --private-window http://localhost:3000 2>/dev/null || \
-            open -a Firefox http://localhost:3000 2>/dev/null || \
+            # macOS - try incognito mode first, fallback to regular
+            echo "  Attempting to open Chrome in incognito mode..."
+            open -a "Google Chrome" --args --incognito http://localhost:3000 2>/dev/null || \
+            open -a "Google Chrome" http://localhost:3000 2>/dev/null || \
             open http://localhost:3000 2>/dev/null || \
-            echo -e "${YELLOW}⚠️  Could not open Firefox automatically. Please open http://localhost:3000 manually in private mode${NC}"
-        elif command -v firefox > /dev/null 2>&1; then
-            # Linux/Windows with firefox command
-            echo "  Attempting to open Firefox in private mode..."
-            firefox --private-window http://localhost:3000 2>/dev/null &
+            echo -e "${YELLOW}⚠️  Could not open Chrome automatically. Please open http://localhost:3000 manually in incognito mode${NC}"
+        elif command -v google-chrome > /dev/null 2>&1; then
+            # Linux/Windows with google-chrome command
+            echo "  Attempting to open Chrome in incognito mode..."
+            google-chrome --incognito http://localhost:3000 2>/dev/null &
+        elif command -v chrome > /dev/null 2>&1; then
+            # Alternative chrome command
+            echo "  Attempting to open Chrome in incognito mode..."
+            chrome --incognito http://localhost:3000 2>/dev/null &
         else
-            echo -e "${YELLOW}⚠️  Auto-open not available. Please open http://localhost:3000 manually in private mode${NC}"
+            echo -e "${YELLOW}⚠️  Auto-open not available. Please open http://localhost:3000 manually in incognito mode${NC}"
         fi
         
-        echo -e "${GREEN}✅ Firefox should now open in private mode to avoid caching issues${NC}"
+        echo -e "${GREEN}✅ Chrome should now open in incognito mode to avoid caching issues${NC}"
         
     else
         echo -e "${RED}❌ Dashboard server failed to start${NC}"
@@ -418,18 +480,25 @@ echo -e "${BLUE}📊 Your Fixed Ratio Trading environment is fully running:${NC}
 echo ""
 echo "  🌐 Web Dashboard: http://localhost:3000"
 if [ -n "$DASHBOARD_PID" ]; then
-    echo "  📱 Browser: Firefox should be opening in private mode (no cache issues)"
+    echo "  📱 Browser: Chrome should be opening in incognito mode (no cache issues)"
     echo "  🟢 Dashboard Status: Running (PID: $DASHBOARD_PID)"
 else
     echo "  🟡 Dashboard Status: Not started (Python not available)"
 fi
 echo "  🔗 RPC Endpoint: $RPC_URL"
+if [ -n "$NGROK_PID" ] && kill -0 $NGROK_PID 2>/dev/null; then
+    echo "  🌐 Ngrok Static Tunnel: https://fixed.ngrok.app (PID: $NGROK_PID)"
+    echo "  🔍 Balance Check: curl -X POST -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getBalance\",\"params\":[\"$BACKPACK_WALLET\"]}' \"https://fixed.ngrok.app\""
+else
+    echo "  🟡 Ngrok Status: Not started"
+fi
 echo "  📡 Validator Status: Running (PID: $VALIDATOR_PID)"
 echo ""
 echo -e "${BLUE}📋 Contract Information:${NC}"
 echo "  📊 Program ID: $PROGRAM_ID"
 echo "  🔢 Version: $NEW_VERSION (auto-incremented from $CURRENT_VERSION)"
-echo "  💳 Wallet: $WALLET_ADDRESS"
+echo "  💳 Default Wallet: $DEFAULT_WALLET_ADDRESS"
+echo "  🎒 Backpack Wallet: $BACKPACK_WALLET"
 echo ""
 echo -e "${YELLOW}📝 Next Steps:${NC}"
 echo "  1. ✅ Dashboard is running - interact with your contract via web UI"
@@ -440,29 +509,42 @@ echo ""
 echo -e "${GREEN}💡 The dashboard will automatically show: Fixed Ratio Trading Dashboard v$NEW_VERSION${NC}"
 echo ""
 echo -e "${YELLOW}🛑 To stop everything:${NC}"
-if [ -n "$DASHBOARD_PID" ]; then
+if [ -n "$DASHBOARD_PID" ] && [ -n "$NGROK_PID" ]; then
+    echo "  kill $VALIDATOR_PID $DASHBOARD_PID $NGROK_PID"
+    echo "  or: pkill -f \"solana-test-validator\" && pkill -f \"python.*http.server.*3000\" && pkill -f \"ngrok\""
+elif [ -n "$DASHBOARD_PID" ]; then
     echo "  kill $VALIDATOR_PID $DASHBOARD_PID"
     echo "  or: pkill -f \"solana-test-validator\" && pkill -f \"python.*http.server.*3000\""
+elif [ -n "$NGROK_PID" ]; then
+    echo "  kill $VALIDATOR_PID $NGROK_PID"
+    echo "  or: pkill -f \"solana-test-validator\" && pkill -f \"ngrok\""
 else
     echo "  kill $VALIDATOR_PID"
     echo "  or: pkill -f \"solana-test-validator\""
 fi
 echo ""
 
-# Keep the script running so both services stay up
+# Keep the script running so all services stay up
 echo -e "${BLUE}🔄 Services running in background:${NC}"
 echo "   📡 Validator (PID: $VALIDATOR_PID)"
 if [ -n "$DASHBOARD_PID" ]; then
     echo "   🌐 Dashboard (PID: $DASHBOARD_PID)"
 fi
+if [ -n "$NGROK_PID" ] && kill -0 $NGROK_PID 2>/dev/null; then
+    echo "   🌐 Ngrok (PID: $NGROK_PID)"
+fi
 echo -e "${BLUE}   Press Ctrl+C to stop all services and exit${NC}"
 
-# Trap Ctrl+C to clean up both services
+# Trap Ctrl+C to clean up all services
+CLEANUP_PIDS="$VALIDATOR_PID"
 if [ -n "$DASHBOARD_PID" ]; then
-    trap "echo -e '\\n${YELLOW}🛑 Stopping all services...${NC}'; kill $VALIDATOR_PID $DASHBOARD_PID 2>/dev/null; exit 0" INT
-else
-    trap "echo -e '\\n${YELLOW}🛑 Stopping validator...${NC}'; kill $VALIDATOR_PID 2>/dev/null; exit 0" INT
+    CLEANUP_PIDS="$CLEANUP_PIDS $DASHBOARD_PID"
 fi
+if [ -n "$NGROK_PID" ]; then
+    CLEANUP_PIDS="$CLEANUP_PIDS $NGROK_PID"
+fi
+
+trap "echo -e '\\n${YELLOW}🛑 Stopping all services...${NC}'; kill $CLEANUP_PIDS 2>/dev/null; exit 0" INT
 
 # Wait for user to stop and monitor both services
 while true; do
@@ -480,5 +562,11 @@ while true; do
     if [ -n "$DASHBOARD_PID" ] && ! kill -0 $DASHBOARD_PID 2>/dev/null; then
         echo -e "${YELLOW}⚠️  Dashboard server stopped unexpectedly${NC}"
         DASHBOARD_PID=""
+    fi
+    
+    # Check if ngrok is still running (if it was started)
+    if [ -n "$NGROK_PID" ] && ! kill -0 $NGROK_PID 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  Ngrok tunnel stopped unexpectedly${NC}"
+        NGROK_PID=""
     fi
 done 
