@@ -45,6 +45,52 @@
             font-size: 1.2em;
         }
         
+        .nav-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-btn.primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: 2px solid transparent;
+        }
+        
+        .nav-btn.primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .nav-btn.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .nav-btn.secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+        
         .status-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -270,6 +316,14 @@
         <div class="header">
             <h1>🏊‍♂️ Fixed Ratio Trading Dashboard</h1>
             <p class="subtitle">Local Solana Testnet - Real-time Pool Monitoring</p>
+            <div class="nav-buttons">
+                <button class="nav-btn primary" onclick="window.location.href='token-creation.html'">
+                    🪙 Create Tokens
+                </button>
+                <button class="nav-btn secondary" onclick="refreshData()">
+                    🔄 Refresh Dashboard
+                </button>
+            </div>
         </div>
         
         <div id="error-container"></div>
@@ -343,7 +397,6 @@
         <div class="pools-section">
             <div class="section-header">
                 <h2 class="section-title">🏊‍♂️ Individual Pools</h2>
-                <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
             </div>
             
             <div id="pools-container">
@@ -361,6 +414,6 @@
     </div>
 
     <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
-    <script src="dashboard.js"></script>
+    <script src="dashboard.js?v=1732061200"></script>
 </body>
 </html> 

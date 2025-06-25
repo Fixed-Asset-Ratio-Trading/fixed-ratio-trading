@@ -1,6 +1,7 @@
 #!/bin/bash
 # Deploy Fixed Ratio Trading Contract to Local Solana Testnet
 # This script builds the contract, starts a local validator, and deploys the program
+# The dashboard opens in Firefox private mode to avoid JavaScript caching issues
 
 set -e
 
@@ -376,20 +377,27 @@ if [ -n "$PYTHON_CMD" ]; then
     if kill -0 $DASHBOARD_PID 2>/dev/null; then
         echo -e "${GREEN}✅ Dashboard server started (PID: $DASHBOARD_PID)${NC}"
         
-        # Step 12: Open Firefox automatically
+        # Step 12: Open Firefox in private mode automatically
         echo ""
-        echo -e "${YELLOW}🦊 Opening Firefox to dashboard...${NC}"
+        echo -e "${YELLOW}🦊 Opening Firefox in private mode to dashboard...${NC}"
         
-        # Open Firefox (macOS specific)
+        # Open Firefox in private mode (cross-platform)
         if command -v open > /dev/null 2>&1; then
+            # macOS - try private mode first, fallback to regular
+            echo "  Attempting to open Firefox in private mode..."
+            open -a Firefox --args --private-window http://localhost:3000 2>/dev/null || \
             open -a Firefox http://localhost:3000 2>/dev/null || \
             open http://localhost:3000 2>/dev/null || \
-            echo -e "${YELLOW}⚠️  Could not open Firefox automatically. Please open http://localhost:3000 manually${NC}"
+            echo -e "${YELLOW}⚠️  Could not open Firefox automatically. Please open http://localhost:3000 manually in private mode${NC}"
+        elif command -v firefox > /dev/null 2>&1; then
+            # Linux/Windows with firefox command
+            echo "  Attempting to open Firefox in private mode..."
+            firefox --private-window http://localhost:3000 2>/dev/null &
         else
-            echo -e "${YELLOW}⚠️  Auto-open not available. Please open http://localhost:3000 manually${NC}"
+            echo -e "${YELLOW}⚠️  Auto-open not available. Please open http://localhost:3000 manually in private mode${NC}"
         fi
         
-        echo -e "${GREEN}✅ Firefox should now open to the dashboard${NC}"
+        echo -e "${GREEN}✅ Firefox should now open in private mode to avoid caching issues${NC}"
         
     else
         echo -e "${RED}❌ Dashboard server failed to start${NC}"
@@ -410,7 +418,7 @@ echo -e "${BLUE}📊 Your Fixed Ratio Trading environment is fully running:${NC}
 echo ""
 echo "  🌐 Web Dashboard: http://localhost:3000"
 if [ -n "$DASHBOARD_PID" ]; then
-    echo "  📱 Browser: Firefox should be opening automatically"
+    echo "  📱 Browser: Firefox should be opening in private mode (no cache issues)"
     echo "  🟢 Dashboard Status: Running (PID: $DASHBOARD_PID)"
 else
     echo "  🟡 Dashboard Status: Not started (Python not available)"
@@ -425,6 +433,7 @@ echo "  💳 Wallet: $WALLET_ADDRESS"
 echo ""
 echo -e "${YELLOW}📝 Next Steps:${NC}"
 echo "  1. ✅ Dashboard is running - interact with your contract via web UI"
+echo "     💡 Private mode ensures fresh JavaScript (no browser cache issues)"
 echo "  2. 🏊 Create test pools: $PROJECT_ROOT/scripts/create_sample_pools.sh"
 echo "  3. 📊 Monitor pools: $PROJECT_ROOT/scripts/monitor_pools.sh"
 echo ""

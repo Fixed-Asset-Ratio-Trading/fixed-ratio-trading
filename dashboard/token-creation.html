@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Creation - Fixed Ratio Trading</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header .subtitle {
+            color: #666;
+            font-size: 1.2em;
+        }
+        
+        .nav-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .nav-btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-btn.secondary {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        
+        .nav-btn.secondary:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .wallet-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #3b82f6;
+        }
+        
+        .wallet-status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .wallet-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .wallet-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .wallet-details h3 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .wallet-address {
+            color: #666;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .connect-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .connect-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+        
+        .connect-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .token-creation-form {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #10b981;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input, .form-group textarea {
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .form-help {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .create-token-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        
+        .create-token-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+        }
+        
+        .create-token-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .status-message.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .status-message.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+        
+        .status-message.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
+        }
+        
+        .token-list {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-top: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .token-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .token-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .token-info h4 {
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .token-mint {
+            color: #666;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .token-supply {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+            
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .wallet-status {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🪙 Token Creation Studio</h1>
+            <p class="subtitle">Create SPL Tokens on Solana Local Testnet</p>
+            <div class="nav-buttons">
+                <button class="nav-btn secondary" onclick="window.location.href='index.html'">
+                    ← Back to Dashboard
+                </button>
+            </div>
+        </div>
+        
+        <div id="status-container"></div>
+        
+        <!-- Wallet Connection Section -->
+        <div class="wallet-section">
+            <h2 style="color: #333; margin-bottom: 20px;">💳 Wallet Connection</h2>
+            <div class="wallet-status">
+                <div class="wallet-info" id="wallet-info" style="display: none;">
+                    <div class="wallet-avatar" id="wallet-avatar">👻</div>
+                    <div class="wallet-details">
+                        <h3>Phantom Wallet Connected</h3>
+                        <div class="wallet-address" id="wallet-address">Not connected</div>
+                    </div>
+                </div>
+                <div class="wallet-info" id="wallet-disconnected">
+                    <div class="wallet-avatar">❌</div>
+                    <div class="wallet-details">
+                        <h3>Wallet Not Connected</h3>
+                        <div class="wallet-address">Please connect your Phantom wallet</div>
+                    </div>
+                </div>
+                <button class="connect-btn" id="connect-wallet-btn" onclick="connectWallet()">
+                    Connect Phantom Wallet
+                </button>
+            </div>
+        </div>
+        
+        <!-- Token Creation Form -->
+        <div class="token-creation-form">
+            <h2 style="color: #333; margin-bottom: 25px;">🎨 Create New Token</h2>
+            
+            <form id="token-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="token-name">Token Name</label>
+                        <input type="text" id="token-name" placeholder="e.g., My Awesome Token" required>
+                        <div class="form-help">The display name for your token</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="token-symbol">Token Symbol</label>
+                        <input type="text" id="token-symbol" placeholder="e.g., MAT" maxlength="10" required>
+                        <div class="form-help">Short symbol (up to 10 characters)</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="token-decimals">Decimals</label>
+                        <input type="number" id="token-decimals" min="0" max="9" value="9" required>
+                        <div class="form-help">Number of decimal places (0-9)</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="token-supply">Initial Supply</label>
+                        <input type="number" id="token-supply" min="1" placeholder="1000000" required>
+                        <div class="form-help">Initial token supply to mint</div>
+                    </div>
+                    
+                    <div class="form-group full-width">
+                        <label for="token-description">Description</label>
+                        <textarea id="token-description" placeholder="Describe your token..."></textarea>
+                        <div class="form-help">Optional description for your token</div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="create-token-btn" id="create-btn" disabled>
+                    🚀 Create Token
+                </button>
+            </form>
+        </div>
+        
+        <!-- Created Tokens List -->
+        <div class="token-list">
+            <h2 style="color: #333; margin-bottom: 20px;">📋 Your Created Tokens</h2>
+            <div id="tokens-container">
+                <p style="color: #666; text-align: center; padding: 20px;">
+                    No tokens created yet. Create your first token above!
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/@solana/spl-token@latest/lib/index.iife.min.js"></script>
+    <script src="token-creation.js?v=1732061200"></script>
+</body>
+</html> 

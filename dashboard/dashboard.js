@@ -31,16 +31,48 @@ async function initializeDashboard() {
         connection = new solanaWeb3.Connection(CONFIG.rpcUrl, 'confirmed');
         
         // Test RPC connection
-        await testConnection();
+        try {
+            await testConnection();
+            console.log('✅ RPC connection successful');
+        } catch (rpcError) {
+            console.error('❌ Failed to connect to RPC:', rpcError);
+            showError(`RPC connection failed: ${rpcError.message}. Make sure the Solana validator is running on ${CONFIG.rpcUrl}`);
+            return;
+        }
         
-        // Fetch contract version
-        await fetchContractVersion();
+        // Check if program is deployed
+        const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
+        if (!programAccount) {
+            console.warn('⚠️ Fixed Ratio Trading program not found - continuing with demo mode');
+            showError('Fixed Ratio Trading program not deployed. Run `cargo build-sbf && solana program deploy` to deploy the program, or continue in demo mode.');
+        }
+        
+        // Fetch contract version (non-blocking)
+        try {
+            await fetchContractVersion();
+        } catch (versionError) {
+            console.warn('⚠️ Could not fetch contract version:', versionError);
+        }
         
         // Update title with version (or keep original if failed)
         updateTitle();
         
-        // Load initial data
-        await refreshData();
+        // Load initial data (non-blocking for missing program)
+        try {
+            await refreshData();
+        } catch (dataError) {
+            console.warn('⚠️ Could not load pool data:', dataError);
+            if (!programAccount) {
+                // Show demo message instead of error for missing program
+                document.getElementById('pools-container').innerHTML = `
+                    <div class="loading">
+                        <h3>🚧 Demo Mode</h3>
+                        <p>Fixed Ratio Trading program not deployed on this testnet.</p>
+                        <p>Deploy the program to see real pools, or check the deployment guide.</p>
+                    </div>
+                `;
+            }
+        }
         
         // Start auto-refresh
         startAutoRefresh();
@@ -48,7 +80,7 @@ async function initializeDashboard() {
         console.log('✅ Dashboard initialized successfully');
     } catch (error) {
         console.error('❌ Failed to initialize dashboard:', error);
-        showError('Failed to connect to local Solana testnet. Make sure the validator is running.');
+        showError('Unexpected initialization error: ' + error.message);
     }
 }
 
@@ -62,13 +94,19 @@ async function testConnection() {
         document.getElementById('rpc-status').className = 'status-value online';
         document.getElementById('block-height').textContent = blockHeight.toLocaleString();
         
-        // Check if program exists
-        const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
-        if (programAccount) {
-            document.getElementById('program-status').textContent = 'Deployed';
-            document.getElementById('program-status').className = 'status-value online';
-        } else {
-            document.getElementById('program-status').textContent = 'Not Found';
+        // Check if program exists (but don't fail connection test if it doesn't)
+        try {
+            const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
+            if (programAccount) {
+                document.getElementById('program-status').textContent = 'Deployed';
+                document.getElementById('program-status').className = 'status-value online';
+            } else {
+                document.getElementById('program-status').textContent = 'Not Found';
+                document.getElementById('program-status').className = 'status-value offline';
+            }
+        } catch (programError) {
+            console.warn('⚠️ Error checking program account:', programError);
+            document.getElementById('program-status').textContent = 'Error';
             document.getElementById('program-status').className = 'status-value offline';
         }
     } catch (error) {
@@ -190,6 +228,22 @@ async function refreshData() {
         
         // Update connection status
         await testConnection();
+        
+        // Check if program exists before scanning
+        const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
+        if (!programAccount) {
+            console.warn('⚠️ Program not deployed - showing demo mode');
+            pools = []; // Clear any existing pools
+            updateSummaryStats();
+            renderPools();
+            
+            // Update timestamp
+            lastUpdate = new Date();
+            document.getElementById('last-updated').textContent = lastUpdate.toLocaleTimeString();
+            
+            console.log('✅ Dashboard refreshed - Program not deployed (demo mode)');
+            return;
+        }
         
         // Scan for pools
         await scanForPools();
@@ -348,13 +402,38 @@ function renderPools() {
     const container = document.getElementById('pools-container');
     
     if (pools.length === 0) {
-        container.innerHTML = `
-            <div class="loading">
-                <h3>📭 No pools found</h3>
-                <p>No Fixed Ratio Trading pools detected on this network.</p>
-                <p><a href="#" onclick="createSamplePools()">Create sample pools</a> for testing.</p>
-            </div>
-        `;
+        // Check if program is deployed to show appropriate message
+        connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId))
+            .then(programAccount => {
+                if (!programAccount) {
+                    container.innerHTML = `
+                        <div class="loading">
+                            <h3>🚧 Program Not Deployed</h3>
+                            <p>The Fixed Ratio Trading program is not deployed on this testnet.</p>
+                            <p>Run <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">./scripts/deploy_local.sh</code> to deploy the program.</p>
+                            <p>Or check the <a href="../LOCAL_TEST_DEPLOYMENT_GUIDE.md" target="_blank">deployment guide</a> for detailed instructions.</p>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="loading">
+                            <h3>📭 No pools found</h3>
+                            <p>No Fixed Ratio Trading pools detected on this network.</p>
+                            <p><a href="#" onclick="createSamplePools()">Create sample pools</a> for testing.</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.warn('Could not check program status:', error);
+                container.innerHTML = `
+                    <div class="loading">
+                        <h3>📭 No pools found</h3>
+                        <p>No Fixed Ratio Trading pools detected on this network.</p>
+                        <p><a href="#" onclick="createSamplePools()">Create sample pools</a> for testing.</p>
+                    </div>
+                `;
+            });
         return;
     }
     

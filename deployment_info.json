@@ -1,11 +1,11 @@
 {
   "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
-  "version": "0.1.1004",
-  "previous_version": "0.1.1003",
+  "version": "0.1.1007",
+  "previous_version": "0.1.1006",
   "rpc_url": "http://localhost:8899",
   "wallet_address": "3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f",
-  "deployment_timestamp": "2025-06-25T10:00:54Z",
-  "validator_pid": 2126,
+  "deployment_timestamp": "2025-06-25T12:55:05Z",
+  "validator_pid": 10601,
   "program_data_address": "2FXQ9r1d1bdhdUVTh735CeUEBEhQbZvCoTfdoyFVyrqD",
   "program_size": 407200
 }
