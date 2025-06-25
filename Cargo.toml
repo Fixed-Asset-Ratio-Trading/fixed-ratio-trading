@@ -5,6 +5,9 @@ edition = "2021"
 description = "Fixed Ratio Trading Smart Contract for Solana"
 license = "Apache-2.0"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
@@ -15,6 +18,8 @@ no-log-ix-name = []
 cpi = ["no-entrypoint"]
 default = []
 test-bpf = []
+custom-heap = []
+custom-panic = []
 
 [dependencies]
 solana-program = "~1.18.26"

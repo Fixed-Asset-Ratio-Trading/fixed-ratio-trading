@@ -76,16 +76,18 @@ SOFTWARE.
 use borsh::BorshDeserialize;
 use solana_program::{
     account_info::AccountInfo,
-    entrypoint,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
     declare_id,
 };
 
+#[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
+use solana_program::entrypoint;
+
 declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
 
 // Declare the entrypoint
-#[cfg(not(feature = "no-entrypoint"))]
+#[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
 entrypoint!(process_instruction);
 
 // Module declarations
