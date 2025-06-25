@@ -15,16 +15,31 @@ if [ ! -f "$PROJECT_ROOT/Cargo.toml" ]; then
     exit 1
 fi
 
-echo "🚀 Fixed Ratio Trading - Local Deployment Script"
-echo "================================================="
-echo "📂 Project Root: $PROJECT_ROOT"
-
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+echo "🚀 Fixed Ratio Trading - Local Deployment Script"
+echo "================================================="
+echo "📂 Project Root: $PROJECT_ROOT"
+
+# Check for required tools
+echo -e "${YELLOW}🔧 Checking required tools...${NC}"
+MISSING_TOOLS=""
+command -v solana >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS solana"
+command -v solana-keygen >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS solana-keygen"
+command -v solana-test-validator >/dev/null 2>&1 || MISSING_TOOLS="$MISSING_TOOLS solana-test-validator"
+command -v jq >/dev/null 2>&1 || echo "  Warning: jq not found (JSON parsing will be limited)"
+
+if [ -n "$MISSING_TOOLS" ]; then
+    echo -e "${RED}❌ Missing required tools:$MISSING_TOOLS${NC}"
+    echo "   Please install the Solana CLI tools first"
+    exit 1
+fi
+echo -e "${GREEN}✅ All required tools found${NC}"
 
 # Configuration - Get program ID from the generated keypair
 PROGRAM_KEYPAIR="$PROJECT_ROOT/target/deploy/fixed_ratio_trading-keypair.json"
@@ -100,27 +115,157 @@ echo "  Wallet: $WALLET_ADDRESS"
 solana airdrop 100 $WALLET_ADDRESS
 sleep 2
 
-# Skip program airdrop during initial deployment (program ID not yet known)
-if [ "$PROGRAM_ID" != "Will be generated during build" ]; then
-    echo "  Program ID: $PROGRAM_ID"
-    solana airdrop 10 $PROGRAM_ID
-    sleep 2
-fi
+# Skip program airdrop to avoid account conflicts during deployment
+# (The program will be funded as needed during deployment)
 
 # Check balances
 BALANCE=$(solana balance $WALLET_ADDRESS --output json | jq -r '.value')
 echo -e "${GREEN}  Wallet Balance: $BALANCE SOL${NC}"
-if [ "$PROGRAM_ID" != "Will be generated during build" ]; then
-    PROGRAM_BALANCE=$(solana balance $PROGRAM_ID --output json | jq -r '.value')
-    echo -e "${GREEN}  Program Balance: $PROGRAM_BALANCE SOL${NC}"
-fi
 
 # Step 7: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
-solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so"
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Program deployed successfully!${NC}"
-    echo -e "${GREEN}   Program ID: $PROGRAM_ID${NC}"
+
+DEPLOY_ACTION=""
+DEPLOY_RESULT=""
+
+# Check if account/program already exists - handle both program and system accounts
+if [ "$PROGRAM_ID" != "Will be generated during build" ]; then
+    echo "  Checking if account $PROGRAM_ID already exists..."
+    
+    # Check if any account exists at this address
+    if solana account $PROGRAM_ID >/dev/null 2>&1; then
+        echo "  Account exists! Checking what type..."
+        
+        # Check if it's a program
+        if solana program show $PROGRAM_ID >/dev/null 2>&1; then
+            echo "  It's a program! Checking if it's upgradeable..."
+            
+            # Try to get program info for upgrade check
+            if command -v jq >/dev/null 2>&1; then
+                PROGRAM_INFO=$(solana program show $PROGRAM_ID --output json 2>/dev/null)
+                if [ $? -eq 0 ]; then
+                    IS_UPGRADEABLE=$(echo "$PROGRAM_INFO" | jq -r '.programdataAddress != null' 2>/dev/null)
+                    echo "  Upgradeable check result: $IS_UPGRADEABLE"
+                else
+                    echo "  Could not get program info, assuming upgradeable"
+                    IS_UPGRADEABLE="true"
+                fi
+            else
+                echo "  jq not found, assuming program is upgradeable"
+                IS_UPGRADEABLE="true"
+            fi
+            
+            if [ "$IS_UPGRADEABLE" = "true" ]; then
+                DEPLOY_ACTION="UPGRADE"
+                echo -e "${BLUE}📈 UPGRADING existing program...${NC}"
+                echo "  Program exists and is upgradeable. Attempting upgrade..."
+                
+                # Attempt upgrade
+                DEPLOY_OUTPUT=$(solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id "$PROGRAM_KEYPAIR" --upgrade-authority "$KEYPAIR_PATH" 2>&1)
+                DEPLOY_EXIT_CODE=$?
+                
+                # Check if Solana detected no changes
+                if echo "$DEPLOY_OUTPUT" | grep -q "Program was not upgraded"; then
+                    DEPLOY_RESULT="NO_UPGRADE_NEEDED"
+                elif [ $DEPLOY_EXIT_CODE -eq 0 ]; then
+                    DEPLOY_RESULT="UPGRADED"
+                else
+                    DEPLOY_RESULT="FAILED"
+                fi
+            else
+                DEPLOY_ACTION="REDEPLOY"
+                echo -e "${YELLOW}🔄 REDEPLOYING program (not upgradeable)...${NC}"
+                echo "  Program exists but is not upgradeable."
+                echo "  For local testing, closing existing program and redeploying fresh..."
+                
+                # Close the existing program to free up the account
+                solana program close $PROGRAM_ID --recipient $WALLET_ADDRESS 2>/dev/null || true
+                sleep 2
+                
+                # Deploy fresh
+                DEPLOY_OUTPUT=$(solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id "$PROGRAM_KEYPAIR" 2>&1)
+                DEPLOY_EXIT_CODE=$?
+                DEPLOY_RESULT=$([ $DEPLOY_EXIT_CODE -eq 0 ] && echo "REDEPLOYED" || echo "FAILED")
+            fi
+        else
+            echo "  It's a regular account (not a program). Using force deployment..."
+            
+            DEPLOY_ACTION="CREATE_FORCE"
+            echo -e "${YELLOW}🔄 FORCE deploying to existing account...${NC}"
+            echo "  Account exists but is not a program."
+            echo "  For local testing, using --force to overwrite the account..."
+            
+            # Deploy with force to overwrite the existing account
+            echo "  Deploying program with --force flag..."
+            DEPLOY_OUTPUT=$(solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id "$PROGRAM_KEYPAIR" --upgrade-authority "$KEYPAIR_PATH" --force 2>&1)
+            DEPLOY_EXIT_CODE=$?
+            DEPLOY_RESULT=$([ $DEPLOY_EXIT_CODE -eq 0 ] && echo "CREATED" || echo "FAILED")
+        fi
+    else
+        echo "  No account exists at this address (expected for first deployment)"
+        
+        DEPLOY_ACTION="CREATE"
+        echo -e "${BLUE}🆕 CREATING new program...${NC}"
+        echo "  Using initial deployment with upgrade authority..."
+        
+        DEPLOY_OUTPUT=$(solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --program-id "$PROGRAM_KEYPAIR" --upgrade-authority "$KEYPAIR_PATH" 2>&1)
+        DEPLOY_EXIT_CODE=$?
+        DEPLOY_RESULT=$([ $DEPLOY_EXIT_CODE -eq 0 ] && echo "CREATED" || echo "FAILED")
+    fi
+else
+    DEPLOY_ACTION="CREATE"
+    echo -e "${BLUE}🆕 CREATING new program...${NC}"
+    echo "  Using initial deployment with upgrade authority..."
+    
+    DEPLOY_OUTPUT=$(solana program deploy "$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so" --upgrade-authority "$KEYPAIR_PATH" 2>&1)
+    DEPLOY_EXIT_CODE=$?
+    DEPLOY_RESULT=$([ $DEPLOY_EXIT_CODE -eq 0 ] && echo "CREATED" || echo "FAILED")
+fi
+
+# Display results with clear status
+echo ""
+echo -e "${BLUE}📋 DEPLOYMENT SUMMARY${NC}"
+echo "================================="
+
+case $DEPLOY_RESULT in
+    "CREATED")
+        if [ "$DEPLOY_ACTION" = "CREATE_FORCE" ]; then
+            echo -e "${GREEN}✅ STATUS: Program successfully CREATED (force deployment)${NC}"
+            echo -e "${GREEN}   🔄 Previous account overwritten, new program deployed${NC}"
+        else
+            echo -e "${GREEN}✅ STATUS: Program successfully CREATED${NC}"
+            echo -e "${GREEN}   🆕 New program deployed with upgrade authority${NC}"
+        fi
+        ;;
+    "UPGRADED")
+        echo -e "${GREEN}✅ STATUS: Program successfully UPGRADED${NC}"
+        echo -e "${GREEN}   📈 Contract code updated, program ID preserved${NC}"
+        ;;
+    "REDEPLOYED")
+        echo -e "${GREEN}✅ STATUS: Program successfully REDEPLOYED${NC}"
+        echo -e "${GREEN}   🔄 Fresh deployment (previous program closed)${NC}"
+        ;;
+    "NO_UPGRADE_NEEDED")
+        echo -e "${YELLOW}⚡ STATUS: No upgrade needed${NC}"
+        echo -e "${YELLOW}   📊 Program bytecode is already up-to-date${NC}"
+        ;;
+    "FAILED")
+        echo -e "${RED}❌ STATUS: Deployment FAILED${NC}"
+        echo -e "${RED}   💥 See error details below${NC}"
+        echo ""
+        echo "Error output:"
+        echo "$DEPLOY_OUTPUT"
+        kill $VALIDATOR_PID
+        exit 1
+        ;;
+esac
+
+echo "   Action: $DEPLOY_ACTION"
+echo "   Program ID: $PROGRAM_ID"
+echo ""
+
+if [ "$DEPLOY_RESULT" != "FAILED" ]; then
+    echo -e "${GREEN}✅ Program deployment completed successfully!${NC}"
 else
     echo -e "${RED}❌ Deployment failed${NC}"
     kill $VALIDATOR_PID
