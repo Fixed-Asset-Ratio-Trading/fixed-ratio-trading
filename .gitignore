@@ -1,3 +1,8 @@
 /target
 /test-ledger
 .DS_Store
+
+# Node.js (not needed for this Rust/Solana project)
+node_modules/
+package-lock.json
+package.json

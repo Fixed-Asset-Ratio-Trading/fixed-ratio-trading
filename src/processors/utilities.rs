@@ -473,4 +473,31 @@ pub fn get_action_history(pool_state: &PoolState) -> ProgramResult {
              i, action.delegate, action.action_type, action.action_id, action.request_timestamp);
     }
     Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns smart contract version information.
+/// 
+/// This function provides version information for the smart contract including
+/// the main contract version from Cargo.toml and the schema version for data structures.
+/// 
+/// # Purpose
+/// - Frontend/client version compatibility checking
+/// - Deployment verification and audit trails
+/// - API compatibility detection
+/// - Development and debugging support
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs comprehensive version information
+pub fn process_get_version() -> ProgramResult {
+    msg!("=== SMART CONTRACT VERSION ===");
+    msg!("Contract Name: {}", env!("CARGO_PKG_NAME"));
+    msg!("Contract Version: {}", env!("CARGO_PKG_VERSION"));
+    msg!("Contract Description: {}", env!("CARGO_PKG_DESCRIPTION"));
+    msg!("Schema Version: v2"); // From POOL_STATE_SEED_PREFIX
+    msg!("Solana Program: Yes");
+    msg!("License: {}", env!("CARGO_PKG_LICENSE"));
+    msg!("Program ID: 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+    msg!("===============================");
+    
+    Ok(())
 } 

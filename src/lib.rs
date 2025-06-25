@@ -148,6 +148,7 @@ use crate::processors::{
         get_liquidity_info,
         get_delegate_info,
         get_fee_info,
+        process_get_version,
     },
 };
 
@@ -287,6 +288,8 @@ pub fn process_instruction(
         } => process_pause_system(program_id, accounts, reason),
 
         PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
+
+        PoolInstruction::GetVersion => process_get_version(),
     }
 }
 

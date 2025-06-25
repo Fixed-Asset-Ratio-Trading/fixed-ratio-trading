@@ -14,6 +14,7 @@ let connection = null;
 let pools = [];
 let lastUpdate = null;
 let refreshTimer = null;
+let contractVersion = null;
 
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', async () => {
@@ -31,6 +32,12 @@ async function initializeDashboard() {
         
         // Test RPC connection
         await testConnection();
+        
+        // Fetch contract version
+        await fetchContractVersion();
+        
+        // Update title with version (or keep original if failed)
+        updateTitle();
         
         // Load initial data
         await refreshData();
@@ -68,6 +75,102 @@ async function testConnection() {
         document.getElementById('rpc-status').textContent = 'Offline';
         document.getElementById('rpc-status').className = 'status-value offline';
         throw error;
+    }
+}
+
+/**
+ * Fetch contract version from the smart contract
+ */
+async function fetchContractVersion() {
+    try {
+        console.log('🔍 Fetching contract version...');
+        
+        // Create GetVersion instruction (instruction discriminator for GetVersion)  
+        // GetVersion is index 25 in the PoolInstruction enum
+        const getVersionInstruction = new Uint8Array([25]);
+        
+        const programId = new solanaWeb3.PublicKey(CONFIG.programId);
+        
+        // Add a dummy fee payer for simulation (use a known valid address)
+        const dummyFeePayer = new solanaWeb3.PublicKey('3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f');
+        
+        // Create transaction to call GetVersion instruction
+        const transaction = new solanaWeb3.Transaction().add(
+            new solanaWeb3.TransactionInstruction({
+                keys: [], // GetVersion requires no accounts
+                programId: programId,
+                data: getVersionInstruction,
+            })
+        );
+        
+        // Set fee payer for simulation
+        transaction.feePayer = dummyFeePayer;
+        
+        console.log('Simulating GetVersion transaction...');
+        
+        // Simulate the transaction to get the logs
+        const simulationResult = await connection.simulateTransaction(transaction);
+        
+        console.log('Simulation result:', simulationResult);
+        
+        if (simulationResult.value.err) {
+            console.error('Simulation error:', simulationResult.value.err);
+            contractVersion = 'error';
+            return;
+        }
+        
+        if (simulationResult.value.logs) {
+            console.log('Logs from simulation:', simulationResult.value.logs);
+            
+            // Parse version from logs
+            const versionLine = simulationResult.value.logs.find(log => 
+                log.includes('Contract Version:')
+            );
+            
+            if (versionLine) {
+                console.log('Found version line:', versionLine);
+                const versionMatch = versionLine.match(/Contract Version: ([0-9.]+)/);
+                if (versionMatch) {
+                    contractVersion = versionMatch[1];
+                    updateTitle();
+                    console.log(`✅ Contract version detected: ${contractVersion}`);
+                } else {
+                    console.warn('Could not parse version from line:', versionLine);
+                    contractVersion = 'parse-error';
+                }
+            } else {
+                console.warn('No version line found in logs');
+                contractVersion = 'not-found';
+            }
+        } else {
+            console.warn('No logs returned from simulation');
+            contractVersion = 'no-logs';
+        }
+    } catch (error) {
+        console.error('❌ Error fetching contract version:', error);
+        contractVersion = 'fetch-error';
+    }
+}
+
+/**
+ * Update the page title with contract version
+ */
+function updateTitle() {
+    const titleElement = document.querySelector('.header h1');
+    if (titleElement) {
+        if (contractVersion && 
+            !['unknown', 'error', 'parse-error', 'not-found', 'no-logs', 'fetch-error'].includes(contractVersion)) {
+            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard v${contractVersion}`;
+            console.log(`✅ Title updated with version: ${contractVersion}`);
+        } else {
+            // Keep original title if version fetch failed
+            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard`;
+            if (contractVersion) {
+                console.warn(`⚠️ Could not display version (status: ${contractVersion})`);
+            }
+        }
+    } else {
+        console.error('❌ Could not find title element to update');
     }
 }
 

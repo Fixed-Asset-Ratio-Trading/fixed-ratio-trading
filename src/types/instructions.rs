@@ -222,4 +222,9 @@ pub enum PoolInstruction {
     /// Clears the system pause state completely
     UnpauseSystem,
     
+    /// Get the smart contract version information
+    /// Returns version data including contract version and schema version
+    /// No accounts required - returns constant version information
+    GetVersion,
+    
 } 
