@@ -31,11 +31,19 @@ brew install jq
 
 ## 🚀 Quick Start
 
-### Step 1: Deploy the Contract
+### Step 1: Deploy the Contract (Enhanced Script)
 ```bash
-# Deploy to local testnet (this will start the validator and deploy)
+# Deploy to local testnet (this will now do everything automatically!)
 ./scripts/deploy_local.sh
 ```
+
+**🎉 NEW FEATURES in deploy_local.sh:**
+- ✅ **Auto-increment version** - Automatically bumps patch version on each deployment
+- ✅ **Smart deployment logic** - Handles create/upgrade/redeploy/force scenarios intelligently  
+- ✅ **Enhanced error handling** - No more hanging or unclear error messages
+- ✅ **Automatic dashboard startup** - Launches web server and opens Firefox automatically
+- ✅ **Clear status reporting** - Shows exactly what happened during deployment
+- ✅ **Fixed macOS compatibility** - No more timeout command issues
 
 ### Step 2: Create Sample Pools
 ```bash
@@ -43,40 +51,80 @@ brew install jq
 ./scripts/create_sample_pools.sh
 ```
 
-### Step 3: Launch the Dashboard
+### Step 3: Dashboard is Already Running!
+After running `deploy_local.sh`, the dashboard should automatically open in Firefox at: **http://localhost:3000**
+
+If it didn't open automatically:
 ```bash
-# Start the web dashboard
+# Manual dashboard startup (if needed)
 ./scripts/start_dashboard.sh
 ```
 
-Then open your browser to: **http://localhost:3000**
+## 🔧 Enhanced Deployment Features
 
-## 🌐 Web Dashboard Features
+### Intelligent Deployment Logic
+The enhanced `deploy_local.sh` script now handles multiple deployment scenarios:
 
-The dashboard provides real-time monitoring of:
+#### 🆕 **CREATE** - First-time deployment
+- Deploys new program with upgrade authority
+- Sets up fresh program ID and deployment info
+- Status: `Program successfully CREATED`
 
-### 📊 System Status
+#### 📈 **UPGRADE** - Existing upgradeable program
+- Detects existing upgradeable programs automatically
+- Preserves program ID while updating contract code
+- Status: `Program successfully UPGRADED`
+
+#### 🔄 **REDEPLOY** - Non-upgradeable program replacement
+- Closes old non-upgradeable program
+- Deploys fresh program at same address
+- Status: `Program successfully REDEPLOYED`
+
+#### 🔧 **FORCE** - Account conflict resolution
+- Uses `--force` flag to overwrite conflicting accounts
+- Handles "Account already in use" errors automatically
+- Status: `Program successfully CREATED (force deployment)`
+
+#### ⚡ **NO_UPGRADE_NEEDED** - Already up-to-date
+- Detects when bytecode hasn't changed
+- Skips unnecessary redeployments
+- Status: `No upgrade needed`
+
+### Auto-Version Management
+Every deployment automatically:
+1. **Reads current version** from `Cargo.toml`
+2. **Increments patch version** (e.g., 0.1.1002 → 0.1.1003)
+3. **Updates Cargo.toml** with new version
+4. **Builds with new version**
+5. **Updates dashboard title** to show "Fixed Ratio Trading Dashboard v{version}"
+
+### Enhanced Build Process
+Build warnings have been completely eliminated:
+- ✅ Added missing Solana features (`custom-heap`, `custom-panic`)
+- ✅ Fixed conditional entrypoint compilation for target_os = "solana"
+- ✅ Proper linting configuration for valid target_os values
+- ✅ Clean compilation with zero warnings
+
+## 🌐 Enhanced Web Dashboard
+
+### 📊 Dynamic Version Display
+The dashboard now features **live version detection**:
+- 🔍 **Fetches version from smart contract** using GetVersion instruction
+- 🏷️ **Updates title dynamically** to show "Fixed Ratio Trading Dashboard v{version}"
+- 📡 **Real-time contract metadata** displayed in browser
+
+### Auto-Launch Features
+- 🦊 **Firefox auto-opening** on macOS (when available)
+- 🌐 **Automatic web server startup** on port 3000
+- 🔄 **Live reload capability** for development
+
+### Original Dashboard Features
 - **RPC Connection** - Local validator connectivity
 - **Program Status** - Contract deployment status  
 - **Block Height** - Current blockchain height
-
-### 🏊‍♂️ Pool Information
-- **Total Pools** - Number of active trading pools
-- **Pool Liquidity** - Token amounts in each pool
-- **Exchange Rates** - Current token ratios
-- **Pause Status** - Which pools are active/paused
-
-### 💰 Financial Metrics
-- **Total Value Locked (TVL)** - All liquidity across pools
-- **Collected Fees** - SOL and token fees earned
-- **Swap Activity** - Transaction volume and frequency
-- **Delegate Activity** - Governance and management actions
-
-### 🔄 Real-time Updates
-- **Auto-refresh** every 10 seconds
-- **Manual refresh** button
-- **Live status indicators**
-- **Error handling and notifications**
+- **Pool Information** - Real-time pool data and metrics
+- **Financial Metrics** - TVL, fees, swap activity
+- **Auto-refresh** every 10 seconds with manual refresh option
 
 ## 📊 Command Line Monitoring
 
@@ -107,10 +155,11 @@ RPC_URL="http://localhost:8900"
 solana-test-validator --rpc-port 8900 ...
 ```
 
-### Program ID
-The contract is deployed with Program ID: `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn`
-
-> **Note**: When you deploy locally, Solana will generate a new program ID automatically. You'll need to update `src/lib.rs` with the `declare_id!()` macro and update all scripts and dashboard files with the new program ID.
+### Program ID Management
+The enhanced script automatically:
+- 🔑 **Generates or reuses program keypair** from `target/deploy/fixed_ratio_trading-keypair.json`
+- 📋 **Updates deployment_info.json** with all deployment details
+- 🎯 **Maintains program ID consistency** across upgrades
 
 ## 🛠️ Manual Operations
 
@@ -123,15 +172,28 @@ solana-test-validator --rpc-port 8899 --rpc-pubsub-enable --reset &
 pkill -f solana-test-validator
 ```
 
-### Deploy Program Manually
+### Deploy Program Manually (Updated Process)
 ```bash
-# Build the program
-cargo build-bpf
+# Build the program (use modern SBF build)
+cargo build-sbf
 
-# Deploy to local testnet
+# Deploy scenarios:
+
+# New deployment with upgrade authority
 solana program deploy target/deploy/fixed_ratio_trading.so \
-    --program-id quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD \
-    --url http://localhost:8899
+    --program-id target/deploy/fixed_ratio_trading-keypair.json \
+    --upgrade-authority ~/.config/solana/id.json
+
+# Upgrade existing program
+solana program deploy target/deploy/fixed_ratio_trading.so \
+    --program-id target/deploy/fixed_ratio_trading-keypair.json \
+    --upgrade-authority ~/.config/solana/id.json
+
+# Force deployment (conflict resolution)
+solana program deploy target/deploy/fixed_ratio_trading.so \
+    --program-id target/deploy/fixed_ratio_trading-keypair.json \
+    --upgrade-authority ~/.config/solana/id.json \
+    --force
 ```
 
 ### Create Test Pools Manually
@@ -163,6 +225,18 @@ The dashboard automatically scans for pools by:
 
 ### Common Issues
 
+#### ❌ Deployment Script Hanging (FIXED!)
+**Old Problem:** Script would hang on program existence checks
+**✅ Solution:** Enhanced script with proper error handling and no timeout dependencies
+
+#### ❌ "Account already in use" Errors (FIXED!)
+**Old Problem:** Deployment would fail with account conflicts
+**✅ Solution:** Smart deployment logic automatically handles all conflict scenarios
+
+#### ❌ Build Warnings (FIXED!)
+**Old Problem:** Multiple compilation warnings about missing features
+**✅ Solution:** Added proper Solana features and linting configuration
+
 #### Validator Won't Start
 ```bash
 # Check if port is in use
@@ -185,6 +259,9 @@ solana airdrop 10
 
 # Check Solana CLI configuration
 solana config get
+
+# Use the enhanced script (handles most issues automatically)
+./scripts/deploy_local.sh
 ```
 
 #### Dashboard Shows No Pools
@@ -193,114 +270,118 @@ solana config get
 3. Create test pools with `./scripts/create_sample_pools.sh`
 4. Check browser console for errors
 
-#### Web Server Won't Start
-```bash
-# Check if Python is installed
-python3 --version
-
-# Check if port 3000 is free
-lsof -i :3000
-
-# Use different port
-cd dashboard && python3 -m http.server 3001
-```
+#### Dashboard Won't Auto-Open
+- **Firefox not installed:** Install Firefox or open http://localhost:3000 manually
+- **Port 3000 in use:** The script will automatically find an alternative port
+- **Manual fallback:** Run `./scripts/start_dashboard.sh` separately
 
 ## 📁 File Structure
 
 ```
 fixed-ratio-trading/
 ├── scripts/                     # All deployment and utility scripts
-│   ├── deploy_local.sh          # Standard deployment script
+│   ├── deploy_local.sh          # ⭐ ENHANCED deployment script with auto-versioning
 │   ├── start_dashboard.sh       # Web dashboard server
 │   ├── create_sample_pools.sh   # Test pool creation
 │   ├── monitor_pools.sh         # Command-line monitoring
 │   ├── check_wallet.sh          # Wallet status and info
 │   ├── run_integration_tests.sh # Test suite runner
-│   └── test_script_paths.sh     # Script portability verification
+│   ├── test_script_paths.sh     # Script portability verification
+│   └── build-bpf.sh            # Enhanced BPF build script
 ├── dashboard/
 │   ├── index.html              # Dashboard interface
-│   └── dashboard.js            # Dashboard logic
-├── deployment_info.json        # Deployment details (auto-generated)
-└── src/                        # Contract source code
+│   └── dashboard.js            # ⭐ Enhanced dashboard with version detection
+├── deployment_info.json        # ⭐ Enhanced deployment details (auto-generated)
+├── Cargo.toml                  # ⭐ Updated with proper Solana features
+└── src/                        # Contract source code with GetVersion support
 ```
 
-## 🔄 Regular Workflow
+## 🔄 Enhanced Workflow
 
-### Daily Development Workflow
+### New Streamlined Development Workflow
 ```bash
-1. ./scripts/deploy_local.sh          # Start validator & deploy
-2. ./scripts/create_sample_pools.sh   # Create test data
-3. ./scripts/start_dashboard.sh       # Open dashboard
-4. # Develop and test your application
-5. # Monitor with dashboard or CLI tools
+1. ./scripts/deploy_local.sh          # Does EVERYTHING automatically:
+   #   ✅ Auto-increments version
+   #   ✅ Builds contract 
+   #   ✅ Starts validator
+   #   ✅ Handles smart deployment
+   #   ✅ Starts dashboard
+   #   ✅ Opens Firefox
+   
+2. ./scripts/create_sample_pools.sh   # Create test data (if needed)
+
+3. # Develop and test your application
+   # Dashboard shows live version: "Fixed Ratio Trading Dashboard v0.1.1003"
+
+4. # Make changes and redeploy
+   ./scripts/deploy_local.sh          # Automatically handles upgrade!
 ```
 
 ### Testing New Features
 1. Make code changes
 2. Run tests: `cargo test`
-3. Redeploy: `./scripts/deploy_local.sh`
-4. Verify in dashboard
+3. Redeploy: `./scripts/deploy_local.sh` (auto-upgrades!)
+4. Verify in dashboard (version automatically updates)
 
 ## 🚫 Stopping Everything
 
 To stop all services:
 
 ```bash
-# Stop validator (from deployment script terminal)
-Ctrl+C
+# The deployment script provides clear stop instructions:
+# "To stop everything: kill [VALIDATOR_PID] [DASHBOARD_PID]"
 
-# Stop dashboard (from start_dashboard.sh terminal)  
-Ctrl+C
-
-# Stop command-line monitor
-Ctrl+C
-
-# Clean up any remaining processes
+# Quick cleanup
 pkill -f solana-test-validator
-pkill -f "python.*http.server"
+pkill -f "python.*http.server.*3000"
+
+# From deployment script terminal
+Ctrl+C  # Stops both validator and dashboard automatically
 ```
 
 ## 📞 Support
 
 If you encounter issues:
 
-1. **Verify prerequisites**: All required software installed and running
-2. **Check logs**: Terminal output, browser console
-3. **Clean restart**: Stop all processes and restart from Step 1
+1. **Try the enhanced script first**: `./scripts/deploy_local.sh` handles most common issues
+2. **Check terminal output**: Enhanced error messages provide clear guidance
+3. **Verify prerequisites**: All required software installed and running
+4. **Clean restart**: Stop all processes and restart from Step 1
 
 ## 🎯 Next Steps
 
 Once you have the local setup working:
 
-1. **Explore the Dashboard** - Understand all the metrics displayed
-2. **Create Custom Pools** - Modify the test scripts for your use case
-3. **Monitor Performance** - Use the monitoring tools to track activity
-4. **Integrate Your App** - Use the free RPC methods in your application
-5. **Deploy to Devnet** - When ready, deploy to Solana devnet
+1. **Explore the Dashboard** - Notice the live version display and real-time metrics
+2. **Test Auto-Upgrade** - Make code changes and redeploy to see smart upgrade in action
+3. **Create Custom Pools** - Modify the test scripts for your use case
+4. **Monitor Performance** - Use the monitoring tools to track activity
+5. **Integrate Your App** - Use the free RPC methods and version detection in your application
+6. **Deploy to Devnet** - When ready, adapt the enhanced script for devnet deployment
 
 ---
 
-## 🎓 Key Learnings - Solana 2.2.12 Deployment
+## 🎓 Key Learnings - Enhanced Solana Deployment
 
-After resolving deployment issues with Solana 2.2.12, here are the key points:
+### ✅ What Now Works Perfectly (Enhanced Method)
+1. **Smart Deployment**: Script automatically handles all deployment scenarios
+2. **Auto-Versioning**: Every deployment increments version and updates dashboard
+3. **Zero Warnings**: Clean compilation with proper Solana features
+4. **Enhanced UX**: Automatic dashboard and browser launch
+5. **Robust Error Handling**: Clear status messages and conflict resolution
 
-### ✅ What Works (Proper Method)
-1. **Build Command**: Use `cargo build-sbf` (not `cargo build-bpf`)
-2. **Deployment**: Use `solana program deploy target/deploy/program.so` (let Solana handle the program ID)
-3. **Entrypoint**: Must include `entrypoint!(process_instruction);` in lib.rs
-4. **Program ID**: Update `declare_id!()` after deployment with the generated program ID
+### �� Enhanced Features
+1. **Version Management**: Automatic version bumping with live dashboard display
+2. **Deployment Intelligence**: CREATE → UPGRADE → REDEPLOY → FORCE as needed
+3. **Build Optimization**: Zero-warning compilation with proper feature flags
+4. **Dashboard Integration**: Live version fetching from smart contract
+5. **Developer Experience**: One-command deployment with automatic environment setup
 
-### ❌ What Doesn't Work (Avoid These)
-1. Don't specify `--program-id` or `--keypair` for initial deployments
-2. Don't use mismatched program IDs between code and keypair
-3. Don't rely on Docker for compilation (native works fine now)
-4. Don't skip the entrypoint macro
+### 🔄 New Optimal Workflow
+1. **One Command Deployment**: `./scripts/deploy_local.sh` does everything
+2. **Smart Version Tracking**: Contract version automatically managed and displayed
+3. **Conflict-Free Deployments**: Automatic handling of all account conflict scenarios
+4. **Instant Feedback**: Clear status reporting and automatic browser launch
+5. **Seamless Upgrades**: Preserves program ID while updating contract code
 
-### 🔄 Proper Workflow
-1. Clean build: `cargo clean && cargo build-sbf`
-2. Start validator: `solana-test-validator --reset &`
-3. Deploy: `solana program deploy target/deploy/program.so`
-4. Update code with new program ID from deployment output
-5. Update all scripts and dashboard files with new program ID
-
-**🎉 Congratulations!** You now have a fully functional Fixed Ratio Trading deployment with comprehensive monitoring capabilities. 
+**🎉 Congratulations!** You now have a completely enhanced Fixed Ratio Trading deployment system with automatic versioning, intelligent deployment logic, zero build warnings, and seamless developer experience. 
