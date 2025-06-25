@@ -57,7 +57,35 @@ echo "  RPC URL: $RPC_URL"
 echo "  Keypair: $KEYPAIR_PATH"
 echo ""
 
-# Step 1: Build the program
+# Step 1: Auto-increment version number
+echo -e "${YELLOW}🔢 Auto-incrementing version number...${NC}"
+
+# Read current version from Cargo.toml
+CURRENT_VERSION=$(grep '^version = ' "$PROJECT_ROOT/Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
+echo "  Current version: $CURRENT_VERSION"
+
+# Parse version components (major.minor.patch)
+IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+# Increment patch version
+NEW_PATCH=$((PATCH + 1))
+NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+echo "  New version: $NEW_VERSION"
+
+# Update Cargo.toml
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS sed
+    sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+else
+    # Linux sed
+    sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+fi
+
+echo -e "${GREEN}✅ Version updated: $CURRENT_VERSION → $NEW_VERSION${NC}"
+echo ""
+
+# Step 2: Build the program
 echo -e "${YELLOW}🔨 Building Solana program...${NC}"
 cd "$PROJECT_ROOT"
 RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
@@ -68,7 +96,7 @@ else
     exit 1
 fi
 
-# Step 2: Check if validator is running
+# Step 3: Check if validator is running
 echo -e "${YELLOW}🔍 Checking for running validator...${NC}"
 if pgrep -f "solana-test-validator" > /dev/null; then
     echo -e "${YELLOW}⚠️  Validator already running. Stopping existing validator...${NC}"
@@ -76,7 +104,7 @@ if pgrep -f "solana-test-validator" > /dev/null; then
     sleep 3
 fi
 
-# Step 3: Start local validator
+# Step 4: Start local validator
 echo -e "${YELLOW}🏁 Starting local Solana validator...${NC}"
 solana-test-validator \
     --rpc-port 8899 \
@@ -91,7 +119,7 @@ echo "  Validator PID: $VALIDATOR_PID"
 echo -e "${YELLOW}⏳ Waiting for validator to start...${NC}"
 sleep 8
 
-# Step 4: Configure Solana CLI
+# Step 5: Configure Solana CLI
 echo -e "${YELLOW}⚙️  Configuring Solana CLI...${NC}"
 solana config set --url $RPC_URL
 if [ $? -eq 0 ]; then
@@ -102,13 +130,13 @@ else
     exit 1
 fi
 
-# Step 5: Check/create keypair
+# Step 6: Check/create keypair
 if [ ! -f "$KEYPAIR_PATH" ]; then
     echo -e "${YELLOW}🔑 Creating new keypair...${NC}"
     solana-keygen new --no-bip39-passphrase --outfile $KEYPAIR_PATH
 fi
 
-# Step 6: Airdrop SOL
+# Step 7: Airdrop SOL
 echo -e "${YELLOW}💰 Airdropping SOL...${NC}"
 WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
 echo "  Wallet: $WALLET_ADDRESS"
@@ -122,7 +150,7 @@ sleep 2
 BALANCE=$(solana balance $WALLET_ADDRESS --output json | jq -r '.value')
 echo -e "${GREEN}  Wallet Balance: $BALANCE SOL${NC}"
 
-# Step 7: Deploy the program
+# Step 8: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
 
 DEPLOY_ACTION=""
@@ -272,7 +300,7 @@ else
     exit 1
 fi
 
-# Step 8: Get the actual deployed program ID and verify
+# Step 9: Get the actual deployed program ID and verify
 echo -e "${YELLOW}🔍 Getting deployed program ID...${NC}"
 if [ -f "$PROGRAM_KEYPAIR" ]; then
     DEPLOYED_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
@@ -294,11 +322,13 @@ else
     echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
-# Step 9: Save deployment info
+# Step 10: Save deployment info
 echo -e "${YELLOW}💾 Saving deployment information...${NC}"
 cat > "$PROJECT_ROOT/deployment_info.json" << EOF
 {
   "program_id": "$PROGRAM_ID",
+  "version": "$NEW_VERSION",
+  "previous_version": "$CURRENT_VERSION",
   "rpc_url": "$RPC_URL",
   "wallet_address": "$WALLET_ADDRESS",
   "deployment_timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -310,38 +340,136 @@ EOF
 
 echo -e "${GREEN}✅ Deployment information saved to deployment_info.json${NC}"
 
+# Step 11: Start Dashboard Server
+echo ""
+echo -e "${YELLOW}🌐 Starting dashboard server...${NC}"
+
+# Check if Python 3 is available
+if command -v python3 &> /dev/null; then
+    PYTHON_CMD="python3"
+elif command -v python &> /dev/null; then
+    PYTHON_CMD="python"
+else
+    echo -e "${RED}❌ Python not found. Dashboard will not start automatically.${NC}"
+    echo "   Install Python to enable automatic dashboard startup"
+    PYTHON_CMD=""
+fi
+
+# Start dashboard server if Python is available
+if [ -n "$PYTHON_CMD" ]; then
+    # Check if port 3000 is already in use
+    if lsof -i :3000 > /dev/null 2>&1; then
+        echo -e "${YELLOW}⚠️  Port 3000 already in use. Stopping existing server...${NC}"
+        pkill -f "python.*http.server.*3000" || true
+        sleep 2
+    fi
+    
+    echo "  Starting web server on http://localhost:3000..."
+    cd "$PROJECT_ROOT/dashboard"
+    $PYTHON_CMD -m http.server 3000 > /dev/null 2>&1 &
+    DASHBOARD_PID=$!
+    
+    # Wait a moment for server to start
+    sleep 3
+    
+    # Verify dashboard server started
+    if kill -0 $DASHBOARD_PID 2>/dev/null; then
+        echo -e "${GREEN}✅ Dashboard server started (PID: $DASHBOARD_PID)${NC}"
+        
+        # Step 12: Open Firefox automatically
+        echo ""
+        echo -e "${YELLOW}🦊 Opening Firefox to dashboard...${NC}"
+        
+        # Open Firefox (macOS specific)
+        if command -v open > /dev/null 2>&1; then
+            open -a Firefox http://localhost:3000 2>/dev/null || \
+            open http://localhost:3000 2>/dev/null || \
+            echo -e "${YELLOW}⚠️  Could not open Firefox automatically. Please open http://localhost:3000 manually${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Auto-open not available. Please open http://localhost:3000 manually${NC}"
+        fi
+        
+        echo -e "${GREEN}✅ Firefox should now open to the dashboard${NC}"
+        
+    else
+        echo -e "${RED}❌ Dashboard server failed to start${NC}"
+        DASHBOARD_PID=""
+    fi
+else
+    DASHBOARD_PID=""
+fi
+
+cd "$PROJECT_ROOT"
+
 # Final status
 echo ""
-echo -e "${GREEN}🎉 DEPLOYMENT COMPLETE!${NC}"
-echo -e "${GREEN}================================${NC}"
-echo -e "${BLUE}📊 Access your deployment:${NC}"
+echo "======================================================"
+echo -e "${GREEN}🎉 COMPLETE DEPLOYMENT & DASHBOARD STARTUP!${NC}"
+echo "======================================================"
+echo -e "${BLUE}📊 Your Fixed Ratio Trading environment is fully running:${NC}"
+echo ""
 echo "  🌐 Web Dashboard: http://localhost:3000"
+if [ -n "$DASHBOARD_PID" ]; then
+    echo "  📱 Browser: Firefox should be opening automatically"
+    echo "  🟢 Dashboard Status: Running (PID: $DASHBOARD_PID)"
+else
+    echo "  🟡 Dashboard Status: Not started (Python not available)"
+fi
 echo "  🔗 RPC Endpoint: $RPC_URL"
-echo "  📋 Program ID: $PROGRAM_ID"
+echo "  📡 Validator Status: Running (PID: $VALIDATOR_PID)"
+echo ""
+echo -e "${BLUE}📋 Contract Information:${NC}"
+echo "  📊 Program ID: $PROGRAM_ID"
+echo "  🔢 Version: $NEW_VERSION (auto-incremented from $CURRENT_VERSION)"
 echo "  💳 Wallet: $WALLET_ADDRESS"
 echo ""
 echo -e "${YELLOW}📝 Next Steps:${NC}"
-echo "  1. Open web dashboard: $PROJECT_ROOT/scripts/start_dashboard.sh"
-echo "  2. Create test pools: $PROJECT_ROOT/scripts/create_sample_pools.sh"
-echo "  3. Monitor pools: $PROJECT_ROOT/scripts/monitor_pools.sh"
+echo "  1. ✅ Dashboard is running - interact with your contract via web UI"
+echo "  2. 🏊 Create test pools: $PROJECT_ROOT/scripts/create_sample_pools.sh"
+echo "  3. 📊 Monitor pools: $PROJECT_ROOT/scripts/monitor_pools.sh"
 echo ""
-echo -e "${YELLOW}🛑 To stop validator:${NC}"
-echo "  kill $VALIDATOR_PID"
+echo -e "${GREEN}💡 The dashboard will automatically show: Fixed Ratio Trading Dashboard v$NEW_VERSION${NC}"
+echo ""
+echo -e "${YELLOW}🛑 To stop everything:${NC}"
+if [ -n "$DASHBOARD_PID" ]; then
+    echo "  kill $VALIDATOR_PID $DASHBOARD_PID"
+    echo "  or: pkill -f \"solana-test-validator\" && pkill -f \"python.*http.server.*3000\""
+else
+    echo "  kill $VALIDATOR_PID"
+    echo "  or: pkill -f \"solana-test-validator\""
+fi
 echo ""
 
-# Keep the script running so validator stays up
-echo -e "${BLUE}🔄 Validator running in background (PID: $VALIDATOR_PID)${NC}"
-echo -e "${BLUE}   Press Ctrl+C to stop validator and exit${NC}"
+# Keep the script running so both services stay up
+echo -e "${BLUE}🔄 Services running in background:${NC}"
+echo "   📡 Validator (PID: $VALIDATOR_PID)"
+if [ -n "$DASHBOARD_PID" ]; then
+    echo "   🌐 Dashboard (PID: $DASHBOARD_PID)"
+fi
+echo -e "${BLUE}   Press Ctrl+C to stop all services and exit${NC}"
 
-# Trap Ctrl+C to clean up
-trap "echo -e '\\n${YELLOW}🛑 Stopping validator...${NC}'; kill $VALIDATOR_PID; exit 0" INT
+# Trap Ctrl+C to clean up both services
+if [ -n "$DASHBOARD_PID" ]; then
+    trap "echo -e '\\n${YELLOW}🛑 Stopping all services...${NC}'; kill $VALIDATOR_PID $DASHBOARD_PID 2>/dev/null; exit 0" INT
+else
+    trap "echo -e '\\n${YELLOW}🛑 Stopping validator...${NC}'; kill $VALIDATOR_PID 2>/dev/null; exit 0" INT
+fi
 
-# Wait for user to stop
+# Wait for user to stop and monitor both services
 while true; do
     sleep 10
     # Check if validator is still running
     if ! kill -0 $VALIDATOR_PID 2>/dev/null; then
         echo -e "${RED}❌ Validator stopped unexpectedly${NC}"
+        if [ -n "$DASHBOARD_PID" ]; then
+            kill $DASHBOARD_PID 2>/dev/null
+        fi
         exit 1
+    fi
+    
+    # Check if dashboard is still running (if it was started)
+    if [ -n "$DASHBOARD_PID" ] && ! kill -0 $DASHBOARD_PID 2>/dev/null; then
+        echo -e "${YELLOW}⚠️  Dashboard server stopped unexpectedly${NC}"
+        DASHBOARD_PID=""
     fi
 done 
