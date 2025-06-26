@@ -17,7 +17,35 @@ let createdTokens = [];
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Token Creation Dashboard initializing...');
-    await initializeApp();
+    showStatus('info', '🔄 Loading libraries and initializing...');
+    
+    // Simple retry mechanism with clearer feedback
+    let attempts = 0;
+    const maxAttempts = 8;
+    
+    const tryInitialize = async () => {
+        attempts++;
+        console.log(`📋 Initialization attempt ${attempts}/${maxAttempts}`);
+        
+        // Check if libraries are loaded
+        if (window.solanaWeb3 && window.SPL_TOKEN_LOADED === true) {
+            console.log('✅ All libraries loaded successfully!');
+            await initializeApp();
+            return;
+        }
+        
+        // If libraries aren't loaded yet, try again
+        if (attempts < maxAttempts) {
+            console.log(`⏳ Libraries still loading... retrying in 1 second`);
+            setTimeout(tryInitialize, 1000);
+        } else {
+            console.error('❌ Failed to load libraries after', maxAttempts, 'attempts');
+            showStatus('error', '❌ Failed to load required libraries. Please refresh the page and check your internet connection.');
+        }
+    };
+    
+    // Start first attempt after a brief delay
+    setTimeout(tryInitialize, 1500);
 });
 
 /**
@@ -27,6 +55,15 @@ async function initializeApp() {
     try {
         // Initialize Solana connection
         connection = new solanaWeb3.Connection(CONFIG.rpcUrl, CONFIG.commitment);
+        
+        // Check if SPL Token library is available
+        if (!window.splToken || !window.SPL_TOKEN_LOADED) {
+            console.error('❌ SPL Token library not loaded properly');
+            showStatus('error', 'SPL Token library not loaded. Please refresh the page.');
+            return;
+        }
+        
+        console.log('✅ SPL Token library ready:', Object.keys(window.splToken).slice(0, 10) + '...');
         
         // Check if Backpack is installed
         if (!window.backpack) {
@@ -183,6 +220,7 @@ async function checkWalletBalance() {
 function updateCreateButtonState() {
     const form = document.getElementById('token-form');
     const createBtn = document.getElementById('create-btn');
+    const sampleBtn = document.getElementById('create-sample-btn');
     const requiredInputs = form.querySelectorAll('input[required]');
     
     let allValid = isConnected;
@@ -194,6 +232,61 @@ function updateCreateButtonState() {
     });
     
     createBtn.disabled = !allValid;
+    
+    // Sample button only needs wallet connection
+    if (sampleBtn) {
+        sampleBtn.disabled = !isConnected;
+    }
+}
+
+/**
+ * Create sample token for quick testing
+ */
+async function createSampleToken() {
+    if (!isConnected || !wallet) {
+        showStatus('error', 'Please connect your wallet first');
+        return;
+    }
+    
+    const sampleBtn = document.getElementById('create-sample-btn');
+    const originalText = sampleBtn.textContent;
+    
+    try {
+        sampleBtn.disabled = true;
+        sampleBtn.textContent = '🔄 Creating Sample Token...';
+        
+        // Sample token data
+        const sampleData = {
+            name: 'Token Sample',
+            symbol: 'TS',
+            decimals: 4,
+            supply: 10000,
+            description: 'Sample token for testing purposes'
+        };
+        
+        showStatus('info', `Creating sample token "${sampleData.name}" (${sampleData.symbol})...`);
+        
+        // Create token
+        const tokenInfo = await createSPLToken(sampleData);
+        
+        // Store created token
+        createdTokens.push(tokenInfo);
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        
+        // Update UI
+        updateTokensList();
+        
+        showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
+        💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
+        🔑 Mint Address: ${tokenInfo.mint}`);
+        
+    } catch (error) {
+        console.error('❌ Error creating sample token:', error);
+        showStatus('error', 'Failed to create sample token: ' + error.message);
+    } finally {
+        sampleBtn.disabled = false;
+        sampleBtn.textContent = originalText;
+    }
 }
 
 /**
@@ -230,7 +323,9 @@ async function handleTokenCreation(event) {
         updateTokensList();
         clearForm();
         
-        showStatus('success', `🎉 Token "${formData.name}" created successfully! Mint: ${tokenInfo.mint}`);
+        showStatus('success', `🎉 Token "${formData.name}" created successfully! 
+        💰 ${formData.supply.toLocaleString()} ${formData.symbol} tokens minted to your wallet
+        🔑 Mint Address: ${tokenInfo.mint}`);
         
     } catch (error) {
         console.error('❌ Error creating token:', error);
@@ -262,75 +357,99 @@ async function createSPLToken(tokenData) {
     try {
         console.log('🎨 Creating SPL token with data:', tokenData);
         
-        // Generate a new keypair for the token mint
-        const mint = solanaWeb3.Keypair.generate();
+        // Debug: Check if SPL Token library is available
+        if (!window.splToken) {
+            throw new Error('SPL Token library not available. Please refresh the page.');
+        }
         
-        console.log('🔑 Generated mint keypair:', mint.publicKey.toString());
+        console.log('🔍 SPL Token library ready for token creation');
         
-        // Calculate the minimum balance for a mint account
-        const mintRent = await connection.getMinimumBalanceForRentExemption(
-            splToken.MintLayout.span
+        console.log('🚀 Creating SPL token...');
+        
+        let mint, associatedTokenAccount;
+        
+        // Generate mint keypair
+        const mintKeypair = solanaWeb3.Keypair.generate();
+        console.log('🔑 Generated mint keypair:', mintKeypair.publicKey.toString());
+        
+        // Get rent exemption for mint account
+        const mintRent = await connection.getMinimumBalanceForRentExemption(window.splToken.MintLayout.span);
+        
+        // Build instructions array
+        const instructions = [];
+        
+        // 1. Create mint account
+        instructions.push(
+            solanaWeb3.SystemProgram.createAccount({
+                fromPubkey: wallet.publicKey,
+                newAccountPubkey: mintKeypair.publicKey,
+                lamports: mintRent,
+                space: window.splToken.MintLayout.span,
+                programId: window.splToken.TOKEN_PROGRAM_ID
+            })
         );
         
-        console.log('💰 Mint rent:', mintRent, 'lamports');
-        
-        // Create mint account
-        const createMintAccountInstruction = solanaWeb3.SystemProgram.createAccount({
-            fromPubkey: wallet.publicKey,
-            newAccountPubkey: mint.publicKey,
-            lamports: mintRent,
-            space: splToken.MintLayout.span,
-            programId: splToken.TOKEN_PROGRAM_ID,
-        });
-        
-        // Initialize mint
-        const initializeMintInstruction = splToken.createInitializeMintInstruction(
-            mint.publicKey,
-            tokenData.decimals,
-            wallet.publicKey, // mint authority
-            wallet.publicKey  // freeze authority (optional, can be null)
+        // 2. Initialize mint instruction
+        instructions.push(
+            window.splToken.Token.createInitMintInstruction(
+                window.splToken.TOKEN_PROGRAM_ID,
+                mintKeypair.publicKey,
+                tokenData.decimals,
+                wallet.publicKey,     // mint authority (you control minting)
+                wallet.publicKey      // freeze authority (you control freezing)
+            )
         );
         
-        // Create associated token account for the wallet
-        const associatedTokenAccount = await splToken.getAssociatedTokenAddress(
-            mint.publicKey,
+        // 3. Get associated token address for your wallet
+        associatedTokenAccount = await window.splToken.Token.getAssociatedTokenAddress(
+            window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+            window.splToken.TOKEN_PROGRAM_ID,
+            mintKeypair.publicKey,
             wallet.publicKey
         );
+        console.log('📍 Token account address:', associatedTokenAccount.toString());
         
-        const createAssociatedTokenAccountInstruction = 
-            splToken.createAssociatedTokenAccountInstruction(
-                wallet.publicKey,     // payer
-                associatedTokenAccount, // associated token account
-                wallet.publicKey,     // owner
-                mint.publicKey        // mint
-            );
-        
-        // Mint tokens to the associated token account
-        const mintToInstruction = splToken.createMintToInstruction(
-            mint.publicKey,
-            associatedTokenAccount,
-            wallet.publicKey, // mint authority
-            tokenData.supply * Math.pow(10, tokenData.decimals) // amount (adjusted for decimals)
+        // 4. Create associated token account instruction
+        instructions.push(
+            window.splToken.Token.createAssociatedTokenAccountInstruction(
+                window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                window.splToken.TOKEN_PROGRAM_ID,
+                mintKeypair.publicKey,
+                associatedTokenAccount,
+                wallet.publicKey,     // owner (YOU own this account)
+                wallet.publicKey      // payer (you pay for creation)
+            )
         );
         
-        // Create transaction
-        const transaction = new solanaWeb3.Transaction()
-            .add(createMintAccountInstruction)
-            .add(initializeMintInstruction)
-            .add(createAssociatedTokenAccountInstruction)
-            .add(mintToInstruction);
+        // 5. Mint all tokens to your wallet
+        const totalSupplyWithDecimals = tokenData.supply * Math.pow(10, tokenData.decimals);
+        console.log(`💰 Minting ${tokenData.supply} ${tokenData.symbol} tokens to your wallet...`);
+        
+        instructions.push(
+            window.splToken.Token.createMintToInstruction(
+                window.splToken.TOKEN_PROGRAM_ID,
+                mintKeypair.publicKey,
+                associatedTokenAccount,   // destination (YOUR token account)
+                wallet.publicKey,         // mint authority (you control minting)
+                [],                       // multi signers
+                totalSupplyWithDecimals  // amount (ALL the supply goes to you)
+            )
+        );
+        
+        // Create and send transaction
+        const transaction = new solanaWeb3.Transaction().add(...instructions);
         
         // Set recent blockhash and fee payer
         const { blockhash } = await connection.getLatestBlockhash();
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = wallet.publicKey;
         
-        // Sign transaction (both wallet and mint keypair need to sign)
-        transaction.partialSign(mint);
+        // Sign with mint keypair (partial sign)
+        transaction.partialSign(mintKeypair);
         
-        console.log('📝 Transaction created, requesting wallet signature...');
+        console.log('📝 Requesting wallet signature...');
         
-        // Sign and send transaction
+        // Sign with wallet and send
         const signedTransaction = await wallet.signTransaction(transaction);
         const signature = await connection.sendRawTransaction(signedTransaction.serialize());
         
@@ -344,11 +463,16 @@ async function createSPLToken(tokenData) {
             throw new Error('Transaction failed: ' + JSON.stringify(confirmation.value.err));
         }
         
-        console.log('✅ Transaction confirmed');
+        console.log('✅ Token created successfully!');
+        
+        // Set mint for return value
+        mint = { publicKey: mintKeypair.publicKey };
+        
+        console.log('✅ Tokens minted successfully to your wallet!');
         
         // Return token info
         const tokenInfo = {
-            mint: mint.publicKey.toString(),
+            mint: mint.publicKey.toString(),  // mint is a Token instance, need .publicKey
             name: tokenData.name,
             symbol: tokenData.symbol,
             decimals: tokenData.decimals,
@@ -356,7 +480,6 @@ async function createSPLToken(tokenData) {
             description: tokenData.description,
             owner: wallet.publicKey.toString(),
             associatedTokenAccount: associatedTokenAccount.toString(),
-            signature: signature,
             createdAt: new Date().toISOString()
         };
         

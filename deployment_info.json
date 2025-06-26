@@ -3,9 +3,14 @@
   "version": "0.1.1007",
   "previous_version": "0.1.1006",
   "rpc_url": "http://localhost:8899",
-  "wallet_address": "3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f",
-  "deployment_timestamp": "2025-06-25T12:55:05Z",
-  "validator_pid": 10601,
+  "wallet_address": "",
+  "deployment_timestamp": "2025-06-26T04:15:17Z",
+  "validator_pid": 52944,
+  "ngrok_pid": "52960",
+  "ngrok_url": "https://fixed.ngrok.app",
   "program_data_address": "2FXQ9r1d1bdhdUVTh735CeUEBEhQbZvCoTfdoyFVyrqD",
-  "program_size": 407200
+  "program_size": 407200,
+  "backpack_wallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t",
+  "default_wallet_balance": "null",
+  "backpack_wallet_balance": "null"
 }
