@@ -1,0 +1,959 @@
+// Pool Creation Dashboard - JavaScript Logic
+// Handles Backpack wallet connection, token fetching, and pool creation
+
+// Configuration
+const CONFIG = {
+    rpcUrl: 'http://localhost:8899',
+    programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
+    commitment: 'confirmed'
+};
+
+// Global state
+let connection = null;
+let wallet = null;
+let isConnected = false;
+let userTokens = [];
+let selectedTokenA = null;
+let selectedTokenB = null;
+let currentRatio = 1;
+let errorCountdownTimer = null;
+
+// Initialize when page loads
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('🚀 Pool Creation Dashboard initializing...');
+    showStatus('info', '🔄 Loading libraries and initializing...');
+    
+    // Simple retry mechanism with clearer feedback
+    let attempts = 0;
+    const maxAttempts = 8;
+    
+    const tryInitialize = async () => {
+        attempts++;
+        console.log(`📋 Initialization attempt ${attempts}/${maxAttempts}`);
+        
+        // Check if libraries are loaded
+        if (window.solanaWeb3 && window.SPL_TOKEN_LOADED === true) {
+            console.log('✅ All libraries loaded successfully!');
+            await initializeApp();
+            return;
+        }
+        
+        // If libraries aren't loaded yet, try again
+        if (attempts < maxAttempts) {
+            console.log(`⏳ Libraries still loading... retrying in 1 second`);
+            setTimeout(tryInitialize, 1000);
+        } else {
+            console.error('❌ Failed to load libraries after', maxAttempts, 'attempts');
+            showStatus('error', '❌ Failed to load required libraries. Please refresh the page.');
+        }
+    };
+    
+    // Start first attempt after a brief delay
+    setTimeout(tryInitialize, 1500);
+});
+
+/**
+ * Initialize the application
+ */
+async function initializeApp() {
+    try {
+        // Initialize Solana connection
+        connection = new solanaWeb3.Connection(CONFIG.rpcUrl, CONFIG.commitment);
+        
+        // Check if SPL Token library is available
+        if (!window.splToken || !window.SPL_TOKEN_LOADED) {
+            console.error('❌ SPL Token library not loaded properly');
+            showStatus('error', 'SPL Token library not loaded. Please refresh the page.');
+            return;
+        }
+        
+        console.log('✅ SPL Token library ready');
+        
+        // Check if Backpack is installed
+        if (!window.backpack) {
+            showStatus('error', 'Backpack wallet not detected. Please install Backpack wallet extension.');
+            return;
+        }
+        
+        // Check if already connected
+        if (window.backpack.isConnected) {
+            await handleWalletConnected();
+        }
+        
+        console.log('✅ Pool Creation Dashboard initialized');
+        clearStatus();
+    } catch (error) {
+        console.error('❌ Failed to initialize:', error);
+        showStatus('error', 'Failed to initialize application: ' + error.message);
+    }
+}
+
+/**
+ * Connect to Backpack wallet
+ */
+async function connectWallet() {
+    try {
+        if (!window.backpack) {
+            showStatus('error', 'Backpack wallet not installed. Please install the Backpack browser extension.');
+            return;
+        }
+        
+        showStatus('info', 'Connecting to Backpack wallet...');
+        
+        const response = await window.backpack.connect();
+        await handleWalletConnected();
+        
+        console.log('✅ Wallet connected:', response.publicKey.toString());
+    } catch (error) {
+        console.error('❌ Failed to connect wallet:', error);
+        showStatus('error', 'Failed to connect wallet: ' + error.message);
+    }
+}
+
+/**
+ * Handle successful wallet connection
+ */
+async function handleWalletConnected() {
+    try {
+        wallet = window.backpack;
+        isConnected = true;
+        
+        const publicKey = wallet.publicKey.toString();
+        
+        // Update UI
+        document.getElementById('wallet-info').style.display = 'flex';
+        document.getElementById('wallet-disconnected').style.display = 'none';
+        document.getElementById('wallet-address').textContent = publicKey;
+        document.getElementById('connect-wallet-btn').textContent = 'Disconnect';
+        document.getElementById('connect-wallet-btn').onclick = disconnectWallet;
+        
+        showStatus('success', `✅ Connected with Backpack wallet: ${publicKey.slice(0, 20)}...`);
+        
+        // Check balance
+        await checkWalletBalance();
+        
+        // Load user tokens
+        await loadUserTokens();
+        
+    } catch (error) {
+        console.error('❌ Error handling wallet connection:', error);
+        showStatus('error', 'Error handling wallet connection: ' + error.message);
+    }
+}
+
+/**
+ * Disconnect wallet
+ */
+async function disconnectWallet() {
+    try {
+        if (window.backpack) {
+            await window.backpack.disconnect();
+        }
+        
+        // Reset state
+        wallet = null;
+        isConnected = false;
+        userTokens = [];
+        selectedTokenA = null;
+        selectedTokenB = null;
+        
+        // Update UI
+        document.getElementById('wallet-info').style.display = 'none';
+        document.getElementById('wallet-disconnected').style.display = 'flex';
+        document.getElementById('connect-wallet-btn').textContent = 'Connect Backpack Wallet';
+        document.getElementById('connect-wallet-btn').onclick = connectWallet;
+        
+        // Reset tokens section
+        document.getElementById('tokens-loading').style.display = 'block';
+        document.getElementById('tokens-container').style.display = 'none';
+        document.getElementById('tokens-loading').innerHTML = `
+            <h3>🔍 Loading your tokens...</h3>
+            <p>Please connect your wallet to see your token balances</p>
+        `;
+        
+        // Reset pool creation section
+        resetPoolCreation();
+        
+        showStatus('info', 'Wallet disconnected');
+        
+    } catch (error) {
+        console.error('❌ Error disconnecting wallet:', error);
+    }
+}
+
+/**
+ * Check wallet balance
+ */
+async function checkWalletBalance() {
+    try {
+        const balance = await connection.getBalance(wallet.publicKey);
+        const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
+        
+        if (solBalance < 0.1) {
+            showStatus('error', `⚠️ Low SOL balance: ${solBalance.toFixed(4)} SOL. You may need more SOL for transactions.`);
+        } else {
+            console.log(`💰 Wallet balance: ${solBalance.toFixed(4)} SOL`);
+        }
+    } catch (error) {
+        console.error('❌ Error checking balance:', error);
+    }
+}
+
+/**
+ * Load user's SPL tokens
+ */
+async function loadUserTokens() {
+    try {
+        showStatus('info', '🔍 Loading your tokens...');
+        
+        // Get all token accounts for the user
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+            wallet.publicKey,
+            { programId: window.splToken.TOKEN_PROGRAM_ID }
+        );
+        
+        console.log(`Found ${tokenAccounts.value.length} token accounts`);
+        
+        userTokens = [];
+        
+        for (const tokenAccount of tokenAccounts.value) {
+            const accountInfo = tokenAccount.account.data.parsed.info;
+            
+            // Skip accounts with zero balance
+            if (parseFloat(accountInfo.tokenAmount.uiAmount) <= 0) {
+                continue;
+            }
+            
+            try {
+                // Try to get token metadata (name, symbol)
+                const mintAddress = accountInfo.mint;
+                let tokenInfo = {
+                    mint: mintAddress,
+                    balance: parseFloat(accountInfo.tokenAmount.uiAmount),
+                    decimals: accountInfo.tokenAmount.decimals,
+                    symbol: `TOKEN-${mintAddress.slice(0, 4)}`, // Default symbol
+                    name: `Token ${mintAddress.slice(0, 8)}...`, // Default name
+                    tokenAccount: tokenAccount.pubkey.toString()
+                };
+                
+                // Try to fetch metadata from common sources
+                await tryFetchTokenMetadata(tokenInfo);
+                
+                userTokens.push(tokenInfo);
+            } catch (error) {
+                console.warn(`Failed to process token ${accountInfo.mint}:`, error);
+            }
+        }
+        
+        console.log(`✅ Loaded ${userTokens.length} tokens with balances`);
+        
+        // Update UI
+        updateTokensDisplay();
+        
+        if (userTokens.length === 0) {
+            showStatus('info', '📭 No tokens found in your wallet. Create some tokens first!');
+        } else {
+            clearStatus();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading tokens:', error);
+        showStatus('error', 'Failed to load tokens: ' + error.message);
+    }
+}
+
+/**
+ * Try to fetch token metadata from various sources
+ */
+async function tryFetchTokenMetadata(tokenInfo) {
+    try {
+        // Check if this is a token we created (stored in localStorage)
+        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        const createdToken = createdTokens.find(t => t.mint === tokenInfo.mint);
+        
+        if (createdToken) {
+            tokenInfo.symbol = createdToken.symbol;
+            tokenInfo.name = createdToken.name;
+            return;
+        }
+        
+        // For now, use default values. In a real app, you'd query token registries or metadata programs
+        console.log(`Using default metadata for token ${tokenInfo.mint}`);
+        
+    } catch (error) {
+        console.warn('Error fetching token metadata:', error);
+    }
+}
+
+/**
+ * Update tokens display
+ */
+function updateTokensDisplay() {
+    const tokensContainer = document.getElementById('tokens-container');
+    const tokensLoading = document.getElementById('tokens-loading');
+    
+    if (userTokens.length === 0) {
+        tokensLoading.style.display = 'block';
+        tokensContainer.style.display = 'none';
+        tokensLoading.innerHTML = `
+            <h3>📭 No tokens found</h3>
+            <p>You don't have any SPL tokens in your wallet.</p>
+            <p><a href="token-creation.html">Create some tokens</a> first to start creating pools!</p>
+        `;
+        return;
+    }
+    
+    tokensLoading.style.display = 'none';
+    tokensContainer.style.display = 'grid';
+    tokensContainer.innerHTML = '';
+    
+    userTokens.forEach((token, index) => {
+        const tokenCard = document.createElement('div');
+        tokenCard.className = 'token-card';
+        tokenCard.onclick = () => selectToken(token);
+        
+        // Check if token is selected
+        const isSelectedA = selectedTokenA && selectedTokenA.mint === token.mint;
+        const isSelectedB = selectedTokenB && selectedTokenB.mint === token.mint;
+        
+        if (isSelectedA || isSelectedB) {
+            tokenCard.classList.add('selected');
+        }
+        
+        tokenCard.innerHTML = `
+            <div class="token-header">
+                <div class="token-symbol">${token.symbol}</div>
+                <div class="token-balance">${token.balance.toLocaleString()}</div>
+            </div>
+            <div class="token-name">${token.name}</div>
+            <div class="token-mint">${token.mint.slice(0, 20)}...</div>
+            ${(isSelectedA || isSelectedB) ? `<div class="selected-badge">${isSelectedA ? 'A' : 'B'}</div>` : ''}
+        `;
+        
+        tokensContainer.appendChild(tokenCard);
+    });
+}
+
+/**
+ * Select a token for the pool
+ */
+function selectToken(token) {
+    // If no tokens selected, this becomes Token A
+    if (!selectedTokenA && !selectedTokenB) {
+        selectedTokenA = token;
+        showStatus('success', `Selected ${token.symbol} as Token A`);
+    }
+    // If only Token A is selected, this becomes Token B (unless it's the same token)
+    else if (selectedTokenA && !selectedTokenB) {
+        if (selectedTokenA.mint === token.mint) {
+            showStatus('error', 'Cannot select the same token for both positions');
+            return;
+        }
+        selectedTokenB = token;
+        showStatus('success', `Selected ${token.symbol} as Token B`);
+    }
+    // If both are selected, replace the most recently clicked one
+    else {
+        // For simplicity, let's replace Token B
+        if (selectedTokenA.mint === token.mint) {
+            showStatus('info', `${token.symbol} is already selected as Token A`);
+            return;
+        }
+        selectedTokenB = token;
+        showStatus('success', `Replaced Token B with ${token.symbol}`);
+    }
+    
+    updateTokensDisplay();
+    updatePoolCreationDisplay();
+}
+
+/**
+ * Update pool creation display based on selected tokens
+ */
+function updatePoolCreationDisplay() {
+    const tokenASelection = document.getElementById('token-a-selection');
+    const tokenBSelection = document.getElementById('token-b-selection');
+    const swapButton = document.getElementById('swap-tokens-btn');
+    const ratioSection = document.getElementById('ratio-section');
+    
+    // Update Token A display
+    if (selectedTokenA) {
+        tokenASelection.className = 'token-selection active';
+        tokenASelection.innerHTML = `
+            <div class="selected-token-symbol">${selectedTokenA.symbol}</div>
+            <div class="selected-token-name">${selectedTokenA.name}</div>
+            <div class="selected-token-balance">Balance: ${selectedTokenA.balance.toLocaleString()}</div>
+        `;
+    } else {
+        tokenASelection.className = 'token-selection empty';
+        tokenASelection.innerHTML = '<div class="empty-selection">Select Token A</div>';
+    }
+    
+    // Update Token B display
+    if (selectedTokenB) {
+        tokenBSelection.className = 'token-selection active';
+        tokenBSelection.innerHTML = `
+            <div class="selected-token-symbol">${selectedTokenB.symbol}</div>
+            <div class="selected-token-name">${selectedTokenB.name}</div>
+            <div class="selected-token-balance">Balance: ${selectedTokenB.balance.toLocaleString()}</div>
+        `;
+    } else {
+        tokenBSelection.className = 'token-selection empty';
+        tokenBSelection.innerHTML = '<div class="empty-selection">Select Token B</div>';
+    }
+    
+    // Enable swap button if both tokens are selected
+    swapButton.disabled = !selectedTokenA || !selectedTokenB;
+    
+    // Show ratio section if both tokens are selected
+    if (selectedTokenA && selectedTokenB) {
+        ratioSection.style.display = 'block';
+        updateRatioDisplay();
+        updatePoolSummary();
+        updateCreateButtonState();
+    } else {
+        ratioSection.style.display = 'none';
+        document.getElementById('pool-summary-section').style.display = 'none';
+    }
+}
+
+/**
+ * Swap Token A and Token B
+ */
+function swapTokens() {
+    if (!selectedTokenA || !selectedTokenB) return;
+    
+    const temp = selectedTokenA;
+    selectedTokenA = selectedTokenB;
+    selectedTokenB = temp;
+    
+    showStatus('info', `Swapped tokens: ${selectedTokenA.symbol} ⇄ ${selectedTokenB.symbol}`);
+    
+    updateTokensDisplay();
+    updatePoolCreationDisplay();
+}
+
+/**
+ * Update ratio display
+ */
+function updateRatioDisplay() {
+    if (!selectedTokenA || !selectedTokenB) return;
+    
+    const ratioInput = document.getElementById('ratio-input');
+    currentRatio = parseFloat(ratioInput.value) || 1;
+    
+    // Update display elements
+    document.getElementById('ratio-token-a').textContent = selectedTokenA.symbol;
+    document.getElementById('ratio-token-b').textContent = selectedTokenB.symbol;
+    document.getElementById('ratio-value').textContent = currentRatio;
+    document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
+    
+    // Update pool summary
+    updatePoolSummary();
+}
+
+/**
+ * Update pool summary display
+ */
+function updatePoolSummary() {
+    if (!selectedTokenA || !selectedTokenB) return;
+    
+    const summarySection = document.getElementById('pool-summary-section');
+    const summaryPair = document.getElementById('summary-pair');
+    const summaryRate = document.getElementById('summary-rate');
+    
+    summaryPair.textContent = `${selectedTokenA.symbol} / ${selectedTokenB.symbol}`;
+    summaryRate.textContent = `1 ${selectedTokenA.symbol} = ${currentRatio} ${selectedTokenB.symbol}`;
+    
+    summarySection.style.display = 'block';
+}
+
+/**
+ * Update create pool button state
+ */
+function updateCreateButtonState() {
+    const createBtn = document.getElementById('create-pool-btn');
+    
+    const canCreate = isConnected && 
+                     selectedTokenA && 
+                     selectedTokenB &&
+                     currentRatio > 0;
+    
+    createBtn.disabled = !canCreate;
+}
+
+/**
+ * Show token selection help
+ */
+function showTokenHelp(position) {
+    if (!isConnected) {
+        showStatus('info', 'Please connect your wallet first to see your tokens');
+        return;
+    }
+    
+    if (userTokens.length === 0) {
+        showStatus('info', 'No tokens found in your wallet. Create some tokens first!');
+        return;
+    }
+    
+    showStatus('info', `Click on a token card above to select it as Token ${position}`);
+}
+
+/**
+ * Reset pool creation state
+ */
+function resetPoolCreation() {
+    selectedTokenA = null;
+    selectedTokenB = null;
+    currentRatio = 1;
+    
+    document.getElementById('ratio-input').value = '1';
+    
+    updatePoolCreationDisplay();
+}
+
+/**
+ * Create the pool
+ */
+async function createPool() {
+    // Hide any existing errors
+    hidePoolError();
+    
+    if (!isConnected || !selectedTokenA || !selectedTokenB) {
+        showPoolError('Please connect wallet and select two tokens');
+        return;
+    }
+    
+    if (currentRatio <= 0) {
+        showPoolError('Please enter a valid exchange ratio');
+        return;
+    }
+    
+    // Check for duplicate pools
+    if (checkDuplicatePool(selectedTokenA, selectedTokenB, currentRatio)) {
+        showPoolError(`Pool already exists: ${selectedTokenA.symbol}/${selectedTokenB.symbol} with ratio 1:${currentRatio}. Each token pair with the same ratio can only have one pool.`);
+        return;
+    }
+    
+    const createBtn = document.getElementById('create-pool-btn');
+    const originalText = createBtn.textContent;
+    
+    try {
+        createBtn.disabled = true;
+        createBtn.textContent = '🔄 Creating Pool...';
+        
+        showStatus('info', `Creating pool: ${selectedTokenA.symbol}/${selectedTokenB.symbol} with ratio 1:${currentRatio}...`);
+        
+        // Call the smart contract to create the pool
+        const poolData = await createPoolTransaction(selectedTokenA, selectedTokenB, currentRatio);
+        
+        // Redirect to pool success page with pool details
+        const params = new URLSearchParams({
+            poolAddress: poolData.address,
+            tokenASymbol: poolData.tokenASymbol,
+            tokenBSymbol: poolData.tokenBSymbol,
+            tokenAName: poolData.tokenAName,
+            tokenBName: poolData.tokenBName,
+            ratio: poolData.ratio,
+            creator: poolData.creator,
+            createdAt: poolData.createdAt
+        });
+        
+        window.location.href = `pool-success.html?${params.toString()}`;
+        
+    } catch (error) {
+        console.error('❌ Error creating pool:', error);
+        
+        // Show detailed error with specific messaging
+        let errorMessage = error.message;
+        
+        if (error.message.includes('User rejected')) {
+            errorMessage = 'Transaction was rejected by user. Please try again and approve the transaction in your Backpack wallet.';
+        } else if (error.message.includes('Insufficient funds')) {
+            errorMessage = 'Insufficient SOL balance to pay for pool creation fee and transaction costs. Please add more SOL to your wallet.';
+        } else if (error.message.includes('Network error')) {
+            errorMessage = 'Network connection error. Please check your internet connection and try again.';
+        } else if (error.message.includes('Program not deployed')) {
+            errorMessage = 'Fixed Ratio Trading program is not deployed on this network. Please deploy the program first or switch to a network where it is deployed.';
+        }
+        
+        showPoolError(errorMessage);
+    } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = originalText;
+        updateCreateButtonState();
+    }
+}
+
+/**
+ * Create pool transaction
+ */
+async function createPoolTransaction(tokenA, tokenB, ratio) {
+    try {
+        console.log('🏊‍♂️ Creating real pool transaction...');
+        
+        // Check if program is deployed
+        const programId = new solanaWeb3.PublicKey(CONFIG.programId);
+        const programAccount = await connection.getAccountInfo(programId);
+        
+        if (!programAccount) {
+            throw new Error('Program not deployed: Fixed Ratio Trading program not found on this network. Please deploy the program first.');
+        }
+        
+        // Generate LP token mint keypairs
+        const lpTokenAMint = solanaWeb3.Keypair.generate();
+        const lpTokenBMint = solanaWeb3.Keypair.generate();
+        
+        console.log('Generated LP token mints:', {
+            lpTokenA: lpTokenAMint.publicKey.toString(),
+            lpTokenB: lpTokenBMint.publicKey.toString()
+        });
+        
+        // Use original token order - let smart contract do normalization internally
+        const primaryTokenMint = new solanaWeb3.PublicKey(tokenA.mint); // User-selected Token A
+        const baseTokenMint = new solanaWeb3.PublicKey(tokenB.mint);     // User-selected Token B
+        const ratioPrimaryPerBase = ratio; // User-defined ratio
+        
+        console.log('Pool configuration (original order):', {
+            primaryToken: primaryTokenMint.toString(),
+            baseToken: baseTokenMint.toString(),
+            ratio: ratioPrimaryPerBase
+        });
+        
+        // Determine normalized token order for PDA derivation (same logic as smart contract)
+        const tokenAMint = primaryTokenMint.toString() < baseTokenMint.toString() 
+            ? primaryTokenMint : baseTokenMint;
+        const tokenBMint = primaryTokenMint.toString() < baseTokenMint.toString() 
+            ? baseTokenMint : primaryTokenMint;
+        
+        const ratioANumerator = Math.floor(ratioPrimaryPerBase);
+        const ratioBDenominator = 1;
+        
+        // Convert strings to bytes using TextEncoder (browser-compatible)
+        const encoder = new TextEncoder();
+        
+        // Convert ratio numbers to little-endian bytes
+        const ratioABytes = new Uint8Array(8);
+        const ratioBBytes = new Uint8Array(8);
+        new DataView(ratioABytes.buffer).setBigUint64(0, BigInt(ratioANumerator), true); // little-endian
+        new DataView(ratioBBytes.buffer).setBigUint64(0, BigInt(ratioBDenominator), true); // little-endian
+        
+        const [poolStatePDA, poolStateBump] = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                encoder.encode('pool_state_v2'),
+                tokenAMint.toBytes(), 
+                tokenBMint.toBytes(),
+                ratioABytes,
+                ratioBBytes
+            ],
+            programId
+        );
+        
+        // Derive vault PDAs (using normalized token order for PDA derivation) 
+        const [tokenAVaultPDA, tokenAVaultBump] = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                encoder.encode('token_a_vault'),
+                poolStatePDA.toBytes()
+            ],
+            programId
+        );
+        
+        const [tokenBVaultPDA, tokenBVaultBump] = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                encoder.encode('token_b_vault'),
+                poolStatePDA.toBytes()
+            ],
+            programId
+        );
+        
+        console.log('Derived PDAs:', {
+            poolState: poolStatePDA.toString(),
+            tokenAVault: tokenAVaultPDA.toString(),
+            tokenBVault: tokenBVaultPDA.toString(),
+            bumps: {
+                poolState: poolStateBump,
+                tokenAVault: tokenAVaultBump,
+                tokenBVault: tokenBVaultBump
+            }
+        });
+        
+        // Determine if original primary token is tokenA after normalization
+        const primaryTokenIstokenA = primaryTokenMint.toString() === tokenAMint.toString();
+        const primaryVaultBump = primaryTokenIstokenA ? tokenAVaultBump : tokenBVaultBump;
+        const baseVaultBump = primaryTokenIstokenA ? tokenBVaultBump : tokenAVaultBump;
+        
+        console.log('Vault bump mapping:', {
+            primaryTokenIstokenA,
+            primaryToken: primaryTokenMint.toString(),
+            tokenA: tokenAMint.toString(),
+            primaryVaultBump,
+            baseVaultBump
+        });
+        
+        // Create the instruction data buffer - CORRECTED FORMAT
+        console.log('Creating instruction with ratio:', ratioPrimaryPerBase);
+        
+        // CRITICAL FIX: InitializePool is the 3rd variant in enum, so discriminator = 2
+        const instructionData = new Uint8Array(12); // 1 + 8 + 1 + 1 + 1 = 12 bytes
+        let offset = 0;
+        
+        // Discriminator: InitializePool = 2 (3rd variant in enum)
+        instructionData[offset] = 2;
+        offset += 1;
+        
+        // ratio_primary_per_base: u64 (8 bytes, little-endian)
+        const ratioBytes = new Uint8Array(8);
+        const dataView = new DataView(ratioBytes.buffer);
+        dataView.setBigUint64(0, BigInt(Math.floor(ratioPrimaryPerBase)), true); // true = little-endian
+        instructionData.set(ratioBytes, offset);
+        offset += 8;
+        
+        // pool_authority_bump_seed: u8 (1 byte)
+        instructionData[offset] = poolStateBump;
+        offset += 1;
+        
+        // primary_token_vault_bump_seed: u8 (1 byte)  
+        instructionData[offset] = primaryVaultBump;
+        offset += 1;
+        
+        // base_token_vault_bump_seed: u8 (1 byte)
+        instructionData[offset] = baseVaultBump;
+        offset += 1;
+        
+        console.log('Instruction data bytes:', Array.from(instructionData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        console.log('Instruction breakdown:', {
+            discriminator: instructionData[0],
+            ratio: dataView.getBigUint64(0, true),
+            poolAuthorityBump: instructionData[9],
+            primaryVaultBump: instructionData[10], 
+            baseVaultBump: instructionData[11]
+        });
+        
+        // Create the transaction instruction with correct account order (matching smart contract)
+        const createPoolInstruction = new solanaWeb3.TransactionInstruction({
+            keys: [
+                { pubkey: wallet.publicKey, isSigner: true, isWritable: true },     // 0: Payer (signer)
+                { pubkey: poolStatePDA, isSigner: false, isWritable: true },        // 1: Pool state PDA
+                { pubkey: primaryTokenMint, isSigner: false, isWritable: false },   // 2: Primary token mint
+                { pubkey: baseTokenMint, isSigner: false, isWritable: false },      // 3: Base token mint
+                { pubkey: lpTokenAMint.publicKey, isSigner: true, isWritable: true }, // 4: LP Token A mint (signer)
+                { pubkey: lpTokenBMint.publicKey, isSigner: true, isWritable: true }, // 5: LP Token B mint (signer)
+                { pubkey: tokenAVaultPDA, isSigner: false, isWritable: true },      // 6: Token A vault PDA (normalized)
+                { pubkey: tokenBVaultPDA, isSigner: false, isWritable: true },      // 7: Token B vault PDA (normalized)
+                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 8: System program
+                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },   // 9: SPL Token program
+                { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }       // 10: Rent sysvar
+            ],
+            programId: programId,
+            data: instructionData
+        });
+        
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(createPoolInstruction);
+        
+        // Get recent blockhash
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = wallet.publicKey;
+        
+        // Partially sign with LP mint keypairs
+        transaction.partialSign(lpTokenAMint, lpTokenBMint);
+        
+        console.log('🔐 Requesting Backpack wallet signature...');
+        showStatus('info', 'Please approve the transaction in your Backpack wallet...');
+        
+        // Sign with Backpack wallet (this will trigger the authorization popup)
+        const signedTransaction = await wallet.signTransaction(transaction);
+        
+        console.log('📡 Sending transaction to Solana network...');
+        showStatus('info', 'Sending transaction to blockchain...');
+        
+        // Send transaction
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+        
+        console.log('⏳ Confirming transaction:', signature);
+        showStatus('info', `Transaction sent: ${signature}. Waiting for confirmation...`);
+        
+        // Confirm transaction
+        const confirmation = await connection.confirmTransaction(signature, CONFIG.commitment);
+        
+        if (confirmation.value.err) {
+            throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
+        
+        console.log('✅ Transaction confirmed successfully!');
+        
+        // Create pool data for storage and success page
+        const poolData = {
+            address: poolStatePDA.toString(),
+            tokenAMint: tokenA.mint,
+            tokenBMint: tokenB.mint,
+            tokenASymbol: tokenA.symbol,
+            tokenBSymbol: tokenB.symbol,
+            tokenAName: tokenA.name,
+            tokenBName: tokenB.name,
+            ratio: ratio,
+            totalTokenALiquidity: 0,
+            totalTokenBLiquidity: 0,
+            creator: wallet.publicKey.toString(),
+            createdAt: new Date().toISOString(),
+            poolStatus: 'created',
+            isInitialized: true,
+            isPaused: false,
+            swapsPaused: false,
+            swapFeeBasisPoints: 0,
+            collectedFeesTokenA: 0,
+            collectedFeesTokenB: 0,
+            collectedSolFees: 0,
+            delegateCount: 0,
+            transactionSignature: signature
+        };
+        
+        // Store the created pool in localStorage
+        const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
+        existingPools.push(poolData);
+        localStorage.setItem('createdPools', JSON.stringify(existingPools));
+        
+        console.log('✅ Pool created successfully on-chain:', poolData);
+        
+        return poolData;
+        
+    } catch (error) {
+        console.error('❌ Error in createPoolTransaction:', error);
+        
+        // Enhanced error handling for different types of failures
+        if (error.message.includes('User rejected the request')) {
+            throw new Error('User rejected the transaction in Backpack wallet');
+        } else if (error.message.includes('Insufficient funds')) {
+            throw new Error('Insufficient funds: You need more SOL to pay for the pool creation fee and transaction costs');
+        } else if (error.message.includes('Network error') || error.message.includes('Failed to fetch')) {
+            throw new Error('Network error: Unable to connect to Solana network. Please check your internet connection');
+        }
+        
+        throw error;
+    }
+}
+
+/**
+ * Generate a mock pool address based on token mints and ratio
+ */
+function generateMockPoolAddress(tokenAMint, tokenBMint, ratio) {
+    // Simple hash-like generation for demo purposes
+    const combined = tokenAMint + tokenBMint + ratio.toString();
+    const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    let result = '';
+    for (let i = 0; i < 44; i++) {
+        const index = (combined.charCodeAt(i % combined.length) + i) % chars.length;
+        result += chars.charAt(index);
+    }
+    return result;
+}
+
+/**
+ * Show status message
+ */
+function showStatus(type, message) {
+    const container = document.getElementById('status-container');
+    container.innerHTML = `<div class="status-message ${type}">${message}</div>`;
+}
+
+/**
+ * Clear status message
+ */
+function clearStatus() {
+    const container = document.getElementById('status-container');
+    container.innerHTML = '';
+}
+
+/**
+ * Show error with countdown and copy functionality
+ */
+function showPoolError(errorMessage) {
+    // Clear any existing countdown
+    if (errorCountdownTimer) {
+        clearInterval(errorCountdownTimer);
+    }
+    
+    const errorDisplay = document.getElementById('error-display');
+    const errorMessageText = document.getElementById('error-message-text');
+    const errorCountdown = document.getElementById('error-countdown');
+    
+    // Set error message
+    errorMessageText.textContent = errorMessage;
+    
+    // Show error display
+    errorDisplay.style.display = 'block';
+    
+    // Start countdown
+    let countdown = 30;
+    errorCountdown.textContent = countdown;
+    
+    errorCountdownTimer = setInterval(() => {
+        countdown--;
+        errorCountdown.textContent = countdown;
+        
+        if (countdown <= 0) {
+            clearInterval(errorCountdownTimer);
+            errorDisplay.style.display = 'none';
+            errorCountdownTimer = null;
+        }
+    }, 1000);
+    
+    console.error('🚨 Pool creation error:', errorMessage);
+}
+
+/**
+ * Hide error display
+ */
+function hidePoolError() {
+    if (errorCountdownTimer) {
+        clearInterval(errorCountdownTimer);
+        errorCountdownTimer = null;
+    }
+    
+    const errorDisplay = document.getElementById('error-display');
+    errorDisplay.style.display = 'none';
+}
+
+/**
+ * Copy error message to clipboard
+ */
+function copyErrorMessage() {
+    const errorMessageText = document.getElementById('error-message-text');
+    const message = errorMessageText.textContent;
+    
+    navigator.clipboard.writeText(message).then(() => {
+        const copyBtn = document.getElementById('copy-error-btn');
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = '✅ Copied';
+        
+        setTimeout(() => {
+            copyBtn.textContent = originalText;
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy error message:', err);
+    });
+}
+
+// Make function available globally for HTML onclick
+window.copyErrorMessage = copyErrorMessage;
+
+/**
+ * Check if pool already exists
+ */
+function checkDuplicatePool(tokenA, tokenB, ratio) {
+    const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
+    
+    return existingPools.some(pool => {
+        // Check both token combinations (A,B and B,A) with the same ratio
+        const sameAB = pool.tokenAMint === tokenA.mint && 
+                      pool.tokenBMint === tokenB.mint && 
+                      pool.ratio === ratio;
+        
+        const sameBA = pool.tokenAMint === tokenB.mint && 
+                      pool.tokenBMint === tokenA.mint && 
+                      pool.ratio === (1 / ratio);
+        
+        return sameAB || sameBA;
+    });
+} 

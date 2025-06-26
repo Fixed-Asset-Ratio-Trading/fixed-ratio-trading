@@ -320,6 +320,9 @@
                 <button class="nav-btn primary" onclick="window.location.href='token-creation.html'">
                     🪙 Create Tokens
                 </button>
+                <button class="nav-btn primary" onclick="window.location.href='pool-creation.html'">
+                    🏊‍♂️ Create Pool
+                </button>
                 <button class="nav-btn secondary" onclick="refreshData()">
                     🔄 Refresh Dashboard
                 </button>
@@ -397,6 +400,10 @@
         <div class="pools-section">
             <div class="section-header">
                 <h2 class="section-title">🏊‍♂️ Individual Pools</h2>
+                <div>
+                    <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+                    <button class="refresh-btn" onclick="forceRefreshPools()" style="margin-left: 10px; background: #f59e0b;">🔍 Debug Pools</button>
+                </div>
             </div>
             
             <div id="pools-container">

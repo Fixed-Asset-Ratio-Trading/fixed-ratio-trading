@@ -158,8 +158,7 @@ async function handleWalletConnected() {
         // Update form state
         updateCreateButtonState();
         
-        // Load existing tokens
-        await loadCreatedTokens();
+
         
     } catch (error) {
         console.error('❌ Error handling wallet connection:', error);
@@ -273,9 +272,6 @@ async function createSampleToken() {
         createdTokens.push(tokenInfo);
         localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
-        // Update UI
-        updateTokensList();
-        
         showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
         💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
         🔑 Mint Address: ${tokenInfo.mint}`);
@@ -319,8 +315,7 @@ async function handleTokenCreation(event) {
         createdTokens.push(tokenInfo);
         localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
-        // Update UI
-        updateTokensList();
+        // Clear form
         clearForm();
         
         showStatus('success', `🎉 Token "${formData.name}" created successfully! 
@@ -500,53 +495,7 @@ function clearForm() {
     document.getElementById('token-decimals').value = '9'; // Reset default
 }
 
-/**
- * Load created tokens from localStorage
- */
-async function loadCreatedTokens() {
-    try {
-        const stored = localStorage.getItem('createdTokens');
-        if (stored) {
-            createdTokens = JSON.parse(stored);
-            updateTokensList();
-        }
-    } catch (error) {
-        console.error('❌ Error loading tokens:', error);
-    }
-}
 
-/**
- * Update the tokens list display
- */
-function updateTokensList() {
-    const container = document.getElementById('tokens-container');
-    
-    if (createdTokens.length === 0) {
-        container.innerHTML = `
-            <p style="color: #666; text-align: center; padding: 20px;">
-                No tokens created yet. Create your first token above!
-            </p>
-        `;
-        return;
-    }
-    
-    const tokensHTML = createdTokens.map(token => `
-        <div class="token-item">
-            <div class="token-info">
-                <h4>${token.name} (${token.symbol})</h4>
-                <div class="token-mint">Mint: ${token.mint}</div>
-                <div style="font-size: 12px; color: #888; margin-top: 5px;">
-                    Created: ${new Date(token.createdAt).toLocaleString()}
-                </div>
-            </div>
-            <div class="token-supply">
-                ${token.supply.toLocaleString()} tokens
-            </div>
-        </div>
-    `).join('');
-    
-    container.innerHTML = tokensHTML;
-}
 
 /**
  * Show status message

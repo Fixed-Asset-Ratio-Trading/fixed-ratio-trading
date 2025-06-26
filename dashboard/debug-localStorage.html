@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>localStorage Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        pre { background: #f5f5f5; padding: 10px; border-radius: 5px; }
+        button { margin: 10px 5px; padding: 10px 15px; }
+    </style>
+</head>
+<body>
+    <h1>localStorage Debug Tool</h1>
+    
+    <button onclick="checkLocalStorage()">Check Created Pools</button>
+    <button onclick="clearLocalStorage()">Clear All Pools</button>
+    <button onclick="addTestPool()">Add Test Pool</button>
+    
+    <h2>Created Pools Data:</h2>
+    <pre id="pools-data">Click "Check Created Pools" to see data</pre>
+    
+    <h2>All localStorage Keys:</h2>
+    <pre id="all-keys">Loading...</pre>
+
+    <script>
+        function checkLocalStorage() {
+            const poolsData = localStorage.getItem('createdPools');
+            const poolsDisplay = document.getElementById('pools-data');
+            
+            if (poolsData) {
+                try {
+                    const parsed = JSON.parse(poolsData);
+                    poolsDisplay.textContent = `Raw: ${poolsData}\n\nParsed (${parsed.length} pools):\n${JSON.stringify(parsed, null, 2)}`;
+                } catch (error) {
+                    poolsDisplay.textContent = `Error parsing: ${error.message}\nRaw: ${poolsData}`;
+                }
+            } else {
+                poolsDisplay.textContent = 'No "createdPools" data found in localStorage';
+            }
+        }
+
+        function clearLocalStorage() {
+            localStorage.removeItem('createdPools');
+            alert('Cleared createdPools from localStorage');
+            checkLocalStorage();
+            showAllKeys();
+        }
+
+        function addTestPool() {
+            const testPool = {
+                address: "TEST123",
+                tokenAMint: "TokenA123",
+                tokenBMint: "TokenB456", 
+                tokenASymbol: "TESTA",
+                tokenBSymbol: "TESTB",
+                tokenAName: "Test Token A",
+                tokenBName: "Test Token B",
+                ratio: 2,
+                totalTokenALiquidity: 0,
+                totalTokenBLiquidity: 0,
+                creator: "Creator123",
+                createdAt: new Date().toISOString(),
+                isInitialized: true,
+                isPaused: false,
+                swapsPaused: false,
+                swapFeeBasisPoints: 0,
+                collectedFeesTokenA: 0,
+                collectedFeesTokenB: 0,
+                collectedSolFees: 0,
+                delegateCount: 0,
+                transactionSignature: "sig123"
+            };
+
+            const existing = JSON.parse(localStorage.getItem('createdPools') || '[]');
+            existing.push(testPool);
+            localStorage.setItem('createdPools', JSON.stringify(existing));
+            
+            alert('Added test pool');
+            checkLocalStorage();
+        }
+
+        function showAllKeys() {
+            const allKeys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                allKeys.push(`${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
+            }
+            document.getElementById('all-keys').textContent = allKeys.join('\n') || 'No localStorage keys found';
+        }
+
+        // Show all keys on load
+        showAllKeys();
+    </script>
+</body>
+</html> 

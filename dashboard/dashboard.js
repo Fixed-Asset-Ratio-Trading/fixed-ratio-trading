@@ -229,23 +229,15 @@ async function refreshData() {
         // Update connection status
         await testConnection();
         
-        // Check if program exists before scanning
+        // Check if program exists before scanning on-chain pools
         const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
         if (!programAccount) {
-            console.warn('⚠️ Program not deployed - showing demo mode');
-            pools = []; // Clear any existing pools
-            updateSummaryStats();
-            renderPools();
-            
-            // Update timestamp
-            lastUpdate = new Date();
-            document.getElementById('last-updated').textContent = lastUpdate.toLocaleTimeString();
-            
-            console.log('✅ Dashboard refreshed - Program not deployed (demo mode)');
-            return;
+            console.warn('⚠️ Program not detected via getAccountInfo - scanning locally created pools only');
+        } else {
+            console.log('✅ Program detected - scanning all pools');
         }
         
-        // Scan for pools
+        // Always scan for pools (including locally created ones)
         await scanForPools();
         
         // Update summary statistics
@@ -269,39 +261,94 @@ async function refreshData() {
 }
 
 /**
- * Scan the blockchain for Fixed Ratio Trading pools
+ * Scan for Fixed Ratio Trading pools (both on-chain and locally created)
  */
 async function scanForPools() {
     try {
         console.log('🔍 Scanning for pools...');
         
-        // Get all accounts owned by our program
-        const programAccounts = await connection.getProgramAccounts(
-            new solanaWeb3.PublicKey(CONFIG.programId),
-            {
-                filters: [
-                    // Filter for pool state accounts (approximate size)
-                    { dataSize: 1000 } // Adjust based on actual PoolState size
-                ]
-            }
+        let onChainPools = [];
+        let localPools = [];
+        
+        // Try to get on-chain pools
+        try {
+            const programAccounts = await connection.getProgramAccounts(
+                new solanaWeb3.PublicKey(CONFIG.programId),
+                {
+                    filters: [
+                        // Filter for pool state accounts (approximate size)
+                        { dataSize: 1000 } // Adjust based on actual PoolState size
+                    ]
+                }
+            );
+            
+            console.log(`Found ${programAccounts.length} program accounts`);
+            
+            const poolPromises = programAccounts.map(async (account) => {
+                try {
+                    const poolData = await parsePoolState(account.account.data, account.pubkey);
+                    return poolData;
+                } catch (error) {
+                    console.warn(`Failed to parse pool at ${account.pubkey.toString()}:`, error);
+                    return null;
+                }
+            });
+            
+            const poolResults = await Promise.all(poolPromises);
+            onChainPools = poolResults.filter(pool => pool !== null);
+            
+            console.log(`✅ Successfully parsed ${onChainPools.length} on-chain pools`);
+        } catch (error) {
+            console.warn('⚠️ Error scanning on-chain pools (this is normal if program not deployed):', error);
+        }
+        
+        // Get locally created pools from localStorage
+        try {
+            const storedPoolsRaw = localStorage.getItem('createdPools') || '[]';
+            console.log('📦 Raw localStorage data:', storedPoolsRaw);
+            
+            const storedPools = JSON.parse(storedPoolsRaw);
+            console.log('📦 Parsed stored pools:', storedPools);
+            
+            localPools = storedPools.map(pool => {
+                // Convert local pool format to dashboard format
+                const converted = {
+                    address: pool.address,
+                    isInitialized: pool.isInitialized,
+                    isPaused: pool.isPaused,
+                    swapsPaused: pool.swapsPaused,
+                    tokenAMint: pool.tokenAMint,
+                    tokenBMint: pool.tokenBMint,
+                    tokenALiquidity: pool.totalTokenALiquidity,
+                    tokenBLiquidity: pool.totalTokenBLiquidity,
+                    ratioANumerator: pool.ratio,
+                    ratioBDenominator: 1,
+                    swapFeeBasisPoints: pool.swapFeeBasisPoints,
+                    collectedFeesTokenA: pool.collectedFeesTokenA,
+                    collectedFeesTokenB: pool.collectedFeesTokenB,
+                    collectedSolFees: pool.collectedSolFees,
+                    delegateCount: pool.delegateCount,
+                    owner: pool.creator,
+                    // Add symbols for better display
+                    tokenASymbol: pool.tokenASymbol,
+                    tokenBSymbol: pool.tokenBSymbol
+                };
+                console.log('📦 Converted pool:', converted);
+                return converted;
+            });
+            console.log(`✅ Loaded ${localPools.length} locally created pools`);
+        } catch (error) {
+            console.warn('⚠️ Error loading local pools:', error);
+        }
+        
+        // Combine both sources (remove duplicates by address if any)
+        const allPools = [...onChainPools, ...localPools];
+        const uniquePools = allPools.filter((pool, index, self) => 
+            index === self.findIndex(p => p.address === pool.address)
         );
         
-        console.log(`Found ${programAccounts.length} program accounts`);
-        
-        const poolPromises = programAccounts.map(async (account) => {
-            try {
-                const poolData = await parsePoolState(account.account.data, account.pubkey);
-                return poolData;
-            } catch (error) {
-                console.warn(`Failed to parse pool at ${account.pubkey.toString()}:`, error);
-                return null;
-            }
-        });
-        
-        const poolResults = await Promise.all(poolPromises);
-        pools = poolResults.filter(pool => pool !== null);
-        
-        console.log(`✅ Successfully parsed ${pools.length} pools`);
+        pools = uniquePools;
+        console.log(`✅ Total unique pools loaded: ${pools.length} (${onChainPools.length} on-chain + ${localPools.length} local)`);
     } catch (error) {
         console.error('❌ Error scanning for pools:', error);
         throw error;
@@ -463,10 +510,15 @@ function createPoolCard(pool) {
     const exchangeRate = pool.ratioBDenominator > 0 ? 
         (pool.ratioANumerator / pool.ratioBDenominator).toFixed(2) : '0';
     
+    // Use symbol information if available for better display
+    const displayTitle = (pool.tokenASymbol && pool.tokenBSymbol) 
+        ? `${pool.tokenASymbol} / ${pool.tokenBSymbol} Pool`
+        : `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
+    
     card.innerHTML = `
         <div class="pool-header">
             <div class="pool-title">
-                Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}
+                ${displayTitle}
             </div>
             <div class="pool-status ${status}">${statusText}</div>
         </div>
@@ -585,8 +637,56 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
+/**
+ * Force refresh pools with detailed debugging
+ */
+async function forceRefreshPools() {
+    console.log('🐛 FORCE REFRESH: Starting detailed pool debugging...');
+    
+    // Clear any existing pools
+    pools = [];
+    
+    // Check localStorage directly
+    const rawData = localStorage.getItem('createdPools');
+    console.log('🐛 Raw localStorage data:', rawData);
+    
+    if (rawData) {
+        try {
+            const parsedData = JSON.parse(rawData);
+            console.log('🐛 Parsed localStorage data:', parsedData);
+            console.log('🐛 Number of stored pools:', parsedData.length);
+            
+            // Show what each pool looks like
+            parsedData.forEach((pool, index) => {
+                console.log(`🐛 Pool ${index + 1}:`, pool);
+            });
+            
+        } catch (error) {
+            console.error('🐛 Error parsing localStorage:', error);
+        }
+    } else {
+        console.log('🐛 No localStorage data found');
+        alert('No pool data found in localStorage. Have you created any pools yet?');
+        return;
+    }
+    
+    // Force scan for pools
+    await scanForPools();
+    
+    console.log('🐛 After scanning - pools array:', pools);
+    console.log('🐛 Number of pools in memory:', pools.length);
+    
+    // Force update display
+    updateSummaryStats();
+    renderPools();
+    
+    // Show alert with results
+    alert(`Debug complete!\nFound ${pools.length} pools.\nCheck console for details.`);
+}
+
 // Export for global access
 window.refreshData = refreshData;
 window.createSamplePools = createSamplePools;
+window.forceRefreshPools = forceRefreshPools;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 
