@@ -71,12 +71,15 @@ TARGET_ACCOUNT="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 AIRDROP_AMOUNT=1000
 RPC_URL="http://localhost:8899"
 SCREEN_SESSION_NAME="solana-validator"
+NGROK_HOSTNAME="fixed.ngrok.app"
+PUBLIC_URL="https://$NGROK_HOSTNAME"
 
 echo -e "${BLUE}🚀 Ubuntu 24 Solana Validator Startup${NC}"
 echo "======================================"
 echo -e "${CYAN}Target Account: $TARGET_ACCOUNT${NC}"
 echo -e "${CYAN}Airdrop Amount: $AIRDROP_AMOUNT SOL${NC}"
-echo -e "${CYAN}RPC URL: $RPC_URL${NC}"
+echo -e "${CYAN}Local RPC URL: $RPC_URL${NC}"
+echo -e "${CYAN}Public URL: $PUBLIC_URL${NC}"
 echo -e "${CYAN}Screen Session: $SCREEN_SESSION_NAME${NC}"
 echo ""
 
@@ -91,6 +94,16 @@ if ! command -v screen &> /dev/null; then
     echo -e "${GREEN}✅ Screen installed${NC}"
 else
     echo -e "${GREEN}✅ Screen is available${NC}"
+fi
+
+# Check if ngrok is installed
+if ! command -v ngrok &> /dev/null; then
+    echo -e "${RED}❌ ngrok is not installed${NC}"
+    echo -e "${YELLOW}💡 Please install ngrok from https://ngrok.com/download${NC}"
+    exit 1
+else
+    NGROK_VERSION=$(ngrok version | head -1)
+    echo -e "${GREEN}✅ ngrok available: $NGROK_VERSION${NC}"
 fi
 
 # Check if Solana is available
@@ -127,12 +140,13 @@ mkdir -p logs
 echo ""
 echo -e "${YELLOW}🏁 Starting Solana validator in screen session...${NC}"
 
-# Start validator in screen with interactive monitoring
+# Start validator and ngrok in screen with interactive monitoring
 screen -dmS "$SCREEN_SESSION_NAME" bash -c "
-    echo '🚀 Solana Test Validator - Interactive Monitor'
-    echo '=============================================='
+    echo '🚀 Solana Validator + Ngrok - Interactive Monitor'
+    echo '================================================'
     echo 'Started: \$(date)'
-    echo 'RPC URL: $RPC_URL'
+    echo 'Local RPC: $RPC_URL'
+    echo 'Public URL: $PUBLIC_URL'
     echo 'Session: $SCREEN_SESSION_NAME'
     echo 'Ledger: logs/test-ledger'
     echo ''
@@ -144,6 +158,7 @@ screen -dmS "$SCREEN_SESSION_NAME" bash -c "
     echo ''
     
     # Start validator in background
+    echo 'Starting Solana validator...'
     solana-test-validator \\
         --rpc-port 8899 \\
         --compute-unit-limit 1000000 \\
@@ -154,23 +169,56 @@ screen -dmS "$SCREEN_SESSION_NAME" bash -c "
         2>&1 | tee logs/validator.log &
     
     VALIDATOR_PID=\$!
-    echo \"Validator started with PID: \$VALIDATOR_PID\"
-    echo \"Logs: tail -f logs/validator.log\"
+    echo \"✅ Validator started with PID: \$VALIDATOR_PID\"
+    
+    # Wait for validator to be ready
+    sleep 5
+    
+    # Start ngrok tunnel
+    echo 'Starting ngrok tunnel...'
+    ngrok http 8899 --hostname=$NGROK_HOSTNAME --log=stdout --log-level=warn > logs/ngrok.log 2>&1 &
+    NGROK_PID=\$!
+    echo \"✅ Ngrok started with PID: \$NGROK_PID\"
+    echo \"\"
+    
+    # Wait for ngrok to establish tunnel
+    sleep 3
+    echo \"✅ Services started successfully\"
     echo \"\"
     
     # Monitor and display useful information
-    sleep 3
     echo \"Starting status monitor...\"
     echo \"\"
     
-    while kill -0 \$VALIDATOR_PID 2>/dev/null; do
+    while kill -0 \$VALIDATOR_PID 2>/dev/null && kill -0 \$NGROK_PID 2>/dev/null; do
         echo \"════════ \$(date) ════════\"
         
-        # Check if RPC is responding
-        if curl -s $RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getHealth\\\"}' | grep -q '\\\"ok\\\"'; then
-            echo \"✅ RPC Status: HEALTHY\"
+        # Check validator status
+        if kill -0 \$VALIDATOR_PID 2>/dev/null; then
+            echo \"✅ Validator: RUNNING (PID: \$VALIDATOR_PID)\"
         else
-            echo \"❌ RPC Status: NOT RESPONDING\"
+            echo \"❌ Validator: STOPPED\"
+        fi
+        
+        # Check ngrok status
+        if kill -0 \$NGROK_PID 2>/dev/null; then
+            echo \"✅ Ngrok: RUNNING (PID: \$NGROK_PID)\"
+        else
+            echo \"❌ Ngrok: STOPPED\"
+        fi
+        
+        # Check if local RPC is responding
+        if curl -s $RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getHealth\\\"}' | grep -q '\\\"ok\\\"' 2>/dev/null; then
+            echo \"✅ Local RPC: HEALTHY\"
+        else
+            echo \"❌ Local RPC: NOT RESPONDING\"
+        fi
+        
+        # Check if public endpoint is responding
+        if curl -s $PUBLIC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getHealth\\\"}' | grep -q '\\\"ok\\\"' 2>/dev/null; then
+            echo \"✅ Public RPC: HEALTHY ($PUBLIC_URL)\"
+        else
+            echo \"⚠️  Public RPC: NOT RESPONDING\"
         fi
         
         # Get slot info
@@ -185,20 +233,36 @@ screen -dmS "$SCREEN_SESSION_NAME" bash -c "
         TARGET_BALANCE=\$(solana balance $TARGET_ACCOUNT 2>/dev/null | cut -d' ' -f1 || echo 'Error')
         echo \"💰 Target Account Balance: \$TARGET_BALANCE SOL\"
         
-        # Show recent log entries (last 3 lines)
+        # Show recent log entries (last 2 lines)
         echo \"📝 Recent Validator Activity:\"
-        tail -n 3 logs/validator.log | sed 's/^/   /'
+        tail -n 2 logs/validator.log | sed 's/^/   /'
         
         echo \"\"
-        echo \"Press Ctrl+C to stop monitoring (validator will continue)\"
+        echo \"🌐 Public Endpoint: $PUBLIC_URL\"
+        echo \"Press Ctrl+C to stop both services\"
         echo \"Press Ctrl+A, D to detach from screen\"
         echo \"\"
         
         sleep 10
     done
     
-    echo \"❌ Validator process stopped unexpectedly\"
-    echo \"Check logs: tail -f logs/validator.log\"
+    echo \"❌ One or both services stopped unexpectedly\"
+    echo \"Cleaning up remaining processes...\"
+    
+    # Kill remaining processes
+    if kill -0 \$VALIDATOR_PID 2>/dev/null; then
+        echo \"Stopping validator...\"
+        kill \$VALIDATOR_PID
+    fi
+    
+    if kill -0 \$NGROK_PID 2>/dev/null; then
+        echo \"Stopping ngrok...\"
+        kill \$NGROK_PID
+    fi
+    
+    echo \"Check logs:\"
+    echo \"  Validator: tail -f logs/validator.log\"
+    echo \"  Ngrok: tail -f logs/ngrok.log\"
     read -p \"Press Enter to close...\"
 "
 
@@ -255,11 +319,12 @@ fi
 
 # Display success information
 echo ""
-echo -e "${GREEN}🎉 SOLANA VALIDATOR STARTED SUCCESSFULLY!${NC}"
-echo -e "${GREEN}=========================================${NC}"
+echo -e "${GREEN}🎉 SOLANA VALIDATOR + NGROK STARTED SUCCESSFULLY!${NC}"
+echo -e "${GREEN}=================================================${NC}"
 echo ""
-echo -e "${BLUE}📊 Validator Information:${NC}"
-echo -e "  🌐 RPC Endpoint: $RPC_URL"
+echo -e "${BLUE}📊 Service Information:${NC}"
+echo -e "  🌐 Local RPC: $RPC_URL"
+echo -e "  🌍 Public RPC: $PUBLIC_URL"
 echo -e "  📋 Target Account: $TARGET_ACCOUNT"
 echo -e "  💰 Airdropped: $AIRDROP_AMOUNT SOL"
 echo -e "  📂 Logs Directory: $(pwd)/logs/"
@@ -281,19 +346,24 @@ echo -e "    screen -S $SCREEN_SESSION_NAME -X quit"
 echo ""
 
 echo -e "${YELLOW}🔍 Useful Commands:${NC}"
-echo -e "${CYAN}  Check validator health:${NC}"
+echo -e "${CYAN}  Check local validator health:${NC}"
 echo -e "    curl $RPC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}'"
+echo ""
+echo -e "${CYAN}  Check public endpoint:${NC}"
+echo -e "    curl $PUBLIC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}'"
 echo ""
 echo -e "${CYAN}  Check account balance:${NC}"
 echo -e "    solana balance $TARGET_ACCOUNT"
 echo ""
 echo -e "${CYAN}  View live logs:${NC}"
 echo -e "    tail -f logs/validator.log"
+echo -e "    tail -f logs/ngrok.log"
 echo ""
 
-echo -e "${YELLOW}🛑 To Stop Everything:${NC}"
+echo -e "${YELLOW}🛑 To Stop Both Services:${NC}"
 echo -e "${RED}    screen -S $SCREEN_SESSION_NAME -X quit${NC}"
 echo ""
 
-echo -e "${GREEN}✨ Validator is now running in verbose mode!${NC}"
-echo -e "${BLUE}   Use the screen commands above to monitor and manage the validator.${NC}" 
+echo -e "${GREEN}✨ Validator and Ngrok are now running together!${NC}"
+echo -e "${BLUE}   Your validator is accessible both locally and publicly via ${PUBLIC_URL}${NC}"
+echo -e "${BLUE}   Use the screen commands above to monitor and manage both services.${NC}" 
