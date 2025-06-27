@@ -314,13 +314,27 @@
         <div class="token-creation-form">
             <h2 style="color: #333; margin-bottom: 25px;">🎨 Create New Token</h2>
             
-            <!-- Quick Sample Token Button -->
+            <!-- Quick Sample Token Buttons -->
             <div style="margin-bottom: 30px; padding: 20px; background: #f0f9ff; border-radius: 12px; border: 2px solid #3b82f6;">
-                <h3 style="color: #1e40af; margin-bottom: 15px;">⚡ Quick Test Token</h3>
-                <p style="color: #374151; margin-bottom: 15px;">Create a sample token instantly for testing (Token Sample, TS, 4 decimals, 10,000 supply)</p>
-                <button type="button" class="nav-btn" id="create-sample-btn" onclick="createSampleToken()" style="background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
-                    🚀 Create Sample Token
-                </button>
+                <h3 style="color: #1e40af; margin-bottom: 15px;">⚡ Quick Test Tokens</h3>
+                
+                <!-- Regular Sample Token -->
+                <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1e40af; margin-bottom: 10px;">🎯 Token Sample (TS)</h4>
+                    <p style="color: #374151; margin-bottom: 15px; font-size: 14px;">Create a sample token instantly for testing (Token Sample, TS, 4 decimals, 10,000 supply)</p>
+                    <button type="button" class="nav-btn" id="create-sample-btn" onclick="createSampleToken()" style="background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        🚀 Create Sample Token
+                    </button>
+                </div>
+                
+                <!-- Micro Sample Token -->
+                <div style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1e40af; margin-bottom: 10px;">🔬 Micro Sample Token (MST)</h4>
+                    <p style="color: #374151; margin-bottom: 15px; font-size: 14px;">Create micro units token (Micro Sample Token, MST, 0 decimals, 100,000,000 supply) - 10,000 MST = 1 TS</p>
+                    <button type="button" class="nav-btn" id="create-micro-sample-btn" onclick="createMicroSampleToken()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        🔬 Create Micro Sample Token
+                    </button>
+                </div>
             </div>
             
             <h3 style="color: #666; margin-bottom: 20px;">📝 Or Create Custom Token</h3>

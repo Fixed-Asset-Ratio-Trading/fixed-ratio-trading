@@ -220,6 +220,7 @@ function updateCreateButtonState() {
     const form = document.getElementById('token-form');
     const createBtn = document.getElementById('create-btn');
     const sampleBtn = document.getElementById('create-sample-btn');
+    const microSampleBtn = document.getElementById('create-micro-sample-btn');
     const requiredInputs = form.querySelectorAll('input[required]');
     
     let allValid = isConnected;
@@ -232,9 +233,13 @@ function updateCreateButtonState() {
     
     createBtn.disabled = !allValid;
     
-    // Sample button only needs wallet connection
+    // Sample buttons only need wallet connection
     if (sampleBtn) {
         sampleBtn.disabled = !isConnected;
+    }
+    
+    if (microSampleBtn) {
+        microSampleBtn.disabled = !isConnected;
     }
 }
 
@@ -282,6 +287,54 @@ async function createSampleToken() {
     } finally {
         sampleBtn.disabled = false;
         sampleBtn.textContent = originalText;
+    }
+}
+
+/**
+ * Create micro sample token for quick testing
+ */
+async function createMicroSampleToken() {
+    if (!isConnected || !wallet) {
+        showStatus('error', 'Please connect your wallet first');
+        return;
+    }
+    
+    const microSampleBtn = document.getElementById('create-micro-sample-btn');
+    const originalText = microSampleBtn.textContent;
+    
+    try {
+        microSampleBtn.disabled = true;
+        microSampleBtn.textContent = '🔄 Creating Micro Sample Token...';
+        
+        // Micro sample token data
+        const microSampleData = {
+            name: 'Micro Sample Token',
+            symbol: 'MST',
+            decimals: 0,
+            supply: 100000000,
+            description: 'Micro Sample Token is the smalest unit of Sample token and are interchangable as 10000 MST = 1 TS'
+        };
+        
+        showStatus('info', `Creating micro sample token "${microSampleData.name}" (${microSampleData.symbol})...`);
+        
+        // Create token
+        const tokenInfo = await createSPLToken(microSampleData);
+        
+        // Store created token
+        createdTokens.push(tokenInfo);
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        
+        showStatus('success', `🎉 Micro sample token "${microSampleData.name}" created successfully! 
+        💰 ${microSampleData.supply.toLocaleString()} ${microSampleData.symbol} tokens minted to your wallet
+        🔑 Mint Address: ${tokenInfo.mint}
+        🔗 Exchange Rate: 10,000 MST = 1 TS`);
+        
+    } catch (error) {
+        console.error('❌ Error creating micro sample token:', error);
+        showStatus('error', 'Failed to create micro sample token: ' + error.message);
+    } finally {
+        microSampleBtn.disabled = false;
+        microSampleBtn.textContent = originalText;
     }
 }
 
