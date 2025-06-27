@@ -621,10 +621,19 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         });
         
         // Determine normalized token order for PDA derivation (same logic as smart contract)
+        // Use string comparison for lexicographic ordering (same as Rust toString() comparison)
         const tokenAMint = primaryTokenMint.toString() < baseTokenMint.toString() 
             ? primaryTokenMint : baseTokenMint;
         const tokenBMint = primaryTokenMint.toString() < baseTokenMint.toString() 
             ? baseTokenMint : primaryTokenMint;
+        
+        console.log('Token normalization:', {
+            primary: primaryTokenMint.toString(),
+            base: baseTokenMint.toString(),
+            tokenA: tokenAMint.toString(),
+            tokenB: tokenBMint.toString(),
+            primaryIsTokenA: primaryTokenMint.toString() === tokenAMint.toString()
+        });
         
         const ratioANumerator = Math.floor(ratioPrimaryPerBase);
         const ratioBDenominator = 1;
@@ -677,6 +686,14 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             }
         });
         
+        // Debug: verify program account exists and has correct data
+        console.log('Program account info:', {
+            programId: programId.toString(),
+            executable: programAccount.executable,
+            dataLength: programAccount.data.length,
+            owner: programAccount.owner.toString()
+        });
+        
         // Determine if original primary token is tokenA after normalization
         const primaryTokenIstokenA = primaryTokenMint.toString() === tokenAMint.toString();
         const primaryVaultBump = primaryTokenIstokenA ? tokenAVaultBump : tokenBVaultBump;
@@ -692,6 +709,18 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // Create the instruction data buffer - CORRECTED FORMAT
         console.log('Creating instruction with ratio:', ratioPrimaryPerBase);
+        console.log('Bump seeds:', {
+            poolStateBump,
+            primaryVaultBump,
+            baseVaultBump,
+            primaryTokenIstokenA
+        });
+        
+        // Ensure ratio is a valid integer
+        const ratioInteger = Math.floor(Number(ratioPrimaryPerBase));
+        if (ratioInteger <= 0 || !Number.isInteger(ratioInteger)) {
+            throw new Error(`Invalid ratio: ${ratioPrimaryPerBase}. Must be a positive integer.`);
+        }
         
         // CRITICAL FIX: InitializePool is the 3rd variant in enum, so discriminator = 2
         const instructionData = new Uint8Array(12); // 1 + 8 + 1 + 1 + 1 = 12 bytes
@@ -704,7 +733,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // ratio_primary_per_base: u64 (8 bytes, little-endian)
         const ratioBytes = new Uint8Array(8);
         const dataView = new DataView(ratioBytes.buffer);
-        dataView.setBigUint64(0, BigInt(Math.floor(ratioPrimaryPerBase)), true); // true = little-endian
+        dataView.setBigUint64(0, BigInt(ratioInteger), true); // true = little-endian
         instructionData.set(ratioBytes, offset);
         offset += 8;
         
@@ -729,7 +758,23 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             baseVaultBump: instructionData[11]
         });
         
-        // Create the transaction instruction with correct account order (matching smart contract)
+        // Debug: Check if any accounts already exist at the derived addresses
+        console.log('Checking for existing accounts...');
+        const existingPoolAccount = await connection.getAccountInfo(poolStatePDA);
+        const existingTokenAVault = await connection.getAccountInfo(tokenAVaultPDA);
+        const existingTokenBVault = await connection.getAccountInfo(tokenBVaultPDA);
+        
+        if (existingPoolAccount) {
+            console.log('WARNING: Pool state account already exists:', poolStatePDA.toString());
+        }
+        if (existingTokenAVault) {
+            console.log('WARNING: Token A vault already exists:', tokenAVaultPDA.toString());
+        }
+        if (existingTokenBVault) {
+            console.log('WARNING: Token B vault already exists:', tokenBVaultPDA.toString());
+        }
+        
+        // Create the transaction instruction with correct account order (matching test pattern)
         const createPoolInstruction = new solanaWeb3.TransactionInstruction({
             keys: [
                 { pubkey: wallet.publicKey, isSigner: true, isWritable: true },     // 0: Payer (signer)
@@ -765,11 +810,32 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // Sign with Backpack wallet (this will trigger the authorization popup)
         const signedTransaction = await wallet.signTransaction(transaction);
         
+        console.log('🧪 Simulating transaction first...');
+        
+        // First, simulate the transaction to check for errors
+        try {
+            const simulationResult = await connection.simulateTransaction(signedTransaction);
+            console.log('Simulation result:', simulationResult);
+            
+            if (simulationResult.value.err) {
+                console.error('Transaction simulation failed:', simulationResult.value.err);
+                throw new Error(`Transaction simulation failed: ${JSON.stringify(simulationResult.value.err)}`);
+            }
+            
+            console.log('✅ Transaction simulation successful');
+        } catch (simError) {
+            console.error('Error during transaction simulation:', simError);
+            throw new Error(`Transaction simulation error: ${simError.message}`);
+        }
+        
         console.log('📡 Sending transaction to Solana network...');
         showStatus('info', 'Sending transaction to blockchain...');
         
         // Send transaction
-        const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: CONFIG.commitment
+        });
         
         console.log('⏳ Confirming transaction:', signature);
         showStatus('info', `Transaction sent: ${signature}. Waiting for confirmation...`);
@@ -778,6 +844,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         const confirmation = await connection.confirmTransaction(signature, CONFIG.commitment);
         
         if (confirmation.value.err) {
+            console.error('Transaction confirmation error:', confirmation.value.err);
             throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
         }
         
