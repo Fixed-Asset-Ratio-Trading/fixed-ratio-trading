@@ -63,46 +63,96 @@ echo "  RPC URL: $RPC_URL"
 echo "  Keypair: $KEYPAIR_PATH"
 echo ""
 
-# Step 1: Auto-increment version number
-echo -e "${YELLOW}🔢 Auto-incrementing version number...${NC}"
+# Step 1: Check if build creates new changes
+echo -e "${YELLOW}🔍 Checking if app was modified...${NC}"
 
-# Read current version from Cargo.toml
+# Get current version from Cargo.toml
 CURRENT_VERSION=$(grep '^version = ' "$PROJECT_ROOT/Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
 echo "  Current version: $CURRENT_VERSION"
 
-# Parse version components (major.minor.patch)
-IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-
-# Increment patch version
-NEW_PATCH=$((PATCH + 1))
-NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-
-echo "  New version: $NEW_VERSION"
-
-# Update Cargo.toml
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS sed
-    sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+# Get timestamp of current build artifact (if it exists)
+BUILD_ARTIFACT="$PROJECT_ROOT/target/deploy/fixed_ratio_trading.so"
+if [ -f "$BUILD_ARTIFACT" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS stat format
+        OLD_TIMESTAMP=$(stat -f %m "$BUILD_ARTIFACT" 2>/dev/null || echo "0")
+    else
+        # Linux stat format
+        OLD_TIMESTAMP=$(stat -c %Y "$BUILD_ARTIFACT" 2>/dev/null || echo "0")
+    fi
+    echo "  Previous build timestamp: $OLD_TIMESTAMP"
 else
-    # Linux sed
-    sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+    OLD_TIMESTAMP="0"
+    echo "  No previous build found"
 fi
 
-echo -e "${GREEN}✅ Version updated: $CURRENT_VERSION → $NEW_VERSION${NC}"
-echo ""
-
-# Step 2: Build the program
-echo -e "${YELLOW}🔨 Building Solana program...${NC}"
+# Step 2: Initial build to check for changes
+echo -e "${YELLOW}🔨 Running initial build to detect changes...${NC}"
 cd "$PROJECT_ROOT"
 RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Build successful${NC}"
-else
-    echo -e "${RED}❌ Build failed${NC}"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Initial build failed${NC}"
     exit 1
 fi
 
-# Step 3: Check if validator is running
+# Check if build artifact timestamp changed
+if [ -f "$BUILD_ARTIFACT" ]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS stat format
+        NEW_TIMESTAMP=$(stat -f %m "$BUILD_ARTIFACT" 2>/dev/null || echo "0")
+    else
+        # Linux stat format
+        NEW_TIMESTAMP=$(stat -c %Y "$BUILD_ARTIFACT" 2>/dev/null || echo "0")
+    fi
+    echo "  New build timestamp: $NEW_TIMESTAMP"
+else
+    NEW_TIMESTAMP="0"
+fi
+
+# Step 3: Determine if version should be incremented
+VERSION_UPDATED=false
+if [ "$NEW_TIMESTAMP" != "$OLD_TIMESTAMP" ] && [ "$NEW_TIMESTAMP" != "0" ]; then
+    echo -e "${GREEN}✅ Changes detected - updating version number${NC}"
+    
+    # Parse version components (major.minor.patch)
+    IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+    
+    # Increment patch version
+    NEW_PATCH=$((PATCH + 1))
+    NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+    
+    echo "  New version: $NEW_VERSION"
+    
+    # Update Cargo.toml
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS sed
+        sed -i '' "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+    else
+        # Linux sed
+        sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" "$PROJECT_ROOT/Cargo.toml"
+    fi
+    
+    echo -e "${GREEN}✅ Version updated: $CURRENT_VERSION → $NEW_VERSION${NC}"
+    VERSION_UPDATED=true
+    
+    # Step 4: Rebuild with new version
+    echo -e "${YELLOW}🔨 Rebuilding with updated version...${NC}"
+    RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Rebuild failed${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}✅ Final build successful${NC}"
+    
+else
+    echo -e "${BLUE}ℹ️  No changes detected - keeping current version${NC}"
+    NEW_VERSION="$CURRENT_VERSION"
+    echo -e "${GREEN}✅ Build successful (no changes)${NC}"
+fi
+
+echo ""
+
+# Step 5: Check if validator is running
 echo -e "${YELLOW}🔍 Checking for running validator...${NC}"
 if pgrep -f "solana-test-validator" > /dev/null; then
     echo -e "${YELLOW}⚠️  Validator already running. Stopping existing validator...${NC}"
@@ -110,7 +160,7 @@ if pgrep -f "solana-test-validator" > /dev/null; then
     sleep 3
 fi
 
-# Step 4: Start local validator
+# Step 6: Start local validator
 echo -e "${YELLOW}🏁 Starting local Solana validator...${NC}"
 solana-test-validator \
     --rpc-port 8899 \
@@ -125,7 +175,7 @@ echo "  Validator PID: $VALIDATOR_PID"
 echo -e "${YELLOW}⏳ Waiting for validator to start...${NC}"
 sleep 8
 
-# Step 4.5: Start ngrok service
+# Step 7: Start ngrok service
 echo -e "${YELLOW}🌐 Starting ngrok service...${NC}"
 
 # Check if ngrok is installed
@@ -163,7 +213,7 @@ else
     fi
 fi
 
-# Step 5: Configure Solana CLI
+# Step 8: Configure Solana CLI
 echo -e "${YELLOW}⚙️  Configuring Solana CLI...${NC}"
 solana config set --url $RPC_URL
 if [ $? -eq 0 ]; then
@@ -174,13 +224,13 @@ else
     exit 1
 fi
 
-# Step 6: Check/create keypair
+# Step 9: Check/create keypair
 if [ ! -f "$KEYPAIR_PATH" ]; then
     echo -e "${YELLOW}🔑 Creating new keypair...${NC}"
     solana-keygen new --no-bip39-passphrase --outfile $KEYPAIR_PATH
 fi
 
-# Step 7: Airdrop SOL to Backpack wallet
+# Step 10: Airdrop SOL to Backpack wallet
 echo -e "${YELLOW}💰 Airdropping SOL to Backpack wallet...${NC}"
 BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 DEFAULT_WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
@@ -204,7 +254,7 @@ BACKPACK_BALANCE=$(solana balance $BACKPACK_WALLET --output json | jq -r '.value
 echo -e "${GREEN}  Default Wallet Balance: $DEFAULT_BALANCE SOL${NC}"
 echo -e "${GREEN}  Backpack Wallet Balance: $BACKPACK_BALANCE SOL${NC}"
 
-# Step 8: Deploy the program
+# Step 11: Deploy the program
 echo -e "${YELLOW}🚀 Deploying program...${NC}"
 
 DEPLOY_ACTION=""
@@ -354,7 +404,7 @@ else
     exit 1
 fi
 
-# Step 9: Get the actual deployed program ID and verify
+# Step 12: Get the actual deployed program ID and verify
 echo -e "${YELLOW}🔍 Getting deployed program ID...${NC}"
 if [ -f "$PROGRAM_KEYPAIR" ]; then
     DEPLOYED_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
@@ -376,7 +426,7 @@ else
     echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
-# Step 10: Save deployment info
+# Step 13: Save deployment info
 echo -e "${YELLOW}💾 Saving deployment information...${NC}"
 cat > "$PROJECT_ROOT/deployment_info.json" << EOF
 {
@@ -399,7 +449,7 @@ EOF
 
 echo -e "${GREEN}✅ Deployment information saved to deployment_info.json${NC}"
 
-# Step 11: Start Dashboard Server
+# Step 14: Start Dashboard Server
 echo ""
 echo -e "${YELLOW}🌐 Starting dashboard server...${NC}"
 
@@ -435,7 +485,7 @@ if [ -n "$PYTHON_CMD" ]; then
     if kill -0 $DASHBOARD_PID 2>/dev/null; then
         echo -e "${GREEN}✅ Dashboard server started (PID: $DASHBOARD_PID)${NC}"
         
-        # Step 12: Open Chrome in incognito mode automatically
+        # Step 15: Open Chrome in incognito mode automatically
         echo ""
         echo -e "${YELLOW}🌐 Opening Chrome in incognito mode to dashboard...${NC}"
         
