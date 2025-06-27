@@ -793,49 +793,92 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             data: instructionData
         });
         
-        // Create transaction
-        const transaction = new solanaWeb3.Transaction().add(createPoolInstruction);
+        // Get recent blockhash first
+        console.log('🔗 Getting recent blockhash...');
+        const { blockhash } = await connection.getLatestBlockhash(CONFIG.commitment);
         
-        // Get recent blockhash
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = wallet.publicKey;
+        // Create transaction with proper structure
+        const transaction = new solanaWeb3.Transaction({
+            recentBlockhash: blockhash,
+            feePayer: wallet.publicKey
+        });
         
-        // Partially sign with LP mint keypairs
-        transaction.partialSign(lpTokenAMint, lpTokenBMint);
+        // Add the instruction
+        transaction.add(createPoolInstruction);
         
+        console.log('✅ Transaction constructed successfully');
+        console.log('Transaction details:', {
+            feePayer: transaction.feePayer?.toString(),
+            recentBlockhash: transaction.recentBlockhash,
+            instructionCount: transaction.instructions.length,
+            requiredSigners: transaction.instructions.map(ix => 
+                ix.keys.filter(key => key.isSigner).map(key => key.pubkey.toString())
+            ).flat()
+        });
+        
+        // Skip simulation for now - proceed directly to signing and sending
+        console.log('📝 Skipping simulation, proceeding to wallet signing...');
+        
+        // Now sign the transaction properly
         console.log('🔐 Requesting Backpack wallet signature...');
         showStatus('info', 'Please approve the transaction in your Backpack wallet...');
         
-        // Sign with Backpack wallet (this will trigger the authorization popup)
-        const signedTransaction = await wallet.signTransaction(transaction);
-        
-        console.log('🧪 Simulating transaction first...');
-        
-        // First, simulate the transaction to check for errors
+        // Sign with Backpack wallet first (this will trigger the authorization popup)
+        let walletSignedTransaction;
         try {
-            const simulationResult = await connection.simulateTransaction(signedTransaction);
-            console.log('Simulation result:', simulationResult);
-            
-            if (simulationResult.value.err) {
-                console.error('Transaction simulation failed:', simulationResult.value.err);
-                throw new Error(`Transaction simulation failed: ${JSON.stringify(simulationResult.value.err)}`);
-            }
-            
-            console.log('✅ Transaction simulation successful');
-        } catch (simError) {
-            console.error('Error during transaction simulation:', simError);
-            throw new Error(`Transaction simulation error: ${simError.message}`);
+            walletSignedTransaction = await wallet.signTransaction(transaction);
+            console.log('✅ Backpack wallet signature received');
+        } catch (signError) {
+            console.error('❌ Wallet signing failed:', signError);
+            throw new Error(`Wallet signing failed: ${signError.message}`);
         }
+        
+        // Then add the LP mint signatures
+        console.log('✍️ Adding LP token mint signatures...');
+        try {
+            walletSignedTransaction.partialSign(lpTokenAMint, lpTokenBMint);
+            console.log('✅ LP token signatures added');
+        } catch (partialSignError) {
+            console.error('❌ LP token signing failed:', partialSignError);
+            throw new Error(`LP token signing failed: ${partialSignError.message}`);
+        }
+        
+        console.log('✅ Transaction fully signed');
+        console.log('Final transaction details:', {
+            feePayer: walletSignedTransaction.feePayer?.toString(),
+            recentBlockhash: walletSignedTransaction.recentBlockhash,
+            signatureCount: walletSignedTransaction.signatures?.length || 0
+        });
         
         console.log('📡 Sending transaction to Solana network...');
         showStatus('info', 'Sending transaction to blockchain...');
         
-        // Send transaction
-        const signature = await connection.sendRawTransaction(signedTransaction.serialize(), {
-            skipPreflight: false,
-            preflightCommitment: CONFIG.commitment
-        });
+        // Validate transaction before sending
+        if (!walletSignedTransaction.feePayer) {
+            throw new Error('Transaction missing feePayer');
+        }
+        if (!walletSignedTransaction.recentBlockhash) {
+            throw new Error('Transaction missing recentBlockhash');
+        }
+        if (!walletSignedTransaction.instructions || walletSignedTransaction.instructions.length === 0) {
+            throw new Error('Transaction missing instructions');
+        }
+        
+        console.log('✅ Transaction validation passed');
+        
+        // Send transaction using the fully signed transaction
+        let signature;
+        try {
+            signature = await connection.sendRawTransaction(walletSignedTransaction.serialize(), {
+                skipPreflight: false,
+                preflightCommitment: CONFIG.commitment,
+                maxRetries: 3
+            });
+            console.log('✅ Transaction sent successfully:', signature);
+        } catch (sendError) {
+            console.error('❌ Transaction send failed:', sendError);
+            throw new Error(`Failed to send transaction: ${sendError.message}`);
+        }
         
         console.log('⏳ Confirming transaction:', signature);
         showStatus('info', `Transaction sent: ${signature}. Waiting for confirmation...`);

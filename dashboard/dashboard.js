@@ -26,6 +26,13 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 async function initializeDashboard() {
     try {
+        // Check if returning from liquidity page
+        const poolToUpdate = sessionStorage.getItem('poolToUpdate');
+        if (poolToUpdate) {
+            console.log('🔄 Returning from liquidity page, will update pool:', poolToUpdate);
+            sessionStorage.removeItem('poolToUpdate'); // Clear the flag
+        }
+        
         // Initialize Solana connection
         connection = new solanaWeb3.Connection(CONFIG.rpcUrl, 'confirmed');
         
@@ -59,6 +66,16 @@ async function initializeDashboard() {
         // Load initial data (non-blocking for missing program)
         try {
             await refreshData();
+            
+            // If returning from liquidity page, update the specific pool
+            if (poolToUpdate) {
+                setTimeout(async () => {
+                    console.log('🔄 Auto-updating pool after liquidity addition...');
+                    await updatePoolLiquidity(poolToUpdate);
+                    showStatus('success', '✅ Pool liquidity updated after adding liquidity!');
+                    setTimeout(clearStatus, 3000);
+                }, 1000);
+            }
         } catch (dataError) {
             console.warn('⚠️ Could not load pool data:', dataError);
             if (!programAccount) {
@@ -562,8 +579,6 @@ function updateSummaryStats() {
     const avgSwapFee = totalPools > 0 ? 
         Math.floor(pools.reduce((sum, pool) => sum + pool.swapFeeBasisPoints, 0) / totalPools) : 0;
     
-    const totalDelegates = pools.reduce((sum, pool) => sum + pool.delegateCount, 0);
-    
     // Update DOM elements
     document.getElementById('total-pools').textContent = totalPools;
     document.getElementById('active-pools').textContent = activePools;
@@ -572,7 +587,7 @@ function updateSummaryStats() {
     document.getElementById('avg-pool-size').textContent = `${avgPoolSize.toLocaleString()} tokens`;
     document.getElementById('total-fees').textContent = `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
     document.getElementById('avg-swap-fee').textContent = `${avgSwapFee} bps`;
-    document.getElementById('total-delegates').textContent = totalDelegates;
+    document.getElementById('total-delegates').textContent = '--'; // Delegates control pools, not tracked here
     document.getElementById('total-swaps').textContent = '--'; // Would need transaction history
 }
 
@@ -641,12 +656,42 @@ function createPoolCard(pool) {
     const statusText = pool.isPaused ? 'Pool Paused' : 
                      pool.swapsPaused ? 'Swaps Paused' : 'Active';
     
+    // Remove decimal places from exchange rate display
     const exchangeRate = pool.ratioBDenominator > 0 ? 
-        (pool.ratioANumerator / pool.ratioBDenominator).toFixed(2) : '0';
+        Math.round(pool.ratioANumerator / pool.ratioBDenominator) : 0;
     
-    // Use symbol information if available for better display
-    const displayTitle = (pool.tokenASymbol && pool.tokenBSymbol) 
-        ? `${pool.tokenASymbol} / ${pool.tokenBSymbol} Pool`
+    // Determine original selection order from localStorage to show user's first choice first
+    let firstToken = pool.tokenASymbol;
+    let secondToken = pool.tokenBSymbol;
+    let firstTokenLiquidity = pool.tokenALiquidity;
+    let secondTokenLiquidity = pool.tokenBLiquidity;
+    
+    try {
+        // Check localStorage for original pool creation order
+        const storedPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
+        const originalPool = storedPools.find(p => p.address === pool.address);
+        
+        if (originalPool) {
+            // Use the original creation order (tokenASymbol was the first selected)
+            firstToken = originalPool.tokenASymbol;
+            secondToken = originalPool.tokenBSymbol;
+            
+            // Map liquidity accordingly
+            if (originalPool.tokenAMint === pool.tokenAMint) {
+                firstTokenLiquidity = pool.tokenALiquidity;
+                secondTokenLiquidity = pool.tokenBLiquidity;
+            } else {
+                firstTokenLiquidity = pool.tokenBLiquidity;
+                secondTokenLiquidity = pool.tokenALiquidity;
+            }
+        }
+    } catch (error) {
+        console.warn('Could not determine original token order:', error);
+    }
+    
+    // Use symbol information if available for better display  
+    const displayTitle = (firstToken && secondToken) 
+        ? `${firstToken} / ${secondToken} Pool`
         : `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
     
     // Add data source indicator
@@ -666,13 +711,13 @@ function createPoolCard(pool) {
         
         <div class="pool-info">
             <div class="pool-metric">
-                <div class="metric-label">Token A Liquidity</div>
-                <div class="metric-value">${pool.tokenALiquidity.toLocaleString()}</div>
+                <div class="metric-label">${firstToken} Liquidity</div>
+                <div class="metric-value">${firstTokenLiquidity.toLocaleString()}</div>
             </div>
             
             <div class="pool-metric">
-                <div class="metric-label">Token B Liquidity</div>
-                <div class="metric-value">${pool.tokenBLiquidity.toLocaleString()}</div>
+                <div class="metric-label">${secondToken} Liquidity</div>
+                <div class="metric-value">${secondTokenLiquidity.toLocaleString()}</div>
             </div>
             
             <div class="pool-metric">
@@ -689,11 +734,12 @@ function createPoolCard(pool) {
                 <div class="metric-label">Collected Fees (SOL)</div>
                 <div class="metric-value">${(pool.collectedSolFees / 1000000000).toFixed(4)}</div>
             </div>
-            
-            <div class="pool-metric">
-                <div class="metric-label">Delegates</div>
-                <div class="metric-value">${pool.delegateCount}/3</div>
-            </div>
+        </div>
+        
+        <div class="pool-actions">
+            <button class="liquidity-btn" onclick="addLiquidity('${pool.address}')">
+                💧 Add Liquidity
+            </button>
         </div>
         
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
@@ -723,6 +769,23 @@ function showError(message) {
  * Clear error message
  */
 function clearError() {
+    document.getElementById('error-container').innerHTML = '';
+}
+
+/**
+ * Show success message
+ */
+function showStatus(type, message) {
+    const container = document.getElementById('error-container');
+    const className = type === 'success' ? 'status-message success' : 
+                     type === 'info' ? 'status-message info' : 'error';
+    container.innerHTML = `<div class="${className}">${message}</div>`;
+}
+
+/**
+ * Clear status message  
+ */
+function clearStatus() {
     document.getElementById('error-container').innerHTML = '';
 }
 
@@ -861,10 +924,63 @@ async function debugRPC() {
     }
 }
 
+/**
+ * Navigate to add liquidity page for a specific pool
+ */
+function addLiquidity(poolAddress) {
+    console.log('🚀 Navigating to add liquidity for pool:', poolAddress);
+    
+    // Store the pool address in sessionStorage so the liquidity page can access it
+    sessionStorage.setItem('selectedPoolAddress', poolAddress);
+    
+    // Navigate to liquidity page
+    window.location.href = 'liquidity.html';
+}
+
+/**
+ * Update pool liquidity by reading from contract
+ */
+async function updatePoolLiquidity(poolAddress) {
+    try {
+        console.log('🔄 Updating liquidity for pool:', poolAddress);
+        
+        // Find the pool in our current data
+        const poolIndex = pools.findIndex(p => p.address === poolAddress);
+        if (poolIndex === -1) {
+            console.warn('Pool not found in current data');
+            return;
+        }
+        
+        // Get fresh data from contract
+        const poolAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(poolAddress));
+        if (!poolAccount) {
+            console.error('Pool account not found on-chain');
+            return;
+        }
+        
+        // Parse the updated pool state
+        const updatedPool = await parsePoolState(poolAccount.data, new solanaWeb3.PublicKey(poolAddress));
+        
+        // Update the pool in our array
+        pools[poolIndex] = updatedPool;
+        
+        // Re-render the pools display
+        renderPools();
+        updateSummaryStats();
+        
+        console.log('✅ Pool liquidity updated successfully');
+        
+    } catch (error) {
+        console.error('❌ Error updating pool liquidity:', error);
+    }
+}
+
 // Export for global access
 window.refreshData = refreshData;
 window.createSamplePools = createSamplePools;
 window.forceRefreshPools = forceRefreshPools;
 window.debugRPC = debugRPC;
+window.addLiquidity = addLiquidity;
+window.updatePoolLiquidity = updatePoolLiquidity;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 

@@ -263,6 +263,33 @@
             color: #333;
         }
         
+        .pool-actions {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+        }
+        
+        .liquidity-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .liquidity-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+        }
+        
         .loading {
             text-align: center;
             padding: 40px;
@@ -275,6 +302,25 @@
             padding: 15px;
             border-radius: 6px;
             margin-bottom: 20px;
+        }
+        
+        .status-message {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .status-message.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .status-message.info {
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #bfdbfe;
         }
         
         .footer {
@@ -391,8 +437,8 @@
                     <span class="status-value" id="avg-swap-fee">-- bps</span>
                 </div>
                 <div class="status-item">
-                    <span class="status-label">Active Delegates</span>
-                    <span class="status-value" id="total-delegates">0</span>
+                    <span class="status-label">Pool Controllers</span>
+                    <span class="status-value" id="total-delegates">--</span>
                 </div>
             </div>
         </div>
