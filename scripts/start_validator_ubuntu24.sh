@@ -68,7 +68,9 @@ NC='\033[0m' # No Color
 
 # Configuration
 TARGET_ACCOUNT="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
+SECONDARY_ACCOUNT="3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f"
 AIRDROP_AMOUNT=1000
+SECONDARY_AIRDROP_AMOUNT=100
 RPC_URL="http://localhost:8899"
 SCREEN_SESSION_NAME="solana-validator"
 NGROK_HOSTNAME="fixed.ngrok.app"
@@ -76,8 +78,10 @@ PUBLIC_URL="https://$NGROK_HOSTNAME"
 
 echo -e "${BLUE}🚀 Ubuntu 24 Solana Validator Startup${NC}"
 echo "======================================"
-echo -e "${CYAN}Target Account: $TARGET_ACCOUNT${NC}"
-echo -e "${CYAN}Airdrop Amount: $AIRDROP_AMOUNT SOL${NC}"
+echo -e "${CYAN}Primary Account: $TARGET_ACCOUNT${NC}"
+echo -e "${CYAN}Primary Airdrop: $AIRDROP_AMOUNT SOL${NC}"
+echo -e "${CYAN}Secondary Account: $SECONDARY_ACCOUNT${NC}"
+echo -e "${CYAN}Secondary Airdrop: $SECONDARY_AIRDROP_AMOUNT SOL${NC}"
 echo -e "${CYAN}Local RPC URL: $RPC_URL${NC}"
 echo -e "${CYAN}Public URL: $PUBLIC_URL${NC}"
 echo -e "${CYAN}Screen Session: $SCREEN_SESSION_NAME${NC}"
@@ -229,9 +233,11 @@ screen -dmS "$SCREEN_SESSION_NAME" bash -c "
         EPOCH_INFO=\$(curl -s $RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getEpochInfo\\\"}' | jq -r '.result.epoch // \\\"N/A\\\"' 2>/dev/null || echo 'N/A')
         echo \"🕒 Epoch: \$EPOCH_INFO\"
         
-        # Check target account balance
+        # Check account balances
         TARGET_BALANCE=\$(solana balance $TARGET_ACCOUNT 2>/dev/null | cut -d' ' -f1 || echo 'Error')
-        echo \"💰 Target Account Balance: \$TARGET_BALANCE SOL\"
+        SECONDARY_BALANCE=\$(solana balance $SECONDARY_ACCOUNT 2>/dev/null | cut -d' ' -f1 || echo 'Error')
+        echo \"💰 Primary Account Balance: \$TARGET_BALANCE SOL\"
+        echo \"💰 Secondary Account Balance: \$SECONDARY_BALANCE SOL\"
         
         # Show recent log entries (last 2 lines)
         echo \"📝 Recent Validator Activity:\"
@@ -299,21 +305,38 @@ else
     exit 1
 fi
 
-# Airdrop SOL to target account
-echo -e "${YELLOW}💰 Airdropping $AIRDROP_AMOUNT SOL to target account...${NC}"
-echo -e "${CYAN}   Target: $TARGET_ACCOUNT${NC}"
+# Airdrop SOL to accounts
+echo -e "${YELLOW}💰 Airdropping SOL to accounts...${NC}"
 
-# Perform airdrop
+# Primary account airdrop
+echo -e "${CYAN}   Primary Target: $TARGET_ACCOUNT${NC}"
 solana airdrop $AIRDROP_AMOUNT $TARGET_ACCOUNT
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Airdrop successful${NC}"
+    echo -e "${GREEN}✅ Primary airdrop successful${NC}"
     
     # Verify balance
     sleep 2
     BALANCE=$(solana balance $TARGET_ACCOUNT 2>/dev/null || echo "Error retrieving balance")
-    echo -e "${GREEN}   Account Balance: $BALANCE${NC}"
+    echo -e "${GREEN}   Primary Account Balance: $BALANCE${NC}"
 else
-    echo -e "${RED}❌ Airdrop failed${NC}"
+    echo -e "${RED}❌ Primary airdrop failed${NC}"
+    echo -e "${YELLOW}💡 The validator might need more time to initialize${NC}"
+fi
+
+echo ""
+
+# Secondary account airdrop
+echo -e "${CYAN}   Secondary Target: $SECONDARY_ACCOUNT${NC}"
+solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Secondary airdrop successful${NC}"
+    
+    # Verify balance
+    sleep 2
+    SECONDARY_BALANCE=$(solana balance $SECONDARY_ACCOUNT 2>/dev/null || echo "Error retrieving balance")
+    echo -e "${GREEN}   Secondary Account Balance: $SECONDARY_BALANCE${NC}"
+else
+    echo -e "${RED}❌ Secondary airdrop failed${NC}"
     echo -e "${YELLOW}💡 The validator might need more time to initialize${NC}"
 fi
 
@@ -325,8 +348,8 @@ echo ""
 echo -e "${BLUE}📊 Service Information:${NC}"
 echo -e "  🌐 Local RPC: $RPC_URL"
 echo -e "  🌍 Public RPC: $PUBLIC_URL"
-echo -e "  📋 Target Account: $TARGET_ACCOUNT"
-echo -e "  💰 Airdropped: $AIRDROP_AMOUNT SOL"
+echo -e "  📋 Primary Account: $TARGET_ACCOUNT ($AIRDROP_AMOUNT SOL)"
+echo -e "  📋 Secondary Account: $SECONDARY_ACCOUNT ($SECONDARY_AIRDROP_AMOUNT SOL)"
 echo -e "  📂 Logs Directory: $(pwd)/logs/"
 echo -e "  📱 Screen Session: $SCREEN_SESSION_NAME"
 echo ""
@@ -352,8 +375,9 @@ echo ""
 echo -e "${CYAN}  Check public endpoint:${NC}"
 echo -e "    curl $PUBLIC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}'"
 echo ""
-echo -e "${CYAN}  Check account balance:${NC}"
+echo -e "${CYAN}  Check account balances:${NC}"
 echo -e "    solana balance $TARGET_ACCOUNT"
+echo -e "    solana balance $SECONDARY_ACCOUNT"
 echo ""
 echo -e "${CYAN}  View live logs:${NC}"
 echo -e "    tail -f logs/validator.log"
