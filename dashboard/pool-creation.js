@@ -530,7 +530,7 @@ async function createPool() {
     }
     
     // Check for duplicate pools
-    if (checkDuplicatePool(selectedTokenA, selectedTokenB, currentRatio)) {
+    if (await checkDuplicatePool(selectedTokenA, selectedTokenB, currentRatio)) {
         showPoolError(`Pool already exists: ${selectedTokenA.symbol}/${selectedTokenB.symbol} with ratio 1:${currentRatio}. Each token pair with the same ratio can only have one pool.`);
         return;
     }
@@ -809,10 +809,8 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             transactionSignature: signature
         };
         
-        // Store the created pool in localStorage
-        const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
-        existingPools.push(poolData);
-        localStorage.setItem('createdPools', JSON.stringify(existingPools));
+        // Note: No longer storing in localStorage since dashboard now reads from RPC
+        // The pool will be discovered automatically on the next dashboard refresh
         
         console.log('✅ Pool created successfully on-chain:', poolData);
         
@@ -939,21 +937,68 @@ function copyErrorMessage() {
 window.copyErrorMessage = copyErrorMessage;
 
 /**
- * Check if pool already exists
+ * Check if pool already exists (check RPC data by calculating expected pool address)
  */
-function checkDuplicatePool(tokenA, tokenB, ratio) {
-    const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
-    
-    return existingPools.some(pool => {
-        // Check both token combinations (A,B and B,A) with the same ratio
-        const sameAB = pool.tokenAMint === tokenA.mint && 
-                      pool.tokenBMint === tokenB.mint && 
-                      pool.ratio === ratio;
+async function checkDuplicatePool(tokenA, tokenB, ratio) {
+    try {
+        // Calculate what the pool address would be for this token pair and ratio
+        const programId = new solanaWeb3.PublicKey(CONFIG.programId);
         
-        const sameBA = pool.tokenAMint === tokenB.mint && 
-                      pool.tokenBMint === tokenA.mint && 
-                      pool.ratio === (1 / ratio);
+        // Determine normalized token order (same logic as smart contract)
+        const tokenAMint = tokenA.mint < tokenB.mint ? 
+            new solanaWeb3.PublicKey(tokenA.mint) : new solanaWeb3.PublicKey(tokenB.mint);
+        const tokenBMint = tokenA.mint < tokenB.mint ? 
+            new solanaWeb3.PublicKey(tokenB.mint) : new solanaWeb3.PublicKey(tokenA.mint);
         
-        return sameAB || sameBA;
-    });
+        const ratioANumerator = Math.floor(ratio);
+        const ratioBDenominator = 1;
+        
+        // Convert strings to bytes using TextEncoder
+        const encoder = new TextEncoder();
+        
+        // Convert ratio numbers to little-endian bytes
+        const ratioABytes = new Uint8Array(8);
+        const ratioBBytes = new Uint8Array(8);
+        new DataView(ratioABytes.buffer).setBigUint64(0, BigInt(ratioANumerator), true);
+        new DataView(ratioBBytes.buffer).setBigUint64(0, BigInt(ratioBDenominator), true);
+        
+        const [poolStatePDA] = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                encoder.encode('pool_state_v2'),
+                tokenAMint.toBytes(), 
+                tokenBMint.toBytes(),
+                ratioABytes,
+                ratioBBytes
+            ],
+            programId
+        );
+        
+        // Check if this pool address already exists on-chain
+        const poolAccount = await connection.getAccountInfo(poolStatePDA);
+        
+        if (poolAccount) {
+            console.log('🚫 Pool already exists on-chain:', poolStatePDA.toString());
+            return true;
+        }
+        
+        console.log('✅ Pool does not exist, safe to create:', poolStatePDA.toString());
+        return false;
+        
+    } catch (error) {
+        console.warn('⚠️ Could not check for duplicate pools:', error);
+        // Fallback to localStorage check if RPC fails
+        const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
+        
+        return existingPools.some(pool => {
+            const sameAB = pool.tokenAMint === tokenA.mint && 
+                          pool.tokenBMint === tokenB.mint && 
+                          pool.ratio === ratio;
+            
+            const sameBA = pool.tokenAMint === tokenB.mint && 
+                          pool.tokenBMint === tokenA.mint && 
+                          pool.ratio === (1 / ratio);
+            
+            return sameAB || sameBA;
+        });
+    }
 } 

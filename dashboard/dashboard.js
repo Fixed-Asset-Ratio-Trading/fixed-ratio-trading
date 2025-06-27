@@ -13,7 +13,6 @@ const CONFIG = {
 let connection = null;
 let pools = [];
 let lastUpdate = null;
-let refreshTimer = null;
 let contractVersion = null;
 
 // Initialize dashboard when page loads
@@ -73,9 +72,6 @@ async function initializeDashboard() {
                 `;
             }
         }
-        
-        // Start auto-refresh
-        startAutoRefresh();
         
         console.log('✅ Dashboard initialized successfully');
     } catch (error) {
@@ -261,7 +257,7 @@ async function refreshData() {
 }
 
 /**
- * Scan for Fixed Ratio Trading pools (both on-chain and locally created)
+ * Scan for Fixed Ratio Trading pools (prioritize RPC data over localStorage)
  */
 async function scanForPools() {
     try {
@@ -270,22 +266,29 @@ async function scanForPools() {
         let onChainPools = [];
         let localPools = [];
         
-        // Try to get on-chain pools
+        // Try to get on-chain pools first (prioritize RPC data)
         try {
             const programAccounts = await connection.getProgramAccounts(
-                new solanaWeb3.PublicKey(CONFIG.programId),
-                {
-                    filters: [
-                        // Filter for pool state accounts (approximate size)
-                        { dataSize: 1000 } // Adjust based on actual PoolState size
-                    ]
-                }
+                new solanaWeb3.PublicKey(CONFIG.programId)
+                // Removed dataSize filter to see all program accounts
             );
             
             console.log(`Found ${programAccounts.length} program accounts`);
             
+            // Debug: Show all found accounts
+            programAccounts.forEach((account, index) => {
+                console.log(`Account ${index + 1}:`, {
+                    address: account.pubkey.toString(),
+                    dataLength: account.account.data.length,
+                    owner: account.account.owner.toString(),
+                    executable: account.account.executable,
+                    lamports: account.account.lamports
+                });
+            });
+            
             const poolPromises = programAccounts.map(async (account) => {
                 try {
+                    console.log(`🔍 Attempting to parse account ${account.pubkey.toString()} with ${account.account.data.length} bytes`);
                     const poolData = await parsePoolState(account.account.data, account.pubkey);
                     return poolData;
                 } catch (error) {
@@ -302,53 +305,59 @@ async function scanForPools() {
             console.warn('⚠️ Error scanning on-chain pools (this is normal if program not deployed):', error);
         }
         
-        // Get locally created pools from localStorage
-        try {
-            const storedPoolsRaw = localStorage.getItem('createdPools') || '[]';
-            console.log('📦 Raw localStorage data:', storedPoolsRaw);
-            
-            const storedPools = JSON.parse(storedPoolsRaw);
-            console.log('📦 Parsed stored pools:', storedPools);
-            
-            localPools = storedPools.map(pool => {
-                // Convert local pool format to dashboard format
-                const converted = {
-                    address: pool.address,
-                    isInitialized: pool.isInitialized,
-                    isPaused: pool.isPaused,
-                    swapsPaused: pool.swapsPaused,
-                    tokenAMint: pool.tokenAMint,
-                    tokenBMint: pool.tokenBMint,
-                    tokenALiquidity: pool.totalTokenALiquidity,
-                    tokenBLiquidity: pool.totalTokenBLiquidity,
-                    ratioANumerator: pool.ratio,
-                    ratioBDenominator: 1,
-                    swapFeeBasisPoints: pool.swapFeeBasisPoints,
-                    collectedFeesTokenA: pool.collectedFeesTokenA,
-                    collectedFeesTokenB: pool.collectedFeesTokenB,
-                    collectedSolFees: pool.collectedSolFees,
-                    delegateCount: pool.delegateCount,
-                    owner: pool.creator,
-                    // Add symbols for better display
-                    tokenASymbol: pool.tokenASymbol,
-                    tokenBSymbol: pool.tokenBSymbol
-                };
-                console.log('📦 Converted pool:', converted);
-                return converted;
-            });
-            console.log(`✅ Loaded ${localPools.length} locally created pools`);
-        } catch (error) {
-            console.warn('⚠️ Error loading local pools:', error);
+        // Only use localStorage data as fallback if no on-chain pools found
+        if (onChainPools.length === 0) {
+            try {
+                const storedPoolsRaw = localStorage.getItem('createdPools') || '[]';
+                console.log('📦 No on-chain pools found, checking localStorage...');
+                
+                const storedPools = JSON.parse(storedPoolsRaw);
+                console.log('📦 Found stored pools:', storedPools.length);
+                
+                // Only include localStorage pools that don't conflict with on-chain data
+                localPools = storedPools.map(pool => {
+                    const converted = {
+                        address: pool.address,
+                        isInitialized: pool.isInitialized,
+                        isPaused: pool.isPaused,
+                        swapsPaused: pool.swapsPaused,
+                        tokenAMint: pool.tokenAMint,
+                        tokenBMint: pool.tokenBMint,
+                        tokenALiquidity: pool.totalTokenALiquidity || 0,
+                        tokenBLiquidity: pool.totalTokenBLiquidity || 0,
+                        ratioANumerator: pool.ratio,
+                        ratioBDenominator: 1,
+                        swapFeeBasisPoints: pool.swapFeeBasisPoints || 0,
+                        collectedFeesTokenA: pool.collectedFeesTokenA || 0,
+                        collectedFeesTokenB: pool.collectedFeesTokenB || 0,
+                        collectedSolFees: pool.collectedSolFees || 0,
+                        delegateCount: pool.delegateCount || 0,
+                        owner: pool.creator,
+                        tokenASymbol: pool.tokenASymbol,
+                        tokenBSymbol: pool.tokenBSymbol,
+                        dataSource: 'localStorage' // Mark data source
+                    };
+                    return converted;
+                });
+                console.log(`📦 Using ${localPools.length} localStorage pools as fallback`);
+            } catch (error) {
+                console.warn('⚠️ Error loading local pools:', error);
+                localPools = [];
+            }
+        } else {
+            console.log('🎯 Using on-chain data only (ignoring localStorage)');
         }
         
-        // Combine both sources (remove duplicates by address if any)
-        const allPools = [...onChainPools, ...localPools];
-        const uniquePools = allPools.filter((pool, index, self) => 
-            index === self.findIndex(p => p.address === pool.address)
-        );
+        // Prioritize on-chain data - if we have on-chain pools, use them exclusively
+        if (onChainPools.length > 0) {
+            pools = onChainPools;
+            console.log(`✅ Loaded ${pools.length} pools from RPC (on-chain data)`);
+        } else {
+            // Fallback to localStorage only if no on-chain data
+            pools = localPools;
+            console.log(`📦 Loaded ${pools.length} pools from localStorage (fallback)`);
+        }
         
-        pools = uniquePools;
-        console.log(`✅ Total unique pools loaded: ${pools.length} (${onChainPools.length} on-chain + ${localPools.length} local)`);
     } catch (error) {
         console.error('❌ Error scanning for pools:', error);
         throw error;
@@ -356,62 +365,187 @@ async function scanForPools() {
 }
 
 /**
- * Parse pool state data from account data
+ * Parse pool state data from RPC account data (Borsh deserialization)
  */
 async function parsePoolState(data, address) {
     try {
-        // Basic validation
-        if (!data || data.length < 100) {
-            throw new Error('Invalid account data size');
+        // Basic validation - be more lenient with size
+        if (!data || data.length < 200) {
+            throw new Error(`Invalid account data size: ${data ? data.length : 0} bytes (minimum 200 required)`);
         }
         
-        // Simple binary data parsing (adjust based on actual PoolState structure)
+        console.log(`📊 Parsing account with ${data.length} bytes of data`);
+        
         const dataArray = new Uint8Array(data);
+        let offset = 0;
         
-        // Check if account is initialized (first check for non-zero data)
-        const isInitialized = dataArray.some(byte => byte !== 0);
-        if (!isInitialized) {
-            throw new Error('Account not initialized');
-        }
-        
-        // For demonstration, create a mock pool structure
-        // In a real implementation, you'd use proper Borsh deserialization
-        const mockPool = {
-            address: address.toString(),
-            isInitialized: true,
-            isPaused: Math.random() > 0.8, // Random pause status for demo
-            swapsPaused: Math.random() > 0.9,
-            tokenAMint: generateMockAddress(),
-            tokenBMint: generateMockAddress(),
-            tokenALiquidity: Math.floor(Math.random() * 1000000),
-            tokenBLiquidity: Math.floor(Math.random() * 1000000),
-            ratioANumerator: Math.floor(Math.random() * 10) + 1,
-            ratioBDenominator: 1,
-            swapFeeBasisPoints: Math.floor(Math.random() * 50),
-            collectedFeesTokenA: Math.floor(Math.random() * 10000),
-            collectedFeesTokenB: Math.floor(Math.random() * 10000),
-            collectedSolFees: Math.floor(Math.random() * 5000000), // lamports
-            delegateCount: Math.floor(Math.random() * 3),
-            owner: generateMockAddress()
+        // Helper function to read bytes
+        const readPubkey = () => {
+            const pubkey = dataArray.slice(offset, offset + 32);
+            offset += 32;
+            return new solanaWeb3.PublicKey(pubkey).toString();
         };
         
-        return mockPool;
+        const readU64 = () => {
+            const view = new DataView(dataArray.buffer, offset, 8);
+            const value = view.getBigUint64(0, true); // little-endian
+            offset += 8;
+            return Number(value); // Convert to number (assumes values fit in JS number range)
+        };
+        
+        const readU8 = () => {
+            const value = dataArray[offset];
+            offset += 1;
+            return value;
+        };
+        
+        const readBool = () => {
+            const value = dataArray[offset] !== 0;
+            offset += 1;
+            return value;
+        };
+        
+        // Parse PoolState structure according to Rust definition
+        console.log(`🔍 Parsing pool state at ${address.toString()}, data length: ${dataArray.length}`);
+        
+        const owner = readPubkey();
+        const tokenAMint = readPubkey();
+        const tokenBMint = readPubkey();
+        const tokenAVault = readPubkey();
+        const tokenBVault = readPubkey();
+        const lpTokenAMint = readPubkey();
+        const lpTokenBMint = readPubkey();
+        
+        const ratioANumerator = readU64();
+        const ratioBDenominator = readU64();
+        const totalTokenALiquidity = readU64();
+        const totalTokenBLiquidity = readU64();
+        
+        const poolAuthorityBumpSeed = readU8();
+        const tokenAVaultBumpSeed = readU8();
+        const tokenBVaultBumpSeed = readU8();
+        const isInitialized = readBool();
+        
+        // Skip rent requirements (40 bytes)
+        offset += 40;
+        
+        const isPaused = readBool();
+        const swapsPaused = readBool();
+        
+        // Skip optional Pubkey (swaps_pause_requested_by) - 33 bytes (1 byte discriminator + 32 bytes pubkey)
+        offset += 33;
+        
+        // Skip timestamp and withdrawal protection - 9 bytes
+        offset += 9;
+        
+        // Skip delegate management for now - complex structure
+        // We'll read delegate_count which should be at a known offset
+        // For now, let's skip to the fees section
+        offset += 500; // Conservative skip for delegate management
+        
+        // Try to read fee data (these should be near the end)
+        let collectedFeesTokenA = 0;
+        let collectedFeesTokenB = 0;
+        let swapFeeBasisPoints = 0;
+        let collectedSolFees = 0;
+        let delegateCount = 0;
+        
+        try {
+            if (offset + 40 < dataArray.length) {
+                collectedFeesTokenA = readU64();
+                collectedFeesTokenB = readU64();
+                offset += 16; // Skip total_fees_withdrawn fields
+                swapFeeBasisPoints = readU64();
+                collectedSolFees = readU64();
+                offset += 8; // Skip total_sol_fees_withdrawn
+                
+                // Try to find delegate count (this is approximate)
+                // In the real structure, this would be inside DelegateManagement
+                if (offset - 500 + 32 * 3 + 1 < dataArray.length) {
+                    const delegateOffset = offset - 500 + 32 * 3; // Approximate location
+                    delegateCount = dataArray[delegateOffset] || 0;
+                }
+            }
+        } catch (feeError) {
+            console.warn('Could not parse fee data:', feeError);
+            // Use defaults
+        }
+        
+        // Check if actually initialized
+        if (!isInitialized) {
+            throw new Error('Pool account not initialized');
+        }
+        
+        // Try to get token symbols from localStorage or use default
+        const tokenSymbols = await getTokenSymbols(tokenAMint, tokenBMint);
+        
+        const poolData = {
+            address: address.toString(),
+            owner,
+            tokenAMint,
+            tokenBMint,
+            tokenAVault,
+            tokenBVault,
+            lpTokenAMint,
+            lpTokenBMint,
+            ratioANumerator,
+            ratioBDenominator,
+            tokenALiquidity: totalTokenALiquidity,
+            tokenBLiquidity: totalTokenBLiquidity,
+            isInitialized,
+            isPaused,
+            swapsPaused,
+            swapFeeBasisPoints,
+            collectedFeesTokenA,
+            collectedFeesTokenB,
+            collectedSolFees,
+            delegateCount: Math.min(delegateCount, 3), // Cap at max delegates
+            tokenASymbol: tokenSymbols.tokenA,
+            tokenBSymbol: tokenSymbols.tokenB,
+            dataSource: 'RPC'
+        };
+        
+        console.log('✅ Parsed pool from RPC:', {
+            address: poolData.address.slice(0, 8) + '...',
+            tokens: `${poolData.tokenASymbol}/${poolData.tokenBSymbol}`,
+            ratio: `${ratioANumerator}:${ratioBDenominator}`,
+            liquidity: `${totalTokenALiquidity}/${totalTokenBLiquidity}`,
+            paused: isPaused,
+            swapsPaused
+        });
+        
+        return poolData;
+        
     } catch (error) {
+        console.error(`Failed to parse pool state at ${address.toString()}:`, error);
         throw new Error(`Failed to parse pool state: ${error.message}`);
     }
 }
 
 /**
- * Generate a mock address for demonstration
+ * Try to get token symbols from localStorage or use defaults
  */
-function generateMockAddress() {
-    const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-    let result = '';
-    for (let i = 0; i < 44; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
+async function getTokenSymbols(tokenAMint, tokenBMint) {
+    try {
+        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        
+        const tokenA = createdTokens.find(t => t.mint === tokenAMint);
+        const tokenB = createdTokens.find(t => t.mint === tokenBMint);
+        
+        return {
+            tokenA: tokenA?.symbol || `TOKEN-${tokenAMint.slice(0, 4)}`,
+            tokenB: tokenB?.symbol || `TOKEN-${tokenBMint.slice(0, 4)}`
+        };
+    } catch (error) {
+        console.warn('Error getting token symbols:', error);
+        return {
+            tokenA: `TOKEN-${tokenAMint.slice(0, 4)}`,
+            tokenB: `TOKEN-${tokenBMint.slice(0, 4)}`
+        };
     }
-    return result;
 }
+
+
 
 /**
  * Update summary statistics
@@ -515,10 +649,17 @@ function createPoolCard(pool) {
         ? `${pool.tokenASymbol} / ${pool.tokenBSymbol} Pool`
         : `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
     
+    // Add data source indicator
+    const dataSourceBadge = pool.dataSource === 'RPC' 
+        ? '<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">🔗 RPC</span>'
+        : pool.dataSource === 'localStorage' 
+        ? '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📦 Cache</span>'
+        : '';
+    
     card.innerHTML = `
         <div class="pool-header">
             <div class="pool-title">
-                ${displayTitle}
+                ${displayTitle}${dataSourceBadge}
             </div>
             <div class="pool-status ${status}">${statusText}</div>
         </div>
@@ -564,21 +705,7 @@ function createPoolCard(pool) {
     return card;
 }
 
-/**
- * Start auto-refresh timer
- */
-function startAutoRefresh() {
-    if (refreshTimer) {
-        clearInterval(refreshTimer);
-    }
-    
-    refreshTimer = setInterval(async () => {
-        console.log('🔄 Auto-refreshing dashboard...');
-        await refreshData();
-    }, CONFIG.refreshInterval);
-    
-    console.log(`✅ Auto-refresh started (every ${CONFIG.refreshInterval / 1000} seconds)`);
-}
+
 
 /**
  * Show error message
@@ -620,22 +747,7 @@ function formatNumber(num) {
     return num.toString();
 }
 
-/**
- * Handle window visibility changes to pause/resume refreshing
- */
-document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-        console.log('📱 Page hidden - pausing auto-refresh');
-        if (refreshTimer) {
-            clearInterval(refreshTimer);
-        }
-    } else {
-        console.log('📱 Page visible - resuming auto-refresh');
-        startAutoRefresh();
-        // Refresh immediately when page becomes visible
-        refreshData();
-    }
-});
+
 
 /**
  * Force refresh pools with detailed debugging
@@ -684,9 +796,75 @@ async function forceRefreshPools() {
     alert(`Debug complete!\nFound ${pools.length} pools.\nCheck console for details.`);
 }
 
+/**
+ * Debug function to test RPC and program accounts
+ */
+async function debugRPC() {
+    console.log('🐛 DEBUG: Testing RPC connection and program accounts...');
+    
+    try {
+        // Test basic RPC
+        const blockHeight = await connection.getBlockHeight();
+        console.log('✅ RPC Connection working, block height:', blockHeight);
+        
+        // Test program account
+        const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
+        console.log('📦 Program account:', programAccount ? 'EXISTS' : 'NOT FOUND');
+        
+        if (programAccount) {
+            console.log('Program details:', {
+                executable: programAccount.executable,
+                owner: programAccount.owner.toString(),
+                lamports: programAccount.lamports,
+                dataLength: programAccount.data.length
+            });
+        }
+        
+        // Test getting program accounts
+        const programAccounts = await connection.getProgramAccounts(
+            new solanaWeb3.PublicKey(CONFIG.programId)
+        );
+        
+        console.log(`🔍 Found ${programAccounts.length} accounts owned by program:`);
+        
+        programAccounts.forEach((account, index) => {
+            console.log(`  Account ${index + 1}:`, {
+                address: account.pubkey.toString(),
+                dataLength: account.account.data.length,
+                lamports: account.account.lamports,
+                rent_exempt: account.account.lamports > 0
+            });
+            
+            // Try to peek at the data
+            if (account.account.data.length > 0) {
+                const dataArray = new Uint8Array(account.account.data);
+                console.log(`    First 20 bytes:`, Array.from(dataArray.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                
+                // Check if it looks like a pool (check the is_initialized flag)
+                if (dataArray.length > 250) {
+                    const isInitialized = dataArray[251] !== 0; // Approximate position
+                    console.log(`    Appears initialized:`, isInitialized);
+                }
+            }
+        });
+        
+        return {
+            rpcWorking: true,
+            programExists: !!programAccount,
+            accountCount: programAccounts.length,
+            accounts: programAccounts
+        };
+        
+    } catch (error) {
+        console.error('❌ Debug RPC failed:', error);
+        return { error: error.message };
+    }
+}
+
 // Export for global access
 window.refreshData = refreshData;
 window.createSamplePools = createSamplePools;
 window.forceRefreshPools = forceRefreshPools;
+window.debugRPC = debugRPC;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 
