@@ -267,29 +267,28 @@ function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // Create pool metrics
-    const exchangeRate = poolData.ratioBDenominator > 0 ? 
-        Math.round(poolData.ratioANumerator / poolData.ratioBDenominator) : 0;
+    // Use display utilities for user-friendly token ordering
+    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
     
     poolDetails.innerHTML = `
         <div class="pool-metric">
             <div class="metric-label">Pool Pair</div>
-            <div class="metric-value">${poolData.tokenASymbol} / ${poolData.tokenBSymbol}</div>
+            <div class="metric-value">${display.displayPair}</div>
         </div>
         
         <div class="pool-metric">
             <div class="metric-label">Exchange Rate</div>
-            <div class="metric-value">${exchangeRate}:1</div>
+            <div class="metric-value">${display.rateText}</div>
         </div>
         
         <div class="pool-metric">
-            <div class="metric-label">${poolData.tokenASymbol} Liquidity</div>
-            <div class="metric-value">${poolData.tokenALiquidity.toLocaleString()}</div>
+            <div class="metric-label">${display.baseToken} Liquidity</div>
+            <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.baseLiquidity)}</div>
         </div>
         
         <div class="pool-metric">
-            <div class="metric-label">${poolData.tokenBSymbol} Liquidity</div>
-            <div class="metric-value">${poolData.tokenBLiquidity.toLocaleString()}</div>
+            <div class="metric-label">${display.quoteToken} Liquidity</div>
+            <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.quoteLiquidity)}</div>
         </div>
         
         <div class="pool-metric">

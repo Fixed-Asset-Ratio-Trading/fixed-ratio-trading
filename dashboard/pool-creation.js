@@ -449,11 +449,19 @@ function updateRatioDisplay() {
     const ratioInput = document.getElementById('ratio-input');
     currentRatio = parseFloat(ratioInput.value) || 1;
     
-    // Update display elements
-    document.getElementById('ratio-token-a').textContent = selectedTokenA.symbol;
-    document.getElementById('ratio-token-b').textContent = selectedTokenB.symbol;
-    document.getElementById('ratio-value').textContent = currentRatio;
-    document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
+    // Use display utilities to show user-friendly ordering in ratio display
+    const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
+        selectedTokenA.symbol, 
+        selectedTokenB.symbol, 
+        Math.floor(currentRatio), 
+        1
+    );
+    
+    // Update display elements with user-friendly ordering
+    document.getElementById('ratio-token-a').textContent = display.baseToken;
+    document.getElementById('ratio-token-b').textContent = display.quoteToken;
+    document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(display.exchangeRate);
+    document.getElementById('ratio-input-label').textContent = display.quoteToken;
     
     // Update pool summary
     updatePoolSummary();
@@ -469,8 +477,16 @@ function updatePoolSummary() {
     const summaryPair = document.getElementById('summary-pair');
     const summaryRate = document.getElementById('summary-rate');
     
-    summaryPair.textContent = `${selectedTokenA.symbol} / ${selectedTokenB.symbol}`;
-    summaryRate.textContent = `1 ${selectedTokenA.symbol} = ${currentRatio} ${selectedTokenB.symbol}`;
+    // Use display utilities to show user-friendly ordering
+    const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
+        selectedTokenA.symbol, 
+        selectedTokenB.symbol, 
+        Math.floor(currentRatio), 
+        1
+    );
+    
+    summaryPair.textContent = display.displayPair;
+    summaryRate.textContent = display.rateText;
     
     summarySection.style.display = 'block';
 }

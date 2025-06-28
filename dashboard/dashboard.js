@@ -661,43 +661,13 @@ function createPoolCard(pool) {
     const statusText = pool.isPaused ? 'Pool Paused' : 
                      pool.swapsPaused ? 'Swaps Paused' : 'Active';
     
-    // Remove decimal places from exchange rate display
-    const exchangeRate = pool.ratioBDenominator > 0 ? 
-        Math.round(pool.ratioANumerator / pool.ratioBDenominator) : 0;
+    // Use the new display utilities for user-friendly token ordering
+    const display = window.TokenDisplayUtils.getDisplayTokenOrder(pool);
     
-    // Determine original selection order from localStorage to show user's first choice first
-    let firstToken = pool.tokenASymbol;
-    let secondToken = pool.tokenBSymbol;
-    let firstTokenLiquidity = pool.tokenALiquidity;
-    let secondTokenLiquidity = pool.tokenBLiquidity;
-    
-    try {
-        // Check localStorage for original pool creation order
-        const storedPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
-        const originalPool = storedPools.find(p => p.address === pool.address);
-        
-        if (originalPool) {
-            // Use the original creation order (tokenASymbol was the first selected)
-            firstToken = originalPool.tokenASymbol;
-            secondToken = originalPool.tokenBSymbol;
-            
-            // Map liquidity accordingly
-            if (originalPool.tokenAMint === pool.tokenAMint) {
-                firstTokenLiquidity = pool.tokenALiquidity;
-                secondTokenLiquidity = pool.tokenBLiquidity;
-            } else {
-                firstTokenLiquidity = pool.tokenBLiquidity;
-                secondTokenLiquidity = pool.tokenALiquidity;
-            }
-        }
-    } catch (error) {
-        console.warn('Could not determine original token order:', error);
-    }
-    
-    // Use symbol information if available for better display  
-    const displayTitle = (firstToken && secondToken) 
-        ? `${firstToken} / ${secondToken} Pool`
-        : `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
+    // Create user-friendly pool title and exchange rate
+    const displayTitle = display.displayPair ? 
+        `${display.displayPair} Pool` : 
+        `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
     
     // Add data source indicator
     const dataSourceBadge = pool.dataSource === 'RPC' 
@@ -716,18 +686,18 @@ function createPoolCard(pool) {
         
         <div class="pool-info">
             <div class="pool-metric">
-                <div class="metric-label">${firstToken} Liquidity</div>
-                <div class="metric-value">${firstTokenLiquidity.toLocaleString()}</div>
+                <div class="metric-label">${display.baseToken} Liquidity</div>
+                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.baseLiquidity)}</div>
             </div>
             
             <div class="pool-metric">
-                <div class="metric-label">${secondToken} Liquidity</div>
-                <div class="metric-value">${secondTokenLiquidity.toLocaleString()}</div>
+                <div class="metric-label">${display.quoteToken} Liquidity</div>
+                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.quoteLiquidity)}</div>
             </div>
             
             <div class="pool-metric">
                 <div class="metric-label">Exchange Rate</div>
-                <div class="metric-value">${exchangeRate}:1</div>
+                <div class="metric-value">${display.rateText}</div>
             </div>
             
             <div class="pool-metric">

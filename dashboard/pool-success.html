@@ -235,12 +235,12 @@
                     </div>
                     
                     <div class="detail-item">
-                        <div class="detail-label">Token A</div>
+                        <div class="detail-label" id="token-a-label">Base Token</div>
                         <div class="detail-value" id="token-a-details">Loading...</div>
                     </div>
                     
                     <div class="detail-item">
-                        <div class="detail-label">Token B</div>
+                        <div class="detail-label" id="token-b-label">Quote Token</div>
                         <div class="detail-value" id="token-b-details">Loading...</div>
                     </div>
                     
@@ -275,6 +275,8 @@
         </div>
     </div>
 
+    <script src="config.js"></script>
+    <script src="utils.js?v=1732061214"></script>
     <script>
         // Parse URL parameters and display pool details
         document.addEventListener('DOMContentLoaded', () => {
@@ -304,13 +306,28 @@
             const creator = urlParams.get('creator') || 'Unknown';
             const createdAt = urlParams.get('createdAt');
             
-            // Update UI elements
-            document.getElementById('pool-title').textContent = `${tokenASymbol} / ${tokenBSymbol} Pool`;
-            document.getElementById('ratio-display').textContent = `1 ${tokenASymbol} = ${ratio} ${tokenBSymbol}`;
+            // Use display utilities for user-friendly token ordering
+            const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
+                tokenASymbol, 
+                tokenBSymbol, 
+                parseFloat(ratio), 
+                1
+            );
+            
+            // Update UI elements with proper ordering
+            document.getElementById('pool-title').textContent = `${display.displayPair} Pool`;
+            document.getElementById('ratio-display').textContent = display.rateText;
             document.getElementById('pool-address').textContent = poolAddress;
             document.getElementById('creator-address').textContent = creator.slice(0, 20) + '...';
-            document.getElementById('token-a-details').innerHTML = `<strong>${tokenASymbol}</strong><br>${tokenAName}`;
-            document.getElementById('token-b-details').innerHTML = `<strong>${tokenBSymbol}</strong><br>${tokenBName}`;
+            // Update token details with display ordering
+            const baseTokenName = display.baseToken === tokenASymbol ? tokenAName : tokenBName;
+            const quoteTokenName = display.quoteToken === tokenASymbol ? tokenAName : tokenBName;
+            
+            // Update labels and details
+            document.getElementById('token-a-label').textContent = `${display.baseToken} (Base)`;
+            document.getElementById('token-b-label').textContent = `${display.quoteToken} (Quote)`;
+            document.getElementById('token-a-details').innerHTML = `<strong>${display.baseToken}</strong><br>${baseTokenName}`;
+            document.getElementById('token-b-details').innerHTML = `<strong>${display.quoteToken}</strong><br>${quoteTokenName}`;
             
             if (createdAt) {
                 const date = new Date(createdAt);
