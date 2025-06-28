@@ -1,12 +1,6 @@
 // Pool Creation Dashboard - JavaScript Logic
 // Handles Backpack wallet connection, token fetching, and pool creation
-
-// Configuration
-const CONFIG = {
-    rpcUrl: 'http://localhost:8899',
-    programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
-    commitment: 'confirmed'
-};
+// Configuration is loaded from config.js
 
 // Global state
 let connection = null;

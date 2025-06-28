@@ -1,13 +1,6 @@
 // Fixed Ratio Trading Dashboard - JavaScript Logic
-// Connects to local Solana testnet and displays real-time pool information
-
-// Configuration
-const CONFIG = {
-    rpcUrl: 'http://localhost:8899',
-    programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
-    refreshInterval: 10000, // 10 seconds
-    poolStateSeedPrefix: 'pool_state_v2',
-};
+// Connects to Solana validator and displays real-time pool information
+// Configuration is loaded from config.js
 
 // Global state
 let connection = null;
@@ -562,8 +555,6 @@ async function getTokenSymbols(tokenAMint, tokenBMint) {
     }
 }
 
-
-
 /**
  * Update summary statistics
  */
@@ -751,8 +742,6 @@ function createPoolCard(pool) {
     return card;
 }
 
-
-
 /**
  * Show error message
  */
@@ -809,8 +798,6 @@ function formatNumber(num) {
     }
     return num.toString();
 }
-
-
 
 /**
  * Force refresh pools with detailed debugging

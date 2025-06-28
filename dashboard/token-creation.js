@@ -1,12 +1,6 @@
 // Token Creation Dashboard - JavaScript Logic
-// Handles Phantom wallet connection and SPL token creation
-
-// Configuration
-const CONFIG = {
-    rpcUrl: 'http://localhost:8899',
-    expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
-    commitment: 'confirmed'
-};
+// Handles Backpack wallet connection and SPL token creation
+// Configuration is loaded from config.js
 
 // Global state
 let connection = null;
