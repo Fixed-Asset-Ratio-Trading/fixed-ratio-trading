@@ -34,6 +34,9 @@ SECONDARY_ACCOUNT="3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f"
 AIRDROP_AMOUNT=1000
 SECONDARY_AIRDROP_AMOUNT=100
 
+# Network Configuration - External IP for TPU access
+EXTERNAL_IP="192.168.9.81"
+
 # Port Configuration
 RPC_PORT=8899
 WEBSOCKET_PORT=8900  # Automatically assigned by Solana
@@ -57,10 +60,13 @@ echo -e "${BLUE}🚀 Production Solana Validator Setup with Wildcard Certificate
 echo "=============================================================="
 echo -e "${CYAN}Domain: $DOMAIN${NC}"
 echo -e "${CYAN}Certificate: Wildcard *.dcs1.cc${NC}"
+echo -e "${CYAN}External IP: $EXTERNAL_IP${NC}"
 echo -e "${CYAN}HTTPS RPC: $HTTPS_RPC_URL${NC}"
 echo -e "${CYAN}WebSocket: $WSS_URL${NC}"
 echo -e "${CYAN}RPC Port: $RPC_PORT${NC}"
 echo -e "${CYAN}WebSocket Port: $WEBSOCKET_PORT (auto)${NC}"
+echo -e "${CYAN}Gossip Port: $GOSSIP_PORT${NC}"
+echo -e "${CYAN}TPU Access: External (via $EXTERNAL_IP)${NC}"
 echo -e "${CYAN}Primary Account: $PRIMARY_ACCOUNT${NC}"
 echo -e "${CYAN}Secondary Account: $SECONDARY_ACCOUNT${NC}"
 echo ""
@@ -312,11 +318,14 @@ screen -dmS "$SCREEN_SESSION_NAME" bash -c "
     echo '════════════════════════════════════════════════════════════════'
     echo ''
     
-    # Start validator with minimal working configuration
-    echo 'Starting production Solana validator...'
+    # Start validator with external TPU access
+    echo 'Starting production Solana validator with external TPU access...'
+    echo \"External IP: $EXTERNAL_IP\"
+    echo \"TPU will be accessible from external networks\"
     solana-test-validator \\
         --rpc-port $RPC_PORT \\
         --gossip-port $GOSSIP_PORT \\
+        --gossip-host $EXTERNAL_IP \\
         --faucet-port $FAUCET_PORT \\
         --bind-address 0.0.0.0 \\
         --compute-unit-limit 1400000 \\
@@ -482,7 +491,8 @@ echo ""
 echo -e "${BLUE}📊 Production Service Information:${NC}"
 echo -e "  🌐 HTTPS RPC: $HTTPS_RPC_URL"
 echo -e "  🔌 WebSocket: $WSS_URL"
-echo -e "  ⚡ TPU Access: Available on dynamic ports"
+echo -e "  ⚡ TPU Access: External via $EXTERNAL_IP (dynamic ports)"
+echo -e "  🌍 External IP: $EXTERNAL_IP"
 echo -e "  🔒 Local RPC: $LOCAL_RPC_URL"
 echo -e "  🔒 Local WebSocket: ws://localhost:$WEBSOCKET_PORT"
 echo -e "  📋 Primary Account: $PRIMARY_ACCOUNT ($AIRDROP_AMOUNT SOL)"
@@ -512,6 +522,9 @@ echo ""
 echo -e "${CYAN}  Check account balances via HTTPS:${NC}"
 echo -e "    solana balance $PRIMARY_ACCOUNT --url $HTTPS_RPC_URL"
 echo -e "    solana balance $SECONDARY_ACCOUNT --url $HTTPS_RPC_URL"
+echo ""
+echo -e "${CYAN}  Check TPU endpoints:${NC}"
+echo -e "    curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getClusterNodes\"}' | jq '.result[] | {rpc: .rpc, tpu: .tpu, gossip: .gossip}'"
 echo ""
 echo -e "${CYAN}  View live logs:${NC}"
 echo -e "    tail -f logs/validator.log"
