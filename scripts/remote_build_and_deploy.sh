@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy Fixed Ratio Trading Contract to Remote Solana Validator
 # This script builds the contract and deploys/upgrades the program to the remote validator
-# Targets the remote validator at https://vmdevbox1.dcs1.cc
+# Targets the direct validator endpoint at http://192.168.9.81:8899
 
 set -e
 
@@ -27,7 +27,7 @@ echo "🚀 Fixed Ratio Trading - Remote Deployment Script"
 echo "=================================================="
 echo "📂 Project Root: $PROJECT_ROOT"
 echo ""
-echo -e "${BLUE}🌐 Targeting Remote Validator: https://vmdevbox1.dcs1.cc${NC}"
+echo -e "${BLUE}🌐 Targeting Direct Validator Endpoint: http://192.168.9.81:8899${NC}"
 echo -e "${BLUE}🎒 Backpack Address: 5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t${NC}"
 echo -e "${BLUE}   Run './scripts/setup_backpack_keypair.sh' first if you need the keypair file${NC}"
 
@@ -53,7 +53,7 @@ if [ -f "$PROGRAM_KEYPAIR" ]; then
 else
     PROGRAM_ID="Will be generated during build"
 fi
-RPC_URL="https://vmdevbox1.dcs1.cc"
+RPC_URL="http://192.168.9.81:8899"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
 
 echo -e "${BLUE}📋 Configuration:${NC}"
@@ -347,8 +347,8 @@ else
 fi
 
 # Step 11: Save deployment info
-echo -e "${YELLOW}💾 Saving remote deployment information...${NC}"
-cat > "$PROJECT_ROOT/remote_deployment_info.json" << EOF
+echo -e "${YELLOW}💾 Saving deployment information...${NC}"
+cat > "$PROJECT_ROOT/deployment_info.json" << EOF
 {
   "program_id": "$PROGRAM_ID",
   "version": "$NEW_VERSION",
@@ -366,16 +366,16 @@ cat > "$PROJECT_ROOT/remote_deployment_info.json" << EOF
 }
 EOF
 
-echo -e "${GREEN}✅ Remote deployment information saved to remote_deployment_info.json${NC}"
+echo -e "${GREEN}✅ Deployment information saved to deployment_info.json${NC}"
 
 # Final status
 echo ""
 echo "======================================================"
-echo -e "${GREEN}🎉 REMOTE DEPLOYMENT COMPLETE!${NC}"
+echo -e "${GREEN}🎉 DIRECT ENDPOINT DEPLOYMENT COMPLETE!${NC}"
 echo "======================================================"
-echo -e "${BLUE}📊 Your Fixed Ratio Trading contract is deployed to remote:${NC}"
+echo -e "${BLUE}📊 Your Fixed Ratio Trading contract is deployed:${NC}"
 echo ""
-echo "  🌐 Remote RPC: $RPC_URL"
+echo "  🌐 Direct RPC: $RPC_URL"
 echo "  📊 Program ID: $PROGRAM_ID"
 echo "  🔢 Version: $NEW_VERSION"
 echo "  💳 Default Wallet: $DEFAULT_WALLET_ADDRESS"
@@ -388,7 +388,7 @@ echo "  ✅ Result: $DEPLOY_RESULT"
 echo "  📊 Program Data: $PROGRAM_DATA_ADDRESS"
 echo "  📏 Program Size: $PROGRAM_SIZE bytes"
 echo ""
-echo -e "${GREEN}💡 The contract is now live on the remote validator!${NC}"
+echo -e "${GREEN}💡 The contract is now live on the direct validator endpoint!${NC}"
 echo -e "${YELLOW}📝 Next Steps:${NC}"
 echo "  1. ✅ Contract is deployed and ready for use"
 echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"

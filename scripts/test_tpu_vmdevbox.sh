@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test TPU (Transaction Processing Unit) functionality on vmdevbox1.dcs1.cc
+# Test TPU (Transaction Processing Unit) functionality on direct validator endpoint
 # This script tests both RPC and TPU endpoints on the remote Solana validator
 
 set -e
@@ -12,11 +12,11 @@ RED='\033[0;31m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-echo "🌐 Testing TPU on vmdevbox1.dcs1.cc"
-echo "===================================="
+echo "🌐 Testing TPU on Direct Validator Endpoint"
+echo "============================================="
 
 # Configuration
-VALIDATOR_URL="https://vmdevbox1.dcs1.cc"
+VALIDATOR_URL="http://192.168.9.81:8899"
 BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
@@ -240,7 +240,7 @@ echo "======================================================"
 echo ""
 
 # Summary
-echo -e "${BLUE}📊 Summary of TPU Capabilities on vmdevbox1.dcs1.cc:${NC}"
+echo -e "${BLUE}📊 Summary of TPU Capabilities on Direct Validator Endpoint:${NC}"
 echo ""
 echo -e "${GREEN}✅ Core RPC Functions:${NC}"
 echo "  • Health check: Working"

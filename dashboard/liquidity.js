@@ -84,7 +84,21 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initializeApp() {
     try {
         // Initialize Solana connection
-        connection = new solanaWeb3.Connection(CONFIG.rpcUrl, CONFIG.commitment);
+        // Initialize Solana connection with WebSocket configuration
+        console.log('🔌 Connecting to Solana RPC...');
+        const connectionConfig = {
+            commitment: CONFIG.commitment,
+            disableRetryOnRateLimit: CONFIG.disableRetryOnRateLimit || true
+        };
+        
+        if (CONFIG.wsUrl) {
+            console.log('📡 Using WebSocket endpoint:', CONFIG.wsUrl);
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig, CONFIG.wsUrl);
+        } else {
+            console.log('📡 Using HTTP polling (WebSocket disabled)');
+            connectionConfig.wsEndpoint = false; // Explicitly disable WebSocket
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig);
+        }
         
         // Check if SPL Token library is available
         if (!window.splToken || !window.SPL_TOKEN_LOADED) {

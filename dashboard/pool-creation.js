@@ -51,8 +51,21 @@ document.addEventListener('DOMContentLoaded', async () => {
  */
 async function initializeApp() {
     try {
-        // Initialize Solana connection
-        connection = new solanaWeb3.Connection(CONFIG.rpcUrl, CONFIG.commitment);
+        // Initialize Solana connection with WebSocket configuration
+        console.log('🔌 Connecting to Solana RPC...');
+        const connectionConfig = {
+            commitment: CONFIG.commitment,
+            disableRetryOnRateLimit: CONFIG.disableRetryOnRateLimit || true
+        };
+        
+        if (CONFIG.wsUrl) {
+            console.log('📡 Using WebSocket endpoint:', CONFIG.wsUrl);
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig, CONFIG.wsUrl);
+        } else {
+            console.log('📡 Using HTTP polling (WebSocket disabled)');
+            connectionConfig.wsEndpoint = false; // Explicitly disable WebSocket
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig);
+        }
         
         // Check if SPL Token library is available
         if (!window.splToken || !window.SPL_TOKEN_LOADED) {
@@ -580,6 +593,72 @@ async function createPool() {
 }
 
 /**
+ * Confirm transaction with extended timeout and progress updates
+ */
+async function confirmTransactionWithProgress(signature, commitment = 'confirmed') {
+    const maxRetries = 60; // 60 attempts = up to 2 minutes
+    const retryDelay = 2000; // 2 seconds between checks
+    let attempts = 0;
+    
+    while (attempts < maxRetries) {
+        try {
+            const confirmation = await connection.confirmTransaction(signature, commitment);
+            
+            if (confirmation.value) {
+                console.log('✅ Transaction confirmed after', attempts + 1, 'attempts');
+                showStatus('success', `Transaction confirmed! Processing completed.`);
+                return confirmation;
+            }
+        } catch (error) {
+            // If it's a timeout error, continue retrying
+            if (error.message.includes('was not confirmed') || error.message.includes('timeout')) {
+                attempts++;
+                const timeElapsed = (attempts * retryDelay) / 1000;
+                console.log(`⏳ Still waiting for confirmation... (${timeElapsed}s elapsed)`);
+                showStatus('info', `⏳ Transaction processing... ${timeElapsed}s elapsed (will wait up to 2 minutes)`);
+                
+                // Wait before next attempt
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                continue;
+            } else {
+                // For other errors, throw immediately
+                throw error;
+            }
+        }
+        
+        attempts++;
+        const timeElapsed = (attempts * retryDelay) / 1000;
+        
+        // Check transaction status manually
+        try {
+            const status = await connection.getSignatureStatus(signature);
+            if (status && status.value) {
+                if (status.value.err) {
+                    throw new Error('Transaction failed: ' + JSON.stringify(status.value.err));
+                }
+                if (status.value.confirmationStatus === commitment || 
+                    status.value.confirmationStatus === 'finalized') {
+                    console.log('✅ Transaction confirmed via status check');
+                    showStatus('success', `Transaction confirmed! Processing completed.`);
+                    return { value: status.value };
+                }
+            }
+        } catch (statusError) {
+            console.log('ℹ️ Could not check transaction status:', statusError.message);
+        }
+        
+        console.log(`⏳ Still waiting for confirmation... (${timeElapsed}s elapsed)`);
+        showStatus('info', `⏳ Transaction processing... ${timeElapsed}s elapsed (will wait up to 2 minutes)`);
+        
+        // Wait before next attempt
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+    }
+    
+    // If we get here, we've exhausted all retries
+    throw new Error(`Transaction was not confirmed after ${(maxRetries * retryDelay) / 1000} seconds. Check signature ${signature} manually using Solana Explorer.`);
+}
+
+/**
  * Create pool transaction
  */
 async function createPoolTransaction(tokenA, tokenB, ratio) {
@@ -875,10 +954,10 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         }
         
         console.log('⏳ Confirming transaction:', signature);
-        showStatus('info', `Transaction sent: ${signature}. Waiting for confirmation...`);
+        showStatus('info', `Transaction sent: ${signature.slice(0, 20)}... - Waiting for confirmation...`);
         
-        // Confirm transaction
-        const confirmation = await connection.confirmTransaction(signature, CONFIG.commitment);
+        // Confirm transaction with extended timeout and progress updates
+        const confirmation = await confirmTransactionWithProgress(signature, CONFIG.commitment);
         
         if (confirmation.value.err) {
             console.error('Transaction confirmation error:', confirmation.value.err);

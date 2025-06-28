@@ -4,13 +4,18 @@
 // Global configuration object
 window.TRADING_CONFIG = {
     // Solana RPC endpoint - change this to switch between validators
-    rpcUrl: 'https://vmdevbox1.dcs1.cc',
+    rpcUrl: 'http://192.168.9.81:8899',
+    
+    // WebSocket URL (set to null to disable WebSocket and use HTTP polling)
+    wsUrl: null, // Disable WebSocket to avoid connection issues
+    // wsUrl: 'ws://192.168.9.81:8900', // Direct WebSocket endpoint (uncomment to enable)
     
     // Fixed Ratio Trading program ID
     programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
     
     // Connection settings
     commitment: 'confirmed',
+    disableRetryOnRateLimit: true, // Improve stability
     
     // Dashboard settings
     refreshInterval: 10000, // 10 seconds

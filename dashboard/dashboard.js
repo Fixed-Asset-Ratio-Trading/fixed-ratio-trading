@@ -27,7 +27,21 @@ async function initializeDashboard() {
         }
         
         // Initialize Solana connection
-        connection = new solanaWeb3.Connection(CONFIG.rpcUrl, 'confirmed');
+        // Initialize Solana connection with WebSocket configuration
+        console.log('🔌 Connecting to Solana RPC...');
+        const connectionConfig = {
+            commitment: 'confirmed',
+            disableRetryOnRateLimit: CONFIG.disableRetryOnRateLimit || true
+        };
+        
+        if (CONFIG.wsUrl) {
+            console.log('📡 Using WebSocket endpoint:', CONFIG.wsUrl);
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig, CONFIG.wsUrl);
+        } else {
+            console.log('📡 Using HTTP polling (WebSocket disabled)');
+            connectionConfig.wsEndpoint = false; // Explicitly disable WebSocket
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig);
+        }
         
         // Test RPC connection
         try {
