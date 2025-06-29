@@ -66,23 +66,11 @@ echo ""
 # Check if running as root
 if [[ $EUID -eq 0 ]]; then
     echo -e "${RED}❌ Do not run this script as root${NC}"
-    echo -e "${YELLOW}💡 Run as regular user, script will use sudo when needed${NC}"
+    echo -e "${YELLOW}💡 Run as regular user${NC}"
     exit 1
 fi
 
-# Function to install package if not present
-install_if_missing() {
-    local package="$1"
-    if ! dpkg -l | grep -q "^ii  $package "; then
-        echo -e "${YELLOW}📦 Installing $package...${NC}"
-        sudo apt update && sudo apt install -y "$package"
-        echo -e "${GREEN}✅ $package installed${NC}"
-    else
-        echo -e "${GREEN}✅ $package already installed${NC}"
-    fi
-}
-
-# Check dependencies and install required packages
+# Check dependencies
 echo -e "${YELLOW}🔍 Checking dependencies...${NC}"
 
 # Check Solana
@@ -95,10 +83,27 @@ else
     echo -e "${GREEN}✅ Solana available: $SOLANA_VERSION${NC}"
 fi
 
-# Install required packages (no nginx needed)
-install_if_missing "screen"
-install_if_missing "curl"
-install_if_missing "jq"
+# Check required packages
+if ! command -v screen &> /dev/null; then
+    echo -e "${RED}❌ screen not found - please install: apt install screen${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ screen available${NC}"
+fi
+
+if ! command -v curl &> /dev/null; then
+    echo -e "${RED}❌ curl not found - please install: apt install curl${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ curl available${NC}"
+fi
+
+if ! command -v jq &> /dev/null; then
+    echo -e "${RED}❌ jq not found - please install: apt install jq${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✅ jq available${NC}"
+fi
 
 # Stop existing services
 echo -e "${YELLOW}🛑 Stopping existing services...${NC}"
@@ -112,13 +117,6 @@ if screen -list | grep -q "$SCREEN_SESSION_NAME"; then
     echo -e "${YELLOW}⚠️  Terminating existing screen session...${NC}"
     screen -S "$SCREEN_SESSION_NAME" -X quit 2>/dev/null || true
     sleep 2
-fi
-
-# Make sure nginx is stopped (if it was running)
-echo -e "${YELLOW}🛑 Ensuring nginx is stopped...${NC}"
-if sudo systemctl is-active --quiet nginx 2>/dev/null; then
-    echo -e "${YELLOW}⚠️  Stopping nginx (using direct access instead)...${NC}"
-    sudo systemctl stop nginx
 fi
 
 # Create logs directory
