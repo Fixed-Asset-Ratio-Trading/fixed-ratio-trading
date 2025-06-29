@@ -2,8 +2,34 @@
 # Deploy Fixed Ratio Trading Contract to Remote Solana Validator
 # This script builds the contract and deploys/upgrades the program to the remote validator
 # Targets the direct validator endpoint at http://192.168.9.81:8899
+#
+# Usage:
+#   ./remote_build_and_deploy.sh [--reset|--noreset]
+#
+# Options:
+#   --reset     Reset the validator before deployment
+#   --noreset   Keep existing validator state (default behavior)
+#   (no option) Keep existing validator state (default behavior)
 
 set -e
+
+# Parse command line arguments
+VALIDATOR_RESET_OPTION=""
+for arg in "$@"; do
+    case $arg in
+        --reset)
+            VALIDATOR_RESET_OPTION="auto_reset"
+            ;;
+        --noreset)
+            VALIDATOR_RESET_OPTION="no_reset"
+            ;;
+        *)
+            echo "Unknown option: $arg"
+            echo "Usage: $0 [--reset|--noreset]"
+            exit 1
+            ;;
+    esac
+done
 
 # Find the project root directory (where Cargo.toml is located)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,28 +81,152 @@ else
 fi
 RPC_URL="http://192.168.9.81:8899"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
+BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 
 echo -e "${BLUE}📋 Configuration:${NC}"
 echo "  Program ID: $PROGRAM_ID"
 echo "  Remote RPC URL: $RPC_URL"
 echo "  Keypair: $KEYPAIR_PATH"
+echo "  Backpack Wallet: $BACKPACK_WALLET"
 echo ""
 
-# Step 1: Test remote endpoint connectivity
-echo -e "${YELLOW}🔍 Testing remote endpoint connectivity...${NC}"
-if command -v curl >/dev/null 2>&1; then
-    if curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "$RPC_URL" | grep -q "ok"; then
-        echo -e "${GREEN}✅ Remote endpoint is responding correctly${NC}"
-    else
-        echo -e "${RED}❌ Remote endpoint is not responding or not healthy${NC}"
-        echo "   Please ensure the remote validator is running at $RPC_URL"
-        exit 1
-    fi
-else
-    echo -e "${YELLOW}⚠️  curl not found. Cannot test endpoint automatically${NC}"
+# Step 1: Run all tests before deployment
+echo -e "${YELLOW}🧪 Running comprehensive test suite...${NC}"
+echo "   This ensures code quality before deployment"
+cd "$PROJECT_ROOT"
+
+echo "   Running cargo tests..."
+if ! cargo test --lib; then
+    echo -e "${RED}❌ Unit tests failed! Deployment aborted.${NC}"
+    echo "   Please fix failing tests before deploying"
+    exit 1
 fi
 
-# Step 2: Check if build creates new changes
+echo "   Running integration tests..."
+if ! cargo test --test '*'; then
+    echo -e "${RED}❌ Integration tests failed! Deployment aborted.${NC}"
+    echo "   Please fix failing tests before deploying"
+    exit 1
+fi
+
+echo -e "${GREEN}✅ All tests passed successfully${NC}"
+echo ""
+
+# Step 2: Determine validator reset action
+VALIDATOR_RESET=false
+
+if [ "$VALIDATOR_RESET_OPTION" = "auto_reset" ]; then
+    VALIDATOR_RESET=true
+    echo -e "${YELLOW}🔄 Resetting validator (--reset specified)${NC}"
+else
+    # Default behavior: no reset
+    VALIDATOR_RESET=false
+    echo -e "${BLUE}🔄 Keeping existing validator state (default)${NC}"
+    if [ "$VALIDATOR_RESET_OPTION" = "no_reset" ]; then
+        echo -e "${BLUE}   (--noreset explicitly specified)${NC}"
+    fi
+fi
+
+if [ "$VALIDATOR_RESET" = true ]; then
+    echo -e "${YELLOW}🔄 Resetting remote validator...${NC}"
+    
+    # Check if SSH is available
+    if ! command -v ssh >/dev/null 2>&1; then
+        echo -e "${RED}❌ SSH not found. Cannot reset remote validator.${NC}"
+        exit 1
+    fi
+    
+    echo "   Connecting to dev@vmdevbox1..."
+    echo "   Starting fresh validator (script will handle stopping previous one)..."
+    
+    # Start fresh validator and show output
+    echo "   Running: cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh"
+    if ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh'; then
+        echo -e "${GREEN}✅ Validator start script completed${NC}"
+        
+        # Verify validator is actually running by testing connectivity
+        echo "   Verifying validator is responding..."
+        VALIDATOR_CHECK_COUNT=0
+        MAX_VALIDATOR_CHECKS=10
+        
+        while [ $VALIDATOR_CHECK_COUNT -lt $MAX_VALIDATOR_CHECKS ]; do
+            if curl -s --connect-timeout 5 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "$RPC_URL" | grep -q "ok"; then
+                echo -e "${GREEN}✅ Validator is running and responding${NC}"
+                
+                # Get some basic validator info to confirm it's working
+                echo "   Getting validator status..."
+                SLOT_INFO=$(curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getSlot"}' "$RPC_URL" 2>/dev/null)
+                if echo "$SLOT_INFO" | grep -q '"result"'; then
+                    CURRENT_SLOT=$(echo "$SLOT_INFO" | grep -o '"result":[0-9]*' | cut -d':' -f2)
+                    echo -e "${GREEN}   Current slot: $CURRENT_SLOT${NC}"
+                fi
+                
+                # Check if we can get account balance (basic functionality test)
+                BALANCE_CHECK=$(solana balance $BACKPACK_WALLET 2>/dev/null | head -1)
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}   Balance check successful: $BALANCE_CHECK${NC}"
+                else
+                    echo -e "${YELLOW}   Balance check failed, but validator is responding${NC}"
+                fi
+                break
+            else
+                VALIDATOR_CHECK_COUNT=$((VALIDATOR_CHECK_COUNT + 1))
+                if [ $VALIDATOR_CHECK_COUNT -lt $MAX_VALIDATOR_CHECKS ]; then
+                    echo "   Validator check $VALIDATOR_CHECK_COUNT/$MAX_VALIDATOR_CHECKS - waiting..."
+                    sleep 2
+                else
+                    echo -e "${RED}❌ Validator not responding after $MAX_VALIDATOR_CHECKS attempts${NC}"
+                    echo "   The start script completed but validator may not be ready yet"
+                    echo "   You may need to wait a bit longer or check vmdevbox1 manually"
+                    exit 1
+                fi
+            fi
+        done
+    else
+        echo -e "${RED}❌ Failed to start fresh validator${NC}"
+        echo "   You may need to manually start the validator on vmdevbox1"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}✅ Remote validator reset completed${NC}"
+else
+    echo -e "${BLUE}ℹ️  Keeping existing validator state${NC}"
+fi
+
+echo ""
+
+# Step 3: Test remote endpoint connectivity (skip if we just reset validator)
+if [[ $VALIDATOR_RESET == false ]]; then
+    echo -e "${YELLOW}🔍 Testing remote endpoint connectivity...${NC}"
+    if command -v curl >/dev/null 2>&1; then
+        # Test endpoint with retry logic
+        RETRY_COUNT=0
+        MAX_RETRIES=5
+        
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if curl -s --connect-timeout 10 -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' "$RPC_URL" | grep -q "ok"; then
+                echo -e "${GREEN}✅ Remote endpoint is responding correctly${NC}"
+                break
+            else
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                    echo "   Retry $RETRY_COUNT/$MAX_RETRIES - waiting for validator..."
+                    sleep 3
+                else
+                    echo -e "${RED}❌ Remote endpoint is not responding after $MAX_RETRIES attempts${NC}"
+                    echo "   Please ensure the remote validator is running at $RPC_URL"
+                    exit 1
+                fi
+            fi
+        done
+    else
+        echo -e "${YELLOW}⚠️  curl not found. Cannot test endpoint automatically${NC}"
+    fi
+else
+    echo -e "${BLUE}ℹ️  Skipping connectivity test (validator was just reset and verified)${NC}"
+fi
+
+# Step 4: Check if build creates new changes
 echo -e "${YELLOW}🔍 Checking if app was modified...${NC}"
 
 # Get current version from Cargo.toml
@@ -99,7 +249,7 @@ else
     echo "  No previous build found"
 fi
 
-# Step 3: Initial build to check for changes
+# Step 5: Initial build to check for changes
 echo -e "${YELLOW}🔨 Running initial build to detect changes...${NC}"
 cd "$PROJECT_ROOT"
 RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
@@ -122,7 +272,7 @@ else
     NEW_TIMESTAMP="0"
 fi
 
-# Step 4: Determine if version should be incremented
+# Step 6: Determine if version should be incremented
 VERSION_UPDATED=false
 if [ "$NEW_TIMESTAMP" != "$OLD_TIMESTAMP" ] && [ "$NEW_TIMESTAMP" != "0" ]; then
     echo -e "${GREEN}✅ Changes detected - updating version number${NC}"
@@ -148,7 +298,7 @@ if [ "$NEW_TIMESTAMP" != "$OLD_TIMESTAMP" ] && [ "$NEW_TIMESTAMP" != "0" ]; then
     echo -e "${GREEN}✅ Version updated: $CURRENT_VERSION → $NEW_VERSION${NC}"
     VERSION_UPDATED=true
     
-    # Step 5: Rebuild with new version
+    # Step 7: Rebuild with new version
     echo -e "${YELLOW}🔨 Rebuilding with updated version...${NC}"
     RUSTFLAGS="-C link-arg=-zstack-size=131072" cargo build-sbf || true
     if [ $? -ne 0 ]; then
@@ -165,7 +315,7 @@ fi
 
 echo ""
 
-# Step 6: Configure Solana CLI for remote endpoint
+# Step 8: Configure Solana CLI for remote endpoint
 echo -e "${YELLOW}⚙️  Configuring Solana CLI for remote endpoint...${NC}"
 solana config set --url $RPC_URL
 if [ $? -eq 0 ]; then
@@ -175,15 +325,14 @@ else
     exit 1
 fi
 
-# Step 7: Check/create keypair
+# Step 9: Check/create keypair
 if [ ! -f "$KEYPAIR_PATH" ]; then
     echo -e "${YELLOW}🔑 Creating new keypair...${NC}"
     solana-keygen new --no-bip39-passphrase --outfile $KEYPAIR_PATH
 fi
 
-# Step 8: Check Backpack wallet balance
+# Step 10: Check Backpack wallet balance
 echo -e "${YELLOW}💰 Checking Backpack wallet balance...${NC}"
-BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 DEFAULT_WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
 echo "  Default Wallet: $DEFAULT_WALLET_ADDRESS"
 echo "  Backpack Wallet: $BACKPACK_WALLET"
@@ -201,7 +350,7 @@ echo -e "${GREEN}  Current Backpack Wallet Balance: $BACKPACK_BALANCE SOL${NC}"
 echo -e "${GREEN}✅ Current Backpack wallet balance: $BACKPACK_BALANCE SOL${NC}"
 FINAL_BALANCE=$BACKPACK_BALANCE
 
-# Step 9: Check if program exists on remote and compare versions
+# Step 11: Check if program exists on remote and compare versions
 echo -e "${YELLOW}🔍 Checking remote program status...${NC}"
 
 DEPLOY_ACTION=""
@@ -324,7 +473,7 @@ else
     exit 1
 fi
 
-# Step 10: Get the actual deployed program ID and verify
+# Step 12: Get the actual deployed program ID and verify
 echo -e "${YELLOW}🔍 Getting deployed program ID and verifying on remote...${NC}"
 if [ -f "$PROGRAM_KEYPAIR" ]; then
     DEPLOYED_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
@@ -346,7 +495,7 @@ else
     echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
-# Step 11: Save deployment info
+# Step 13: Save deployment info
 echo -e "${YELLOW}💾 Saving deployment information...${NC}"
 cat > "$PROJECT_ROOT/deployment_info.json" << EOF
 {

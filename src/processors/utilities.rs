@@ -53,10 +53,12 @@ pub fn get_pool_state_pda(
     // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
     let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
         if primary_token_mint < base_token_mint {
+            // Tokens are in normal order: primary = token_a, base = token_b
             (ratio_primary_per_base, 1u64)
         } else {
-            // Use canonical form - both pools with same token pair get same ratio
-            (ratio_primary_per_base, 1u64)
+            // Tokens are swapped: primary = token_b, base = token_a
+            // So ratio needs to be inverted: if primary/base was N:1, then token_a/token_b is 1:N
+            (1u64, ratio_primary_per_base)
         };
     
     // Find PDA with canonical bump seed
