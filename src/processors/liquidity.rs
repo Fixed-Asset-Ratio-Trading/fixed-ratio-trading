@@ -477,16 +477,29 @@ pub fn process_deposit(
         &[pool_state_pda_seeds],
     )?;
 
-    // Transfer deposit fee to pool state PDA
+    //=========================================================================
+    // CONTRACT FEE TRANSFER (Fixed SOL Amount)  
+    //=========================================================================
+    // Contract fees are paid in SOL to cover transaction processing costs.
+    // For liquidity operations, this covers token transfers, LP minting, and
+    // pool state updates.
+    //
+    // Amount: 0.0013 SOL (1,300,000 lamports)
+    // Purpose: Cover computational costs of liquidity operations
+    
     if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("Insufficient SOL for deposit fee. User lamports: {}", user_signer.lamports());
+        msg!("❌ Insufficient SOL for contract fee. Required: {} lamports, Available: {} lamports", 
+             DEPOSIT_WITHDRAWAL_FEE, user_signer.lamports());
         return Err(ProgramError::InsufficientFunds);
     }
+    
     invoke(
         &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
         &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
-    msg!("Deposit fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
+    
+    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
+         DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
 
     Ok(())
 }

@@ -850,7 +850,15 @@ pub fn process_initialize_pool(
         &[pool_state_pda_seeds],
     )?;
 
-    // Transfer registration fee
+    //=========================================================================
+    // CONTRACT FEE TRANSFER (Pool Creation Fee - Fixed SOL Amount)
+    //=========================================================================
+    // Pool creation requires a one-time contract fee to cover the computational
+    // costs of account creation, PDA derivation, and initial setup.
+    //
+    // Amount: 1.15 SOL (1,150,000,000 lamports)
+    // Purpose: Cover pool creation costs and prevent spam pool creation
+    
     invoke(
         &system_instruction::transfer(payer.key, pool_state_pda_account.key, REGISTRATION_FEE),
         &[
@@ -859,6 +867,9 @@ pub fn process_initialize_pool(
             system_program_account.clone(),
         ],
     )?;
+    
+    msg!("✅ Pool creation contract fee transferred: {} lamports ({} SOL) from creator to pool", 
+         REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
 
     // Create and initialize LP token mints
     let rent_for_mint = rent.minimum_balance(MintAccount::LEN);

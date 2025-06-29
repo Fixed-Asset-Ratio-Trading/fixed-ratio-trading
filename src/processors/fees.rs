@@ -2,6 +2,26 @@
 //! 
 //! This module contains all the processors for fee-related operations including
 //! fee withdrawals, fee configuration, and fee collection management.
+//!
+//! ## Fee Types Overview
+//! 
+//! The Fixed Ratio Trading system implements two distinct fee types:
+//!
+//! ### 1. Contract Fees (Fixed SOL amounts)
+//! - **Pool Creation**: 1.15 SOL per pool creation
+//! - **Liquidity Operations**: 0.0013 SOL per deposit/withdrawal  
+//! - **Swaps**: 0.0000125 SOL per swap transaction
+//! - **Purpose**: Cover operational costs and prevent spam
+//! - **Collection**: Automatically transferred to pool state PDA
+//! - **Withdrawal**: Via `process_withdraw_fees()` by pool owner
+//!
+//! ### 2. Pool Fees (Percentage-based on tokens)
+//! - **Rate**: 0% to 0.5% configurable by pool owner/delegates
+//! - **Default**: 0% (free trading by default)
+//! - **Application**: Deducted from input tokens during swaps
+//! - **Purpose**: Revenue generation for pool operators
+//! - **Collection**: Tracked in pool state (`collected_fees_token_a`, `collected_fees_token_b`)
+//! - **Withdrawal**: Via delegate system with time delays
 
 use crate::types::*;
 use crate::utils::*;
@@ -15,12 +35,19 @@ use solana_program::{
 };
 use borsh::BorshDeserialize;
 
-/// Processes fee withdrawals by the pool owner.
+/// Processes **Contract Fee** withdrawals by the pool owner.
 ///
-/// This function allows the pool owner to withdraw accumulated SOL fees collected from
-/// pool operations (deposits, withdrawals, swaps, registration). The withdrawal maintains
-/// rent-exempt status by ensuring sufficient SOL remains in the pool state account.
-/// Only the designated pool owner can execute fee withdrawals.
+/// This function allows the pool owner to withdraw accumulated **SOL fees** (contract fees) 
+/// collected from pool operations. These are the fixed SOL amounts charged for:
+/// - Pool creation (1.15 SOL)
+/// - Deposits/withdrawals (0.0013 SOL each)  
+/// - Swaps (0.0000125 SOL each)
+///
+/// The withdrawal maintains rent-exempt status by ensuring sufficient SOL remains in the 
+/// pool state account. Only the designated pool owner can execute SOL fee withdrawals.
+///
+/// **Note**: This function handles SOL fees only. For SPL token fee withdrawals (pool fees),
+/// use the delegate withdrawal system through `WithdrawFeesToDelegate`.
 ///
 /// # Purpose
 /// - Enables pool owner to collect accumulated SOL fees for operational costs

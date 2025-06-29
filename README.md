@@ -71,6 +71,155 @@ create_pool(&sol_mint, &usdc_mint, ratio_2); // ❌ Fails - same token pair
 
 This design ensures **optimal liquidity concentration** and **market efficiency** while preventing the chaos of fragmented liquidity pools.
 
+## 💰 Fee Structure
+
+The Fixed Ratio Trading system implements **two distinct types of fees** to ensure sustainable operations while maintaining competitive trading costs:
+
+### 1. **Contract Fees** (Fixed SOL Amounts) ⚡
+
+These are **operational fees paid in Solana (SOL)** to cover transaction processing costs. They are **fixed amounts** that do not vary based on trade size or token values.
+
+| Operation | Fee Amount | Purpose |
+|-----------|------------|---------|
+| **Pool Creation** | **1.15 SOL** | One-time fee for creating a new trading pool, including account setup and PDA creation |
+| **Deposit/Withdrawal** | **0.0013 SOL** | Fee for liquidity operations (adding or removing liquidity from pools) |
+| **Token Swap** | **0.0000125 SOL** | Fee for executing token swaps and updating pool state |
+
+#### **Contract Fee Examples:**
+
+```rust
+// Example 1: Create a new USDC/SOL pool
+// Contract Fee: 1.15 SOL (paid once during pool creation)
+
+// Example 2: Add 1000 USDC liquidity to pool  
+// Contract Fee: 0.0013 SOL (paid for the deposit operation)
+
+// Example 3: Swap 500 USDC for SOL
+// Contract Fee: 0.0000125 SOL (paid for the swap operation)
+```
+
+**Key Characteristics:**
+- ✅ **Fixed Amounts**: Same fee regardless of transaction size
+- ✅ **SOL-Denominated**: Always paid in Solana native token
+- ✅ **Operational Cost Coverage**: Cover computational and storage costs
+- ✅ **Spam Prevention**: Prevent abuse through nominal fees
+
+### 2. **Pool Fees** (Percentage-Based on Traded Assets) 📊
+
+These are **trading fees paid as a percentage of the tokens being traded**. They generate revenue for pool operators and can be configured by the pool owner.
+
+| Configuration | Fee Rate | Applied To |
+|---------------|----------|------------|
+| **Default Setting** | **0%** | No trading fees (free trading by default) |
+| **Maximum Allowed** | **0.5%** | Maximum percentage fee that can be set |
+| **Configurable Range** | **0% to 0.5%** | Pool owner can set any rate within this range |
+
+#### **Pool Fee Calculation:**
+```rust
+fee_amount = input_token_amount * fee_basis_points / 10_000
+
+// Examples with different fee rates:
+// Input: 1000 tokens, Fee: 0% → Fee: 0 tokens
+// Input: 1000 tokens, Fee: 0.1% (10 basis points) → Fee: 1 token  
+// Input: 1000 tokens, Fee: 0.25% (25 basis points) → Fee: 2.5 tokens
+// Input: 1000 tokens, Fee: 0.5% (50 basis points) → Fee: 5 tokens
+```
+
+#### **Pool Fee Examples:**
+
+**Scenario 1: Pool with 0% trading fee (default)**
+```rust
+// User swaps 1000 USDC for SOL
+// Pool Fee: 0 USDC (no trading fee)  
+// Effective Input: 1000 USDC (full amount)
+// User receives: SOL equivalent of 1000 USDC at pool ratio
+// Contract Fee: 0.0000125 SOL (separate operational fee)
+```
+
+**Scenario 2: Pool with 0.25% trading fee**
+```rust
+// User swaps 1000 USDC for SOL  
+// Pool Fee: 2.5 USDC (1000 × 0.0025)
+// Effective Input: 997.5 USDC (1000 - 2.5 fee)
+// User receives: SOL equivalent of 997.5 USDC at pool ratio
+// Pool retains: 2.5 USDC (revenue for pool operator/delegates)
+// Contract Fee: 0.0000125 SOL (separate operational fee)
+```
+
+**Scenario 3: Pool with maximum 0.5% trading fee**
+```rust
+// User swaps 1000 USDC for SOL
+// Pool Fee: 5 USDC (1000 × 0.005)  
+// Effective Input: 995 USDC (1000 - 5 fee)
+// User receives: SOL equivalent of 995 USDC at pool ratio
+// Pool retains: 5 USDC (revenue for pool operator/delegates)
+// Contract Fee: 0.0000125 SOL (separate operational fee)
+```
+
+#### **Pool Fee Management:**
+
+**Setting Trading Fees:**
+```rust
+// Pool owner or authorized delegate can modify trading fees
+let fee_change_request = PoolInstruction::RequestDelegateAction {
+    action_type: DelegateActionType::FeeChange,
+    params: DelegateActionParams::FeeChange { 
+        new_fee_basis_points: 25 // Set to 0.25% (25 basis points)
+    },
+};
+
+// Execute after time delay (governance protection)  
+let execute_fee_change = PoolInstruction::ExecuteDelegateAction {
+    action_id: pending_action_id,
+};
+```
+
+**Fee Revenue Collection:**
+```rust
+// Authorized delegates can withdraw collected trading fees
+let withdraw_request = PoolInstruction::RequestDelegateAction {
+    action_type: DelegateActionType::Withdrawal,
+    params: DelegateActionParams::Withdrawal {
+        token_mint: usdc_mint,
+        amount: collected_usdc_fees,
+    },
+};
+```
+
+### **Fee Structure Summary**
+
+| Fee Type | Payment Method | Amount | When Applied | Purpose |
+|----------|----------------|---------|--------------|----------|
+| **Contract Fees** | Fixed SOL amounts | 1.15 SOL (pool creation)<br/>0.0013 SOL (liquidity)<br/>0.0000125 SOL (swaps) | All operations | Transaction processing costs |
+| **Pool Fees** | Percentage of traded tokens | 0% to 0.5% configurable | Token swaps only | Revenue generation for pool operators |
+
+### **Benefits of This Dual Fee Structure:**
+
+✅ **Predictable Operational Costs**: Fixed SOL fees provide predictable transaction costs  
+✅ **Competitive Trading**: 0% default trading fees encourage liquidity and volume  
+✅ **Revenue Flexibility**: Pool operators can set trading fees based on market conditions  
+✅ **Spam Protection**: Nominal SOL fees prevent abuse and spam transactions  
+✅ **Sustainable Operations**: Fee collection supports long-term pool maintenance  
+✅ **Transparent Pricing**: Clear separation between operational costs and trading fees  
+
+### **For Developers and Integrators:**
+
+```rust
+// Always account for both fee types in your calculations:
+
+// 1. Contract Fee (SOL) - paid separately by transaction sender
+let required_sol_balance = user_sol_balance >= SWAP_FEE; // 0.0000125 SOL
+
+// 2. Pool Fee (tokens) - deducted from input token amount  
+let pool_fee = input_amount * pool.swap_fee_basis_points / 10_000;
+let effective_input = input_amount - pool_fee;
+let expected_output = calculate_swap_output(effective_input, pool_ratio);
+
+// Total user cost:
+// - SOL: 0.0000125 SOL (contract fee)
+// - Tokens: pool_fee amount of input token (if pool fee > 0%)
+```
+
 ## Recent Improvements ✨
 
 ### **NEW: Single-Instruction Pool Initialization**
@@ -537,30 +686,39 @@ You can migrate incrementally:
 
 ## Constants
 
+### Fee-Related Constants
 ```rust
-const REGISTRATION_FEE: u64 = 1_150_000_000;        // 1.15 SOL
-const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000;      // 0.0013 SOL  
-const SWAP_FEE: u64 = 12_500;                       // 0.0000125 SOL
-const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50;          // 0.5% maximum
-const MAX_DELEGATES: usize = 3;                     // Maximum delegates
-const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;          // 5 minutes
-const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;       // 72 hours
+// Contract Fees (Fixed SOL amounts)
+const REGISTRATION_FEE: u64 = 1_150_000_000;        // 1.15 SOL (pool creation)
+const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000;      // 0.0013 SOL (liquidity operations)
+const SWAP_FEE: u64 = 12_500;                       // 0.0000125 SOL (token swaps)
+
+// Pool Fees (Percentage-based)
+const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50;          // 0.5% maximum trading fee
+const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10_000;   // Basis points conversion (1 bp = 0.01%)
+```
+
+### System Configuration Constants
+```rust
+const MAX_DELEGATES: usize = 3;                     // Maximum delegates per pool
+const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;          // 5 minutes minimum wait
+const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;       // 72 hours maximum wait
 
 // Pool Pause Constants
 const MIN_POOL_PAUSE_TIME: u64 = 60;                // 1 minute minimum
 const MAX_POOL_PAUSE_TIME: u64 = 259200;            // 72 hours maximum
 const DEFAULT_POOL_PAUSE_WAIT_TIME: u64 = 259200;   // 72 hours default wait
 
-// New Delegate Management Constants
-const MIN_ACTION_WAIT_TIME: u64 = 300;          // 5 minutes minimum
-const MAX_ACTION_WAIT_TIME: u64 = 259200;       // 72 hours maximum
-const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600; // 1 hour default for fee changes
-const MAX_PENDING_ACTIONS: usize = 6;           // Maximum pending actions across ALL delegates
-const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2; // Each delegate can have up to 2 concurrent actions
+// Delegate Management Constants
+const MIN_ACTION_WAIT_TIME: u64 = 300;              // 5 minutes minimum action wait
+const MAX_ACTION_WAIT_TIME: u64 = 259200;           // 72 hours maximum action wait
+const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600;     // 1 hour default for fee changes
+const MAX_PENDING_ACTIONS: usize = 6;               // Maximum pending actions (all delegates)
+const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2;  // Maximum per delegate
 
 // System-Wide Pause Constants
-const SYSTEM_STATE_LEN: usize = 245;            // SystemState account size
-const MAX_PAUSE_REASON_LENGTH: usize = 200;     // Maximum pause reason string length
+const SYSTEM_STATE_LEN: usize = 245;                // SystemState account size
+const MAX_PAUSE_REASON_LENGTH: usize = 200;         // Maximum pause reason length
 ```
 
 ## Error Handling

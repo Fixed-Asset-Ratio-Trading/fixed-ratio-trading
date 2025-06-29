@@ -120,9 +120,32 @@ use crate::{
 /// - **Pause Enforcement**: Blocks swaps when pool is paused (checked in main dispatcher)
 ///
 /// # Fee Structure
-/// - **Trading Fees**: 0-0.5% (0-50 basis points) configurable by pool owner
-/// - **SOL Processing Fee**: Fixed 1000 lamports per swap for transaction costs
-/// - **Fee Destination**: Trading fees accumulated in pool state, SOL fees to pool PDA
+/// 
+/// This function implements the **dual fee structure** of the Fixed Ratio Trading system:
+/// 
+/// ### 1. Contract Fee (Fixed SOL Amount)
+/// - **Amount**: 0.0000125 SOL (12,500 lamports) per swap
+/// - **Purpose**: Cover transaction processing costs
+/// - **Payment**: Transferred from user's SOL balance to pool state PDA
+/// - **Type**: Operational fee, independent of trade size
+/// 
+/// ### 2. Pool Fee (Percentage-Based on Tokens)
+/// - **Rate**: 0-0.5% (0-50 basis points) configurable by pool owner
+/// - **Default**: 0% (free trading by default)
+/// - **Application**: Deducted from input token amount before calculating output
+/// - **Calculation**: `fee_amount = input_amount * pool.swap_fee_basis_points / 10_000`
+/// - **Purpose**: Revenue generation for pool operators and delegates
+/// - **Collection**: Accumulated in pool state, withdrawable by authorized delegates
+/// 
+/// **Example with 0.25% pool fee:**
+/// ```ignore
+/// // User swaps 1000 USDC for SOL (pool fee = 25 basis points)
+/// // 1. Pool Fee: 2.5 USDC (1000 * 25 / 10000)
+/// // 2. Effective Input: 997.5 USDC (1000 - 2.5)
+/// // 3. Output Calculation: Based on 997.5 USDC at pool ratio
+/// // 4. Contract Fee: 0.0000125 SOL (paid separately)
+/// // 5. Pool Revenue: 2.5 USDC retained for future withdrawal
+/// ```
 ///
 /// # Error Conditions
 /// - `ProgramError::MissingRequiredSignature` - User didn't sign transaction
@@ -304,7 +327,15 @@ pub fn process_swap(
         }.into());
     }
 
-    // Calculate and collect trading fees using configurable rate
+    //=========================================================================
+    // POOL FEE CALCULATION (Percentage-Based)
+    //=========================================================================
+    // Pool fees are deducted from the input token amount before calculating
+    // the swap output. This represents revenue for the pool operator.
+    //
+    // Formula: fee_amount = input_amount * fee_basis_points / 10_000
+    // Example: 1000 tokens * 25 basis points / 10000 = 2.5 tokens (0.25% fee)
+    
     let fee_amount = if pool_state_data.swap_fee_basis_points == 0 {
         0u64 // No fee if set to 0%
     } else {
@@ -315,9 +346,13 @@ pub fn process_swap(
             .ok_or(ProgramError::ArithmeticOverflow)?
     };
     
+    // Effective input amount after deducting pool fee
     let amount_after_fee = amount_in
         .checked_sub(fee_amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+        
+    msg!("Pool fee calculation: input={}, fee_basis_points={}, fee_amount={}, amount_after_fee={}", 
+         amount_in, pool_state_data.swap_fee_basis_points, fee_amount, amount_after_fee);
 
     msg!("Swap calculation: Input: {}, Fee: {} ({:.2}% rate), After fee: {}, Output: {}", 
          amount_in, fee_amount, pool_state_data.swap_fee_basis_points as f64 / 100.0, amount_after_fee, amount_out);
@@ -429,16 +464,28 @@ pub fn process_swap(
     msg!("Fees collected - Token A: {}, Token B: {}", 
            pool_state_data.collected_fees_token_a, pool_state_data.collected_fees_token_b);
 
-    // Transfer swap fee to pool state PDA
+    //=========================================================================
+    // CONTRACT FEE TRANSFER (Fixed SOL Amount)
+    //=========================================================================
+    // Contract fees are paid in SOL to cover transaction processing costs.
+    // This is separate from the pool fee and covers operational expenses.
+    //
+    // Amount: 0.0000125 SOL (12,500 lamports)
+    // Purpose: Transaction processing, account updates, rent maintenance
+    
     if user_signer.lamports() < SWAP_FEE {
-        msg!("Insufficient SOL for swap fee. User lamports: {}", user_signer.lamports());
+        msg!("❌ Insufficient SOL for contract fee. Required: {} lamports, Available: {} lamports", 
+             SWAP_FEE, user_signer.lamports());
         return Err(ProgramError::InsufficientFunds);
     }
+    
     invoke(
         &system_instruction::transfer(user_signer.key, pool_state_account.key, SWAP_FEE),
         &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
-    msg!("Swap fee {} transferred to pool state PDA", SWAP_FEE);
+    
+    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
+         SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
 
     Ok(())
 }
