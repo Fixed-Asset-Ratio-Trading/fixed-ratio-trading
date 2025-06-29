@@ -2056,7 +2056,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         // Verify fee collection state
         assert_eq!(pool_state.collected_fees_token_a, 0, "Initial collected fees Token A should be zero");
         assert_eq!(pool_state.collected_fees_token_b, 0, "Initial collected fees Token B should be zero");
-        assert_eq!(pool_state.collected_sol_fees, 0, "Initial collected SOL fees should be zero");
+        assert_eq!(pool_state.collected_sol_fees, 1_150_000_000, "Initial collected SOL fees should include registration fee");
         
         // Verify withdrawal tracking
         assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Initial withdrawn fees Token A should be zero");

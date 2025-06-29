@@ -700,16 +700,31 @@ function createPoolCard(pool) {
                 <div class="metric-value">${display.rateText}</div>
             </div>
             
-            <div class="pool-metric">
-                <div class="metric-label">Swap Fee</div>
-                <div class="metric-value">${pool.swapFeeBasisPoints} bps</div>
+            <div class="pool-metric" title="Pool fee rate (percentage of traded tokens)">
+                <div class="metric-label">Pool Fee Rate 📈</div>
+                <div class="metric-value">${pool.swapFeeBasisPoints} bps${pool.swapFeeBasisPoints === 0 ? ' (FREE)' : ''}</div>
             </div>
             
-            <div class="pool-metric">
-                <div class="metric-label">Collected Fees (SOL)</div>
-                <div class="metric-value">${(pool.collectedSolFees / 1000000000).toFixed(4)}</div>
+            <div class="pool-metric" title="Contract fees collected in SOL (operational costs)">
+                <div class="metric-label">Contract Fees 💰</div>
+                <div class="metric-value">${(pool.collectedSolFees / 1000000000).toFixed(4)} SOL</div>
             </div>
         </div>
+        
+        <!-- Additional Fee Information -->
+        ${pool.collectedFeesTokenA > 0 || pool.collectedFeesTokenB > 0 ? `
+        <div class="pool-info" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+            <div class="pool-metric" title="Token fees collected from pool percentage rates" style="background: #f0f9ff;">
+                <div class="metric-label">Pool Fees: ${display.baseToken}</div>
+                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(pool.collectedFeesTokenA)}</div>
+            </div>
+            
+            <div class="pool-metric" title="Token fees collected from pool percentage rates" style="background: #f0f9ff;">
+                <div class="metric-label">Pool Fees: ${display.quoteToken}</div>
+                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(pool.collectedFeesTokenB)}</div>
+            </div>
+        </div>
+        ` : ''}
         
         <div class="pool-actions">
             <button class="liquidity-btn" onclick="addLiquidity('${pool.address}')">

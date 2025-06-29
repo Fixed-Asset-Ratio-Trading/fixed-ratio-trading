@@ -198,10 +198,14 @@ pub enum PoolInstruction {
         // No parameters needed - reads from pool state account
     },
     
-    /// Returns fee information including collected fees and fee rates
-    /// Important for fee tracking and transparency
+    /// **VIEW INSTRUCTION**: Get fee information including rates and collected amounts
     GetFeeInfo {
-        // No parameters needed - reads from pool state account
+        // No fields needed - reads from pool state
+    },
+    
+    /// **VIEW INSTRUCTION**: Get pool state PDA SOL balance
+    GetPoolSolBalance {
+        // No fields needed - reads from pool state account balance
     },
     
     /// Withdraws accumulated SOL fees from the pool state account

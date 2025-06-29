@@ -33,7 +33,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar, clock::Clock},
 };
-use borsh::BorshDeserialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Processes **Contract Fee** withdrawals by the pool owner.
 ///
@@ -170,7 +170,27 @@ pub fn process_withdraw_fees(
     **pool_state.try_borrow_mut_lamports()? -= available_fees;
     **owner.try_borrow_mut_lamports()? += available_fees;
 
+    //=========================================================================
+    // UPDATE CONTRACT FEE TRACKING
+    //=========================================================================
+    // Update withdrawal tracking for SOL fees
+    
+    let mut updated_pool_state = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
+    updated_pool_state.total_sol_fees_withdrawn = updated_pool_state.total_sol_fees_withdrawn
+        .checked_add(available_fees)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+        
+    // Serialize updated tracking data
+    let mut updated_data = Vec::new();
+    updated_pool_state.serialize(&mut updated_data)?;
+    
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..updated_data.len()].copy_from_slice(&updated_data);
+    }
+
     msg!("Fee withdrawal completed successfully. Amount: {} lamports", available_fees);
+    msg!("Total SOL fees withdrawn to date: {} lamports", updated_pool_state.total_sol_fees_withdrawn);
 
     Ok(())
 } 

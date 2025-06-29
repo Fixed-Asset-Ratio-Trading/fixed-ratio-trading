@@ -487,6 +487,27 @@ pub fn process_swap(
     msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
          SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
 
+    //=========================================================================
+    // UPDATE CONTRACT FEE TRACKING
+    //=========================================================================
+    // Track the SOL contract fee in pool state for proper accounting
+    
+    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
+        .checked_add(SWAP_FEE)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+        
+    // Serialize updated pool state with fee tracking
+    let mut updated_serialized_data = Vec::new();
+    pool_state_data.serialize(&mut updated_serialized_data)?;
+    
+    {
+        let mut account_data = pool_state_account.data.borrow_mut();
+        account_data[..updated_serialized_data.len()].copy_from_slice(&updated_serialized_data);
+    }
+    
+    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
+         pool_state_data.collected_sol_fees);
+
     Ok(())
 }
 

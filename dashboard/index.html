@@ -343,6 +343,10 @@
                 padding: 20px;
             }
             
+            .fee-info-section div[style*="grid-template-columns"] {
+                grid-template-columns: 1fr !important;
+            }
+            
             .status-grid {
                 grid-template-columns: 1fr;
             }
@@ -376,6 +380,41 @@
         </div>
         
         <div id="error-container"></div>
+        
+        <!-- Fee Structure Information -->
+        <div class="fee-info-section" style="background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border-radius: 12px; padding: 25px; margin-bottom: 30px; border: 1px solid #d1d5db;">
+            <h2 style="color: #374151; margin-bottom: 20px; font-size: 1.5em; text-align: center;">
+                💡 Fixed Ratio Trading Fee Structure
+            </h2>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <h3 style="color: #3b82f6; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        💰 Contract Fees (Fixed SOL)
+                    </h3>
+                    <div style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">
+                        Fixed SOL amounts for operational costs
+                    </div>
+                    <ul style="font-size: 13px; color: #4b5563; line-height: 1.6; margin-left: 16px;">
+                        <li><strong>Pool Creation:</strong> 1.15 SOL</li>
+                        <li><strong>Liquidity Ops:</strong> 0.0013 SOL</li>
+                        <li><strong>Swaps:</strong> 0.0000125 SOL</li>
+                    </ul>
+                </div>
+                <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #10b981;">
+                    <h3 style="color: #10b981; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        📈 Pool Fees (Percentage-Based)
+                    </h3>
+                    <div style="font-size: 14px; color: #6b7280; margin-bottom: 12px;">
+                        Configurable % of traded tokens
+                    </div>
+                    <ul style="font-size: 13px; color: #4b5563; line-height: 1.6; margin-left: 16px;">
+                        <li><strong>Default Rate:</strong> 0% (Free trading)</li>
+                        <li><strong>Maximum Rate:</strong> 0.5% (50 basis points)</li>
+                        <li><strong>Applied To:</strong> Input token amount</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
         
         <div class="status-grid">
             <div class="status-card system">
@@ -427,17 +466,17 @@
             </div>
             
             <div class="status-card fees">
-                <h3>📊 Fee Information</h3>
-                <div class="status-item">
-                    <span class="status-label">Total Fees Collected</span>
+                <h3>📊 Fee Structure Overview</h3>
+                <div class="status-item" title="Contract fees are fixed SOL amounts collected for operational costs">
+                    <span class="status-label">Contract Fees (SOL) 💰</span>
                     <span class="status-value" id="total-fees">0 SOL</span>
                 </div>
-                <div class="status-item">
-                    <span class="status-label">Avg Swap Fee</span>
+                <div class="status-item" title="Pool fees are percentage-based on traded tokens (0-0.5%)">
+                    <span class="status-label">Avg Pool Fee Rate 📈</span>
                     <span class="status-value" id="avg-swap-fee">-- bps</span>
                 </div>
-                <div class="status-item">
-                    <span class="status-label">Pool Controllers</span>
+                <div class="status-item" title="Pool operators with delegate privileges">
+                    <span class="status-label">Pool Controllers 👥</span>
                     <span class="status-value" id="total-delegates">--</span>
                 </div>
             </div>

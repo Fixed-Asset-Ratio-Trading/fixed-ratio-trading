@@ -936,14 +936,15 @@ async fn test_fee_collection_state_tracking() -> TestResult {
     assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Initial Token A withdrawals should be 0");
     assert_eq!(pool_state.total_fees_withdrawn_token_b, 0, "Initial Token B withdrawals should be 0");
     assert_eq!(pool_state.swap_fee_basis_points, 0, "Initial swap fee should be 0");
-    assert_eq!(pool_state.collected_sol_fees, 0, "Initial SOL fees should be 0");
+    assert_eq!(pool_state.collected_sol_fees, 1_150_000_000, "Initial SOL fees should include registration fee");
     assert_eq!(pool_state.total_sol_fees_withdrawn, 0, "Initial SOL withdrawals should be 0");
 
     println!("✅ Fee collection state tracking verified:");
     println!("   - Token A fees collected: {}", pool_state.collected_fees_token_a);
     println!("   - Token B fees collected: {}", pool_state.collected_fees_token_b);
     println!("   - Swap fee basis points: {}", pool_state.swap_fee_basis_points);
-    println!("   - SOL fees collected: {}", pool_state.collected_sol_fees);
+    println!("   - SOL fees collected: {} lamports ({:.6} SOL)", pool_state.collected_sol_fees, pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
+    println!("   - This includes the 1.15 SOL registration fee from pool creation");
     
     Ok(())
 }

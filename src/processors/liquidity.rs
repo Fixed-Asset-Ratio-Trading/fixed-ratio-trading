@@ -501,6 +501,27 @@ pub fn process_deposit(
     msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
          DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
 
+    //=========================================================================
+    // UPDATE CONTRACT FEE TRACKING
+    //=========================================================================
+    // Track the SOL contract fee in pool state for proper accounting
+    
+    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
+        .checked_add(DEPOSIT_WITHDRAWAL_FEE)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+        
+    // Serialize updated pool state with fee tracking
+    let mut updated_serialized_data = Vec::new();
+    pool_state_data.serialize(&mut updated_serialized_data)?;
+    
+    {
+        let mut account_data = pool_state_account.data.borrow_mut();
+        account_data[..updated_serialized_data.len()].copy_from_slice(&updated_serialized_data);
+    }
+        
+    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
+         pool_state_data.collected_sol_fees);
+
     Ok(())
 }
 
@@ -997,7 +1018,19 @@ fn execute_withdrawal_logic<'a>(
         &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
         &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
     )?;
+    
+    //=========================================================================
+    // UPDATE CONTRACT FEE TRACKING
+    //=========================================================================
+    // Track the SOL contract fee in pool state for proper accounting
+    
+    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
+        .checked_add(DEPOSIT_WITHDRAWAL_FEE)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+        
     msg!("Withdrawal fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
+    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
+         pool_state_data.collected_sol_fees);
 
     Ok(())
 } 

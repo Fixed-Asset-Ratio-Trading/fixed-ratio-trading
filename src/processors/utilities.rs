@@ -342,7 +342,8 @@ pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// **VIEW INSTRUCTION**: Returns fee information including collected fees and rates.
 /// 
 /// This function provides comprehensive fee information essential for fee tracking,
-/// transparency, and financial reporting.
+/// transparency, and financial reporting. Shows both tracked fee amounts and 
+/// actual account balances for complete transparency.
 /// 
 /// # Arguments
 /// * `accounts` - Must contain pool state account as first account
@@ -355,16 +356,84 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
 
     let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
 
-    msg!("Fee Info:");
-    msg!("Current Swap Fee: {} basis points", pool_state.swap_fee_basis_points);
-    msg!("Collected Fees:");
-    msg!("  Token A: {}", pool_state.collected_fees_token_a);
-    msg!("  Token B: {}", pool_state.collected_fees_token_b);
-    msg!("  SOL: {}", pool_state.collected_sol_fees);
-    msg!("Total Fees Withdrawn:");
-    msg!("  Token A: {}", pool_state.total_fees_withdrawn_token_a);
-    msg!("  Token B: {}", pool_state.total_fees_withdrawn_token_b);
-    msg!("  SOL: {}", pool_state.total_sol_fees_withdrawn);
+    msg!("=== FEE INFORMATION ===");
+    
+    // Pool fees (percentage-based on tokens)
+    msg!("Pool Fees (Trading Fees):");
+    msg!("  Current Swap Fee Rate: {} basis points ({:.2}%)", 
+         pool_state.swap_fee_basis_points, 
+         pool_state.swap_fee_basis_points as f64 / 100.0);
+    msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
+    msg!("  Collected Token B Fees: {}", pool_state.collected_fees_token_b);
+    msg!("  Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);
+    msg!("  Total Token B Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_b);
+    
+    // Contract fees (fixed SOL amounts)
+    msg!("Contract Fees (SOL):");
+    msg!("  Tracked SOL Fees Collected: {} lamports ({:.6} SOL)", 
+         pool_state.collected_sol_fees,
+         pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
+    msg!("  Total SOL Fees Withdrawn: {} lamports ({:.6} SOL)", 
+         pool_state.total_sol_fees_withdrawn,
+         pool_state.total_sol_fees_withdrawn as f64 / 1_000_000_000.0);
+    
+    // Actual pool state PDA balance
+    let current_pool_balance = pool_state_account.lamports();
+    msg!("Pool State PDA Balance:");
+    msg!("  Current SOL Balance: {} lamports ({:.6} SOL)", 
+         current_pool_balance,
+         current_pool_balance as f64 / 1_000_000_000.0);
+    
+    // Calculate available fees for withdrawal (balance minus rent-exempt minimum)
+    // Note: This is an approximation since we don't have rent sysvar here
+    let estimated_rent_minimum = 2_500_000; // Conservative estimate for pool state account
+    let estimated_available_fees = if current_pool_balance > estimated_rent_minimum {
+        current_pool_balance - estimated_rent_minimum
+    } else {
+        0
+    };
+    
+    msg!("  Estimated Available for Withdrawal: {} lamports ({:.6} SOL)", 
+         estimated_available_fees,
+         estimated_available_fees as f64 / 1_000_000_000.0);
+    msg!("  (Note: Exact amount calculated during withdrawal with current rent rates)");
+    
+    msg!("=======================");
+
+    Ok(())
+}
+
+/// **VIEW INSTRUCTION**: Returns the actual SOL balance of the pool state PDA.
+/// 
+/// This function provides direct access to the pool state account's SOL balance,
+/// allowing users to see exactly how much SOL is held by the pool.
+/// 
+/// # Arguments
+/// * `accounts` - Must contain pool state account as first account
+/// 
+/// # Returns
+/// * `ProgramResult` - Logs pool state PDA SOL balance information
+pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
+    let account_info_iter = &mut accounts.iter();
+    let pool_state_account = next_account_info(account_info_iter)?;
+
+    let current_balance = pool_state_account.lamports();
+    let estimated_rent_minimum = 2_500_000; // Conservative estimate
+    let estimated_available = if current_balance > estimated_rent_minimum {
+        current_balance - estimated_rent_minimum
+    } else {
+        0
+    };
+
+    msg!("=== POOL SOL BALANCE ===");
+    msg!("Pool State PDA: {}", pool_state_account.key);
+    msg!("Current SOL Balance: {} lamports", current_balance);
+    msg!("Current SOL Balance: {:.6} SOL", current_balance as f64 / 1_000_000_000.0);
+    msg!("Estimated Rent-Exempt Minimum: {} lamports", estimated_rent_minimum);
+    msg!("Estimated Available for Withdrawal: {} lamports", estimated_available);
+    msg!("Estimated Available for Withdrawal: {:.6} SOL", estimated_available as f64 / 1_000_000_000.0);
+    msg!("Note: Use WithdrawFees instruction for exact calculations with current rent rates");
+    msg!("========================");
 
     Ok(())
 }

@@ -148,6 +148,7 @@ use crate::processors::{
         get_liquidity_info,
         get_delegate_info,
         get_fee_info,
+        get_pool_sol_balance,
         process_get_version,
     },
 };
@@ -262,6 +263,8 @@ pub fn process_instruction(
         PoolInstruction::GetDelegateInfo {} => get_delegate_info(accounts),
 
         PoolInstruction::GetFeeInfo {} => get_fee_info(accounts),
+        
+        PoolInstruction::GetPoolSolBalance {} => get_pool_sol_balance(accounts),
         
         PoolInstruction::WithdrawFees => process_withdraw_fees(program_id, accounts),
 

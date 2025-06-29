@@ -1039,7 +1039,8 @@ pub fn process_initialize_pool(
     pool_state_data.total_fees_withdrawn_token_a = 0;
     pool_state_data.total_fees_withdrawn_token_b = 0;
     pool_state_data.swap_fee_basis_points = 0;
-    pool_state_data.collected_sol_fees = 0;
+    // Initialize SOL fee tracking with registration fee
+    pool_state_data.collected_sol_fees = REGISTRATION_FEE;
     pool_state_data.total_sol_fees_withdrawn = 0;
 
     // **Use standardized GitHub Issue #31960 workaround**
