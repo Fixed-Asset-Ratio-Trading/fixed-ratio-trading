@@ -1568,7 +1568,7 @@ async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
 /// 2. Token mint information extraction and validation
 /// 3. Pool configuration parameters (fees, ratios, etc.) verification
 /// 4. Pool status and operational state analysis
-/// 5. Owner and delegate information accuracy
+/// 5. Owner information accuracy
 /// 6. Pool metadata and configuration completeness
 /// 7. Liquidity information and balance validation
 /// 8. Edge cases and error handling scenarios
@@ -1797,26 +1797,26 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         println!("Test 4: Owner information accuracy");
         
         // Create a pool for owner testing
-        let delegate_primary_mint = Keypair::new();
-        let delegate_base_mint = Keypair::new();
-        let delegate_lp_a_mint = Keypair::new();
-        let delegate_lp_b_mint = Keypair::new();
+        let owner_primary_mint = Keypair::new();
+        let owner_base_mint = Keypair::new();
+        let owner_lp_a_mint = Keypair::new();
+        let owner_lp_b_mint = Keypair::new();
         
         create_test_mints(
             &mut ctx.env.banks_client,
             &ctx.env.payer,
             ctx.env.recent_blockhash,
-            &[&delegate_primary_mint, &delegate_base_mint],
+            &[&owner_primary_mint, &owner_base_mint],
         ).await?;
         
-        let delegate_pool_config = create_pool_new_pattern(
+        let owner_pool_config = create_pool_new_pattern(
             &mut ctx.env.banks_client,
             &ctx.env.payer,
             ctx.env.recent_blockhash,
-            &delegate_primary_mint,
-            &delegate_base_mint,
-            &delegate_lp_a_mint,
-            &delegate_lp_b_mint,
+            &owner_primary_mint,
+            &owner_base_mint,
+            &owner_lp_a_mint,
+            &owner_lp_b_mint,
             None,
         ).await?;
         
@@ -1826,7 +1826,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(delegate_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(owner_pool_config.pool_state_pda, false),
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1842,14 +1842,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         assert!(result.is_ok(), "get_pool_info instruction should succeed for owner info");
         
         // Verify owner information
-        let pool_state = get_pool_state(&mut ctx.env.banks_client, &delegate_pool_config.pool_state_pda).await
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &owner_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
         // Verify owner information
         assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
         
-        // Note: Delegate management system has been removed - now using owner-only operations
-        // Pool operations are now controlled directly by the pool owner
+        // Pool operations are controlled directly by the pool owner (owner-only system)
+        // No delegate system - all operations require owner authorization
         
         println!("✅ Owner information accuracy validation passed");
     }

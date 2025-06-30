@@ -31,7 +31,7 @@ SOFTWARE.
 //! - All operations are immediate and direct
 
 use solana_program::sysvar::rent::Rent;
-use solana_sdk::signature::Keypair;
+
 use solana_sdk::transaction::Transaction;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use fixed_ratio_trading::types::instructions::PoolInstruction;

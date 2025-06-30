@@ -33,7 +33,7 @@ SOFTWARE.
 //! prevent DeadlineExceeded errors during test execution.
 //!
 //! Test Coverage:
-//! - SYSTEM-PAUSE-009: Delegate actions blocked when paused
+//! - SYSTEM-PAUSE-009: Owner-only operations respect system pause when paused
 //! - SYSTEM-PAUSE-010: Pool creation blocked when paused
 //! - SYSTEM-PAUSE-011: Read-only queries work when paused
 //! - SYSTEM-PAUSE-012: Pool info accessible when paused
@@ -231,9 +231,9 @@ async fn get_system_state(
 // SYSTEM-PAUSE-009 to 010: OPERATION BLOCKING WHEN PAUSED (Part 2)
 // ================================================================================================
 
-/// Test all delegate actions are blocked when system is paused
+/// Test owner-only operations respect system pause state
 #[tokio::test]
-async fn test_all_delegate_actions_blocked_when_system_paused() -> TestResult {
+async fn test_owner_operations_respect_system_pause() -> TestResult {
     let mut ctx = setup_pool_test_context(false).await;
     
     // Create system state account (empty, demonstrates limitation)
@@ -262,7 +262,7 @@ async fn test_all_delegate_actions_blocked_when_system_paused() -> TestResult {
         None,
     ).await?;
 
-    println!("🧪 Testing delegate actions with empty SystemState - demonstrates need for initialization");
+    println!("🧪 Testing owner-only operations with empty SystemState - demonstrates need for initialization");
 
     // Try to pause the system (will fail due to uninitialized SystemState)
     let pause_result = pause_system(
@@ -281,8 +281,8 @@ async fn test_all_delegate_actions_blocked_when_system_paused() -> TestResult {
         },
         Err(_) => {
             println!("✅ System pause failed as expected due to uninitialized SystemState");
-            println!("   With proper initialization, delegate actions would be blocked during pause");
-            println!("   Delegate actions (add/remove delegates) respect system pause when properly initialized");
+            println!("   With proper initialization, owner operations would respect system pause");
+            println!("   Owner operations (fee changes, withdrawals) respect system pause when properly initialized");
         }
     }
 
