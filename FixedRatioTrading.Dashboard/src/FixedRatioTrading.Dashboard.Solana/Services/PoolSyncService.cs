@@ -51,7 +51,8 @@ public class PoolSyncService : IPoolSyncService
             {
                 // Update existing pool
                 pool = UpdatePoolFromBlockchainData(existingPool, poolStateData);
-                await _poolRepository.UpdateAsync(pool);
+                _poolRepository.Update(pool);
+                await _poolRepository.SaveChangesAsync();
                 _logger.LogInformation("Updated existing pool: {PoolAddress}", poolAddress);
             }
             else
@@ -122,7 +123,8 @@ public class PoolSyncService : IPoolSyncService
             {
                 // Update existing
                 systemState = UpdateSystemStateFromBlockchainData(existing, systemStateData);
-                await _systemStateRepository.UpdateAsync(systemState);
+                _systemStateRepository.Update(systemState);
+                await _systemStateRepository.SaveChangesAsync();
             }
             else
             {
@@ -175,7 +177,8 @@ public class PoolSyncService : IPoolSyncService
         {
             systemState.LastSyncSlot = slot;
             systemState.LastSyncAt = DateTime.UtcNow;
-            await _systemStateRepository.UpdateAsync(systemState);
+            _systemStateRepository.Update(systemState);
+            await _systemStateRepository.SaveChangesAsync();
         }
     }
 

@@ -141,14 +141,14 @@ public class PoolService : IPoolService
             var pausedPools = allPools.Count(p => p.IsPaused || p.SwapsPaused);
 
             // Calculate total value locked (sum of all pool liquidity)
-            var totalValueLocked = allPools.Sum(p => p.TotalTokenALiquidity + p.TotalTokenBLiquidity);
+            var totalValueLocked = allPools.Sum(p => (decimal)(p.TotalTokenALiquidity + p.TotalTokenBLiquidity));
 
             // Get 24h statistics
             var yesterday = DateTime.UtcNow.AddDays(-1);
             var transactions24h = await _transactionRepository.GetTransactionsInLastPeriodAsync(TimeSpan.FromDays(1));
             var volume24h = transactions24h
                 .Where(t => t.Type == TransactionType.Swap)
-                .Sum(t => t.TokenAAmount + t.TokenBAmount);
+                .Sum(t => (decimal)(t.TokenAAmount + t.TokenBAmount));
             
             var uniqueUsers24h = transactions24h
                 .Select(t => t.UserAddress)
@@ -162,8 +162,8 @@ public class PoolService : IPoolService
                 TotalPools = allPools.Count(),
                 ActivePools = activePools,
                 PausedPools = pausedPools,
-                TotalValueLocked = totalValueLocked,
-                Volume24h = volume24h,
+                TotalValueLocked = (ulong)totalValueLocked,
+                Volume24h = (ulong)volume24h,
                 UniqueUsers24h = uniqueUsers24h,
                 TotalTransactions = totalTransactions.Count(),
                 LastUpdated = DateTime.UtcNow

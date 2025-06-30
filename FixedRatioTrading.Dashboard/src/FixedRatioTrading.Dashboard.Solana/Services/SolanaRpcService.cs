@@ -69,15 +69,23 @@ public class SolanaRpcService : ISolanaRpcService
             }
 
             var accountData = result.Result.Value.Data;
-            if (accountData == null || accountData.Length < 8)
+            if (accountData == null || accountData.Count == 0)
             {
                 _logger.LogWarning("Invalid pool account data for: {PoolAddress}", poolAddress);
                 return null;
             }
 
+            // Convert base64 data to byte array
+            var dataBytes = Convert.FromBase64String(accountData[0]);
+            if (dataBytes.Length < 8)
+            {
+                _logger.LogWarning("Invalid pool account data length for: {PoolAddress}", poolAddress);
+                return null;
+            }
+
             // Parse the account data according to your smart contract structure
             // This is a simplified example - you'll need to implement proper binary deserialization
-            return ParsePoolStateData(accountData);
+            return ParsePoolStateData(dataBytes);
         }
         catch (Exception ex)
         {
@@ -99,14 +107,22 @@ public class SolanaRpcService : ISolanaRpcService
             }
 
             var accountData = result.Result.Value.Data;
-            if (accountData == null || accountData.Length < 8)
+            if (accountData == null || accountData.Count == 0)
             {
                 _logger.LogWarning("Invalid system state account data for: {SystemStateAddress}", systemStateAddress);
                 return null;
             }
 
+            // Convert base64 data to byte array
+            var dataBytes = Convert.FromBase64String(accountData[0]);
+            if (dataBytes.Length < 8)
+            {
+                _logger.LogWarning("Invalid system state account data length for: {SystemStateAddress}", systemStateAddress);
+                return null;
+            }
+
             // Parse the account data according to your smart contract structure
-            return ParseSystemStateData(accountData);
+            return ParseSystemStateData(dataBytes);
         }
         catch (Exception ex)
         {
@@ -267,10 +283,8 @@ public class SolanaRpcService : ISolanaRpcService
             return new TransactionData
             {
                 Signature = signature,
-                Slot = transaction.Slot,
-                BlockTime = transaction.BlockTime.HasValue 
-                    ? DateTimeOffset.FromUnixTimeSeconds(transaction.BlockTime.Value).DateTime
-                    : DateTime.UtcNow,
+                Slot = 0, // TODO: Get slot from transaction context
+                BlockTime = DateTime.UtcNow, // TODO: Get block time from transaction context
                 IsSuccessful = transaction.Meta?.Error == null,
                 ErrorMessage = transaction.Meta?.Error?.ToString(),
                 Fee = transaction.Meta?.Fee ?? 0,

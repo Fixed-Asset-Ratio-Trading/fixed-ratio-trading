@@ -77,8 +77,7 @@ builder.Services.AddCors(options =>
 });
 
 // Add health checks
-builder.Services.AddHealthChecks()
-    .AddDbContext<DashboardDbContext>();
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 

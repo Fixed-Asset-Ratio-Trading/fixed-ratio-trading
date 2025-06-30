@@ -75,9 +75,14 @@ public class SystemController : ControllerBase
                 }
             };
 
-            var allHealthy = health.services.database.healthy && 
-                           health.services.solanaRpc.healthy && 
-                           health.services.polling.healthy;
+            // Check each service health individually
+            var dbHealth = (dynamic)health.services.database;
+            var rpcHealth = (dynamic)health.services.solanaRpc;
+            var pollingHealth = (dynamic)health.services.polling;
+            
+            var allHealthy = (bool)dbHealth.healthy && 
+                           (bool)rpcHealth.healthy && 
+                           (bool)pollingHealth.healthy;
 
             if (!allHealthy)
             {

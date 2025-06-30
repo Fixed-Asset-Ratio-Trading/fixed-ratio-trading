@@ -76,6 +76,11 @@ public class SystemState
     public DateTime LastSyncAt { get; set; } = DateTime.UtcNow;
     
     /// <summary>
+    /// Last synchronized slot number from blockchain
+    /// </summary>
+    public ulong LastSyncSlot { get; set; } = 0;
+    
+    /// <summary>
     /// Transaction signature of the last system operation
     /// </summary>
     [StringLength(88)]
@@ -146,7 +151,7 @@ public class SystemState
     public DateTime? LastPausedAt 
     { 
         get => PauseTimestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(PauseTimestamp).DateTime : null;
-        set => PauseTimestamp = value?.ToUnixTimeSeconds() ?? 0; 
+        set => PauseTimestamp = value.HasValue ? ((DateTimeOffset)value.Value).ToUnixTimeSeconds() : 0; 
     }
     
     [Obsolete("LastPausedBy is deprecated. Use Authority instead.")]

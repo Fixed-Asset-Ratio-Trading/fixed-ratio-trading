@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using FixedRatioTrading.Dashboard.Core.Models;
+using System.Linq.Expressions;
 
 namespace FixedRatioTrading.Dashboard.Data.Repositories;
 
@@ -58,6 +59,93 @@ public class PoolRepository : IPoolRepository
     public async Task<int> CountAsync()
     {
         return await _context.Pools.CountAsync();
+    }
+
+    // Missing IRepository<T> methods
+    public async Task<IEnumerable<Pool>> FindAsync(Expression<Func<Pool, bool>> predicate)
+    {
+        return await _context.Pools.Where(predicate).ToListAsync();
+    }
+
+    public async Task<Pool?> FirstOrDefaultAsync(Expression<Func<Pool, bool>> predicate)
+    {
+        return await _context.Pools.FirstOrDefaultAsync(predicate);
+    }
+
+    public async Task<int> CountAsync(Expression<Func<Pool, bool>> predicate)
+    {
+        return await _context.Pools.CountAsync(predicate);
+    }
+
+    public async Task<bool> ExistsAsync(Expression<Func<Pool, bool>> predicate)
+    {
+        return await _context.Pools.AnyAsync(predicate);
+    }
+
+    public async Task<(IEnumerable<Pool> Items, int TotalCount)> GetPagedAsync(
+        int pageNumber,
+        int pageSize,
+        Expression<Func<Pool, bool>>? filter = null,
+        Func<IQueryable<Pool>, IOrderedQueryable<Pool>>? orderBy = null)
+    {
+        var query = _context.Pools.AsQueryable();
+
+        if (filter != null)
+            query = query.Where(filter);
+
+        var totalCount = await query.CountAsync();
+
+        if (orderBy != null)
+            query = orderBy(query);
+
+        var items = await query
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        return (items, totalCount);
+    }
+
+    public async Task<IEnumerable<Pool>> AddRangeAsync(IEnumerable<Pool> entities)
+    {
+        _context.Pools.AddRange(entities);
+        await _context.SaveChangesAsync();
+        return entities;
+    }
+
+    public void Update(Pool entity)
+    {
+        _context.Pools.Update(entity);
+    }
+
+    public void UpdateRange(IEnumerable<Pool> entities)
+    {
+        _context.Pools.UpdateRange(entities);
+    }
+
+    public void Remove(Pool entity)
+    {
+        _context.Pools.Remove(entity);
+    }
+
+    public void RemoveRange(IEnumerable<Pool> entities)
+    {
+        _context.Pools.RemoveRange(entities);
+    }
+
+    public async Task RemoveByIdAsync(Guid id)
+    {
+        var entity = await GetByIdAsync(id);
+        if (entity != null)
+        {
+            _context.Pools.Remove(entity);
+            await _context.SaveChangesAsync();
+        }
+    }
+
+    public async Task<int> SaveChangesAsync()
+    {
+        return await _context.SaveChangesAsync();
     }
 
     // Pool-specific methods
