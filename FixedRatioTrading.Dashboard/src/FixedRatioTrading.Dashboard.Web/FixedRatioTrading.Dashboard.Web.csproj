@@ -12,6 +12,15 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.PostgreSQL" Version="9.0.6" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FixedRatioTrading.Dashboard.Core\FixedRatioTrading.Dashboard.Core.csproj" />
+    <ProjectReference Include="..\FixedRatioTrading.Dashboard.Data\FixedRatioTrading.Dashboard.Data.csproj" />
+    <ProjectReference Include="..\FixedRatioTrading.Dashboard.Solana\FixedRatioTrading.Dashboard.Solana.csproj" />
   </ItemGroup>
 
 </Project>
