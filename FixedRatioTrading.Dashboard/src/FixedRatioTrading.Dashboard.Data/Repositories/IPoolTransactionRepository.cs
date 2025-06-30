@@ -41,11 +41,11 @@ public interface IPoolTransactionRepository : IRepository<PoolTransaction>
         int page = 1, 
         int pageSize = 20);
     
-    // Delegate operations
-    Task<IEnumerable<PoolTransaction>> GetDelegateTransactionsAsync(string delegateAddress);
-    Task<(ulong TokenAFees, ulong TokenBFees)> GetFeesWithdrawnByDelegateAsync(
-        string delegateAddress, 
-        Guid? poolId = null);
+    // Fee operations
+    Task<IEnumerable<PoolTransaction>> GetFeeTransactionsAsync(Guid? poolId = null);
+    Task<(ulong TokenAFees, ulong TokenBFees)> GetTotalFeesWithdrawnAsync(
+        Guid? poolId = null, 
+        TimeSpan? period = null);
     
     // Failed transactions
     Task<IEnumerable<PoolTransaction>> GetFailedTransactionsAsync(

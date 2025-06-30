@@ -11,13 +11,13 @@ public enum TransactionType
     Swap = 1,
     AddLiquidity = 2,
     RemoveLiquidity = 3,
-    DelegateAdd = 4,
-    DelegateRemove = 5,
     FeeWithdrawal = 6,
     PoolCreation = 7,
     SystemPause = 8,
     SystemUnpause = 9,
-    SystemUpgrade = 10
+    FeeRateChange = 10,
+    PoolPause = 11,
+    PoolUnpause = 12
 }
 
 /// <summary>
@@ -126,10 +126,9 @@ public class PoolTransaction
     public string? Metadata { get; set; }
     
     /// <summary>
-    /// For delegate operations: the delegate address being added/removed
+    /// For fee operations: the fee rate (in basis points) if this is a fee rate change
     /// </summary>
-    [StringLength(44)]
-    public string? DelegateAddress { get; set; }
+    public uint? FeeRateBasisPoints { get; set; }
     
     /// <summary>
     /// Human-readable description of the transaction

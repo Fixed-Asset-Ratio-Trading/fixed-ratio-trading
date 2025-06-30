@@ -17,6 +17,26 @@
 3. **RESTful API**: Clean separation between frontend and backend
 4. **Database-Driven**: Supabase as single source of truth
 5. **Blockchain Polling**: Background service to sync Solana data
+6. **🚨 NO OWNER OPERATIONS**: Dashboard is read-only for owner functions - all owner operations handled by separate CLI app
+
+## ⚠️ **IMPORTANT: Security Architecture**
+
+### **Dashboard Scope (User Functions Only)**
+The dashboard will **ONLY** support user-level operations:
+- ✅ **Pool Viewing**: Browse and search existing pools
+- ✅ **Token Creation**: Create test tokens (testnet only)
+- ✅ **Pool Creation**: Create new trading pools
+- ✅ **Liquidity Management**: Add/remove liquidity as regular user
+- ✅ **Token Swapping**: Execute trades between tokens
+
+### **CLI App Scope (Owner Operations)**
+**ALL owner-only operations require a separate command line application**:
+- 🔑 **Fee Management**: Change fee rates and withdraw collected fees  
+- 🔑 **System Pause/Unpause**: Emergency system controls
+- 🔑 **Pool Management**: Pause/unpause individual pools
+- 🔑 **Security Operations**: All operations requiring owner keypair
+
+**The dashboard will NEVER have access to owner keypairs or perform owner-only operations.**
 
 ## 📋 **Migration Phases**
 
@@ -481,7 +501,7 @@ public class PoolsController : ControllerBase
 
 ### **Phase 6: MVP Feature Implementation (Week 3-4)**
 
-The Fixed Ratio Trading dashboard includes **7 comprehensive MVP features** that provide a complete user experience for pool management and trading operations:
+The Fixed Ratio Trading dashboard includes **4 user-focused MVP features** that provide a complete user experience for pool discovery, creation, and trading operations:
 
 #### **MVP Feature 1: 🪙 Token Creation (Testnet Only)**
 
@@ -499,132 +519,58 @@ The Fixed Ratio Trading dashboard includes **7 comprehensive MVP features** that
 public class TokenController : Controller
 {
     private readonly ITokenService _tokenService;
-    private readonly ISolanaService _solanaService;
+    private readonly IConfiguration _configuration;
 
     [HttpGet("create")]
-    public async Task<IActionResult> Create()
+    public IActionResult Create()
     {
-        // Server-side validation and network check
-        var isTestnet = await _solanaService.IsTestnetAsync();
-        if (!isTestnet)
-            return RedirectToAction("NotAvailable");
-
-        var viewModel = new CreateTokenViewModel
+        // Only allow on testnet
+        var network = _configuration["Solana:Network"];
+        if (network != "testnet")
         {
-            IsTestnet = isTestnet,
-            RecommendedDecimals = 6,
-            MaxSupply = 1_000_000_000,
-            NetworkInfo = await _solanaService.GetNetworkInfoAsync()
-        };
+            return NotFound("Token creation only available on testnet");
+        }
 
-        return View(viewModel);
+        return View(new TokenCreationViewModel());
     }
 
     [HttpPost("create")]
     public async Task<IActionResult> Create(CreateTokenRequest request)
     {
-        // Server-side validation
-        if (!await _solanaService.IsTestnetAsync())
-            return BadRequest("Token creation only available on testnet");
-
-        var validationResult = await _tokenService.ValidateTokenCreationAsync(request);
-        if (!validationResult.IsValid)
+        var network = _configuration["Solana:Network"];
+        if (network != "testnet")
         {
-            foreach (var error in validationResult.Errors)
-                ModelState.AddModelError("", error);
-            return View(request);
+            return BadRequest("Token creation only available on testnet");
         }
 
         try
         {
             var result = await _tokenService.CreateTokenAsync(request);
             
-            // Server-side success data preparation
-            var successViewModel = new TokenCreationSuccessViewModel
-            {
-                TokenAddress = result.TokenAddress,
-                TokenSymbol = request.Symbol,
-                TokenName = request.Name,
-                InitialSupply = request.InitialSupply,
-                TransactionSignature = result.TransactionSignature,
-                ExplorerUrl = _solanaService.GetExplorerUrl(result.TransactionSignature)
-            };
-
-            return View("CreateSuccess", successViewModel);
+            return Json(new {
+                success = true,
+                tokenAddress = result.TokenAddress,
+                transactionSignature = result.TransactionSignature,
+                explorerUrl = $"https://explorer.solana.com/address/{result.TokenAddress}?cluster=testnet"
+            });
         }
         catch (Exception ex)
         {
-            ModelState.AddModelError("", $"Token creation failed: {ex.Message}");
-            return View(request);
+            return Json(new { success = false, error = ex.Message });
         }
     }
 }
 ```
 
-**Razor View Example:**
-```html
-@model CreateTokenViewModel
-
-<div class="token-creation-container">
-    <h1>Create Test Token</h1>
-    
-    <!-- Server-rendered network status -->
-    <div class="network-status @(Model.IsTestnet ? "testnet" : "mainnet")">
-        <span>Network: @(Model.IsTestnet ? "Testnet" : "Mainnet")</span>
-        @if (!Model.IsTestnet)
-        {
-            <p class="error">Token creation is only available on testnet</p>
-        }
-    </div>
-
-    @if (Model.IsTestnet)
-    {
-        <form method="post" class="token-form">
-            <div class="form-group">
-                <label for="Name">Token Name</label>
-                <input type="text" name="Name" placeholder="Test Solana" maxlength="50" required />
-            </div>
-            
-            <div class="form-group">
-                <label for="Symbol">Token Symbol</label>
-                <input type="text" name="Symbol" placeholder="TS" maxlength="10" required />
-            </div>
-            
-            <div class="form-group">
-                <label for="Decimals">Decimals</label>
-                <select name="Decimals">
-                    <option value="6" selected>6 (Recommended)</option>
-                    <option value="9">9 (SOL-like)</option>
-                    <option value="0">0 (Whole numbers)</option>
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="InitialSupply">Initial Supply</label>
-                <input type="number" name="InitialSupply" value="1000000" max="@Model.MaxSupply" required />
-            </div>
-            
-            <button type="submit" class="btn btn-primary">Create Token</button>
-        </form>
-    }
-</div>
-
-<!-- Minimal JavaScript for form validation only -->
-<script>
-    // Simple client-side validation enhancement
-    document.querySelector('.token-form').addEventListener('submit', function(e) {
-        const symbol = document.querySelector('input[name="Symbol"]').value;
-        if (symbol.length < 2) {
-            alert('Token symbol must be at least 2 characters');
-            e.preventDefault();
-        }
-    });
-</script>
-```
-
 #### **MVP Feature 2: 🏊 Pool Creation**
 
-**Purpose**: Enable users to create new fixed-ratio trading pools between any two SPL tokens.
+**Purpose**: Enable users to create new fixed-ratio trading pools with custom token pairs.
+
+**Features:**
+- **Token Pair Selection**: Choose any two SPL tokens for the pool
+- **Fixed Ratio Configuration**: Set exact exchange ratios between tokens
+- **Initial Liquidity**: Optionally provide initial liquidity during creation
+- **Pool Verification**: Automatic validation of token addresses and ratios
 
 **ASP.NET Implementation:**
 ```csharp
@@ -633,22 +579,22 @@ public class PoolController : Controller
 {
     private readonly IPoolService _poolService;
     private readonly ITokenService _tokenService;
-    private readonly ISolanaService _solanaService;
 
     [HttpGet("create")]
     public async Task<IActionResult> Create()
     {
-        // Server-side data preparation
-        var availableTokens = await _tokenService.GetAvailableTokensAsync();
-        var networkInfo = await _solanaService.GetNetworkInfoAsync();
+        var tokens = await _tokenService.GetAvailableTokensAsync();
         
-        var viewModel = new CreatePoolViewModel
+        var viewModel = new PoolCreationViewModel
         {
-            AvailableTokens = availableTokens,
-            NetworkInfo = networkInfo,
-            RecommendedRatios = GetRecommendedRatios(),
-            PoolCreationFee = 1.15m, // 1.15 SOL
-            EstimatedTransactionFee = 0.001m
+            AvailableTokens = tokens,
+            SuggestedRatios = new[]
+            {
+                new RatioSuggestion { AToB = 1, BToA = 1, Description = "1:1 Equal Exchange" },
+                new RatioSuggestion { AToB = 10, BToA = 1, Description = "10:1 High Value A" },
+                new RatioSuggestion { AToB = 100, BToA = 1, Description = "100:1 Very High Value A" },
+                new RatioSuggestion { AToB = 1000, BToA = 1, Description = "1000:1 Extremely High Value A" }
+            }
         };
 
         return View(viewModel);
@@ -657,105 +603,16 @@ public class PoolController : Controller
     [HttpPost("create")]
     public async Task<IActionResult> Create(CreatePoolRequest request)
     {
-        // Server-side validation
-        var validationResult = await _poolService.ValidatePoolCreationAsync(request);
-        if (!validationResult.IsValid)
-        {
-            foreach (var error in validationResult.Errors)
-                ModelState.AddModelError("", error);
-            
-            // Re-populate form data
-            var viewModel = await PrepareCreateViewModelAsync();
-            return View(viewModel);
-        }
-
         try
         {
-            var poolResult = await _poolService.CreatePoolAsync(request);
+            var result = await _poolService.CreatePoolAsync(request);
             
-            // Server-side success data with display info
-            var pool = await _poolService.GetPoolByAddressAsync(poolResult.PoolAddress);
-            var displayInfo = pool.GetDisplayInfo();
-            
-            var successViewModel = new PoolCreationSuccessViewModel
-            {
-                PoolAddress = poolResult.PoolAddress,
-                DisplayPair = displayInfo.DisplayPair,
-                ExchangeRate = displayInfo.RateText,
-                TransactionSignature = poolResult.TransactionSignature,
-                CreationFeesPaid = 1.15m,
-                ExplorerUrl = _solanaService.GetExplorerUrl(poolResult.TransactionSignature)
-            };
-
-            return View("CreateSuccess", successViewModel);
-        }
-        catch (Exception ex)
-        {
-            ModelState.AddModelError("", $"Pool creation failed: {ex.Message}");
-            var viewModel = await PrepareCreateViewModelAsync();
-            return View(viewModel);
-        }
-    }
-}
-```
-
-#### **MVP Feature 3: 💧 Liquidity Management (Add & Remove)**
-
-**Purpose**: Enable users to provide liquidity to pools and earn LP tokens representing their share.
-
-**ASP.NET Implementation:**
-```csharp
-[Route("liquidity")]
-public class LiquidityController : Controller
-{
-    private readonly IPoolService _poolService;
-    private readonly ILiquidityService _liquidityService;
-
-    [HttpGet("manage/{poolId:guid}")]
-    public async Task<IActionResult> Manage(Guid poolId)
-    {
-        var pool = await _poolService.GetPoolByIdAsync(poolId);
-        if (pool == null) return NotFound();
-
-        var userAddress = User.GetSolanaAddress(); // Extension method
-        var userLpBalance = await _liquidityService.GetUserLpBalanceAsync(poolId, userAddress);
-        var poolStats = await _liquidityService.GetPoolStatsAsync(poolId);
-        var displayInfo = pool.GetDisplayInfo();
-
-        var viewModel = new LiquidityManagementViewModel
-        {
-            Pool = pool,
-            DisplayInfo = displayInfo,
-            UserLpBalance = userLpBalance,
-            UserPoolPercentage = poolStats.TotalLpSupply > 0 
-                ? (decimal)userLpBalance / poolStats.TotalLpSupply * 100 
-                : 0,
-            PoolStats = poolStats,
-            TransactionFee = 0.0013m, // 0.0013 SOL
-            MinimumDeposit = 1000 // Minimum tokens for deposit
-        };
-
-        return View(viewModel);
-    }
-
-    [HttpPost("add-liquidity")]
-    public async Task<IActionResult> AddLiquidity(AddLiquidityRequest request)
-    {
-        var validationResult = await _liquidityService.ValidateAddLiquidityAsync(request);
-        if (!validationResult.IsValid)
-        {
-            return Json(new { success = false, errors = validationResult.Errors });
-        }
-
-        try
-        {
-            var result = await _liquidityService.AddLiquidityAsync(request);
-            
-            return Json(new { 
-                success = true, 
-                lpTokensReceived = result.LpTokensReceived,
+            return Json(new {
+                success = true,
+                poolAddress = result.PoolAddress,
                 transactionSignature = result.TransactionSignature,
-                newPoolPercentage = result.NewPoolPercentage
+                poolId = result.PoolId,
+                explorerUrl = $"https://explorer.solana.com/address/{result.PoolAddress}?cluster={request.Network}"
             });
         }
         catch (Exception ex)
@@ -764,17 +621,104 @@ public class LiquidityController : Controller
         }
     }
 
-    [HttpPost("remove-liquidity")]
+    [HttpGet("details/{id:guid}")]
+    public async Task<IActionResult> Details(Guid id)
+    {
+        var pool = await _poolService.GetPoolByIdAsync(id);
+        if (pool == null) return NotFound();
+
+        var displayInfo = pool.GetDisplayInfo();
+        var liquidityHistory = await _poolService.GetLiquidityHistoryAsync(id);
+        var tradeHistory = await _poolService.GetTradeHistoryAsync(id);
+
+        var viewModel = new PoolDetailsViewModel
+        {
+            Pool = pool,
+            DisplayInfo = displayInfo,
+            LiquidityHistory = liquidityHistory,
+            TradeHistory = tradeHistory,
+            CurrentUserAddress = User.GetSolanaAddress()
+        };
+
+        return View(viewModel);
+    }
+}
+```
+
+#### **MVP Feature 3: 💧 Liquidity Management**
+
+**Purpose**: Enable users to provide liquidity to existing pools and earn a share of trading fees.
+
+**Features:**
+- **Add Liquidity**: Deposit tokens in correct ratios to earn LP tokens
+- **Remove Liquidity**: Burn LP tokens to withdraw proportional shares
+- **LP Token Tracking**: Monitor LP token balance and value
+- **Fee Earnings**: Track earned fees from trading activity
+
+**ASP.NET Implementation:**
+```csharp
+[Route("liquidity")]
+public class LiquidityController : Controller
+{
+    private readonly ILiquidityService _liquidityService;
+    private readonly IPoolService _poolService;
+
+    [HttpGet("manage/{poolId:guid}")]
+    public async Task<IActionResult> Manage(Guid poolId)
+    {
+        var pool = await _poolService.GetPoolByIdAsync(poolId);
+        if (pool == null) return NotFound();
+
+        var currentUser = User.GetSolanaAddress();
+        var userLiquidity = await _liquidityService.GetUserLiquidityAsync(poolId, currentUser);
+        var poolStats = await _liquidityService.GetPoolStatsAsync(poolId);
+
+        var viewModel = new LiquidityManagementViewModel
+        {
+            Pool = pool,
+            DisplayInfo = pool.GetDisplayInfo(),
+            UserLiquidity = userLiquidity,
+            PoolStats = poolStats,
+            UserAddress = currentUser
+        };
+
+        return View(viewModel);
+    }
+
+    [HttpPost("add")]
+    public async Task<IActionResult> AddLiquidity(AddLiquidityRequest request)
+    {
+        try
+        {
+            var result = await _liquidityService.AddLiquidityAsync(request);
+            
+            return Json(new {
+                success = true,
+                lpTokensReceived = result.LpTokensReceived,
+                transactionSignature = result.TransactionSignature,
+                newPoolTotalLiquidity = result.NewPoolTotalLiquidity,
+                userSharePercentage = result.UserSharePercentage
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost("remove")]
     public async Task<IActionResult> RemoveLiquidity(RemoveLiquidityRequest request)
     {
         try
         {
             var result = await _liquidityService.RemoveLiquidityAsync(request);
             
-            return Json(new { 
-                success = true, 
-                tokensReturned = result.TokensReturned,
-                transactionSignature = result.TransactionSignature
+            return Json(new {
+                success = true,
+                tokensWithdrawn = result.TokensWithdrawn,
+                transactionSignature = result.TransactionSignature,
+                lpTokensBurned = result.LpTokensBurned,
+                remainingLpTokens = result.RemainingLpTokens
             });
         }
         catch (Exception ex)
@@ -787,55 +731,60 @@ public class LiquidityController : Controller
 
 #### **MVP Feature 4: 🔄 Token Swapping**
 
-**Purpose**: Enable users to exchange tokens at the pool's fixed exchange rate.
+**Purpose**: Enable users to exchange tokens at fixed ratios with minimal slippage and predictable outcomes.
+
+**Features:**
+- **Fixed Ratio Trading**: Exchange tokens at predetermined ratios
+- **Slippage Protection**: Minimal slippage due to fixed ratios
+- **Swap Preview**: Calculate exact output amounts before transaction
+- **Transaction History**: Track all swap activities
 
 **ASP.NET Implementation:**
 ```csharp
 [Route("swap")]
 public class SwapController : Controller
 {
-    private readonly IPoolService _poolService;
     private readonly ISwapService _swapService;
+    private readonly IPoolService _poolService;
 
-    [HttpGet("{poolId:guid?}")]
-    public async Task<IActionResult> Index(Guid? poolId)
+    [HttpGet("{poolId:guid}")]
+    public async Task<IActionResult> Index(Guid poolId)
     {
-        var pools = await _poolService.GetAllActivePoolsAsync();
-        var selectedPool = poolId.HasValue 
-            ? pools.FirstOrDefault(p => p.Id == poolId.Value)
-            : pools.FirstOrDefault();
+        var pool = await _poolService.GetPoolByIdAsync(poolId);
+        if (pool == null) return NotFound();
+
+        var displayInfo = pool.GetDisplayInfo();
+        var currentUser = User.GetSolanaAddress();
+        var userBalances = await _swapService.GetUserTokenBalancesAsync(currentUser, 
+            pool.TokenAAddress, pool.TokenBAddress);
 
         var viewModel = new SwapViewModel
         {
-            Pools = pools.Select(p => new PoolSelectItem
-            {
-                Id = p.Id,
-                DisplayPair = p.GetDisplayInfo().DisplayPair,
-                ExchangeRate = p.GetDisplayInfo().RateText
-            }).ToList(),
-            SelectedPool = selectedPool,
-            ContractFee = 0.0000125m, // 0.0000125 SOL
-            MaxSlippage = 0.5m // 0.5%
+            Pool = pool,
+            DisplayInfo = displayInfo,
+            UserBalances = userBalances,
+            UserAddress = currentUser,
+            MaxSlippage = 0.1m // 0.1% max slippage for fixed ratios
         };
 
         return View(viewModel);
     }
 
-    [HttpPost("calculate")]
-    public async Task<IActionResult> CalculateSwap(SwapCalculationRequest request)
+    [HttpPost("preview")]
+    public async Task<IActionResult> PreviewSwap(PreviewSwapRequest request)
     {
         try
         {
-            var calculation = await _swapService.CalculateSwapAsync(request);
+            var preview = await _swapService.PreviewSwapAsync(request);
             
             return Json(new {
                 success = true,
-                outputAmount = calculation.OutputAmount,
-                exchangeRate = calculation.ExchangeRate,
-                tradingFee = calculation.TradingFee,
-                contractFee = calculation.ContractFee,
-                finalAmount = calculation.FinalAmount,
-                priceImpact = 0 // Always 0 for fixed ratio
+                inputAmount = preview.InputAmount,
+                outputAmount = preview.OutputAmount,
+                exchangeRate = preview.ExchangeRate,
+                tradingFee = preview.TradingFee,
+                minimumReceived = preview.MinimumReceived,
+                priceImpact = preview.PriceImpact
             });
         }
         catch (Exception ex)
@@ -847,207 +796,17 @@ public class SwapController : Controller
     [HttpPost("execute")]
     public async Task<IActionResult> ExecuteSwap(ExecuteSwapRequest request)
     {
-        var validationResult = await _swapService.ValidateSwapAsync(request);
-        if (!validationResult.IsValid)
-        {
-            return Json(new { success = false, errors = validationResult.Errors });
-        }
-
         try
         {
             var result = await _swapService.ExecuteSwapAsync(request);
             
             return Json(new {
                 success = true,
+                transactionSignature = result.TransactionSignature,
+                inputAmount = result.InputAmount,
                 outputAmount = result.OutputAmount,
-                transactionSignature = result.TransactionSignature,
-                explorerUrl = _solanaService.GetExplorerUrl(result.TransactionSignature)
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-}
-```
-
-#### **MVP Feature 5: 👥 Delegate Management (Add & Remove)**
-
-**Purpose**: Enable pool owners to authorize trusted delegates for fee management and pool governance.
-
-**ASP.NET Implementation:**
-```csharp
-[Route("delegates")]
-public class DelegateController : Controller
-{
-    private readonly IDelegateService _delegateService;
-    private readonly IPoolService _poolService;
-
-    [HttpGet("manage/{poolId:guid}")]
-    public async Task<IActionResult> Manage(Guid poolId)
-    {
-        var pool = await _poolService.GetPoolByIdAsync(poolId);
-        if (pool == null) return NotFound();
-
-        var currentUser = User.GetSolanaAddress();
-        if (pool.CreatorAddress != currentUser)
-            return Forbid("Only pool owner can manage delegates");
-
-        var delegates = await _delegateService.GetPoolDelegatesAsync(poolId);
-        var pendingActions = await _delegateService.GetPendingActionsAsync(poolId);
-
-        var viewModel = new DelegateManagementViewModel
-        {
-            Pool = pool,
-            Delegates = delegates,
-            PendingActions = pendingActions,
-            MaxDelegates = 3,
-            CanAddMore = delegates.Count < 3,
-            DefaultTimeLimits = new DelegateTimeLimits
-            {
-                FeeChangeWaitTime = 3600,  // 1 hour
-                WithdrawWaitTime = 86400,  // 24 hours
-                PauseWaitTime = 300        // 5 minutes
-            }
-        };
-
-        return View(viewModel);
-    }
-
-    [HttpPost("add")]
-    public async Task<IActionResult> AddDelegate(AddDelegateRequest request)
-    {
-        try
-        {
-            var result = await _delegateService.AddDelegateAsync(request);
-            
-            return Json(new {
-                success = true,
-                delegateAddress = result.DelegateAddress,
-                transactionSignature = result.TransactionSignature,
-                message = "Delegate added successfully"
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-
-    [HttpPost("remove")]
-    public async Task<IActionResult> RemoveDelegate(RemoveDelegateRequest request)
-    {
-        try
-        {
-            var result = await _delegateService.RemoveDelegateAsync(request);
-            
-            return Json(new {
-                success = true,
-                cancelledActions = result.CancelledActionCount,
-                transactionSignature = result.TransactionSignature,
-                message = $"Delegate removed. {result.CancelledActionCount} pending actions cancelled."
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-
-    [HttpPost("configure-limits")]
-    public async Task<IActionResult> ConfigureTimeLimits(ConfigureTimeLimitsRequest request)
-    {
-        try
-        {
-            var result = await _delegateService.ConfigureTimeLimitsAsync(request);
-            
-            return Json(new {
-                success = true,
-                transactionSignature = result.TransactionSignature,
-                message = "Time limits updated successfully"
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-}
-```
-
-#### **MVP Feature 6: 💰 Fee Withdrawal (Delegates Only)**
-
-**Purpose**: Enable authorized delegates to withdraw collected trading fees from pools.
-
-**ASP.NET Implementation:**
-```csharp
-[Route("fees")]
-public class FeeController : Controller
-{
-    private readonly IFeeService _feeService;
-    private readonly IDelegateService _delegateService;
-
-    [HttpGet("withdraw/{poolId:guid}")]
-    public async Task<IActionResult> Withdraw(Guid poolId)
-    {
-        var currentUser = User.GetSolanaAddress();
-        var isDelegate = await _delegateService.IsAuthorizedDelegateAsync(poolId, currentUser);
-        
-        if (!isDelegate)
-            return Forbid("Only authorized delegates can access fee withdrawal");
-
-        var availableFees = await _feeService.GetAvailableFeesAsync(poolId);
-        var withdrawalHistory = await _feeService.GetWithdrawalHistoryAsync(poolId);
-        var pendingWithdrawals = await _feeService.GetPendingWithdrawalsAsync(poolId, currentUser);
-
-        var viewModel = new FeeWithdrawalViewModel
-        {
-            PoolId = poolId,
-            AvailableFees = availableFees,
-            WithdrawalHistory = withdrawalHistory,
-            PendingWithdrawals = pendingWithdrawals,
-            DelegateAddress = currentUser,
-            MinimumWithdrawal = 1000 // Minimum tokens for withdrawal
-        };
-
-        return View(viewModel);
-    }
-
-    [HttpPost("request-withdrawal")]
-    public async Task<IActionResult> RequestWithdrawal(RequestWithdrawalRequest request)
-    {
-        try
-        {
-            var result = await _feeService.RequestWithdrawalAsync(request);
-            
-            return Json(new {
-                success = true,
-                actionId = result.ActionId,
-                waitTime = result.WaitTimeSeconds,
-                executeAfter = result.ExecuteAfter,
-                message = $"Withdrawal requested. Can execute after {result.ExecuteAfter:yyyy-MM-dd HH:mm:ss}"
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-
-    [HttpPost("execute-withdrawal")]
-    public async Task<IActionResult> ExecuteWithdrawal(ExecuteWithdrawalRequest request)
-    {
-        try
-        {
-            var result = await _feeService.ExecuteWithdrawalAsync(request);
-            
-            return Json(new {
-                success = true,
-                withdrawnAmount = result.WithdrawnAmount,
-                tokenSymbol = result.TokenSymbol,
-                transactionSignature = result.TransactionSignature,
-                message = $"Successfully withdrew {result.WithdrawnAmount} {result.TokenSymbol}"
+                tradingFeesPaid = result.TradingFeesPaid,
+                explorerUrl = $"https://explorer.solana.com/tx/{result.TransactionSignature}?cluster={request.Network}"
             });
         }
         catch (Exception ex)
@@ -1057,20 +816,23 @@ public class FeeController : Controller
     }
 
     [HttpGet("history/{poolId:guid}")]
-    public async Task<IActionResult> GetWithdrawalHistory(Guid poolId)
+    public async Task<IActionResult> GetSwapHistory(Guid poolId)
     {
         try
         {
-            var history = await _feeService.GetWithdrawalHistoryAsync(poolId);
+            var currentUser = User.GetSolanaAddress();
+            var history = await _swapService.GetUserSwapHistoryAsync(poolId, currentUser);
             
             return Json(new {
                 success = true,
-                history = history.Select(h => new {
-                    date = h.WithdrawalDate,
-                    delegate = h.DelegateAddress,
-                    amount = h.Amount,
-                    token = h.TokenSymbol,
-                    transactionSignature = h.TransactionSignature
+                swaps = history.Select(s => new {
+                    date = s.SwapDate,
+                    fromToken = s.FromTokenSymbol,
+                    toToken = s.ToTokenSymbol,
+                    fromAmount = s.FromAmount,
+                    toAmount = s.ToAmount,
+                    exchangeRate = s.ExchangeRate,
+                    transactionSignature = s.TransactionSignature
                 })
             });
         }
@@ -1082,208 +844,9 @@ public class FeeController : Controller
 }
 ```
 
-#### **MVP Feature 7: ⏸️ System Pause → Upgrade → Unpause Process**
-
-**Purpose**: Enable system-wide emergency pause, contract upgrades, and controlled system resumption.
-
-**ASP.NET Implementation:**
-```csharp
-[Route("system")]
-[Authorize(Policy = "SystemAuthority")] // Custom authorization policy
-public class SystemController : Controller
-{
-    private readonly ISystemService _systemService;
-    private readonly ISolanaService _solanaService;
-
-    [HttpGet("status")]
-    public async Task<IActionResult> Status()
-    {
-        var systemStatus = await _systemService.GetSystemStatusAsync();
-        var networkInfo = await _solanaService.GetNetworkInfoAsync();
-
-        var viewModel = new SystemStatusViewModel
-        {
-            IsSystemPaused = systemStatus.IsPaused,
-            PauseReason = systemStatus.PauseReason,
-            PausedAt = systemStatus.PausedAt,
-            PausedBy = systemStatus.PausedBy,
-            NetworkInfo = networkInfo,
-            ActivePools = systemStatus.ActivePoolCount,
-            TotalTransactions = systemStatus.TotalTransactions,
-            SystemVersion = systemStatus.ContractVersion
-        };
-
-        return View(viewModel);
-    }
-
-    [HttpPost("pause")]
-    public async Task<IActionResult> PauseSystem(PauseSystemRequest request)
-    {
-        try
-        {
-            var result = await _systemService.PauseSystemAsync(request);
-            
-            return Json(new {
-                success = true,
-                pauseReason = request.Reason,
-                transactionSignature = result.TransactionSignature,
-                pausedAt = DateTime.UtcNow,
-                message = "System successfully paused. All operations are now blocked."
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-
-    [HttpPost("unpause")]
-    public async Task<IActionResult> UnpauseSystem()
-    {
-        try
-        {
-            var result = await _systemService.UnpauseSystemAsync();
-            
-            return Json(new {
-                success = true,
-                transactionSignature = result.TransactionSignature,
-                unpausedAt = DateTime.UtcNow,
-                message = "System successfully unpaused. All operations are now available."
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-
-    [HttpGet("upgrade-status")]
-    public async Task<IActionResult> GetUpgradeStatus()
-    {
-        try
-        {
-            var upgradeStatus = await _systemService.GetUpgradeStatusAsync();
-            
-            return Json(new {
-                success = true,
-                isUpgradeInProgress = upgradeStatus.IsUpgradeInProgress,
-                currentVersion = upgradeStatus.CurrentVersion,
-                targetVersion = upgradeStatus.TargetVersion,
-                upgradeStarted = upgradeStatus.UpgradeStarted,
-                estimatedCompletion = upgradeStatus.EstimatedCompletion
-            });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, error = ex.Message });
-        }
-    }
-}
-```
-
-**System Status Razor View:**
-```html
-@model SystemStatusViewModel
-
-<div class="system-status-container">
-    <h1>System Management</h1>
-    
-    <!-- Server-rendered system status -->
-    <div class="status-card @(Model.IsSystemPaused ? "paused" : "active")">
-        <h2>System Status: @(Model.IsSystemPaused ? "PAUSED" : "ACTIVE")</h2>
-        
-        @if (Model.IsSystemPaused)
-        {
-            <div class="pause-info">
-                <p><strong>Reason:</strong> @Model.PauseReason</p>
-                <p><strong>Paused At:</strong> @Model.PausedAt?.ToString("yyyy-MM-dd HH:mm:ss UTC")</p>
-                <p><strong>Paused By:</strong> @Model.PausedBy</p>
-            </div>
-            
-            <button id="unpause-btn" class="btn btn-success">UNPAUSE SYSTEM</button>
-        }
-        else
-        {
-            <div class="active-info">
-                <p><strong>Active Pools:</strong> @Model.ActivePools</p>
-                <p><strong>Network:</strong> @Model.NetworkInfo.Network</p>
-                <p><strong>Version:</strong> @Model.SystemVersion</p>
-            </div>
-            
-            <div class="emergency-controls">
-                <input type="text" id="pause-reason" placeholder="Emergency pause reason..." maxlength="200" />
-                <button id="pause-btn" class="btn btn-danger">EMERGENCY PAUSE</button>
-            </div>
-        }
-    </div>
-</div>
-
-<!-- Minimal JavaScript for emergency controls -->
-<script>
-    // Server-side data available as constants
-    const SYSTEM_STATUS = {
-        isPaused: @Model.IsSystemPaused.ToString().ToLower(),
-        pauseReason: '@Model.PauseReason',
-        activeControls: true
-    };
-
-    // Emergency pause handler
-    document.getElementById('pause-btn')?.addEventListener('click', async function() {
-        const reason = document.getElementById('pause-reason').value.trim();
-        if (!reason) {
-            alert('Please provide a reason for the emergency pause');
-            return;
-        }
-        
-        if (!confirm(`EMERGENCY PAUSE: ${reason}\n\nThis will immediately halt ALL system operations. Continue?`)) {
-            return;
-        }
-        
-        try {
-            const response = await fetch('/system/pause', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason: reason })
-            });
-            
-            const result = await response.json();
-            if (result.success) {
-                alert('System paused successfully');
-                window.location.reload();
-            } else {
-                alert('Failed to pause system: ' + result.error);
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    });
-
-    // Unpause handler
-    document.getElementById('unpause-btn')?.addEventListener('click', async function() {
-        if (!confirm('UNPAUSE SYSTEM\n\nThis will restore all system operations. Continue?')) {
-            return;
-        }
-        
-        try {
-            const response = await fetch('/system/unpause', { method: 'POST' });
-            const result = await response.json();
-            
-            if (result.success) {
-                alert('System unpaused successfully');
-                window.location.reload();
-            } else {
-                alert('Failed to unpause system: ' + result.error);
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    });
-</script>
-```
-
 ### **MVP Integration Benefits**
 
-These 7 comprehensive features provide a complete ecosystem for decentralized trading with server-side reliability:
+These 4 user-focused features provide a complete trading ecosystem for regular users:
 
 **For Users:**
 - 🎯 **Complete Control**: Create tokens, pools, and manage liquidity with full transparency
@@ -1291,24 +854,18 @@ These 7 comprehensive features provide a complete ecosystem for decentralized tr
 - 💰 **Revenue Generation**: Earn fees through liquidity provision with real-time calculations
 - 🛡️ **Risk Management**: Fixed ratios eliminate price volatility with predictable outcomes
 
-**For Pool Owners:**
-- 👥 **Delegation Management**: Authorize trusted operators with configurable permissions
-- 🏛️ **Complete Governance**: Control fee rates, delegate permissions, and pool operations
-- 💸 **Fee Collection**: Transparent revenue generation through trading fees
-- ⏸️ **Emergency Control**: Pause individual pools during disputes with audit trails
-
-**For System Operators:**
-- 🚨 **Emergency Response**: System-wide pause capability with immediate effect
-- 🔄 **Safe Upgrades**: Protected upgrade process with pause protection
-- 📊 **Complete Visibility**: Comprehensive monitoring, audit trails, and real-time status
-- 🛡️ **Security First**: Multiple validation layers, time delays, and server-side processing
-
 **Technical Benefits:**
 - 🔍 **AI Debuggable**: Server-side rendering allows AI inspection via curl commands
 - 🛠️ **Type Safety**: C# eliminates runtime errors with compile-time validation
 - 🔬 **Step-through Debugging**: Full Visual Studio debugging capabilities
 - 📊 **Database-Driven**: Persistent data storage with proper indexing and queries
 - 🚀 **Performance**: Fast server-side processing with minimal client-side JavaScript
+
+**Security Benefits:**
+- 🔐 **No Owner Functions**: Dashboard cannot perform any owner-only operations
+- 🔑 **Keypair Isolation**: No access to owner keypairs or sensitive operations
+- 🛡️ **Read-Only for Owner Data**: Can display owner information but never modify it
+- 🚨 **Separation of Concerns**: Clear boundary between user and owner operations
 
 ### **Phase 7: Configuration & Deployment (Week 4)**
 
@@ -1406,8 +963,6 @@ app.Run();
 - [ ] Pool creation interface
 - [ ] Liquidity management
 - [ ] Swap interface
-- [ ] Delegate management
-- [ ] System pause/unpause
 
 ## 🧪 **Testing Strategy**
 
@@ -1478,7 +1033,7 @@ public async Task HomeController_Index_ShouldReturnPoolsOrderedByDate()
 - [ ] AI can inspect rendered HTML via curl
 
 ### **Functional**
-- [ ] All 7 MVP features working
+- [ ] All 4 MVP features working
 - [ ] Pools display correctly per UX design document
 - [ ] Real-time blockchain data synchronization
 - [ ] Search functionality working

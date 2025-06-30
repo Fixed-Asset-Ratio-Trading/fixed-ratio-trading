@@ -27,7 +27,6 @@ public interface IPoolRepository : IRepository<Pool>
     
     // Pool with related data
     Task<Pool?> GetPoolWithTransactionsAsync(Guid poolId, int? transactionLimit = null);
-    Task<Pool?> GetPoolWithDelegatesAsync(Guid poolId);
     Task<Pool?> GetPoolWithFullDataAsync(Guid poolId);
     
     // Bulk operations
