@@ -73,15 +73,40 @@ fi
 # Check dependencies
 echo -e "${YELLOW}🔍 Checking dependencies...${NC}"
 
-# Check Solana
+# Check Solana and add to PATH if needed
 if ! command -v solana-test-validator &> /dev/null; then
-    echo -e "${RED}❌ Solana test validator not found in PATH${NC}"
-    echo -e "${YELLOW}💡 Make sure Solana 2.2.18+ is installed and in PATH${NC}"
-    exit 1
-else
-    SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
-    echo -e "${GREEN}✅ Solana available: $SOLANA_VERSION${NC}"
+    echo -e "${YELLOW}⚠️  Solana not in PATH, checking common locations...${NC}"
+    
+    # Common Solana installation paths
+    SOLANA_PATHS=(
+        "/home/$USER/.local/share/solana/install/active_release/bin"
+        "/home/dev/.local/share/solana/install/active_release/bin"
+        "$HOME/.local/share/solana/install/active_release/bin"
+    )
+    
+    SOLANA_FOUND=false
+    for solana_path in "${SOLANA_PATHS[@]}"; do
+        if [ -f "$solana_path/solana-test-validator" ]; then
+            echo -e "${GREEN}✅ Found Solana at: $solana_path${NC}"
+            export PATH="$solana_path:$PATH"
+            SOLANA_FOUND=true
+            break
+        fi
+    done
+    
+    if [ "$SOLANA_FOUND" = false ]; then
+        echo -e "${RED}❌ Solana test validator not found in PATH or common locations${NC}"
+        echo -e "${YELLOW}💡 Please install Solana or add it to PATH${NC}"
+        echo -e "${YELLOW}💡 Common locations checked:${NC}"
+        for path in "${SOLANA_PATHS[@]}"; do
+            echo -e "${YELLOW}   - $path${NC}"
+        done
+        exit 1
+    fi
 fi
+
+SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
+echo -e "${GREEN}✅ Solana available: $SOLANA_VERSION${NC}"
 
 # Check required packages
 if ! command -v screen &> /dev/null; then
