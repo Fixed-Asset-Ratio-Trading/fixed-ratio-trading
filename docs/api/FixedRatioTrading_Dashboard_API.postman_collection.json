@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Fixed Ratio Trading Dashboard API",
-    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features",
+    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features - USER OPERATIONS ONLY",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "version": "1.0.0"
   },
