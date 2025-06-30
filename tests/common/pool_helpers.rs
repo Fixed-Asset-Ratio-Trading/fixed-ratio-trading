@@ -326,38 +326,6 @@ pub async fn create_pool_legacy_pattern(
     Ok(config)
 }
 
-/// Add a delegate to a pool
-/// 
-/// # Arguments
-/// * `banks` - Banks client for transaction processing
-/// * `payer` - Pool owner (pays for transaction)
-/// * `recent_blockhash` - Recent blockhash for transaction
-/// * `pool_state_pda` - Pool state account
-/// * `delegate` - Delegate to add
-#[allow(dead_code)]
-pub async fn add_delegate(
-    banks: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: solana_sdk::hash::Hash,
-    pool_state_pda: &Pubkey,
-    delegate: &Pubkey,
-) -> TestResult {
-    let add_delegate_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),      // Pool owner (signer)
-            AccountMeta::new(*pool_state_pda, false),    // Pool state account
-        ],
-        data: PoolInstruction::AddDelegate {
-            delegate: *delegate,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut transaction = Transaction::new_with_payer(&[add_delegate_ix], Some(&payer.pubkey()));
-    transaction.sign(&[payer], recent_blockhash);
-    banks.process_transaction(transaction).await
-}
-
 /// Update security parameters for a pool
 /// 
 /// # Arguments

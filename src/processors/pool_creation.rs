@@ -455,7 +455,7 @@ pub fn process_create_pool_state_account(
 /// 1. Validates all account PDAs match expected derivations
 /// 2. Verifies the pool state account is correctly sized but not yet initialized
 /// 3. Creates and populates the PoolState data structure
-/// 4. Initializes security parameters, rent requirements, and delegate management
+/// 4. Initializes security parameters and rent requirements
 /// 5. Sets up fee tracking with 0% swap fees as per requirements
 /// 6. Uses buffer serialization workaround for reliable data persistence
 /// 
@@ -654,10 +654,6 @@ pub fn process_initialize_pool_data(
     let rent_requirements = RentRequirements::new(rent);
     pool_state_data.rent_requirements = rent_requirements;
 
-    // Initialize delegate management system (owner is first delegate)
-    let current_slot = 0; // Will be updated when clock is available
-    pool_state_data.delegate_management = DelegateManagement::new(*payer.key, current_slot);
-    
     // Initialize fee tracking
     pool_state_data.collected_fees_token_a = 0;
     pool_state_data.collected_fees_token_b = 0;
@@ -711,7 +707,7 @@ pub fn process_initialize_pool_data(
 /// 3. Creates token vault PDAs and initializes them
 /// 4. Initializes pool state data with all configuration
 /// 5. Transfers registration fees
-/// 6. Sets up delegate management system
+/// 6. Sets up fee tracking system
 /// 
 /// # Benefits:
 /// - **Atomic Operation**: All-or-nothing execution prevents partial states
@@ -1033,7 +1029,6 @@ pub fn process_initialize_pool(
     pool_state_data.is_initialized = true;
     pool_state_data.is_paused = false;
     pool_state_data.rent_requirements = RentRequirements::new(rent);
-    pool_state_data.delegate_management = DelegateManagement::new(*payer.key, 0);
     pool_state_data.collected_fees_token_a = 0;
     pool_state_data.collected_fees_token_b = 0;
     pool_state_data.total_fees_withdrawn_token_a = 0;

@@ -83,7 +83,7 @@ pub const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
 /// - 50 basis points = 0.5% fee (maximum allowed)
 /// 
 /// **Calculation**: `fee_amount = input_amount * fee_basis_points / 10000`
-/// **Revenue**: Collected by pool and withdrawable by authorized delegates
+/// **Revenue**: Collected by pool and withdrawable by pool owner
 pub const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50; 
 
 /// Denominator for basis point calculations (1 basis point = 0.01%)
@@ -123,21 +123,9 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 // - Pool Fee: 2.5 USDC (1000 * 0.0025 = 2.5 USDC)  
 // - Effective Input: 997.5 USDC (1000 - 2.5 fee)
 // - User receives: SOL amount based on 997.5 USDC
-// - Pool retains: 2.5 USDC as revenue for delegates/operators
+// - Pool retains: 2.5 USDC as revenue for pool owner
 //
 //=============================================================================
-
-/// Maximum number of delegates allowed per pool
-pub const MAX_DELEGATES: usize = 3;
-
-/// Maximum number of pending actions across all delegates
-pub const MAX_PENDING_ACTIONS: usize = MAX_DELEGATES * 2; // Each delegate can have up to 2 pending actions
-
-/// Minimum wait time for withdrawal requests (5 minutes in seconds)
-pub const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;
-
-/// Maximum wait time for withdrawal requests (72 hours in seconds)
-pub const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;
 
 /// PDA seed prefix for pool state accounts
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";

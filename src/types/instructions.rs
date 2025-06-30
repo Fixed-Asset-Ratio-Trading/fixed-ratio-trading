@@ -5,13 +5,11 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
-use super::delegate_actions::{DelegateActionType, DelegateActionParams, DelegateTimeLimits};
 
 /// All supported instructions for the Solana Trading Pool Program.
 /// 
 /// This enum defines every operation that can be performed on the pool,
-/// from initialization and liquidity management to delegate operations
-/// and governance functions.
+/// from initialization and liquidity management to owner-only operations.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub enum PoolInstruction {
     /// **DEPRECATED**: Use `InitializePool` instead.
@@ -47,7 +45,6 @@ pub enum PoolInstruction {
     /// - Creates token vault PDAs and initializes them
     /// - Initializes pool state data with all configuration
     /// - Transfers registration fees
-    /// - Sets up delegate management system
     /// 
     /// # Benefits:
     /// - Atomic operation (all-or-nothing)
@@ -105,59 +102,31 @@ pub enum PoolInstruction {
         minimum_amount_out: u64,
     },
     
-    /// Updates security parameters for the pool
+    /// Updates security parameters for the pool (owner only)
     UpdateSecurityParams {
         /// Whether to pause pool operations
         is_paused: Option<bool>,
     },
     
-    /// Delegate Management Instructions
-    AddDelegate {
-        delegate: Pubkey,
+    /// Change swap fee rate (owner only)
+    ChangeFee {
+        /// New fee in basis points (0-50 = 0%-0.5%)
+        new_fee_basis_points: u64,
     },
     
-    /// Remove a delegate from authorization
-    RemoveDelegate {
-        delegate: Pubkey,
+    /// Withdraw accumulated fees from pool (owner only)
+    WithdrawPoolFees {
+        /// Token mint to withdraw
+        token_mint: Pubkey,
+        /// Amount to withdraw
+        amount: u64,
     },
     
-    /// Request a delegate action (consolidated instruction)
-    RequestDelegateAction {
-        /// Type of action being requested
-        action_type: DelegateActionType,
-        /// Parameters for the action
-        params: DelegateActionParams,
-    },
-
-    /// Execute a pending delegate action
-    /// Required accounts for fee withdrawal:
-    /// - Signer (executor)
-    /// - Pool state PDA
-    /// - Clock sysvar
-    /// - Delegate's token account (for receiving fees)
-    /// - Token program
-    /// - Pool vault account (for the token being withdrawn)
-    ExecuteDelegateAction {
-        /// ID of the action to execute
-        action_id: u64,
-    },
-
-    /// Revoke a pending delegate action
-    RevokeAction {
-        /// ID of the action to revoke
-        action_id: u64,
-    },
-
-    /// Set time limits for delegate actions
-    SetDelegateTimeLimits {
-        /// Delegate to set limits for
-        delegate: Pubkey,
-        /// New time limits
-        time_limits: DelegateTimeLimits,
-    },
+    /// Pause swap operations for specific pool (owner only)
+    PausePoolSwaps,
     
-    /// Get withdrawal history (for transparency)
-    GetWithdrawalHistory,
+    /// Unpause swap operations for specific pool (owner only)
+    UnpausePoolSwaps,
     
     /// Get pool state PDA address for given tokens and ratio
     /// Useful for clients to derive addresses before calling other instructions
@@ -192,12 +161,6 @@ pub enum PoolInstruction {
         // No parameters needed - reads from pool state account  
     },
     
-    /// Returns delegate management information including delegate list and withdrawal history
-    /// Essential for delegate-related operations and transparency
-    GetDelegateInfo {
-        // No parameters needed - reads from pool state account
-    },
-    
     /// **VIEW INSTRUCTION**: Get fee information including rates and collected amounts
     GetFeeInfo {
         // No fields needed - reads from pool state
@@ -208,21 +171,18 @@ pub enum PoolInstruction {
         // No fields needed - reads from pool state account balance
     },
     
-    /// Withdraws accumulated SOL fees from the pool state account
-    /// Only the pool owner can withdraw fees
+    /// Withdraws accumulated SOL fees from the pool state account (owner only)
     /// Maintains rent exemption for pool state account
     WithdrawFees,
     
-    /// Pause the entire system - blocks all operations except unpause
-    /// Only the system authority can execute this instruction
+    /// Pause the entire system - blocks all operations except unpause (system authority only)
     /// Takes precedence over all pool-specific pause states
     PauseSystem {
         /// Human-readable reason for the system pause
         reason: String,
     },
     
-    /// Unpause the entire system - allows all operations to resume
-    /// Only the system authority can execute this instruction
+    /// Unpause the entire system - allows all operations to resume (system authority only)
     /// Clears the system pause state completely
     UnpauseSystem,
     

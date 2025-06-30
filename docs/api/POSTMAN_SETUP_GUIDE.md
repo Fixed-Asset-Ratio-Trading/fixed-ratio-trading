@@ -28,9 +28,8 @@ You should see the collection organized as:
 ├── 🏊 2. Pool Creation  
 ├── 💧 3. Liquidity Management
 ├── 🔄 4. Token Swapping
-├── 👥 5. Delegate Management
-├── 💰 6. Fee Withdrawal
-└── ⏸️ 7. System Pause/Unpause
+├── 💰 5. Fee Withdrawal
+└── ⏸️ 6. System Pause/Unpause
 ```
 
 ## ⚙️ **Environment Setup**
@@ -49,7 +48,7 @@ Configure these key variables:
 | `testnet_rpc` | `https://api.testnet.solana.com` | `https://api.testnet.solana.com` | Solana testnet RPC |
 | `poolId` | `POOL_ID_PLACEHOLDER` | `POOL_ID_PLACEHOLDER` | Dynamic pool ID |
 | `userWallet` | `USER_WALLET_PLACEHOLDER` | `USER_WALLET_PLACEHOLDER` | Test wallet address |
-| `delegateWallet` | `DELEGATE_WALLET_PLACEHOLDER` | `DELEGATE_WALLET_PLACEHOLDER` | Delegate wallet |
+
 | `systemAuthority` | `SYSTEM_AUTHORITY_PLACEHOLDER` | `SYSTEM_AUTHORITY_PLACEHOLDER` | System authority wallet |
 
 ### 3. **Select Environment**
@@ -78,10 +77,9 @@ Test main functionality:
 4. **Remove Liquidity** - Test liquidity removal
 
 ### **Phase 4: Advanced Features**
-Test delegate and system management:
-1. **Add Delegate** - Test delegate authorization
-2. **Request Fee Withdrawal** - Test fee collection
-3. **System Pause/Unpause** - Test emergency controls
+Test system management:
+1. **Withdraw Fees** - Test fee collection
+2. **System Pause/Unpause** - Test emergency controls
 
 ## 🔧 **Development Best Practices**
 

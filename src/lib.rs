@@ -121,21 +121,15 @@ use crate::processors::{
     },
     fees::{
         process_withdraw_fees,
+        process_change_fee,
+        process_withdraw_pool_fees,
+        process_pause_pool_swaps,
+        process_unpause_pool_swaps,
     },
     swap::{
         process_swap,
     },
     security::process_update_security_params,
-    delegates::{
-        process_add_delegate,
-        process_remove_delegate,
-    },
-    delegate_actions::{
-        process_request_delegate_action,
-        process_execute_delegate_action,
-        process_revoke_action,
-        process_set_delegate_time_limits,
-    },
     system_pause::{
         process_pause_system,
         process_unpause_system,
@@ -146,7 +140,6 @@ use crate::processors::{
         get_pool_info,
         get_pool_pause_status,
         get_liquidity_info,
-        get_delegate_info,
         get_fee_info,
         get_pool_sol_balance,
         process_get_version,
@@ -216,33 +209,18 @@ pub fn process_instruction(
             is_paused,
         } => process_update_security_params(program_id, accounts, is_paused),
 
-        PoolInstruction::AddDelegate {
-            delegate,
-        } => process_add_delegate(program_id, accounts, delegate),
+        PoolInstruction::ChangeFee {
+            new_fee_basis_points,
+        } => process_change_fee(program_id, accounts, new_fee_basis_points),
 
-        PoolInstruction::RemoveDelegate {
-            delegate,
-        } => process_remove_delegate(program_id, accounts, delegate),
+        PoolInstruction::WithdrawPoolFees {
+            token_mint,
+            amount,
+        } => process_withdraw_pool_fees(program_id, accounts, token_mint, amount),
 
-        PoolInstruction::RequestDelegateAction {
-            action_type,
-            params,
-        } => process_request_delegate_action(program_id, accounts, action_type, params),
+        PoolInstruction::PausePoolSwaps => process_pause_pool_swaps(program_id, accounts),
 
-        PoolInstruction::ExecuteDelegateAction {
-            action_id,
-        } => process_execute_delegate_action(program_id, accounts, action_id),
-
-        PoolInstruction::RevokeAction {
-            action_id,
-        } => process_revoke_action(program_id, accounts, action_id),
-
-        PoolInstruction::SetDelegateTimeLimits {
-            delegate,
-            time_limits,
-        } => process_set_delegate_time_limits(program_id, accounts, delegate, time_limits),
-
-        PoolInstruction::GetWithdrawalHistory => Ok(()),
+        PoolInstruction::UnpausePoolSwaps => process_unpause_pool_swaps(program_id, accounts),
 
         PoolInstruction::GetPoolStatePDA {
             primary_token_mint,
@@ -259,8 +237,6 @@ pub fn process_instruction(
         PoolInstruction::GetPoolPauseStatus {} => get_pool_pause_status(accounts),
 
         PoolInstruction::GetLiquidityInfo {} => get_liquidity_info(accounts),
-
-        PoolInstruction::GetDelegateInfo {} => get_delegate_info(accounts),
 
         PoolInstruction::GetFeeInfo {} => get_fee_info(accounts),
         

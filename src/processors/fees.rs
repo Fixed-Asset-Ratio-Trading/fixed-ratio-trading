@@ -16,15 +16,18 @@
 //! - **Withdrawal**: Via `process_withdraw_fees()` by pool owner
 //!
 //! ### 2. Pool Fees (Percentage-based on tokens)
-//! - **Rate**: 0% to 0.5% configurable by pool owner/delegates
+//! - **Rate**: 0% to 0.5% configurable by pool owner
 //! - **Default**: 0% (free trading by default)
 //! - **Application**: Deducted from input tokens during swaps
 //! - **Purpose**: Revenue generation for pool operators
 //! - **Collection**: Tracked in pool state (`collected_fees_token_a`, `collected_fees_token_b`)
-//! - **Withdrawal**: Via delegate system with time delays
+//! - **Withdrawal**: Via `process_withdraw_pool_fees()` by pool owner
 
-use crate::types::*;
-use crate::utils::*;
+use crate::{
+    types::*,
+    utils::*,
+    constants::{MAX_SWAP_FEE_BASIS_POINTS, POOL_STATE_SEED_PREFIX},
+};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
@@ -32,8 +35,10 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::{rent::Rent, Sysvar, clock::Clock},
+    program::invoke_signed,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use spl_token;
 
 /// Processes **Contract Fee** withdrawals by the pool owner.
 ///
@@ -47,7 +52,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// pool state account. Only the designated pool owner can execute SOL fee withdrawals.
 ///
 /// **Note**: This function handles SOL fees only. For SPL token fee withdrawals (pool fees),
-/// use the delegate withdrawal system through `WithdrawFeesToDelegate`.
+/// use `process_withdraw_pool_fees()`.
 ///
 /// # Purpose
 /// - Enables pool owner to collect accumulated SOL fees for operational costs
@@ -102,8 +107,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// ```
 ///
 /// # Note
-/// This function only handles SOL fees. For SPL token fee withdrawals, use the
-/// delegate withdrawal system through `WithdrawFeesToDelegate`.
+/// This function only handles SOL fees. For SPL token fee withdrawals, use
+/// `process_withdraw_pool_fees()`.
 pub fn process_withdraw_fees(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -191,6 +196,352 @@ pub fn process_withdraw_fees(
 
     msg!("Fee withdrawal completed successfully. Amount: {} lamports", available_fees);
     msg!("Total SOL fees withdrawn to date: {} lamports", updated_pool_state.total_sol_fees_withdrawn);
+
+    Ok(())
+}
+
+/// Changes the swap fee rate (owner only).
+///
+/// This function allows the pool owner to modify the percentage-based trading fee 
+/// charged on swap operations. The fee is deducted from the input token amount
+/// and collected by the pool for revenue generation.
+///
+/// # Arguments
+/// * `_program_id` - The program ID (currently unused but reserved for validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (writable)
+/// * `new_fee_basis_points` - New fee rate in basis points (0-50 = 0%-0.5%)
+///
+/// # Security Features
+/// - **Owner-only**: Only the pool owner can change fees
+/// - **Rate limits**: Fee cannot exceed 0.5% (50 basis points)
+/// - **Immediate effect**: New fee rate applies to all subsequent swaps
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner or invalid fee rate
+pub fn process_change_fee(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    new_fee_basis_points: u64,
+) -> ProgramResult {
+    msg!("Processing ChangeFee: {} basis points", new_fee_basis_points);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 2)?; // Expected: 2 accounts minimum
+    
+    let account_info_iter = &mut accounts.iter();
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to change fees");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Validate fee rate
+    if new_fee_basis_points > MAX_SWAP_FEE_BASIS_POINTS {
+        msg!("Fee rate {} exceeds maximum {}", new_fee_basis_points, MAX_SWAP_FEE_BASIS_POINTS);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Load and verify pool state
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
+    if *owner.key != pool_state_data.owner {
+        msg!("Only pool owner can change fees");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Update fee rate
+    let old_fee = pool_state_data.swap_fee_basis_points;
+    pool_state_data.swap_fee_basis_points = new_fee_basis_points;
+    
+    // Save updated state
+    let mut serialized_data = Vec::new();
+    pool_state_data.serialize(&mut serialized_data)?;
+    let account_data_len = pool_state.data_len();
+    if serialized_data.len() > account_data_len {
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    {
+        let mut account_data = pool_state.data.borrow_mut();
+        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    }
+    
+    msg!("Fee rate changed successfully: {} → {} basis points", old_fee, new_fee_basis_points);
+
+    Ok(())
+}
+
+/// Withdraws accumulated pool fees (owner only).
+///
+/// This function allows the pool owner to withdraw SPL token fees that have been
+/// collected from swap operations. These fees are tracked separately from the
+/// main pool liquidity.
+///
+/// # Arguments
+/// * `_program_id` - The program ID (currently unused but reserved for validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (writable)
+///   - `accounts[2]` - Owner's token account (for receiving fees)
+///   - `accounts[3]` - Token program
+///   - `accounts[4]` - Pool vault account (for the token being withdrawn)
+/// * `token_mint` - The token mint to withdraw fees for
+/// * `amount` - Amount of tokens to withdraw
+///
+/// # Security Features
+/// - **Owner-only**: Only the pool owner can withdraw fees
+/// - **Amount validation**: Cannot withdraw more than collected
+/// - **Rent protection**: Maintains vault rent exemption
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner or insufficient fees
+pub fn process_withdraw_pool_fees(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    token_mint: Pubkey,
+    amount: u64,
+) -> ProgramResult {
+    msg!("Processing WithdrawPoolFees: {} tokens of mint {}", amount, token_mint);
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 5)?; // Expected: 5 accounts minimum
+    
+    let account_info_iter = &mut accounts.iter();
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+    let owner_token_account = next_account_info(account_info_iter)?;
+    let token_program = next_account_info(account_info_iter)?;
+    let vault_account_info = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to withdraw pool fees");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    if *owner.key != pool_state.owner {
+        msg!("Only pool owner can withdraw pool fees");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Determine which token and fees we're dealing with
+    let (collected_fees, vault_account) = if token_mint == pool_state.token_a_mint {
+        (pool_state.collected_fees_token_a, pool_state.token_a_vault)
+    } else if token_mint == pool_state.token_b_mint {
+        (pool_state.collected_fees_token_b, pool_state.token_b_vault)
+    } else {
+        msg!("Invalid token mint for this pool");
+        return Err(ProgramError::InvalidAccountData);
+    };
+
+    // Verify vault account matches
+    if *vault_account_info.key != vault_account {
+        msg!("Invalid vault account provided");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check if sufficient fees are available
+    if amount > collected_fees {
+        msg!("Insufficient fees available. Requested: {}, Available: {}", amount, collected_fees);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Transfer fees from vault to owner
+    let pool_state_seeds = &[
+        POOL_STATE_SEED_PREFIX,
+        pool_state.token_a_mint.as_ref(),
+        pool_state.token_b_mint.as_ref(),
+        &pool_state.ratio_a_numerator.to_le_bytes(),
+        &pool_state.ratio_b_denominator.to_le_bytes(),
+        &[pool_state.pool_authority_bump_seed],
+    ];
+
+    invoke_signed(
+        &spl_token::instruction::transfer(
+            token_program.key,
+            vault_account_info.key,
+            owner_token_account.key,
+            pool_state_account.key,
+            &[],
+            amount,
+        )?,
+        &[
+            vault_account_info.clone(),
+            owner_token_account.clone(),
+            pool_state_account.clone(),
+            token_program.clone(),
+        ],
+        &[pool_state_seeds],
+    )?;
+
+    // Update fee tracking
+    if token_mint == pool_state.token_a_mint {
+        pool_state.collected_fees_token_a = pool_state.collected_fees_token_a
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        pool_state.total_fees_withdrawn_token_a = pool_state.total_fees_withdrawn_token_a
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+    } else {
+        pool_state.collected_fees_token_b = pool_state.collected_fees_token_b
+            .checked_sub(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        pool_state.total_fees_withdrawn_token_b = pool_state.total_fees_withdrawn_token_b
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+    }
+
+    // Save updated state
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+
+    msg!("Pool fee withdrawal completed successfully. Amount: {} tokens", amount);
+
+    Ok(())
+}
+
+/// Pauses swap operations for this specific pool (owner only).
+///
+/// This function allows the pool owner to immediately pause swap operations
+/// while keeping deposits and withdrawals functional.
+///
+/// # Arguments
+/// * `_program_id` - The program ID (currently unused but reserved for validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (writable)
+///   - `accounts[2]` - Clock sysvar (for timestamp)
+///
+/// # Security Features
+/// - **Owner-only**: Only the pool owner can pause swaps
+/// - **Immediate effect**: Swap operations are blocked immediately
+/// - **Selective pause**: Only swaps are paused, not deposits/withdrawals
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+/// - `PoolError::PoolSwapsAlreadyPaused` - Swaps are already paused
+pub fn process_pause_pool_swaps(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("Processing PausePoolSwaps");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 3)?; // Expected: 3 accounts minimum
+    
+    let account_info_iter = &mut accounts.iter();
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+    let clock_sysvar = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to pause pool swaps");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    if *owner.key != pool_state.owner {
+        msg!("Only pool owner can pause pool swaps");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check if already paused
+    if pool_state.swaps_paused {
+        msg!("Pool swaps are already paused");
+        return Err(PoolError::PoolSwapsAlreadyPaused.into());
+    }
+
+    // Get current timestamp
+    let clock = &Clock::from_account_info(clock_sysvar)?;
+
+    // Pause swaps
+    pool_state.swaps_paused = true;
+            pool_state.swaps_pause_initiated_by = Some(*owner.key);
+    pool_state.swaps_pause_initiated_timestamp = clock.unix_timestamp;
+
+    // Save updated state
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+
+    msg!("Pool swaps paused successfully by owner at timestamp {}", clock.unix_timestamp);
+
+    Ok(())
+}
+
+/// Unpauses swap operations for this specific pool (owner only).
+///
+/// This function allows the pool owner to resume swap operations
+/// that were previously paused.
+///
+/// # Arguments
+/// * `_program_id` - The program ID (currently unused but reserved for validation)
+/// * `accounts` - Array of account infos in the following order:
+///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
+///   - `accounts[1]` - Pool state PDA account (writable)
+///
+/// # Security Features
+/// - **Owner-only**: Only the pool owner can unpause swaps
+/// - **Immediate effect**: Swap operations resume immediately
+///
+/// # Errors
+/// - `ProgramError::MissingRequiredSignature` - Owner didn't sign transaction
+/// - `ProgramError::InvalidAccountData` - Caller is not the pool owner
+/// - `PoolError::PoolSwapsNotPaused` - Swaps are not currently paused
+pub fn process_unpause_pool_swaps(
+    _program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("Processing UnpausePoolSwaps");
+    
+    // ✅ SYSTEM PAUSE: Backward compatible validation
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 2)?; // Expected: 2 accounts minimum
+    
+    let account_info_iter = &mut accounts.iter();
+    let owner = next_account_info(account_info_iter)?;
+    let pool_state_account = next_account_info(account_info_iter)?;
+
+    // Verify owner is signer
+    if !owner.is_signer {
+        msg!("Owner must be a signer to unpause pool swaps");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Load and verify pool state
+    let mut pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    if *owner.key != pool_state.owner {
+        msg!("Only pool owner can unpause pool swaps");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Check if actually paused
+    if !pool_state.swaps_paused {
+        msg!("Pool swaps are not currently paused");
+        return Err(PoolError::PoolSwapsNotPaused.into());
+    }
+
+    // Unpause swaps
+    pool_state.swaps_paused = false;
+    pool_state.swaps_pause_initiated_by = None;
+    pool_state.swaps_pause_initiated_timestamp = 0;
+
+    // Save updated state
+    let mut serialized_data = Vec::new();
+    pool_state.serialize(&mut serialized_data)?;
+    pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+
+    msg!("Pool swaps unpaused successfully by owner");
 
     Ok(())
 } 

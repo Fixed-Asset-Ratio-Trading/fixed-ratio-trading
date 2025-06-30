@@ -62,65 +62,13 @@ pub enum PoolError {
     #[error("Pool is paused")]
     PoolPaused,
     
-    /// Maximum number of delegates exceeded
-    #[error("Delegate limit exceeded")]
-    DelegateLimitExceeded,
-    
-    /// Delegate already exists in the pool
-    #[error("Delegate already exists: {delegate}")]
-    DelegateAlreadyExists { delegate: Pubkey },
-    
-    /// Delegate not found in the pool
-    #[error("Delegate not found: {delegate}")]
-    DelegateNotFound { delegate: Pubkey },
-    
-    /// Invalid wait time specified
-    #[error("Invalid wait time")]
-    InvalidWaitTime { wait_time: u64 },
-    
     /// Unauthorized operation
     #[error("Unauthorized")]
     Unauthorized,
     
-    /// Unauthorized delegate operation
-    #[error("Unauthorized delegate")]
-    UnauthorizedDelegate,
-    
-    /// Invalid action parameters
-    #[error("Invalid action parameters")]
-    InvalidActionParameters,
-    
-    /// Invalid action type
-    #[error("Invalid action type")]
-    InvalidActionType,
-    
-    /// Action not ready for execution
-    #[error("Action not ready")]
-    ActionNotReady,
-    
-    /// Action not found
-    #[error("Action not found")]
-    ActionNotFound,
-    
-    /// Too many pending actions
-    #[error("Maximum pending actions reached")]
-    MaxPendingActionsReached,
-    
     /// Arithmetic overflow
     #[error("Arithmetic overflow")]
     ArithmeticOverflow,
-
-    /// Action already executed
-    #[error("Action already executed")]
-    ActionAlreadyExecuted,
-
-    /// Action expired
-    #[error("Action expired")]
-    ActionExpired,
-
-    /// Rate limit exceeded
-    #[error("Rate limit exceeded")]
-    RateLimitExceeded,
     
     /// System is paused - all operations blocked except unpause
     #[error("System is paused - all operations blocked except unpause")]
@@ -138,9 +86,8 @@ pub enum PoolError {
     #[error("Unauthorized access to system controls")]
     UnauthorizedAccess,
     
-    // Pool-specific pause error types (Phase 2 addition)
-    /// Pool swaps are currently paused by delegate
-    #[error("Pool swaps are currently paused by delegate")]
+    /// Pool swaps are currently paused by owner
+    #[error("Pool swaps are currently paused by owner")]
     PoolSwapsPaused,
     
     /// Pool swaps are already paused
@@ -166,21 +113,8 @@ impl PoolError {
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
             PoolError::PoolPaused => 1007,
-            PoolError::DelegateLimitExceeded => 1008,
-            PoolError::DelegateAlreadyExists { .. } => 1009,
-            PoolError::DelegateNotFound { .. } => 1010,
-            PoolError::InvalidWaitTime { .. } => 1011,
             PoolError::Unauthorized => 1012,
-            PoolError::UnauthorizedDelegate => 1013,
-            PoolError::InvalidActionParameters => 1014,
-            PoolError::InvalidActionType => 1015,
-            PoolError::ActionNotReady => 1016,
-            PoolError::ActionNotFound => 1017,
-            PoolError::MaxPendingActionsReached => 1018,
             PoolError::ArithmeticOverflow => 1019,
-            PoolError::ActionAlreadyExecuted => 1020,
-            PoolError::ActionExpired => 1021,
-            PoolError::RateLimitExceeded => 1022,
             PoolError::SystemPaused => 1023,
             PoolError::SystemAlreadyPaused => 1024,
             PoolError::SystemNotPaused => 1025,

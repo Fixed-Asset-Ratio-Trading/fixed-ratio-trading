@@ -117,22 +117,6 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
     Ok(())
 }
 
-/// Validates delegate wait time is within allowed bounds.
-///
-/// # Arguments
-/// * `wait_time` - The wait time in seconds to validate
-///
-/// # Returns
-/// * `ProgramResult` - Success if wait time is valid, error otherwise
-pub fn validate_wait_time(wait_time: u64) -> ProgramResult {
-    if wait_time < MIN_WITHDRAWAL_WAIT_TIME || wait_time > MAX_WITHDRAWAL_WAIT_TIME {
-        msg!("Wait time {} seconds is outside allowed range [{}, {}]", 
-             wait_time, MIN_WITHDRAWAL_WAIT_TIME, MAX_WITHDRAWAL_WAIT_TIME);
-        return Err(PoolError::InvalidWaitTime { wait_time }.into());
-    }
-    Ok(())
-}
-
 /// Validates that a pool state is properly initialized.
 ///
 /// # Arguments
@@ -151,7 +135,7 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 /// Validates that a pool is not paused (for user operations).
 /// 
 /// **NEW PAUSE SYSTEM**: Simple pool-level pause validation without auto-unpause.
-/// Pool pause persists indefinitely until manually unpaused by delegate action.
+/// Pool pause persists indefinitely until manually unpaused by owner action.
 ///
 /// # Arguments
 /// * `pool_state` - The pool state to validate
@@ -162,7 +146,7 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
     if pool_state.is_paused {
         msg!("Pool operations are currently paused (indefinite until manual unpause)");
-        msg!("Use delegate action to unpause pool operations");
+        msg!("Use owner action to unpause pool operations");
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

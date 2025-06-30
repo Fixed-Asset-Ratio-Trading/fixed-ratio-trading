@@ -50,7 +50,7 @@ use borsh::BorshDeserialize;
 /// # Pause Functionality
 /// When `is_paused = true`:
 /// - Blocks all user operations: deposits, withdrawals, swaps
-/// - Allows owner operations: fee withdrawals, security updates, delegate management
+/// - Allows owner operations: fee withdrawals, security updates
 /// - Provides emergency stop for security incidents or maintenance
 /// - Can be reversed by setting `is_paused = false`
 ///

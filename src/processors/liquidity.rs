@@ -541,7 +541,7 @@ pub fn process_deposit(
 ///
 /// **⚠️ RACE CONDITION NOTICE**: Users querying pool status during large withdrawals
 /// may see temporary pause state. This is acceptable and provides accurate real-time
-/// visibility into pool security measures. The pause is distinguishable from delegate
+/// visibility into pool security measures. The pause is distinguishable from owner
 /// actions via the withdrawal_protection_active flag.
 ///
 /// # System Pause Behavior
@@ -602,10 +602,9 @@ pub fn process_deposit(
 /// - Pool accounts: Must maintain rent-exempt status throughout operation
 ///
 /// # Security Model
-/// - Uses delegate-based two-step withdrawal process
-/// - Withdrawal must be requested through delegate action
-/// - Pool owner can review and cancel withdrawal requests
-/// - Only approved withdrawals can be executed
+/// - Direct withdrawal process with immediate execution
+/// - Pool owner can pause withdrawals if needed
+/// - Only authorized users can withdraw their own LP tokens
 ///
 /// # Fees
 /// - Withdrawal fee: Fixed SOL amount (DEPOSIT_WITHDRAWAL_FEE) transferred to pool state PDA
@@ -636,7 +635,7 @@ pub fn process_withdraw(
     // ✅ SYSTEM PAUSE: Only check system-wide pause (existing)
     crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
     
-    // ✅ NO POOL SWAP PAUSE CHECK: Withdrawals work regardless of delegate pool swap pause
+    // ✅ NO POOL SWAP PAUSE CHECK: Withdrawals work regardless of owner pool swap pause
     
     let account_info_iter = &mut accounts.iter();
     let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
@@ -843,9 +842,9 @@ fn should_protect_withdrawal_from_slippage(
         return Ok(true);
     }
     
-    // Also check if swaps are already paused by delegates (don't interfere)
+    // Also check if swaps are already paused by owner (don't interfere)
     if pool_state.swaps_paused {
-        msg!("Swaps already paused by delegate - no additional protection needed");
+        msg!("Swaps already paused by owner - no additional protection needed");
         return Ok(false);
     }
     
@@ -873,10 +872,10 @@ fn initiate_withdrawal_protection(
     withdrawer: &Pubkey,
     current_timestamp: i64,
 ) -> ProgramResult {
-    // Only pause if not already paused by delegates
+    // Only pause if not already paused by owner
     if !pool_state.swaps_paused {
         pool_state.swaps_paused = true;
-        pool_state.swaps_pause_requested_by = Some(*withdrawer);
+        pool_state.swaps_pause_initiated_by = Some(*withdrawer);
         pool_state.swaps_pause_initiated_timestamp = current_timestamp;
         
         // Mark this as a temporary withdrawal protection pause
@@ -892,7 +891,7 @@ fn initiate_withdrawal_protection(
 /// Re-enable swaps after withdrawal protection
 /// 
 /// This function clears the temporary withdrawal protection pause, allowing
-/// swaps to resume. Only applies to automatic protection, not delegate-initiated pauses.
+/// swaps to resume. Only applies to automatic protection, not owner-initiated pauses.
 /// 
 /// **⚠️ RACE CONDITION RESOLUTION**: After this function executes, subsequent
 /// status queries will show "swaps enabled" again. The temporary protection
@@ -907,7 +906,7 @@ fn complete_withdrawal_protection(pool_state: &mut PoolState) -> ProgramResult {
     // Only unpause if this was our withdrawal protection pause
     if pool_state.withdrawal_protection_active {
         pool_state.swaps_paused = false;
-        pool_state.swaps_pause_requested_by = None;
+        pool_state.swaps_pause_initiated_by = None;
         pool_state.withdrawal_protection_active = false;
         
         msg!("🔓 MEV Protection completed - swaps re-enabled");

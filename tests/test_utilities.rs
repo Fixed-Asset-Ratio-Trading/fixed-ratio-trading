@@ -41,8 +41,7 @@ use borsh::BorshSerialize;
 use fixed_ratio_trading::{
     RentRequirements, 
     PoolError, 
-    MINIMUM_RENT_BUFFER, 
-    DelegateManagement
+    MINIMUM_RENT_BUFFER
 };
 use std::time::Duration;
 use tokio::time::sleep;
@@ -218,23 +217,14 @@ fn test_pool_error_error_code() {
     assert_eq!(error.error_code(), 1006);
 
     assert_eq!(PoolError::PoolPaused.error_code(), 1007);
-    assert_eq!(PoolError::DelegateLimitExceeded.error_code(), 1008);
-    let error = PoolError::DelegateAlreadyExists {
-        delegate: Pubkey::new_unique(),
-    };
-    assert_eq!(error.error_code(), 1009);
-    let error = PoolError::DelegateNotFound {
-        delegate: Pubkey::new_unique(),
-    };
-    assert_eq!(error.error_code(), 1010);
-    assert_eq!(PoolError::InvalidWaitTime { wait_time: 0 }.error_code(), 1011);
-    assert_eq!(PoolError::PendingWithdrawalExists.error_code(), 1012);
-    assert_eq!(PoolError::NoPendingWithdrawal.error_code(), 1013);
-    assert_eq!(PoolError::UnauthorizedDelegate.error_code(), 1014);
-    assert_eq!(PoolError::InsufficientFees.error_code(), 1015);
-    assert_eq!(PoolError::InvalidWithdrawalRequest.error_code(), 1016);
-    assert_eq!(PoolError::WithdrawalNotReady.error_code(), 1017);
-    assert_eq!(PoolError::Unauthorized.error_code(), 1018);
+    assert_eq!(PoolError::PoolSwapsPaused.error_code(), 1008);
+    assert_eq!(PoolError::PoolSwapsAlreadyPaused.error_code(), 1009);
+    assert_eq!(PoolError::PoolSwapsNotPaused.error_code(), 1010);
+    assert_eq!(PoolError::SystemPaused.error_code(), 1011);
+    assert_eq!(PoolError::SystemAlreadyPaused.error_code(), 1012);
+    assert_eq!(PoolError::SystemNotPaused.error_code(), 1013);
+    assert_eq!(PoolError::UnauthorizedAccess.error_code(), 1014);
+    assert_eq!(PoolError::Unauthorized.error_code(), 1016);
 }
 
 #[test]
@@ -264,40 +254,26 @@ fn test_pool_error_display() {
     let error = PoolError::PoolPaused;
     assert_eq!(format!("{}", error), "Pool operations are currently paused");
 
-    let error = PoolError::DelegateLimitExceeded;
-    assert_eq!(format!("{}", error), "Delegate limit exceeded");
+    let error = PoolError::PoolSwapsPaused;
+    assert_eq!(format!("{}", error), "Pool swaps are currently paused by owner");
 
-    let delegate_key = Pubkey::new_unique();
-    let error = PoolError::DelegateAlreadyExists { delegate: delegate_key };
-    let display_str = format!("{}", error);
-    assert!(display_str.contains(&delegate_key.to_string()));
-    assert!(display_str.contains("Delegate already exists"));
+    let error = PoolError::PoolSwapsAlreadyPaused;
+    assert_eq!(format!("{}", error), "Pool swaps are already paused");
 
-    let error = PoolError::DelegateNotFound { delegate: delegate_key };
-    let display_str = format!("{}", error);
-    assert!(display_str.contains(&delegate_key.to_string()));
-    assert!(display_str.contains("Delegate not found"));
+    let error = PoolError::PoolSwapsNotPaused;
+    assert_eq!(format!("{}", error), "Pool swaps are not currently paused");
 
-    let error = PoolError::InvalidWaitTime { wait_time: 100 };
-    assert_eq!(format!("{}", error), "Invalid wait time: 100 seconds");
+    let error = PoolError::SystemPaused;
+    assert_eq!(format!("{}", error), "System is paused - all operations blocked except unpause");
 
-    let error = PoolError::PendingWithdrawalExists;
-    assert_eq!(format!("{}", error), "Pending withdrawal request exists");
+    let error = PoolError::SystemAlreadyPaused;
+    assert_eq!(format!("{}", error), "System is already paused");
 
-    let error = PoolError::NoPendingWithdrawal;
-    assert_eq!(format!("{}", error), "No pending withdrawal request");
+    let error = PoolError::SystemNotPaused;
+    assert_eq!(format!("{}", error), "System is not paused");
 
-    let error = PoolError::UnauthorizedDelegate;
-    assert_eq!(format!("{}", error), "Unauthorized delegate");
-
-    let error = PoolError::InsufficientFees;
-    assert_eq!(format!("{}", error), "Insufficient fees");
-
-    let error = PoolError::InvalidWithdrawalRequest;
-    assert_eq!(format!("{}", error), "Invalid withdrawal request");
-
-    let error = PoolError::WithdrawalNotReady;
-    assert_eq!(format!("{}", error), "Withdrawal not ready");
+    let error = PoolError::UnauthorizedAccess;
+    assert_eq!(format!("{}", error), "Unauthorized access to system controls");
 
     let error = PoolError::Unauthorized;
     assert_eq!(format!("{}", error), "Unauthorized");
@@ -328,53 +304,37 @@ fn test_pool_error_to_program_error() {
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1007));
 
-    let error = PoolError::DelegateLimitExceeded;
+    let error = PoolError::PoolSwapsPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1008));
 
-    let error = PoolError::DelegateAlreadyExists {
-        delegate: Pubkey::new_unique(),
-    };
+    let error = PoolError::PoolSwapsAlreadyPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1009));
 
-    let error = PoolError::DelegateNotFound {
-        delegate: Pubkey::new_unique(),
-    };
+    let error = PoolError::PoolSwapsNotPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1010));
 
-    let error = PoolError::InvalidWaitTime { wait_time: 0 };
+    let error = PoolError::SystemPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1011));
 
-    let error = PoolError::PendingWithdrawalExists;
+    let error = PoolError::SystemAlreadyPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1012));
 
-    let error = PoolError::NoPendingWithdrawal;
+    let error = PoolError::SystemNotPaused;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1013));
 
-    let error = PoolError::UnauthorizedDelegate;
+    let error = PoolError::UnauthorizedAccess;
     let program_error: ProgramError = error.into();
     assert_eq!(program_error, ProgramError::Custom(1014));
 
-    let error = PoolError::InsufficientFees;
-    let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1015));
-
-    let error = PoolError::InvalidWithdrawalRequest;
-    let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1016));
-
-    let error = PoolError::WithdrawalNotReady;
-    let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1017));
-
     let error = PoolError::Unauthorized;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1018));
+    assert_eq!(program_error, ProgramError::Custom(1016));
 }
 
 // ================================================================================================
@@ -403,10 +363,9 @@ fn test_pool_state_get_packed_len() {
         40 + // rent_requirements
         1 +  // is_paused
         1 +  // swaps_paused
-        33 + // swaps_pause_requested_by (Option<Pubkey>)
+        33 + // swaps_pause_initiated_by (Option<Pubkey>)
         8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
-        DelegateManagement::get_packed_len() + // delegate_management
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
@@ -451,22 +410,7 @@ fn test_normalize_pool_config_identical_tokens_panics() {
     normalize_pool_config(&mint.pubkey(), &mint.pubkey(), 2);
 }
 
-// ================================================================================================
-// DELEGATE MANAGEMENT TESTS
-// ================================================================================================
 
-#[test]
-fn test_delegate_management_get_packed_len() {
-    // Test that delegate management has a reasonable packed length
-    let len = DelegateManagement::get_packed_len();
-    println!("Actual DelegateManagement packed length: {} bytes", len);
-    
-    assert!(len > 0, "Delegate management should have non-zero packed length");
-    // Updated bounds to account for pool pause functionality (delegates, withdrawal history, pool pause requests)
-    // Expected size: ~1,611 bytes (3 delegates * multiple arrays + withdrawal history + pool pause system)
-    assert!(len >= 1400, "Delegate management should include comprehensive governance features");
-    assert!(len <= 2000, "Delegate management packed length should remain reasonable for Solana");
-}
 
 // ================================================================================================
 // COMMON UTILITIES TESTS
@@ -1624,7 +1568,7 @@ async fn test_get_token_vault_pdas() -> Result<(), Box<dyn std::error::Error>> {
 /// 2. Token mint information extraction and validation
 /// 3. Pool configuration parameters (fees, ratios, etc.) verification
 /// 4. Pool status and operational state analysis
-/// 5. Owner and delegate information accuracy
+/// 5. Owner information accuracy
 /// 6. Pool metadata and configuration completeness
 /// 7. Liquidity information and balance validation
 /// 8. Edge cases and error handling scenarios
@@ -1847,42 +1791,42 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // ===============================================================================
-    // Test 4: Owner and Delegate Information Accuracy
+    // Test 4: Owner Information Accuracy
     // ===============================================================================
     {
-        println!("Test 4: Owner and delegate information accuracy");
+        println!("Test 4: Owner information accuracy");
         
-        // Create a pool with delegate management
-        let delegate_primary_mint = Keypair::new();
-        let delegate_base_mint = Keypair::new();
-        let delegate_lp_a_mint = Keypair::new();
-        let delegate_lp_b_mint = Keypair::new();
+        // Create a pool for owner testing
+        let owner_primary_mint = Keypair::new();
+        let owner_base_mint = Keypair::new();
+        let owner_lp_a_mint = Keypair::new();
+        let owner_lp_b_mint = Keypair::new();
         
         create_test_mints(
             &mut ctx.env.banks_client,
             &ctx.env.payer,
             ctx.env.recent_blockhash,
-            &[&delegate_primary_mint, &delegate_base_mint],
+            &[&owner_primary_mint, &owner_base_mint],
         ).await?;
         
-        let delegate_pool_config = create_pool_new_pattern(
+        let owner_pool_config = create_pool_new_pattern(
             &mut ctx.env.banks_client,
             &ctx.env.payer,
             ctx.env.recent_blockhash,
-            &delegate_primary_mint,
-            &delegate_base_mint,
-            &delegate_lp_a_mint,
-            &delegate_lp_b_mint,
+            &owner_primary_mint,
+            &owner_base_mint,
+            &owner_lp_a_mint,
+            &owner_lp_b_mint,
             None,
         ).await?;
         
-        // Test pool info retrieval for delegate information
+        // Test pool info retrieval for owner information
         let instruction_data = PoolInstruction::GetPoolInfo {};
         
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(delegate_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(owner_pool_config.pool_state_pda, false),
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1895,25 +1839,19 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         );
         
         let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for delegate info");
+        assert!(result.is_ok(), "get_pool_info instruction should succeed for owner info");
         
-        // Verify owner and delegate information
-        let pool_state = get_pool_state(&mut ctx.env.banks_client, &delegate_pool_config.pool_state_pda).await
+        // Verify owner information
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &owner_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
         // Verify owner information
         assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
         
-        // Verify delegate management state (pool owner is automatically added as delegate[0])
-        assert_eq!(pool_state.delegate_management.delegate_count, 1, "Should have 1 delegate initially (pool owner auto-added)");
-        assert_eq!(pool_state.delegate_management.delegates[0], ctx.env.payer.pubkey(), "First delegate should be the pool owner");
-        assert_eq!(pool_state.delegate_management.pending_actions.len(), 0, "Should have no pending actions initially");
-        assert_eq!(pool_state.delegate_management.action_history.len(), 0, "Should have no action history initially");
+        // Pool operations are controlled directly by the pool owner (owner-only system)
+        // No delegate system - all operations require owner authorization
         
-        // Verify delegate management configuration
-        assert!(pool_state.delegate_management.delegates.len() >= 3, "Should support at least 3 delegates");
-        
-        println!("✅ Owner and delegate information accuracy validation passed");
+        println!("✅ Owner information accuracy validation passed");
     }
     
     // ===============================================================================

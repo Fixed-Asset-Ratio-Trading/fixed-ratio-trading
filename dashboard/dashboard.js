@@ -355,7 +355,6 @@ async function scanForPools() {
                         collectedFeesTokenA: pool.collectedFeesTokenA || 0,
                         collectedFeesTokenB: pool.collectedFeesTokenB || 0,
                         collectedSolFees: pool.collectedSolFees || 0,
-                        delegateCount: pool.delegateCount || 0,
                         owner: pool.creator,
                         tokenASymbol: pool.tokenASymbol,
                         tokenBSymbol: pool.tokenBSymbol,
@@ -456,38 +455,11 @@ async function parsePoolState(data, address) {
         // Skip timestamp and withdrawal protection - 9 bytes
         offset += 9;
         
-        // IMPROVED: Skip delegate management more accurately
-        // DelegateManagement has:
-        // - delegates: [Pubkey; 3] = 96 bytes
-        // - delegate_count: u8 = 1 byte  
-        // - time_limits: [DelegateTimeLimits; 3] = 3 * 24 = 72 bytes
-        // - pending_actions: Vec<> = 4 bytes length + variable content
-        // - pending_action_count: u8 = 1 byte
-        // - next_action_id: u64 = 8 bytes
-        // - action_history: Vec<> = 4 bytes length + variable content  
-        // - action_history_index: u8 = 1 byte
-        
-        // Skip fixed delegate management fields: 96 + 1 + 72 + 1 + 8 + 1 = 179 bytes
-        offset += 179;
-        
-        // Read pending_actions Vec length
-        const pendingActionsLen = dataArray[offset] | (dataArray[offset + 1] << 8) | (dataArray[offset + 2] << 16) | (dataArray[offset + 3] << 24);
-        offset += 4;
-        // Skip pending actions data (each action is ~100 bytes, but let's read the actual data)
-        offset += pendingActionsLen * 100; // Approximate, but safer
-        
-        // Read action_history Vec length  
-        const actionHistoryLen = dataArray[offset] | (dataArray[offset + 1] << 8) | (dataArray[offset + 2] << 16) | (dataArray[offset + 3] << 24);
-        offset += 4;
-        // Skip action history data
-        offset += actionHistoryLen * 100; // Approximate
-        
         // Now we should be at the fee fields
         let collectedFeesTokenA = 0;
         let collectedFeesTokenB = 0;
         let swapFeeBasisPoints = 0;
         let collectedSolFees = 0;
-        let delegateCount = 0;
         
         try {
             if (offset + 48 < dataArray.length) {
@@ -574,7 +546,6 @@ async function parsePoolState(data, address) {
             collectedFeesTokenA,
             collectedFeesTokenB,
             collectedSolFees,
-            delegateCount: Math.min(delegateCount, 3), // Cap at max delegates
             tokenASymbol: tokenSymbols.tokenA,
             tokenBSymbol: tokenSymbols.tokenB,
             dataSource: 'RPC'
@@ -644,7 +615,7 @@ function updateSummaryStats() {
     document.getElementById('avg-pool-size').textContent = `${avgPoolSize.toLocaleString()} tokens`;
     document.getElementById('total-fees').textContent = `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
     document.getElementById('avg-swap-fee').textContent = `${avgSwapFee} bps`;
-    document.getElementById('total-delegates').textContent = '--'; // Delegates control pools, not tracked here
+    // Removed delegate tracking
     document.getElementById('total-swaps').textContent = '--'; // Would need transaction history
 }
 

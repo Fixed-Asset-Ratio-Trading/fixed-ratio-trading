@@ -134,8 +134,8 @@ use crate::{
 /// - **Default**: 0% (free trading by default)
 /// - **Application**: Deducted from input token amount before calculating output
 /// - **Calculation**: `fee_amount = input_amount * pool.swap_fee_basis_points / 10_000`
-/// - **Purpose**: Revenue generation for pool operators and delegates
-/// - **Collection**: Accumulated in pool state, withdrawable by authorized delegates
+/// - **Purpose**: Revenue generation for pool operators
+/// - **Collection**: Accumulated in pool state, withdrawable by pool owner
 /// 
 /// **Example with 0.25% pool fee:**
 /// ```ignore
@@ -564,12 +564,12 @@ pub fn process_swap(
 ///   - 25 basis points = 0.25% fee
 ///   - 50 basis points = 0.5% fee (maximum allowed)
 /// - **Application**: Fee is deducted from input token amount during swaps
-/// - **Collection**: Fees are accumulated in pool state and withdrawable by delegates
+/// - **Collection**: Fees are accumulated in pool state and withdrawable by pool owner
 ///
 /// # Fee Revenue Model
 /// - **Source**: Percentage of every token swap transaction
 /// - **Accumulation**: Fees are tracked separately by token type in pool state
-/// - **Withdrawal**: Authorized delegates can withdraw accumulated fees
+/// - **Withdrawal**: Pool owner can withdraw accumulated fees
 /// - **Transparency**: All fee collections and withdrawals are logged
 ///
 /// # Security Features
@@ -680,7 +680,7 @@ pub fn process_set_swap_fee(
 /// 
 /// This function provides pool-specific swap pause validation, separate from system-wide pause.
 /// It allows deposits and withdrawals to continue while blocking only swap operations when
-/// delegate-initiated pool pause is active.
+/// owner-initiated pool pause is active.
 /// 
 /// # Arguments
 /// * `pool_state_account` - Pool state PDA account containing pause status
@@ -691,11 +691,11 @@ fn validate_pool_swaps_not_paused(pool_state_account: &AccountInfo) -> ProgramRe
     let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
     
     if pool_state_data.swaps_paused {
-        msg!("Pool swaps are currently paused by delegate");
-        msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+        msg!("Pool swaps are currently paused by owner");
+        msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
         msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
         msg!("Note: Deposits and withdrawals are still available");
-        msg!("Note: Delegate contract manages pause governance and reasons");
+        msg!("Note: Owner can manage pause governance and reasons");
         return Err(PoolError::PoolSwapsPaused.into());
     }
     
