@@ -363,7 +363,7 @@ fn test_pool_state_get_packed_len() {
         40 + // rent_requirements
         1 +  // is_paused
         1 +  // swaps_paused
-        33 + // swaps_pause_requested_by (Option<Pubkey>)
+        33 + // swaps_pause_initiated_by (Option<Pubkey>)
         8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
         8 +  // collected_fees_token_a

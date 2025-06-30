@@ -46,15 +46,15 @@ Core Swap Tests:
 [ ] test_process_swap_b_to_a_execution - Low-level swap execution B→A
 
 Fee Management Tests (TO REWRITE - Remove Delegate System):
-[ ] test_fee_change_request_success - REWRITE: Use ChangeFee owner operation
-[ ] test_fee_change_validation - REWRITE: Owner-only fee validation
-[ ] test_fee_change_authorization - REWRITE: Owner authorization only
-[ ] test_fee_change_timing - REMOVE: No more time delays
+[✅] test_fee_change_request_success - REWRITTEN: test_owner_fee_management (immediate ChangeFee)
+[✅] test_fee_change_validation - REWRITTEN: test_owner_fee_management (owner-only validation)
+[✅] test_fee_change_authorization - REWRITTEN: test_owner_fee_management (owner authorization)
+[❌] test_fee_change_timing - REMOVED: No more time delays in new system
 [ ] test_fee_collection_accuracy - UPDATE: Owner fee collection
 [ ] test_fee_withdrawal_through_action - REWRITE: Use WithdrawPoolFees
 
 ==================================================================================
-MIGRATION STATUS: 5/17 tests migrated
+MIGRATION STATUS: 8/17 tests migrated (3 fee tests rewritten into 1, 1 removed)
 ==================================================================================
 */
 
@@ -625,6 +625,142 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     println!("    ✓ Token B: {} (sufficient for swap)", user_balance_b);
 
     println!("✅ B→A Swap validation testing completed successfully");
+    
+    Ok(())
+}
+
+/// Test owner-only fee management operations (replaces delegate fee tests)
+/// ✅ MIGRATED & REWRITTEN: Replaces test_fee_change_request_success, test_fee_change_validation, test_fee_change_authorization
+#[tokio::test] 
+async fn test_owner_fee_management() -> TestResult {
+    let (mut ctx, config, _user, _user_primary_account, _user_base_account) = setup_swap_test_environment(Some(2)).await?;
+
+    println!("===== Owner-Only Fee Management Testing =====");
+
+    // Test 1: Valid fee change by owner (immediate execution)
+    println!("\n--- Testing Valid Fee Change by Owner ---");
+    
+    let new_fee = VALID_FEE_MEDIUM; // 0.4%
+    let change_fee_ix = create_change_fee_instruction(
+        &ctx.env.payer.pubkey(),
+        &config.pool_state_pda,
+        new_fee,
+    );
+
+    let mut fee_change_tx = Transaction::new_with_payer(&[change_fee_ix], Some(&ctx.env.payer.pubkey()));
+    fee_change_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    
+    let fee_change_result = ctx.env.banks_client.process_transaction(fee_change_tx).await;
+    assert!(fee_change_result.is_ok(), "Owner fee change should succeed: {:?}", fee_change_result);
+    
+    // Verify fee was changed immediately
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after fee change");
+    assert_eq!(pool_state.swap_fee_basis_points, new_fee, "Fee should be updated immediately");
+    
+    println!("✅ Valid fee change successful: {} basis points ({}%)", new_fee, new_fee as f64 / 100.0);
+
+    // Test 2: Fee validation - maximum allowed fee
+    println!("\n--- Testing Maximum Allowed Fee ---");
+    
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let max_fee_ix = create_change_fee_instruction(
+        &ctx.env.payer.pubkey(),
+        &config.pool_state_pda,
+        MAX_ALLOWED_FEE, // 0.5%
+    );
+
+    let mut max_fee_tx = Transaction::new_with_payer(&[max_fee_ix], Some(&ctx.env.payer.pubkey()));
+    max_fee_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    
+    let max_fee_result = ctx.env.banks_client.process_transaction(max_fee_tx).await;
+    assert!(max_fee_result.is_ok(), "Maximum allowed fee should succeed: {:?}", max_fee_result);
+    
+    println!("✅ Maximum allowed fee (0.5%) accepted");
+
+    // Test 3: Fee validation - reject over maximum
+    println!("\n--- Testing Invalid Fee (Over Maximum) ---");
+    
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let invalid_fee_ix = create_change_fee_instruction(
+        &ctx.env.payer.pubkey(),
+        &config.pool_state_pda,
+        INVALID_FEE_JUST_OVER, // 0.51%
+    );
+
+    let mut invalid_fee_tx = Transaction::new_with_payer(&[invalid_fee_ix], Some(&ctx.env.payer.pubkey()));
+    invalid_fee_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    
+    let invalid_fee_result = ctx.env.banks_client.process_transaction(invalid_fee_tx).await;
+    assert!(invalid_fee_result.is_err(), "Fee over maximum should be rejected");
+    
+    println!("✅ Fee above maximum (0.5%) correctly rejected");
+
+    // Test 4: Zero fee setting (should be valid)
+    println!("\n--- Testing Zero Fee Setting ---");
+    
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let zero_fee_ix = create_change_fee_instruction(
+        &ctx.env.payer.pubkey(),
+        &config.pool_state_pda,
+        VALID_FEE_ZERO, // 0%
+    );
+
+    let mut zero_fee_tx = Transaction::new_with_payer(&[zero_fee_ix], Some(&ctx.env.payer.pubkey()));
+    zero_fee_tx.sign(&[&ctx.env.payer], ctx.env.recent_blockhash);
+    
+    let zero_fee_result = ctx.env.banks_client.process_transaction(zero_fee_tx).await;
+    assert!(zero_fee_result.is_ok(), "Zero fee should be valid: {:?}", zero_fee_result);
+    
+    // Verify zero fee was set
+    let final_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
+        .expect("Failed to get pool state after zero fee");
+    assert_eq!(final_pool_state.swap_fee_basis_points, VALID_FEE_ZERO, "Zero fee should be set");
+    
+    println!("✅ Zero fee (0%) successfully set");
+
+    // Test 5: Unauthorized user cannot change fees
+    println!("\n--- Testing Unauthorized Access Prevention ---");
+    
+    let unauthorized_user = Keypair::new();
+    
+    ctx.env.recent_blockhash = ctx.env.banks_client
+        .get_new_latest_blockhash(&ctx.env.recent_blockhash).await?;
+    
+    let unauthorized_fee_ix = create_change_fee_instruction(
+        &unauthorized_user.pubkey(),
+        &config.pool_state_pda,
+        VALID_FEE_LOW,
+    );
+
+    let mut unauthorized_tx = Transaction::new_with_payer(&[unauthorized_fee_ix], Some(&unauthorized_user.pubkey()));
+    unauthorized_tx.sign(&[&unauthorized_user], ctx.env.recent_blockhash);
+    
+    let unauthorized_result = ctx.env.banks_client.process_transaction(unauthorized_tx).await;
+    assert!(unauthorized_result.is_err(), "Unauthorized user should not be able to change fees");
+    
+    println!("✅ Unauthorized access correctly prevented");
+
+    println!("\n===== Owner-Only Fee Management Test Summary =====");
+    println!("✅ Fee Management Testing Complete:");
+    println!("   ✓ Owner can change fees immediately (no time delays)");
+    println!("   ✓ Fee changes take effect immediately");
+    println!("   ✓ Maximum allowed fee (0.5%) is enforced");
+    println!("   ✓ Fees above maximum are rejected");
+    println!("   ✓ Zero fee is valid and can be set");
+    println!("   ✓ Unauthorized users cannot change fees");
+    println!();
+    println!("🎯 Demonstrates simplified owner-only fee management:");
+    println!("   • No delegate system complexity");
+    println!("   • No time delays or pending actions");
+    println!("   • Immediate execution of valid fee changes");
+    println!("   • Proper validation and authorization");
     
     Ok(())
 } 

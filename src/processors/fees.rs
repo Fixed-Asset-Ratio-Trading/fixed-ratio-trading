@@ -467,7 +467,7 @@ pub fn process_pause_pool_swaps(
 
     // Pause swaps
     pool_state.swaps_paused = true;
-    pool_state.swaps_pause_requested_by = Some(*owner.key);
+            pool_state.swaps_pause_initiated_by = Some(*owner.key);
     pool_state.swaps_pause_initiated_timestamp = clock.unix_timestamp;
 
     // Save updated state
@@ -533,7 +533,7 @@ pub fn process_unpause_pool_swaps(
 
     // Unpause swaps
     pool_state.swaps_paused = false;
-    pool_state.swaps_pause_requested_by = None;
+    pool_state.swaps_pause_initiated_by = None;
     pool_state.swaps_pause_initiated_timestamp = 0;
 
     // Save updated state

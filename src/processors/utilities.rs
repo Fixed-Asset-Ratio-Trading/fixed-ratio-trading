@@ -238,14 +238,14 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
         if pool_state_data.withdrawal_protection_active {
             msg!("=== TEMPORARY WITHDRAWAL PROTECTION ===");
             msg!("Swaps temporarily paused during large withdrawal (≥5% of pool)");
-            msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+            msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
             msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
             msg!("Protection will auto-clear after withdrawal completion");
             msg!("NOTE: This is MEV protection, not an owner action");
         } else {
             msg!("=== OWNER PAUSE ===");
             msg!("Swaps paused by owner action");
-            msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
+            msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
             msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
             msg!("Control: Pool owner");
             msg!("Note: No auto-unpause - requires manual unpause action");

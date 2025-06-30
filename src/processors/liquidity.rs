@@ -875,7 +875,7 @@ fn initiate_withdrawal_protection(
     // Only pause if not already paused by owner
     if !pool_state.swaps_paused {
         pool_state.swaps_paused = true;
-        pool_state.swaps_pause_requested_by = Some(*withdrawer);
+        pool_state.swaps_pause_initiated_by = Some(*withdrawer);
         pool_state.swaps_pause_initiated_timestamp = current_timestamp;
         
         // Mark this as a temporary withdrawal protection pause
@@ -906,7 +906,7 @@ fn complete_withdrawal_protection(pool_state: &mut PoolState) -> ProgramResult {
     // Only unpause if this was our withdrawal protection pause
     if pool_state.withdrawal_protection_active {
         pool_state.swaps_paused = false;
-        pool_state.swaps_pause_requested_by = None;
+        pool_state.swaps_pause_initiated_by = None;
         pool_state.withdrawal_protection_active = false;
         
         msg!("🔓 MEV Protection completed - swaps re-enabled");
