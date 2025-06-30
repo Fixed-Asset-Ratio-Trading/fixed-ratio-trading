@@ -5,19 +5,23 @@ namespace FixedRatioTrading.Dashboard.Core.Models;
 
 /// <summary>
 /// Types of transactions that can occur in a pool
+/// NOTE: Only user-level operations are tracked in the dashboard.
+/// Owner operations (fee management, pause controls) are handled by separate CLI application.
 /// </summary>
 public enum TransactionType
 {
     Swap = 1,
     AddLiquidity = 2,
     RemoveLiquidity = 3,
-    FeeWithdrawal = 6,
     PoolCreation = 7,
-    SystemPause = 8,
-    SystemUnpause = 9,
-    FeeRateChange = 10,
-    PoolPause = 11,
-    PoolUnpause = 12
+    // REMOVED: Owner-only operations are handled by CLI app
+    // - FeeWithdrawal (4)
+    // - DelegateAction (5) - removed with delegate system
+    // - FeeRateChange (10) - owner only
+    // - SystemPause (8) - owner only
+    // - SystemUnpause (9) - owner only  
+    // - PoolPause (11) - owner only
+    // - PoolUnpause (12) - owner only
 }
 
 /// <summary>
@@ -76,17 +80,6 @@ public class PoolTransaction
     public ulong LpTokenAmount { get; set; } = 0;
     
     /// <summary>
-    /// Fee amount collected (for fee withdrawal transactions)
-    /// </summary>
-    public ulong FeeAmount { get; set; } = 0;
-    
-    /// <summary>
-    /// Which token the fee was collected in (TokenA or TokenB)
-    /// </summary>
-    [StringLength(10)]
-    public string FeeTokenSymbol { get; set; } = string.Empty;
-    
-    /// <summary>
     /// Block number when transaction was processed
     /// </summary>
     public ulong BlockNumber { get; set; } = 0;
@@ -124,11 +117,6 @@ public class PoolTransaction
     /// </summary>
     [Column(TypeName = "jsonb")]
     public string? Metadata { get; set; }
-    
-    /// <summary>
-    /// For fee operations: the fee rate (in basis points) if this is a fee rate change
-    /// </summary>
-    public uint? FeeRateBasisPoints { get; set; }
     
     /// <summary>
     /// Human-readable description of the transaction

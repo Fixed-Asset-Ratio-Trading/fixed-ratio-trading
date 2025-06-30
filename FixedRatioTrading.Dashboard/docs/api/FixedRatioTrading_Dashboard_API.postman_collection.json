@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Fixed Ratio Trading Dashboard API",
-    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features",
+    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features - USER OPERATIONS ONLY",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "version": "1.0.0"
   },
@@ -58,7 +58,8 @@
               "raw": "{{baseUrl}}/api/tokens/create",
               "host": ["{{baseUrl}}"],
               "path": ["api", "tokens", "create"]
-            }
+            },
+            "description": "Create a new SPL token on testnet for testing purposes"
           }
         }
       ]
@@ -75,7 +76,8 @@
               "raw": "{{baseUrl}}/api/pools",
               "host": ["{{baseUrl}}"],
               "path": ["api", "pools"]
-            }
+            },
+            "description": "Get all available pools for trading and liquidity provision"
           }
         }
       ]

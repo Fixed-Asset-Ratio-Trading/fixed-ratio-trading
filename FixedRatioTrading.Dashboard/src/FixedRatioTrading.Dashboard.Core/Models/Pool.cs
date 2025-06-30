@@ -5,6 +5,11 @@ namespace FixedRatioTrading.Dashboard.Core.Models;
 
 /// <summary>
 /// Represents a fixed-ratio trading pool between two tokens
+/// Updated to match the current smart contract PoolState structure
+/// 
+/// IMPORTANT: This model contains both user-accessible and owner-only data.
+/// The dashboard ONLY supports user operations. Owner fields are READ-ONLY for display purposes.
+/// All owner operations (fee management, pause controls) are handled by separate CLI application.
 /// </summary>
 public class Pool
 {
@@ -19,18 +24,54 @@ public class Pool
     public string PoolAddress { get; set; } = string.Empty;
     
     /// <summary>
-    /// First token in the pool (lexicographically normalized)
+    /// Pool owner (creator) public key
+    /// READ-ONLY: Dashboard displays this information but cannot modify owner
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string Owner { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// First token mint address (TokenA)
     /// </summary>
     [Required]
     [StringLength(44)]
     public string TokenAMint { get; set; } = string.Empty;
     
     /// <summary>
-    /// Second token in the pool (lexicographically normalized)
+    /// Second token mint address (TokenB)
     /// </summary>
     [Required]
     [StringLength(44)]
     public string TokenBMint { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// TokenA vault PDA address
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string TokenAVault { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// TokenB vault PDA address
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string TokenBVault { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// LP Token A mint address
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string LpTokenAMint { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// LP Token B mint address
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string LpTokenBMint { get; set; } = string.Empty;
     
     /// <summary>
     /// Token A symbol (e.g., "BTC")
@@ -73,32 +114,107 @@ public class Pool
     public ulong RatioBDenominator { get; set; }
     
     /// <summary>
-    /// Current liquidity amount of TokenA in the pool (in smallest units, e.g., satoshis)
+    /// Current total liquidity amount of TokenA in the pool (in smallest units)
     /// </summary>
-    public ulong TokenALiquidity { get; set; } = 0;
+    public ulong TotalTokenALiquidity { get; set; } = 0;
     
     /// <summary>
-    /// Current liquidity amount of TokenB in the pool (in smallest units, e.g., lamports)
+    /// Current total liquidity amount of TokenB in the pool (in smallest units)
     /// </summary>
-    public ulong TokenBLiquidity { get; set; } = 0;
+    public ulong TotalTokenBLiquidity { get; set; } = 0;
     
     /// <summary>
-    /// Total supply of LP tokens for this pool
+    /// Pool authority bump seed for PDA derivation
     /// </summary>
-    public ulong LpTokenSupply { get; set; } = 0;
+    public byte PoolAuthorityBumpSeed { get; set; } = 0;
     
     /// <summary>
-    /// Address of the LP token mint for this pool
+    /// TokenA vault bump seed for PDA derivation
+    /// </summary>
+    public byte TokenAVaultBumpSeed { get; set; } = 0;
+    
+    /// <summary>
+    /// TokenB vault bump seed for PDA derivation
+    /// </summary>
+    public byte TokenBVaultBumpSeed { get; set; } = 0;
+    
+    /// <summary>
+    /// Whether this pool is initialized
+    /// </summary>
+    public bool IsInitialized { get; set; } = false;
+    
+    /// <summary>
+    /// Whether the pool is paused by owner
+    /// READ-ONLY: Dashboard displays pause status but cannot modify (owner operation via CLI)
+    /// </summary>
+    public bool IsPaused { get; set; } = false;
+    
+    /// <summary>
+    /// Pool-specific swap pause controls (separate from system pause)
+    /// READ-ONLY: Dashboard displays pause status but cannot modify (owner operation via CLI)
+    /// </summary>
+    public bool SwapsPaused { get; set; } = false;
+    
+    /// <summary>
+    /// Who initiated the swap pause (if any)
+    /// READ-ONLY: Dashboard displays this information but cannot modify
     /// </summary>
     [StringLength(44)]
-    public string LpTokenMint { get; set; } = string.Empty;
+    public string? SwapsPauseInitiatedBy { get; set; }
     
     /// <summary>
-    /// Public key of the account that created this pool
+    /// Unix timestamp when swaps were paused
+    /// READ-ONLY: Dashboard displays this information but cannot modify
     /// </summary>
-    [Required]
-    [StringLength(44)]
-    public string CreatorAddress { get; set; } = string.Empty;
+    public long SwapsPauseInitiatedTimestamp { get; set; } = 0;
+    
+    /// <summary>
+    /// Whether automatic withdrawal protection is active
+    /// READ-ONLY: Dashboard displays this information but cannot modify
+    /// </summary>
+    public bool WithdrawalProtectionActive { get; set; } = false;
+    
+    /// <summary>
+    /// Collected fees in TokenA (in smallest units)
+    /// READ-ONLY: Dashboard displays fee information but cannot withdraw (owner operation via CLI)
+    /// </summary>
+    public ulong CollectedFeesTokenA { get; set; } = 0;
+    
+    /// <summary>
+    /// Collected fees in TokenB (in smallest units)
+    /// READ-ONLY: Dashboard displays fee information but cannot withdraw (owner operation via CLI)
+    /// </summary>
+    public ulong CollectedFeesTokenB { get; set; } = 0;
+    
+    /// <summary>
+    /// Total fees withdrawn in TokenA (for tracking)
+    /// READ-ONLY: Dashboard displays fee history but cannot perform withdrawals
+    /// </summary>
+    public ulong TotalFeesWithdrawnTokenA { get; set; } = 0;
+    
+    /// <summary>
+    /// Total fees withdrawn in TokenB (for tracking)
+    /// READ-ONLY: Dashboard displays fee history but cannot perform withdrawals
+    /// </summary>
+    public ulong TotalFeesWithdrawnTokenB { get; set; } = 0;
+    
+    /// <summary>
+    /// Swap fee rate in basis points (e.g., 30 = 0.3%)
+    /// READ-ONLY: Dashboard displays current fee rate but cannot modify (owner operation via CLI)
+    /// </summary>
+    public ulong SwapFeeBasisPoints { get; set; } = 0;
+    
+    /// <summary>
+    /// Collected SOL fees (in lamports)
+    /// READ-ONLY: Dashboard displays fee information but cannot withdraw (owner operation via CLI)
+    /// </summary>
+    public ulong CollectedSolFees { get; set; } = 0;
+    
+    /// <summary>
+    /// Total SOL fees withdrawn (for tracking)
+    /// READ-ONLY: Dashboard displays fee history but cannot perform withdrawals
+    /// </summary>
+    public ulong TotalSolFeesWithdrawn { get; set; } = 0;
     
     /// <summary>
     /// When this pool was created
@@ -152,4 +268,38 @@ public class Pool
     /// Navigation property for pool transactions
     /// </summary>
     public virtual ICollection<PoolTransaction> Transactions { get; set; } = new List<PoolTransaction>();
+    
+    // DEPRECATED FIELD: Kept for backward compatibility but not used
+    [Obsolete("CreatorAddress is deprecated. Use Owner instead.")]
+    [StringLength(44)]
+    public string CreatorAddress 
+    { 
+        get => Owner; 
+        set => Owner = value; 
+    }
+    
+    // DEPRECATED FIELD: Kept for backward compatibility but not used
+    [Obsolete("TokenALiquidity is deprecated. Use TotalTokenALiquidity instead.")]
+    public ulong TokenALiquidity 
+    { 
+        get => TotalTokenALiquidity; 
+        set => TotalTokenALiquidity = value; 
+    }
+    
+    // DEPRECATED FIELD: Kept for backward compatibility but not used
+    [Obsolete("TokenBLiquidity is deprecated. Use TotalTokenBLiquidity instead.")]
+    public ulong TokenBLiquidity 
+    { 
+        get => TotalTokenBLiquidity; 
+        set => TotalTokenBLiquidity = value; 
+    }
+    
+    // DEPRECATED FIELD: LP token supply is not stored in contract
+    [Obsolete("LpTokenSupply is deprecated. LP tokens are managed separately for TokenA and TokenB.")]
+    public ulong LpTokenSupply { get; set; } = 0;
+    
+    // DEPRECATED FIELD: Single LP token mint not used in current design
+    [Obsolete("LpTokenMint is deprecated. Use LpTokenAMint and LpTokenBMint instead.")]
+    [StringLength(44)]
+    public string LpTokenMint { get; set; } = string.Empty;
 } 

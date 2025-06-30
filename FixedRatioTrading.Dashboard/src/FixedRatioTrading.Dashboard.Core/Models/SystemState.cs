@@ -16,6 +16,11 @@ public enum SystemOperationType
 
 /// <summary>
 /// Represents the current state of the trading system
+/// Updated to match the current smart contract SystemState structure
+/// 
+/// IMPORTANT: The dashboard can only VIEW system state information.
+/// All system operations (pause/unpause) are OWNER-ONLY and handled by separate CLI application.
+/// This model is READ-ONLY in the dashboard context.
 /// </summary>
 public class SystemState
 {
@@ -23,21 +28,35 @@ public class SystemState
     public Guid Id { get; set; } = Guid.NewGuid();
     
     /// <summary>
-    /// Whether the system is currently paused
+    /// Authority that can pause/unpause the entire system and perform contract operations
+    /// Maps to the smart contract's SystemState.authority field
+    /// READ-ONLY: Dashboard displays authority information but cannot modify
+    /// </summary>
+    [Required]
+    [StringLength(44)]
+    public string Authority { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Global pause state - when true, all operations are blocked except unpause
+    /// Maps to the smart contract's SystemState.is_paused field
+    /// READ-ONLY: Dashboard displays pause status but cannot modify (authority operation via CLI)
     /// </summary>
     public bool IsPaused { get; set; } = false;
     
     /// <summary>
-    /// Whether the system is in emergency stop mode
+    /// Unix timestamp when the system was paused
+    /// Maps to the smart contract's SystemState.pause_timestamp field
+    /// READ-ONLY: Dashboard displays pause timing but cannot modify
     /// </summary>
-    public bool IsEmergencyStop { get; set; } = false;
+    public long PauseTimestamp { get; set; } = 0;
     
     /// <summary>
-    /// Current system version
+    /// Human-readable reason for the system pause
+    /// Maps to the smart contract's SystemState.pause_reason field
+    /// READ-ONLY: Dashboard displays pause reason but cannot modify
     /// </summary>
-    [Required]
-    [StringLength(20)]
-    public string Version { get; set; } = "1.0.0";
+    [StringLength(200)]  // Match the smart contract's 200 byte limit
+    public string PauseReason { get; set; } = string.Empty;
     
     /// <summary>
     /// Network this system state applies to
@@ -47,79 +66,14 @@ public class SystemState
     public string Network { get; set; } = "testnet";
     
     /// <summary>
-    /// When the system was last paused (if applicable)
-    /// </summary>
-    public DateTime? LastPausedAt { get; set; }
-    
-    /// <summary>
-    /// Who paused the system (if applicable)
-    /// </summary>
-    [StringLength(44)]
-    public string? LastPausedBy { get; set; }
-    
-    /// <summary>
-    /// When the system was last unpaused (if applicable)
-    /// </summary>
-    public DateTime? LastUnpausedAt { get; set; }
-    
-    /// <summary>
-    /// Who unpaused the system (if applicable)
-    /// </summary>
-    [StringLength(44)]
-    public string? LastUnpausedBy { get; set; }
-    
-    /// <summary>
-    /// When the last upgrade occurred
-    /// </summary>
-    public DateTime? LastUpgradeAt { get; set; }
-    
-    /// <summary>
-    /// Who performed the last upgrade
-    /// </summary>
-    [StringLength(44)]
-    public string? LastUpgradeBy { get; set; }
-    
-    /// <summary>
-    /// Total number of pools in the system
-    /// </summary>
-    public int TotalPools { get; set; } = 0;
-    
-    /// <summary>
-    /// Total number of active pools
-    /// </summary>
-    public int ActivePools { get; set; } = 0;
-    
-    /// <summary>
-    /// Total value locked (TVL) in USD (approximate)
-    /// </summary>
-    public decimal? TotalValueLockedUsd { get; set; }
-    
-    /// <summary>
-    /// Total trading volume in USD (24h)
-    /// </summary>
-    public decimal? Volume24hUsd { get; set; }
-    
-    /// <summary>
-    /// Number of unique users who have interacted with the system
-    /// </summary>
-    public int UniqueUsers { get; set; } = 0;
-    
-    /// <summary>
-    /// When this state record was created/updated
+    /// When this state record was created/updated in the dashboard
     /// </summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     
     /// <summary>
-    /// Reason for last pause/emergency stop
+    /// Last sync with the blockchain
     /// </summary>
-    [StringLength(500)]
-    public string? PauseReason { get; set; }
-    
-    /// <summary>
-    /// Notes about the current system state
-    /// </summary>
-    [StringLength(1000)]
-    public string? Notes { get; set; }
+    public DateTime LastSyncAt { get; set; } = DateTime.UtcNow;
     
     /// <summary>
     /// Transaction signature of the last system operation
@@ -132,13 +86,117 @@ public class SystemState
     /// </summary>
     public SystemOperationType? LastOperationType { get; set; }
     
-    /// <summary>
-    /// Whether the system is currently under maintenance
-    /// </summary>
-    public bool IsUnderMaintenance { get; set; } = false;
+    // CONVENIENCE METHODS
     
     /// <summary>
-    /// Expected end time for maintenance (if applicable)
+    /// Validates that the provided pubkey has authority to modify system state
     /// </summary>
+    public bool ValidateAuthority(string authority)
+    {
+        return Authority.Equals(authority, StringComparison.OrdinalIgnoreCase);
+    }
+    
+    /// <summary>
+    /// Gets a user-friendly description of the current pause status
+    /// </summary>
+    public string GetPauseStatusDescription()
+    {
+        if (!IsPaused)
+            return "System is operational";
+            
+        var pauseTime = DateTimeOffset.FromUnixTimeSeconds(PauseTimestamp);
+        var duration = DateTime.UtcNow - pauseTime.DateTime;
+        
+        return $"System paused for {duration.TotalMinutes:F0} minutes. Reason: {PauseReason}";
+    }
+    
+    /// <summary>
+    /// Gets the pause duration in a human-readable format
+    /// </summary>
+    public string GetPauseDuration()
+    {
+        if (!IsPaused || PauseTimestamp == 0)
+            return "Not paused";
+            
+        var pauseTime = DateTimeOffset.FromUnixTimeSeconds(PauseTimestamp);
+        var duration = DateTime.UtcNow - pauseTime.DateTime;
+        
+        if (duration.TotalDays >= 1)
+            return $"{duration.TotalDays:F0} days";
+        else if (duration.TotalHours >= 1)
+            return $"{duration.TotalHours:F0} hours";
+        else
+            return $"{duration.TotalMinutes:F0} minutes";
+    }
+    
+    // DEPRECATED FIELDS: Kept for backward compatibility but not used in current smart contract
+    
+    [Obsolete("IsEmergencyStop is deprecated. Use IsPaused instead.")]
+    public bool IsEmergencyStop 
+    { 
+        get => IsPaused; 
+        set => IsPaused = value; 
+    }
+    
+    [Obsolete("Version is not tracked in the smart contract.")]
+    [StringLength(20)]
+    public string Version { get; set; } = "1.0.0";
+    
+    [Obsolete("LastPausedAt is deprecated. Use PauseTimestamp instead.")]
+    public DateTime? LastPausedAt 
+    { 
+        get => PauseTimestamp > 0 ? DateTimeOffset.FromUnixTimeSeconds(PauseTimestamp).DateTime : null;
+        set => PauseTimestamp = value?.ToUnixTimeSeconds() ?? 0; 
+    }
+    
+    [Obsolete("LastPausedBy is deprecated. Use Authority instead.")]
+    [StringLength(44)]
+    public string? LastPausedBy 
+    { 
+        get => IsPaused ? Authority : null; 
+        set { /* Ignore - use Authority field */ } 
+    }
+    
+    [Obsolete("LastUnpausedAt is not tracked in the smart contract.")]
+    public DateTime? LastUnpausedAt { get; set; }
+    
+    [Obsolete("LastUnpausedBy is not tracked in the smart contract.")]
+    [StringLength(44)]
+    public string? LastUnpausedBy { get; set; }
+    
+    [Obsolete("LastUpgradeAt is not tracked in the smart contract.")]
+    public DateTime? LastUpgradeAt { get; set; }
+    
+    [Obsolete("LastUpgradeBy is not tracked in the smart contract.")]
+    [StringLength(44)]
+    public string? LastUpgradeBy { get; set; }
+    
+    [Obsolete("TotalPools is not tracked in system state. Query pool repository instead.")]
+    public int TotalPools { get; set; } = 0;
+    
+    [Obsolete("ActivePools is not tracked in system state. Query pool repository instead.")]
+    public int ActivePools { get; set; } = 0;
+    
+    [Obsolete("TotalValueLockedUsd is not tracked in system state. Calculate from pool data instead.")]
+    public decimal? TotalValueLockedUsd { get; set; }
+    
+    [Obsolete("Volume24hUsd is not tracked in system state. Calculate from transaction data instead.")]
+    public decimal? Volume24hUsd { get; set; }
+    
+    [Obsolete("UniqueUsers is not tracked in system state. Calculate from transaction data instead.")]
+    public int UniqueUsers { get; set; } = 0;
+    
+    [Obsolete("Notes is not tracked in the smart contract.")]
+    [StringLength(1000)]
+    public string? Notes { get; set; }
+    
+    [Obsolete("IsUnderMaintenance is not tracked in the smart contract. Use IsPaused instead.")]
+    public bool IsUnderMaintenance 
+    { 
+        get => IsPaused; 
+        set => IsPaused = value; 
+    }
+    
+    [Obsolete("MaintenanceEndTime is not tracked in the smart contract.")]
     public DateTime? MaintenanceEndTime { get; set; }
 } 

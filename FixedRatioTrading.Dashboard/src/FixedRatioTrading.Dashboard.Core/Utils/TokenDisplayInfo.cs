@@ -77,8 +77,8 @@ public class TokenDisplayInfo
                 QuoteToken = pool.TokenASymbol,
                 BaseTokenName = pool.TokenBName,
                 QuoteTokenName = pool.TokenAName,
-                BaseLiquidity = pool.TokenBLiquidity,
-                QuoteLiquidity = pool.TokenALiquidity,
+                BaseLiquidity = pool.TotalTokenBLiquidity,
+                QuoteLiquidity = pool.TotalTokenALiquidity,
                 ExchangeRate = tokensA_per_tokenB,
                 DisplayPair = $"{pool.TokenBSymbol}/{pool.TokenASymbol}",
                 RateText = FormatRateText(pool.TokenBSymbol, tokensA_per_tokenB, pool.TokenASymbol)
@@ -93,8 +93,8 @@ public class TokenDisplayInfo
                 QuoteToken = pool.TokenBSymbol,
                 BaseTokenName = pool.TokenAName,
                 QuoteTokenName = pool.TokenBName,
-                BaseLiquidity = pool.TokenALiquidity,
-                QuoteLiquidity = pool.TokenBLiquidity,
+                BaseLiquidity = pool.TotalTokenALiquidity,
+                QuoteLiquidity = pool.TotalTokenBLiquidity,
                 ExchangeRate = tokensB_per_tokenA,
                 DisplayPair = $"{pool.TokenASymbol}/{pool.TokenBSymbol}",
                 RateText = FormatRateText(pool.TokenASymbol, tokensB_per_tokenA, pool.TokenBSymbol)

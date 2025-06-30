@@ -615,7 +615,6 @@ function updateSummaryStats() {
     document.getElementById('avg-pool-size').textContent = `${avgPoolSize.toLocaleString()} tokens`;
     document.getElementById('total-fees').textContent = `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
     document.getElementById('avg-swap-fee').textContent = `${avgSwapFee} bps`;
-    // Removed delegate tracking
     document.getElementById('total-swaps').textContent = '--'; // Would need transaction history
 }
 
