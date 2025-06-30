@@ -29,15 +29,27 @@ public class DashboardDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.PoolAddress).IsUnique();
             entity.HasIndex(e => new { e.TokenAMint, e.TokenBMint }).IsUnique();
+            entity.HasIndex(e => e.Owner);
             entity.HasIndex(e => e.Network);
             entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => e.IsInitialized);
+            entity.HasIndex(e => e.IsPaused);
+            entity.HasIndex(e => e.SwapsPaused);
             entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.CollectedFeesTokenA, e.CollectedFeesTokenB });
             
             // Configure relationships
             entity.HasMany(e => e.Transactions)
                   .WithOne(e => e.Pool)
                   .HasForeignKey(e => e.PoolId)
                   .OnDelete(DeleteBehavior.Cascade);
+                  
+            // Ignore deprecated properties in database mapping
+            entity.Ignore(e => e.CreatorAddress);
+            entity.Ignore(e => e.TokenALiquidity);
+            entity.Ignore(e => e.TokenBLiquidity);
+            entity.Ignore(e => e.LpTokenSupply);
+            entity.Ignore(e => e.LpTokenMint);
         });
 
         // Configure PoolTransaction entity
@@ -74,13 +86,32 @@ public class DashboardDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.Network).IsUnique();
+            entity.HasIndex(e => e.Authority);
             entity.HasIndex(e => e.IsPaused);
-            entity.HasIndex(e => e.IsEmergencyStop);
             entity.HasIndex(e => e.UpdatedAt);
+            entity.HasIndex(e => e.LastSyncAt);
             
             // Configure enum conversion
             entity.Property(e => e.LastOperationType)
                   .HasConversion<int>();
+                  
+            // Ignore deprecated properties in database mapping
+            entity.Ignore(e => e.IsEmergencyStop);
+            entity.Ignore(e => e.Version);
+            entity.Ignore(e => e.LastPausedAt);
+            entity.Ignore(e => e.LastPausedBy);
+            entity.Ignore(e => e.LastUnpausedAt);
+            entity.Ignore(e => e.LastUnpausedBy);
+            entity.Ignore(e => e.LastUpgradeAt);
+            entity.Ignore(e => e.LastUpgradeBy);
+            entity.Ignore(e => e.TotalPools);
+            entity.Ignore(e => e.ActivePools);
+            entity.Ignore(e => e.TotalValueLockedUsd);
+            entity.Ignore(e => e.Volume24hUsd);
+            entity.Ignore(e => e.UniqueUsers);
+            entity.Ignore(e => e.Notes);
+            entity.Ignore(e => e.IsUnderMaintenance);
+            entity.Ignore(e => e.MaintenanceEndTime);
         });
 
         // Configure table names (PostgreSQL naming convention)
@@ -133,6 +164,12 @@ public class DashboardDbContext : DbContext
             else if (entry.Entity is SystemState systemState)
             {
                 systemState.UpdatedAt = DateTime.UtcNow;
+                systemState.LastSyncAt = DateTime.UtcNow;
+            }
+            else if (entry.Entity is PoolTransaction transaction)
+            {
+                if (entry.State == EntityState.Added)
+                    transaction.ProcessedAt = DateTime.UtcNow;
             }
         }
     }

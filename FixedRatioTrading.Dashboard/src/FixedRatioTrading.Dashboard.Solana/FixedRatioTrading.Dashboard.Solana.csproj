@@ -10,6 +10,14 @@
     <PackageReference Include="Solnet.Programs" Version="6.1.0" />
     <PackageReference Include="Solnet.Rpc" Version="6.1.0" />
     <PackageReference Include="Solnet.Wallet" Version="6.1.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FixedRatioTrading.Dashboard.Core\FixedRatioTrading.Dashboard.Core.csproj" />
+    <ProjectReference Include="..\FixedRatioTrading.Dashboard.Data\FixedRatioTrading.Dashboard.Data.csproj" />
   </ItemGroup>
 
 </Project>
