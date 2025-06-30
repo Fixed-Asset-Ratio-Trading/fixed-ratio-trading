@@ -1,0 +1,84 @@
+{
+  "info": {
+    "name": "Fixed Ratio Trading Dashboard API",
+    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string",
+      "description": "Base URL for the dashboard API"
+    },
+    {
+      "key": "testnet_rpc",
+      "value": "https://api.testnet.solana.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏠 System Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the API is running and healthy"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🪙 1. Token Creation (Testnet Only)",
+      "item": [
+        {
+          "name": "Create Test Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"Name\": \"Test Solana\", \"Symbol\": \"TS\", \"Decimals\": 6, \"InitialSupply\": 1000000, \"UserWallet\": \"WALLET_ADDRESS_HERE\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tokens/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tokens", "create"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏊 2. Pool Creation",
+      "item": [
+        {
+          "name": "Get All Pools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pools"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

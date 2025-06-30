@@ -1,0 +1,625 @@
+{
+  "info": {
+    "name": "Fixed Ratio Trading Dashboard API",
+    "description": "Complete API collection for testing the Fixed Ratio Trading Dashboard MVP features",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string",
+      "description": "Base URL for the dashboard API"
+    },
+    {
+      "key": "testnet_rpc",
+      "value": "https://api.testnet.solana.com",
+      "type": "string",
+      "description": "Solana testnet RPC endpoint"
+    }
+  ],
+  "item": [
+    {
+      "name": "🏠 System Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "Check if the API is running and healthy"
+          }
+        },
+        {
+          "name": "System Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/system/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["system", "status"]
+            },
+            "description": "Get current system status (paused/active)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🪙 1. Token Creation (Testnet Only)",
+      "item": [
+        {
+          "name": "Get Create Token Form",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tokens/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["tokens", "create"]
+            },
+            "description": "Get token creation form page"
+          }
+        },
+        {
+          "name": "Create Test Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Name\": \"Test Solana\",\n  \"Symbol\": \"TS\",\n  \"Decimals\": 6,\n  \"InitialSupply\": 1000000,\n  \"UserWallet\": \"WALLET_ADDRESS_HERE\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/tokens/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tokens", "create"]
+            },
+            "description": "Create a new SPL token on testnet"
+          }
+        },
+        {
+          "name": "Get Available Tokens",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/tokens",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tokens"]
+            },
+            "description": "Get list of available tokens for pool creation"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏊 2. Pool Creation",
+      "item": [
+        {
+          "name": "Get Pool Creation Form",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/pools/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["pools", "create"]
+            },
+            "description": "Get pool creation form with available tokens"
+          }
+        },
+        {
+          "name": "Create Pool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"TokenAAddress\": \"TOKEN_A_MINT_ADDRESS\",\n  \"TokenBAddress\": \"TOKEN_B_MINT_ADDRESS\",\n  \"RatioANumerator\": 10000,\n  \"RatioBDenominator\": 1,\n  \"CreatorWallet\": \"CREATOR_WALLET_ADDRESS\",\n  \"InitialLiquidityA\": 5000,\n  \"InitialLiquidityB\": 50000000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/pools/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pools", "create"]
+            },
+            "description": "Create a new fixed-ratio trading pool"
+          }
+        },
+        {
+          "name": "Get All Pools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pools"]
+            },
+            "description": "Get all active pools with display information"
+          }
+        },
+        {
+          "name": "Search Pools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pools?search=TS",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pools"],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "TS",
+                  "description": "Search by token symbol"
+                }
+              ]
+            },
+            "description": "Search pools by token symbol"
+          }
+        },
+        {
+          "name": "Get Pool Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/pools/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "pools", "{{poolId}}"]
+            },
+            "description": "Get detailed information about a specific pool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💧 3. Liquidity Management",
+      "item": [
+        {
+          "name": "Get Liquidity Management Page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/liquidity/manage/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["liquidity", "manage", "{{poolId}}"]
+            },
+            "description": "Get liquidity management page for a specific pool"
+          }
+        },
+        {
+          "name": "Add Liquidity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"TokenMint\": \"TOKEN_MINT_ADDRESS\",\n  \"Amount\": 1000,\n  \"UserWallet\": \"USER_WALLET_ADDRESS\",\n  \"MinimumLpTokensOut\": 950\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liquidity/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liquidity", "add"]
+            },
+            "description": "Add liquidity to a pool and receive LP tokens"
+          }
+        },
+        {
+          "name": "Remove Liquidity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"LpTokenAmount\": 500,\n  \"UserWallet\": \"USER_WALLET_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/liquidity/remove",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liquidity", "remove"]
+            },
+            "description": "Remove liquidity from pool by burning LP tokens"
+          }
+        },
+        {
+          "name": "Get User LP Balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/liquidity/balance/{{poolId}}/{{userWallet}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "liquidity", "balance", "{{poolId}}", "{{userWallet}}"]
+            },
+            "description": "Get user's LP token balance for a specific pool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔄 4. Token Swapping",
+      "item": [
+        {
+          "name": "Get Swap Interface",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/swap/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["swap", "{{poolId}}"]
+            },
+            "description": "Get swap interface for a specific pool"
+          }
+        },
+        {
+          "name": "Calculate Swap",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"InputTokenMint\": \"INPUT_TOKEN_MINT\",\n  \"OutputTokenMint\": \"OUTPUT_TOKEN_MINT\",\n  \"InputAmount\": 1000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/swap/calculate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "swap", "calculate"]
+            },
+            "description": "Calculate swap output and fees"
+          }
+        },
+        {
+          "name": "Execute Swap",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"InputTokenMint\": \"INPUT_TOKEN_MINT\",\n  \"OutputTokenMint\": \"OUTPUT_TOKEN_MINT\",\n  \"InputAmount\": 1000,\n  \"MinimumOutputAmount\": 95,\n  \"UserWallet\": \"USER_WALLET_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/swap/execute",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "swap", "execute"]
+            },
+            "description": "Execute token swap at fixed ratio"
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 5. Delegate Management",
+      "item": [
+        {
+          "name": "Get Delegate Management Page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/delegates/manage/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["delegates", "manage", "{{poolId}}"]
+            },
+            "description": "Get delegate management page (pool owner only)"
+          }
+        },
+        {
+          "name": "Add Delegate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"DelegateAddress\": \"DELEGATE_WALLET_ADDRESS\",\n  \"OwnerWallet\": \"OWNER_WALLET_ADDRESS\",\n  \"TimeLimits\": {\n    \"FeeChangeWaitTime\": 3600,\n    \"WithdrawWaitTime\": 86400,\n    \"PauseWaitTime\": 300\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/delegates/add",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "delegates", "add"]
+            },
+            "description": "Add a new delegate to the pool"
+          }
+        },
+        {
+          "name": "Remove Delegate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"DelegateAddress\": \"DELEGATE_WALLET_ADDRESS\",\n  \"OwnerWallet\": \"OWNER_WALLET_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/delegates/remove",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "delegates", "remove"]
+            },
+            "description": "Remove delegate from pool"
+          }
+        },
+        {
+          "name": "Configure Time Limits",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"DelegateAddress\": \"DELEGATE_WALLET_ADDRESS\",\n  \"TimeLimits\": {\n    \"FeeChangeWaitTime\": 7200,\n    \"WithdrawWaitTime\": 172800,\n    \"PauseWaitTime\": 600\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/delegates/configure-limits",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "delegates", "configure-limits"]
+            },
+            "description": "Configure time limits for delegate actions"
+          }
+        },
+        {
+          "name": "Get Pool Delegates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/delegates/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "delegates", "{{poolId}}"]
+            },
+            "description": "Get all delegates for a specific pool"
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 6. Fee Withdrawal",
+      "item": [
+        {
+          "name": "Get Fee Withdrawal Page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/fees/withdraw/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["fees", "withdraw", "{{poolId}}"]
+            },
+            "description": "Get fee withdrawal page (delegates only)"
+          }
+        },
+        {
+          "name": "Get Available Fees",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/fees/available/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fees", "available", "{{poolId}}"]
+            },
+            "description": "Get available fees for withdrawal"
+          }
+        },
+        {
+          "name": "Request Fee Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"PoolId\": \"{{poolId}}\",\n  \"TokenMint\": \"TOKEN_MINT_ADDRESS\",\n  \"Amount\": 1000,\n  \"DelegateWallet\": \"DELEGATE_WALLET_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/fees/request-withdrawal",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fees", "request-withdrawal"]
+            },
+            "description": "Request fee withdrawal (time-delayed)"
+          }
+        },
+        {
+          "name": "Execute Fee Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ActionId\": \"ACTION_ID_FROM_REQUEST\",\n  \"DelegateWallet\": \"DELEGATE_WALLET_ADDRESS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/fees/execute-withdrawal",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fees", "execute-withdrawal"]
+            },
+            "description": "Execute fee withdrawal after wait time"
+          }
+        },
+        {
+          "name": "Get Withdrawal History",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/fees/history/{{poolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "fees", "history", "{{poolId}}"]
+            },
+            "description": "Get complete fee withdrawal history"
+          }
+        }
+      ]
+    },
+    {
+      "name": "⏸️ 7. System Pause/Unpause",
+      "item": [
+        {
+          "name": "Get System Status Page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/system/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["system", "status"]
+            },
+            "description": "Get system management page (authority only)"
+          }
+        },
+        {
+          "name": "Emergency Pause System",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Reason\": \"Critical security vulnerability detected\",\n  \"AuthorityWallet\": \"SYSTEM_AUTHORITY_WALLET\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/system/pause",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "system", "pause"]
+            },
+            "description": "Emergency pause of entire system"
+          }
+        },
+        {
+          "name": "Unpause System",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"AuthorityWallet\": \"SYSTEM_AUTHORITY_WALLET\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/system/unpause",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "system", "unpause"]
+            },
+            "description": "Resume system operations"
+          }
+        },
+        {
+          "name": "Get Upgrade Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/system/upgrade-status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "system", "upgrade-status"]
+            },
+            "description": "Get current upgrade status"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set dynamic variables",
+          "if (!pm.collectionVariables.get('poolId')) {",
+          "    pm.collectionVariables.set('poolId', 'POOL_ID_PLACEHOLDER');",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get('userWallet')) {",
+          "    pm.collectionVariables.set('userWallet', 'USER_WALLET_PLACEHOLDER');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test scripts",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response should not have error status', function () {",
+          "    pm.expect(pm.response.code).to.not.be.oneOf([400, 401, 403, 404, 500, 502, 503]);",
+          "});"
+        ]
+      }
+    }
+  ]
+} 
