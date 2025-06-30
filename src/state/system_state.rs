@@ -10,9 +10,10 @@ use solana_program::pubkey::Pubkey;
 /// 
 /// This state is separate from individual pool states and provides emergency
 /// controls that can override all pool operations when necessary.
+/// Only the contract authority can perform system-wide operations.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct SystemState {
-    /// Authority that can pause/unpause the entire system
+    /// Authority that can pause/unpause the entire system and perform contract operations
     pub authority: Pubkey,
     
     /// Global pause state - when true, all operations are blocked except unpause
@@ -38,7 +39,7 @@ impl SystemState {
     /// Creates a new SystemState with the specified authority.
     /// 
     /// # Arguments
-    /// * `authority` - The pubkey authorized to pause/unpause the system
+    /// * `authority` - The pubkey authorized to pause/unpause the system and perform all contract operations
     /// 
     /// # Returns
     /// A new SystemState initialized in unpaused state

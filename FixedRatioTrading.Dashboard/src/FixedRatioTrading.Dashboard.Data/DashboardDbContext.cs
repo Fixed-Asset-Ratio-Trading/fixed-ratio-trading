@@ -16,7 +16,6 @@ public class DashboardDbContext : DbContext
     // DbSets for all domain models
     public DbSet<Pool> Pools { get; set; } = null!;
     public DbSet<PoolTransaction> PoolTransactions { get; set; } = null!;
-    public DbSet<PoolDelegate> PoolDelegates { get; set; } = null!;
     public DbSet<Token> Tokens { get; set; } = null!;
     public DbSet<SystemState> SystemStates { get; set; } = null!;
 
@@ -39,11 +38,6 @@ public class DashboardDbContext : DbContext
                   .WithOne(e => e.Pool)
                   .HasForeignKey(e => e.PoolId)
                   .OnDelete(DeleteBehavior.Cascade);
-                  
-            entity.HasMany(e => e.Delegates)
-                  .WithOne(e => e.Pool)
-                  .HasForeignKey(e => e.PoolId)
-                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Configure PoolTransaction entity
@@ -61,17 +55,6 @@ public class DashboardDbContext : DbContext
             // Configure enum conversion
             entity.Property(e => e.Type)
                   .HasConversion<int>();
-        });
-
-        // Configure PoolDelegate entity
-        modelBuilder.Entity<PoolDelegate>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.PoolId, e.DelegateAddress }).IsUnique();
-            entity.HasIndex(e => e.DelegateAddress);
-            entity.HasIndex(e => e.IsActive);
-            entity.HasIndex(e => e.AddedAt);
-            entity.HasIndex(e => e.Network);
         });
 
         // Configure Token entity
@@ -103,7 +86,6 @@ public class DashboardDbContext : DbContext
         // Configure table names (PostgreSQL naming convention)
         modelBuilder.Entity<Pool>().ToTable("pools");
         modelBuilder.Entity<PoolTransaction>().ToTable("pool_transactions");
-        modelBuilder.Entity<PoolDelegate>().ToTable("pool_delegates");
         modelBuilder.Entity<Token>().ToTable("tokens");
         modelBuilder.Entity<SystemState>().ToTable("system_states");
     }

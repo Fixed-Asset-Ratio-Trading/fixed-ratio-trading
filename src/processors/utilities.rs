@@ -184,12 +184,12 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     if pool_state.swaps_paused {
         if pool_state.withdrawal_protection_active {
             msg!("Swaps: TEMPORARILY PAUSED (MEV Protection during large withdrawal)");
-            msg!("  - Auto-clearing protection, not delegate action");
+            msg!("  - Auto-clearing protection, not owner action");
             msg!("  - Will resume automatically after withdrawal completion");
         } else {
-            msg!("Swaps: PAUSED (Delegate Action)");
-            msg!("  - Requires manual unpause by delegate");
-            msg!("  - Governed by delegate contract");
+            msg!("Swaps: PAUSED (Owner Action)");
+            msg!("  - Requires manual unpause by owner");
+            msg!("  - Controlled by pool owner");
         }
     } else {
         msg!("Swaps: ENABLED");
@@ -234,20 +234,20 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
     
     if pool_state_data.swaps_paused {
-        // Distinguish between temporary withdrawal protection and delegate pause
+        // Distinguish between temporary withdrawal protection and owner pause
         if pool_state_data.withdrawal_protection_active {
             msg!("=== TEMPORARY WITHDRAWAL PROTECTION ===");
             msg!("Swaps temporarily paused during large withdrawal (≥5% of pool)");
             msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
             msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
             msg!("Protection will auto-clear after withdrawal completion");
-            msg!("NOTE: This is MEV protection, not a delegate action");
+            msg!("NOTE: This is MEV protection, not an owner action");
         } else {
-            msg!("=== DELEGATE PAUSE ===");
-            msg!("Swaps paused by delegate action");
+            msg!("=== OWNER PAUSE ===");
+            msg!("Swaps paused by owner action");
             msg!("Paused by: {:?}", pool_state_data.swaps_pause_requested_by);
             msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
-            msg!("Governance: Managed by delegate contract");
+            msg!("Control: Pool owner");
             msg!("Note: No auto-unpause - requires manual unpause action");
         }
     }
@@ -294,48 +294,6 @@ pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Total Value Locked (TVL): {} tokens", total_value_locked);
     msg!("==============================");
     
-    Ok(())
-}
-
-/// **VIEW INSTRUCTION**: Returns delegate management information.
-/// 
-/// This function provides comprehensive delegate system information including
-/// delegate list, withdrawal history, and pending requests for transparency.
-/// 
-/// # Arguments
-/// * `accounts` - Must contain pool state account as first account
-/// 
-/// # Returns
-/// * `ProgramResult` - Logs delegate management information
-pub fn get_delegate_info(accounts: &[AccountInfo]) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
-    let pool_state_account = next_account_info(account_info_iter)?;
-
-    let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
-
-    msg!("Delegate Info:");
-    msg!("Total Delegates: {}", pool_state.delegate_management.delegate_count);
-    for i in 0..pool_state.delegate_management.delegate_count as usize {
-        let delegate = pool_state.delegate_management.delegates[i];
-        let time_limits = pool_state.delegate_management.time_limits[i];
-        msg!("Delegate {}: {}", i, delegate);
-        msg!("  Fee Change Wait Time: {} seconds", time_limits.fee_change_wait_time);
-        msg!("  Withdrawal Wait Time: {} seconds", time_limits.withdraw_wait_time);
-        msg!("  Pause Wait Time: {} seconds", time_limits.pause_wait_time);
-    }
-
-    msg!("\nPending Actions:");
-    for action in pool_state.delegate_management.pending_actions.iter() {
-        msg!("Action ID: {}, Delegate: {}, Type: {:?}, Ready At: {}", 
-             action.action_id, action.delegate, action.action_type, action.execution_timestamp);
-    }
-
-    msg!("\nAction History:");
-    for action in pool_state.delegate_management.action_history.iter() {
-        msg!("Action ID: {}, Delegate: {}, Type: {:?}, Requested At: {}", 
-             action.action_id, action.delegate, action.action_type, action.request_timestamp);
-    }
-
     Ok(())
 }
 
@@ -494,16 +452,6 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
     Ok(())
 }
 
-/// Validates that a wait time is within allowed bounds.
-pub fn validate_wait_time(wait_time: u64) -> ProgramResult {
-    if wait_time < 300 || wait_time > 259200 { // 5 minutes to 72 hours
-        msg!("Wait time {} seconds is outside allowed range [{}, {}]", 
-             wait_time, 300, 259200);
-        return Err(PoolError::InvalidWaitTime { wait_time }.into());
-    }
-    Ok(())
-}
-
 /// Validates that a pool is initialized.
 pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
     if !pool_state.is_initialized {
@@ -518,30 +466,6 @@ pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
     if pool_state.is_paused {
         msg!("Pool operations are currently paused");
         return Err(PoolError::PoolPaused.into());
-    }
-    Ok(())
-}
-
-/// Gets the wait time for a delegate action based on action type.
-pub fn get_action_wait_time(pool_state: &PoolState, delegate: &Pubkey, action_type: &DelegateActionType) -> Option<u64> {
-    if let Some(time_limits) = pool_state.delegate_management.get_delegate_time_limits(delegate) {
-        match action_type {
-            DelegateActionType::FeeChange => Some(time_limits.fee_change_wait_time),
-            DelegateActionType::Withdrawal => Some(time_limits.withdraw_wait_time),
-            DelegateActionType::PausePoolSwaps => Some(time_limits.pause_wait_time),
-            DelegateActionType::UnpausePoolSwaps => Some(time_limits.pause_wait_time),
-        }
-    } else {
-        None
-    }
-}
-
-/// Gets the action history for a pool.
-pub fn get_action_history(pool_state: &PoolState) -> ProgramResult {
-    msg!("Action History (last 10 actions):");
-    for (i, action) in pool_state.delegate_management.action_history.iter().enumerate() {
-        msg!("Record {}: Delegate: {}, Action Type: {:?}, Action ID: {}, Timestamp: {}", 
-             i, action.delegate, action.action_type, action.action_id, action.request_timestamp);
     }
     Ok(())
 }

@@ -1,6 +1,6 @@
 # Fixed Ratio Trading Pool
 
-A Solana program implementing fixed-ratio token trading pools with enhanced security, delegate management, and comprehensive testing.
+A Solana program implementing fixed-ratio token trading pools with enhanced security, owner-controlled operations, and comprehensive testing.
 
 ## 🚨 CRITICAL: Anti-Liquidity Fragmentation
 
@@ -142,7 +142,7 @@ fee_amount = input_token_amount * fee_basis_points / 10_000
 // Pool Fee: 2.5 USDC (1000 × 0.0025)
 // Effective Input: 997.5 USDC (1000 - 2.5 fee)
 // User receives: SOL equivalent of 997.5 USDC at pool ratio
-// Pool retains: 2.5 USDC (revenue for pool operator/delegates)
+// Pool retains: 2.5 USDC (revenue for pool operator)
 // Contract Fee: 0.0000125 SOL (separate operational fee)
 ```
 
@@ -152,7 +152,7 @@ fee_amount = input_token_amount * fee_basis_points / 10_000
 // Pool Fee: 5 USDC (1000 × 0.005)  
 // Effective Input: 995 USDC (1000 - 5 fee)
 // User receives: SOL equivalent of 995 USDC at pool ratio
-// Pool retains: 5 USDC (revenue for pool operator/delegates)
+// Pool retains: 5 USDC (revenue for pool operator)
 // Contract Fee: 0.0000125 SOL (separate operational fee)
 ```
 
@@ -160,29 +160,18 @@ fee_amount = input_token_amount * fee_basis_points / 10_000
 
 **Setting Trading Fees:**
 ```rust
-// Pool owner or authorized delegate can modify trading fees
-let fee_change_request = PoolInstruction::RequestDelegateAction {
-    action_type: DelegateActionType::FeeChange,
-    params: DelegateActionParams::FeeChange { 
-        new_fee_basis_points: 25 // Set to 0.25% (25 basis points)
-    },
-};
-
-// Execute after time delay (governance protection)  
-let execute_fee_change = PoolInstruction::ExecuteDelegateAction {
-    action_id: pending_action_id,
+// Pool owner can modify trading fees immediately
+let fee_change_ix = PoolInstruction::ChangeFee {
+    new_fee_basis_points: 25 // Set to 0.25% (25 basis points)
 };
 ```
 
 **Fee Revenue Collection:**
 ```rust
-// Authorized delegates can withdraw collected trading fees
-let withdraw_request = PoolInstruction::RequestDelegateAction {
-    action_type: DelegateActionType::Withdrawal,
-    params: DelegateActionParams::Withdrawal {
-        token_mint: usdc_mint,
-        amount: collected_usdc_fees,
-    },
+// Pool owner can withdraw collected trading fees immediately
+let withdraw_fees_ix = PoolInstruction::WithdrawPoolFees {
+    token_mint: usdc_mint,
+    amount: collected_usdc_fees,
 };
 ```
 
@@ -321,9 +310,6 @@ let pool_info_ix = PoolInstruction::GetPoolInfo;
 // Get liquidity information
 let liquidity_ix = PoolInstruction::GetLiquidityInfo;
 
-// Get delegate information
-let delegate_ix = PoolInstruction::GetDelegateInfo;
-
 // Get fee information
 let fee_ix = PoolInstruction::GetFeeInfo;
 ```
@@ -331,163 +317,46 @@ let fee_ix = PoolInstruction::GetFeeInfo;
 **Provides:**
 - 📊 **Pool State**: Comprehensive pool configuration data
 - 💧 **Liquidity Info**: Token balances, exchange rates, TVL
-- 👥 **Delegate Info**: Delegate list, wait times, withdrawal history
 - 💸 **Fee Info**: Fee rates, collected fees, available balances
 
-### **NEW: Pool-Specific Swap Pause System**
-Simplified delegate-controlled swap pause system with clean architecture:
+### **Owner-Only Operations**
+Simplified owner-controlled operations with immediate effect:
 
 ```rust
-// Delegate requests swap pause (indefinite until manual unpause)
-let pause_request_ix = PoolInstruction::RequestDelegateAction {
-    action_type: DelegateActionType::PausePoolSwaps,
-    params: DelegateActionParams::PausePoolSwaps,
+// Owner changes swap fee rate (immediate effect)
+let change_fee_ix = PoolInstruction::ChangeFee {
+    new_fee_basis_points: 25 // 0.25% fee
 };
 
-// Delegate requests swap unpause (manual control only)
-let unpause_request_ix = PoolInstruction::RequestDelegateAction {
-    action_type: DelegateActionType::UnpausePoolSwaps,
-    params: DelegateActionParams::UnpausePoolSwaps,
+// Owner withdraws pool fees (immediate effect)
+let withdraw_fees_ix = PoolInstruction::WithdrawPoolFees {
+    token_mint: usdc_mint,
+    amount: 1000,
 };
 
-// Execute pause/unpause after wait time
-let execute_ix = PoolInstruction::ExecuteDelegateAction {
-    action_id: pending_action_id,
-};
+// Owner pauses swap operations (immediate effect)
+let pause_swaps_ix = PoolInstruction::PausePoolSwaps;
 
-// Owner can revoke any pending pause/unpause request
-let revoke_ix = PoolInstruction::RevokeAction {
-    action_id: pending_action_id,
-};
+// Owner unpauses swap operations (immediate effect)
+let unpause_swaps_ix = PoolInstruction::UnpausePoolSwaps;
 ```
 
 **Features:**
+- ⚡ **Immediate Effect**: All operations take effect immediately
+- 🔐 **Owner-Only**: Only the pool owner can perform these operations
 - 🎯 **Swap-Only Impact**: Pool pause only affects swap operations (deposits/withdrawals continue normally)
-- ⏱️ **Time-Delayed Governance**: Configurable wait periods before execution
-- 🛡️ **Owner Override**: Pool owner can cancel any delegate's pause/unpause request
-- 🏛️ **Clean Architecture**: No reason storage at core level - delegate contracts handle governance
-- 🔄 **Manual Control**: No auto-unpause - requires explicit unpause action
 - 💧 **MEV Protection**: Automatic temporary pause during large withdrawals (≥5% of pool)
 
 **Architectural Simplification:**
-- ✅ **No Duration Parameters**: Pause lasts indefinitely until manually unpaused
-- ✅ **No Reason Enums**: Delegate smart contracts manage their own governance logic
-- ✅ **No Auto-Unpause**: Predictable manual control only
+- ✅ **No Time Delays**: Immediate execution of all owner operations
+- 🔐 **Owner-Only**: Only the pool owner can perform these operations
 - ✅ **Swap-Only Scope**: Deposits and withdrawals unaffected by pool pause
-- ✅ **Governance Separation**: Core contract handles pause mechanism, delegates handle governance
+- ✅ **Direct Control**: Pool owner has immediate control over all operations
 
 **Use Cases:**
-- 💰 **Bonding Mechanisms**: Pause pool until bond requirements are met
-- ⚖️ **Dispute Resolution**: Structured pause system for governance
-- 🔒 **Security Response**: Rapid response to detected issues
-- 🏛️ **Governance Integration**: Primitive for higher-layer governance contracts
-
-### **NEW: Consolidated Delegate Management & Swap Fees** 🔄
-Added a streamlined delegate management system with consolidated instructions and time-based authorization:
-
-```rust
-// Single instruction for all delegate actions
-let request_ix = PoolInstruction::RequestDelegateAction {
-    action_type: DelegateActionType::FeeChange,
-    params: DelegateActionParams::FeeChange { 
-        new_fee_basis_points: 25 // 0.25% fee
-    },
-};
-
-// Execute after wait time
-let execute_ix = PoolInstruction::ExecuteDelegateAction {
-    action_id: pending_action_id,
-};
-
-// Owner can revoke before execution
-let revoke_ix = PoolInstruction::RevokeAction {
-    action_id: pending_action_id,
-};
-
-// Configure per-delegate time limits
-let time_limits_ix = PoolInstruction::SetDelegateTimeLimits {
-    delegate: delegate_pubkey,
-    time_limits: DelegateTimeLimits {
-        fee_change_wait_time: 3600,    // 1 hour for fee changes
-        withdraw_wait_time: 86400,     // 24 hours for withdrawals
-        pause_wait_time: 300,          // 5 minutes for pausing
-    },
-};
-```
-
-**Features:**
-- 🔄 **Consolidated Instructions**: Single instruction for all delegate actions
-- ⏱️ **Time-based Authorization**: Configurable wait times per delegate and action
-- 🔍 **Action Tracking**: Complete history of all delegate actions
-- 🛡️ **Enhanced Security**: Double validation for critical operations
-- 📊 **Rate Limiting**: Prevents rapid successive changes
-
-**Action Types:**
-- `FeeChange` - Modify swap fee rates (0-0.5%)
-- `Withdrawal` - Request fee withdrawal to delegate
-- `PausePoolSwaps` - Pause swap operations only (deposits/withdrawals continue)
-- `UnpausePoolSwaps` - Resume swap operations (manual control)
-
-**Benefits:**
-- ✅ **Simpler Integration**: Fewer instructions to handle
-- ✅ **Better Security**: Consistent time-based authorization
-- ✅ **More Flexibility**: Per-delegate configuration
-- ✅ **Enhanced Governance**: Complete action history
-
-### **Delegate Action Limits & Concurrency** ⚖️
-
-The delegate management system implements sophisticated limits to prevent system overload while allowing operational flexibility:
-
-#### **Concurrent Action Limits**
-- **Per Delegate**: Each delegate can have up to **2 pending actions** simultaneously
-- **System Total**: Maximum of **6 pending actions** across all delegates (3 delegates × 2 actions each)
-- **Action Types**: Fee changes, withdrawals, and pool pauses can be pending concurrently
-
-#### **When MaxPendingActionsReached Occurs**
-
-The `MaxPendingActionsReached` error is triggered when the total number of pending actions across **all delegates** reaches 6:
-
-```rust
-// Example scenario that triggers the error:
-// Delegate A: 2 pending actions (withdrawal + fee change)
-// Delegate B: 2 pending actions (withdrawal + pool pause)  
-// Delegate C: 2 pending actions (withdrawal + fee change)
-// Total: 6 pending actions
-// → Any new action request will fail with MaxPendingActionsReached
-```
-
-#### **Key Behaviors**
-
-- **✅ Concurrent Requests**: Delegates do NOT need to wait for one action to complete before making another
-- **✅ Mixed Action Types**: Different action types can be pending simultaneously per delegate
-- **✅ Independent Execution**: Actions can be executed independently when their wait times expire
-- **✅ Flexible Timing**: Each action type has configurable wait times per delegate
-
-#### **Example Usage Patterns**
-
-```rust
-// Valid: Delegate can request multiple actions simultaneously
-let withdrawal_request = request_delegate_action(DelegateActionType::Withdrawal, params1);
-let fee_change_request = request_delegate_action(DelegateActionType::FeeChange, params2);
-// Both succeed if under limits
-
-// Valid: Actions execute independently
-execute_delegate_action(withdrawal_action_id);  // Executes when withdrawal wait time expires
-execute_delegate_action(fee_change_action_id);  // Executes when fee change wait time expires
-
-// Invalid: Would exceed system limit
-// If system already has 6 pending actions total:
-let pool_pause_request = request_delegate_action(DelegateActionType::PoolPause, params3);
-// → Fails with MaxPendingActionsReached
-```
-
-#### **Why These Limits Exist**
-
-- **🛡️ Resource Protection**: Prevents unbounded growth of pending operations
-- **📊 State Management**: Keeps on-chain state size manageable
-- **⚡ Performance**: Ensures efficient processing and storage
-- **🎯 Governance**: Prevents gridlock from excessive simultaneous requests
-- **💾 Storage Optimization**: Limits on-chain account storage requirements
+- 🔒 **Security Response**: Immediate response to detected issues
+- 💰 **Fee Management**: Direct control over fee rates and withdrawals
+- ⚡ **Operational Control**: Immediate pause/unpause capabilities
 
 ## 🛑 System-Wide Pause Functionality
 
@@ -499,12 +368,12 @@ The contract includes a comprehensive system-wide pause mechanism for emergency 
 - **Emergency Response**: Instant response to security threats or critical bugs
 
 ### When System is Paused
-- ❌ **Blocked**: ALL operations including swaps, liquidity, fees, pool creation, delegate actions
+- ❌ **Blocked**: ALL operations including swaps, liquidity, fees, pool creation
 - ✅ **Allowed**: System state queries, info retrieval, system unpause operation
 
 ### Security Model
 - **Single Point of Control**: Simple authority-based control for emergency situations
-- **No Complex Governance**: No delegate voting or waiting periods during emergencies
+- **No Complex Governance**: No waiting periods during emergencies
 - **Clear Response Capability**: Immediate emergency stop with clear audit trail
 - **Hierarchical Precedence**: System pause takes precedence over pool-specific pause states
 
@@ -523,11 +392,11 @@ System Pause (Global) → Pool Pause (Individual) → Normal Operations
 - 🔑 **Authority-Only**: Only system authority can pause/unpause
 - 🚨 **Emergency**: Designed for critical security situations
 
-**Pool Pause (Existing):**
+**Pool Pause (Owner-Controlled):**
 - 🎯 **Individual**: Affects specific pools only
-- 👥 **Delegate-Controlled**: Managed through delegate system
-- ⏱️ **Time-Delayed**: Includes waiting periods and governance features
-- 🏛️ **Governance**: Designed for routine governance and dispute resolution
+- 👤 **Owner-Controlled**: Managed by pool owner only
+- ⚡ **Immediate**: No waiting periods or delays
+- 🏛️ **Operational**: Designed for routine operational control
 
 ### Example Usage
 
@@ -636,16 +505,14 @@ You can migrate incrementally:
 - **Fee Collection**: Configurable fees for sustainability and growth
 
 ### Security Features
-- **Delegate System**: Authorize up to 3 delegates for fee management
-- **Time-Delayed Withdrawals**: Configurable wait times (5 minutes to 72 hours)
+- **Owner-Only Control**: Only pool owners can manage fees and pause operations
 - **Emergency Pause**: Pool owner can pause operations during security incidents
 - **Rent Protection**: Automatic rent-exempt status maintenance
 
 ### Advanced Features
 - **Swap Fee Configuration**: Owner-configurable fees (0-0.5%)
-- **Withdrawal History**: Complete audit trail of all fee withdrawals
-- **Request/Cancel System**: Two-step withdrawal process for enhanced security
-- **Individual Wait Times**: Per-delegate security policies
+- **Fee Withdrawal**: Direct fee withdrawal by pool owners
+- **Immediate Control**: All operations take effect immediately
 
 ## Instructions
 
@@ -661,13 +528,11 @@ You can migrate incrementally:
 - `Withdraw` - Remove liquidity by burning LP tokens
 - `Swap` - Exchange tokens at fixed ratio
 
-### Delegate Management (Updated)
-- `RequestDelegateAction` - **NEW**: Consolidated delegate action requests
-- `ExecuteDelegateAction` - **NEW**: Execute pending delegate action
-- `RevokeAction` - **NEW**: Revoke pending delegate action
-- `SetDelegateTimeLimits` - **NEW**: Configure per-delegate time limits
-- `AddDelegate` - Add authorized delegate
-- `RemoveDelegate` - Remove delegate authorization
+### Owner Operations
+- `ChangeFee` - **NEW**: Change swap fee rate (owner only)
+- `WithdrawPoolFees` - **NEW**: Withdraw accumulated pool fees (owner only)
+- `PausePoolSwaps` - **NEW**: Pause swap operations (owner only)
+- `UnpausePoolSwaps` - **NEW**: Unpause swap operations (owner only)
 
 ### System-Wide Pause Management
 - `PauseSystem` - **NEW**: Emergency pause of all contract operations
@@ -680,9 +545,8 @@ You can migrate incrementally:
 ### View/Getter Instructions
 - `GetPoolInfo` - **NEW**: Comprehensive pool state information
 - `GetLiquidityInfo` - **NEW**: Liquidity and exchange rate data
-- `GetDelegateInfo` - **NEW**: Delegate management information
 - `GetFeeInfo` - **NEW**: Fee rates and collection data
-- `GetWithdrawalHistory` - Fee withdrawal audit trail
+- `WithdrawFees` - Withdraw accumulated SOL fees (owner only)
 
 ## Constants
 
@@ -700,22 +564,6 @@ const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10_000;   // Basis points conversion (
 
 ### System Configuration Constants
 ```rust
-const MAX_DELEGATES: usize = 3;                     // Maximum delegates per pool
-const MIN_WITHDRAWAL_WAIT_TIME: u64 = 300;          // 5 minutes minimum wait
-const MAX_WITHDRAWAL_WAIT_TIME: u64 = 259200;       // 72 hours maximum wait
-
-// Pool Pause Constants
-const MIN_POOL_PAUSE_TIME: u64 = 60;                // 1 minute minimum
-const MAX_POOL_PAUSE_TIME: u64 = 259200;            // 72 hours maximum
-const DEFAULT_POOL_PAUSE_WAIT_TIME: u64 = 259200;   // 72 hours default wait
-
-// Delegate Management Constants
-const MIN_ACTION_WAIT_TIME: u64 = 300;              // 5 minutes minimum action wait
-const MAX_ACTION_WAIT_TIME: u64 = 259200;           // 72 hours maximum action wait
-const DEFAULT_FEE_CHANGE_WAIT_TIME: u64 = 3600;     // 1 hour default for fee changes
-const MAX_PENDING_ACTIONS: usize = 6;               // Maximum pending actions (all delegates)
-const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2;  // Maximum per delegate
-
 // System-Wide Pause Constants
 const SYSTEM_STATE_LEN: usize = 245;                // SystemState account size
 const MAX_PAUSE_REASON_LENGTH: usize = 200;         // Maximum pause reason length
@@ -775,10 +623,9 @@ This program implements multiple layers of security:
 2. **Parameter Validation**: Comprehensive input validation and bounds checking
 3. **Rent Protection**: Automatic maintenance of rent-exempt status
 4. **Pause Mechanism**: Emergency stop capability for security incidents
-5. **Individual Pool Pausing**: Delegate-controlled pause system with governance integration
-6. **Time Delays**: Configurable wait times prevent immediate unauthorized access
-7. **Structured Dispute Resolution**: Categorized pause reasons for governance systems
-8. **Owner Override**: Pool owner can cancel any delegate's pause request for emergency resolution
-9. **Audit Trail**: Complete logging of all operations for transparency
+5. **Owner-Only Control**: Direct owner control over fees and pool operations
+6. **Immediate Response**: No time delays for critical security operations
+7. **System-Wide Pause**: Emergency pause capability for the entire contract
+8. **Audit Trail**: Complete logging of all operations for transparency
 
 For security issues, please review the code thoroughly and test extensively before mainnet deployment. 

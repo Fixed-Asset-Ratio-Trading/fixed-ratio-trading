@@ -1,266 +1,18 @@
 //! Pool State Types and Structures
 //! 
 //! This module contains all the core state structures for the trading pool,
-//! including the main PoolState, delegate management, and related helper types.
+//! including the main PoolState and related helper types.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    msg,
     pubkey::Pubkey,
     sysvar::rent::Rent,
     program_pack::Pack,
 };
 use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
 use crate::{
-    error::PoolError,
-    constants::{MAX_DELEGATES, MAX_PENDING_ACTIONS, MINIMUM_RENT_BUFFER},
+    constants::MINIMUM_RENT_BUFFER,
 };
-use super::delegate_actions::{DelegateTimeLimits, PendingDelegateAction};
-
-/// Represents a withdrawal request with time delay for enhanced security.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default, Clone, Copy)]
-pub struct WithdrawalRequest {
-    pub delegate: Pubkey,
-    pub token_mint: Pubkey,
-    pub amount: u64,
-    pub request_timestamp: i64,
-    pub request_slot: u64,
-    pub wait_time: u64, // Wait time in seconds
-}
-
-impl WithdrawalRequest {
-    pub fn new(delegate: Pubkey, token_mint: Pubkey, amount: u64, request_timestamp: i64, request_slot: u64, wait_time: u64) -> Self {
-        Self {
-            delegate,
-            token_mint,
-            amount,
-            request_timestamp,
-            request_slot,
-            wait_time,
-        }
-    }
-
-    pub fn get_packed_len() -> usize {
-        32 + // delegate
-        32 + // token_mint
-        8 +  // amount
-        8 +  // request_timestamp
-        8 +  // request_slot
-        8    // wait_time
-    }
-}
-
-/// Manages delegate authorization, actions, and time limits
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
-pub struct DelegateManagement {
-    /// Array of authorized delegates
-    pub delegates: [Pubkey; MAX_DELEGATES],
-    /// Number of active delegates
-    pub delegate_count: u8,
-    /// Time limits for different actions per delegate
-    pub time_limits: [DelegateTimeLimits; MAX_DELEGATES],
-    /// Pending actions from delegates
-    pub pending_actions: Vec<PendingDelegateAction>, // Allow multiple actions per delegate
-    /// Number of pending actions
-    pub pending_action_count: u8,
-    /// Next action ID to assign
-    pub next_action_id: u64,
-    /// History of completed actions
-    pub action_history: Vec<PendingDelegateAction>, // Keep last 10 completed actions
-    /// Index for circular action history buffer
-    pub action_history_index: u8,
-}
-
-impl Default for DelegateManagement {
-    fn default() -> Self {
-        Self {
-            delegates: [Pubkey::default(); MAX_DELEGATES],
-            delegate_count: 0,
-            time_limits: [DelegateTimeLimits::default(); MAX_DELEGATES],
-            pending_actions: Vec::with_capacity(MAX_DELEGATES * 2),
-            pending_action_count: 0,
-            next_action_id: 1,
-            action_history: Vec::with_capacity(10),
-            action_history_index: 0,
-        }
-    }
-}
-
-impl DelegateManagement {
-    pub fn new(owner: Pubkey, _current_slot: u64) -> Self {
-        let mut delegates = [Pubkey::default(); MAX_DELEGATES];
-        delegates[0] = owner; // Owner is the first delegate
-        
-        Self {
-            delegates,
-            delegate_count: 1,
-            time_limits: [DelegateTimeLimits::default(); MAX_DELEGATES],
-            pending_actions: Vec::with_capacity(MAX_DELEGATES * 2),
-            pending_action_count: 0,
-            next_action_id: 1,
-            action_history: Vec::with_capacity(10),
-            action_history_index: 0,
-        }
-    }
-
-    pub fn get_delegate_index(&self, pubkey: &Pubkey) -> Option<usize> {
-        for i in 0..self.delegate_count as usize {
-            if self.delegates[i] == *pubkey {
-                return Some(i);
-            }
-        }
-        None
-    }
-
-    pub fn is_delegate(&self, pubkey: &Pubkey) -> bool {
-        self.get_delegate_index(pubkey).is_some()
-    }
-
-    pub fn add_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
-        if self.delegate_count as usize >= MAX_DELEGATES {
-            return Err(PoolError::DelegateLimitExceeded);
-        }
-
-        // Check if already a delegate
-        if self.is_delegate(&delegate) {
-            return Err(PoolError::DelegateAlreadyExists { delegate });
-        }
-
-        self.delegates[self.delegate_count as usize] = delegate;
-        self.delegate_count += 1;
-        Ok(())
-    }
-
-    pub fn remove_delegate(&mut self, delegate: Pubkey) -> Result<(), PoolError> {
-        let mut found_index = None;
-        for i in 0..self.delegate_count as usize {
-            if self.delegates[i] == delegate {
-                found_index = Some(i);
-                break;
-            }
-        }
-
-        if let Some(index) = found_index {
-            // Shift remaining delegates
-            for i in index..(self.delegate_count as usize - 1) {
-                self.delegates[i] = self.delegates[i + 1];
-                self.time_limits[i] = self.time_limits[i + 1];
-            }
-            self.delegates[self.delegate_count as usize - 1] = Pubkey::default();
-            self.time_limits[self.delegate_count as usize - 1] = DelegateTimeLimits::default();
-            self.delegate_count -= 1;
-            Ok(())
-        } else {
-            Err(PoolError::DelegateNotFound { delegate })
-        }
-    }
-
-    pub fn add_pending_action(
-        &mut self,
-        action: PendingDelegateAction,
-    ) -> Result<u64, PoolError> {
-        if self.pending_actions.len() >= MAX_PENDING_ACTIONS {
-            msg!("Maximum number of pending actions reached");
-            return Err(PoolError::MaxPendingActionsReached);
-        }
-
-        // Assign next action ID and increment
-        let action_id = self.next_action_id;
-        self.next_action_id = self.next_action_id.checked_add(1)
-            .ok_or(PoolError::ArithmeticOverflow)?;
-
-        // Store the action
-        self.pending_actions.push(action);
-        self.pending_action_count += 1;
-
-        Ok(action_id)
-    }
-
-    pub fn get_pending_action(&self, action_id: u64) -> Option<&PendingDelegateAction> {
-        self.pending_actions.iter()
-            .find(|action| action.action_id == action_id)
-    }
-
-    pub fn remove_pending_action(&mut self, action_id: u64) -> Result<PendingDelegateAction, PoolError> {
-        let position = self.pending_actions.iter()
-            .position(|action| action.action_id == action_id)
-            .ok_or(PoolError::ActionNotFound)?;
-
-        // Remove and return the action
-        let action = self.pending_actions.remove(position);
-        self.pending_action_count -= 1;
-
-        // Add to history
-        self.add_to_history(action.clone());
-
-        Ok(action)
-    }
-
-    fn add_to_history(&mut self, action: PendingDelegateAction) {
-        if self.action_history.len() >= 10 {
-            self.action_history.remove(0);
-        }
-        self.action_history.push(action);
-    }
-
-    pub fn get_delegate_time_limits(&self, delegate: &Pubkey) -> Option<&DelegateTimeLimits> {
-        self.get_delegate_index(delegate)
-            .map(|index| &self.time_limits[index])
-    }
-
-    pub fn set_delegate_time_limits(
-        &mut self,
-        delegate: &Pubkey,
-        new_limits: DelegateTimeLimits,
-    ) -> Result<(), PoolError> {
-        let index = self.get_delegate_index(delegate)
-            .ok_or(PoolError::DelegateNotFound { delegate: *delegate })?;
-        
-        self.time_limits[index] = new_limits;
-        Ok(())
-    }
-
-    /// Calculate the maximum packed length the structure may occupy when
-    /// serialized.  For on-chain accounts we must allocate enough space for
-    /// the *largest* possible variant so that the account does not need to be
-    /// re-allocated later (which Solana does not allow).
-    ///
-    /// Capacity assumptions:
-    /// * `MAX_DELEGATES` is the hard limit for delegates (currently 3).
-    /// * Each delegate may have **two** concurrent pending actions, giving
-    ///   `MAX_PENDING_ACTIONS = MAX_DELEGATES * 2`.
-    /// * A circular history keeps the **last 10** completed actions.
-    ///
-    /// These values are aligned with the expectations of the test-suite and
-    /// governance design docs.
-    pub fn get_packed_len() -> usize {
-        // Fixed-size fields
-        let delegates_size = 32 * MAX_DELEGATES;        // [Pubkey; MAX_DELEGATES]
-        let delegate_count_size = 1;                    // u8
-        let time_limits_size = 24 * MAX_DELEGATES;      // 3 * u64 per delegate
-        let pending_action_count_size = 1;              // u8
-        let next_action_id_size = 8;                    // u64
-        let action_history_index_size = 1;              // u8
-
-        // Variable-length fields
-        const MAX_PENDING_ACTIONS_PER_DELEGATE: usize = 2;
-        const ACTION_HISTORY_CAPACITY: usize = 10;
-
-        let max_pending_actions = MAX_DELEGATES * MAX_PENDING_ACTIONS_PER_DELEGATE;
-        let pending_actions_size = 4 + (PendingDelegateAction::get_packed_len() * max_pending_actions);
-        let action_history_size = 4 + (PendingDelegateAction::get_packed_len() * ACTION_HISTORY_CAPACITY);
-
-        // Total size calculation
-        delegates_size +
-        delegate_count_size +
-        time_limits_size +
-        pending_action_count_size +
-        next_action_id_size +
-        action_history_index_size +
-        pending_actions_size +
-        action_history_size
-    }
-}
 
 /// Tracks rent requirements for pool accounts to ensure rent exemption.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
@@ -318,6 +70,7 @@ impl RentRequirements {
 }
 
 /// Main pool state containing all configuration and runtime data.
+/// NOTE: Pool state only contains pool-specific data and owner information.
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -345,9 +98,7 @@ pub struct PoolState {
     // Automatic withdrawal protection
     pub withdrawal_protection_active: bool,
     
-    // ❌ REMOVED: swaps_pause_reason - delegate contracts handle governance and reasons
-    
-    pub delegate_management: DelegateManagement,
+    // Fee collection and withdrawal tracking
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
     pub total_fees_withdrawn_token_a: u64,
@@ -381,7 +132,6 @@ impl Default for PoolState {
             swaps_pause_requested_by: None,
             swaps_pause_initiated_timestamp: 0,
             withdrawal_protection_active: false,
-            delegate_management: DelegateManagement::default(),
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
             total_fees_withdrawn_token_a: 0,
@@ -412,13 +162,13 @@ impl PoolState {
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // is_paused
-        // New swap-specific pause fields
+        // Swap-specific pause fields
         1 +  // swaps_paused
         33 + // swaps_pause_requested_by (Option<Pubkey> = 1 + 32)
         8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
         
-        DelegateManagement::get_packed_len() + // delegate_management
+        // Fee collection and withdrawal tracking
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a

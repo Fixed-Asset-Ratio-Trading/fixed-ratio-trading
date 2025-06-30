@@ -1004,7 +1004,6 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             collectedFeesTokenA: 0,
             collectedFeesTokenB: 0,
             collectedSolFees: 0,
-            delegateCount: 0,
             transactionSignature: signature
         };
         

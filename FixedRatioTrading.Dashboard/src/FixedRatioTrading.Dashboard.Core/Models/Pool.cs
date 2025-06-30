@@ -152,9 +152,4 @@ public class Pool
     /// Navigation property for pool transactions
     /// </summary>
     public virtual ICollection<PoolTransaction> Transactions { get; set; } = new List<PoolTransaction>();
-    
-    /// <summary>
-    /// Navigation property for pool delegates
-    /// </summary>
-    public virtual ICollection<PoolDelegate> Delegates { get; set; } = new List<PoolDelegate>();
 } 

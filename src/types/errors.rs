@@ -57,35 +57,29 @@ pub enum PoolError {
     /// Pool operations are currently paused
     PoolPaused,
     
-    /// Maximum number of delegates exceeded
-    DelegateLimitExceeded,
+    /// Pool swaps are currently paused by owner
+    PoolSwapsPaused,
     
-    /// Delegate already exists in the pool
-    DelegateAlreadyExists { delegate: Pubkey },
+    /// Pool swaps are already paused
+    PoolSwapsAlreadyPaused,
     
-    /// Delegate not found in the pool
-    DelegateNotFound { delegate: Pubkey },
+    /// Pool swaps are not currently paused
+    PoolSwapsNotPaused,
     
-    /// Invalid wait time specified
-    InvalidWaitTime { wait_time: u64 },
+    /// System is paused - all operations blocked except unpause
+    SystemPaused,
     
-    /// A pending withdrawal request already exists
-    PendingWithdrawalExists,
+    /// System is already paused
+    SystemAlreadyPaused,
     
-    /// No pending withdrawal request found
-    NoPendingWithdrawal,
+    /// System is not paused
+    SystemNotPaused,
     
-    /// Unauthorized delegate operation
-    UnauthorizedDelegate,
+    /// Unauthorized access to system controls
+    UnauthorizedAccess,
     
-    /// Insufficient fees for the operation
-    InsufficientFees,
-    
-    /// Invalid withdrawal request
-    InvalidWithdrawalRequest,
-    
-    /// Withdrawal request is not ready yet
-    WithdrawalNotReady,
+    /// Arithmetic overflow
+    ArithmeticOverflow,
     
     /// Unauthorized operation
     Unauthorized,
@@ -113,16 +107,14 @@ impl fmt::Display for PoolError {
                 write!(f, "Insufficient funds: Required {}, Available {}, Account {}", required, available, account)
             },
             PoolError::PoolPaused => write!(f, "Pool operations are currently paused"),
-            PoolError::DelegateLimitExceeded => write!(f, "Delegate limit exceeded"),
-            PoolError::DelegateAlreadyExists { delegate } => write!(f, "Delegate already exists: {}", delegate),
-            PoolError::DelegateNotFound { delegate } => write!(f, "Delegate not found: {}", delegate),
-            PoolError::InvalidWaitTime { wait_time } => write!(f, "Invalid wait time: {} seconds", wait_time),
-            PoolError::PendingWithdrawalExists => write!(f, "Pending withdrawal request exists"),
-            PoolError::NoPendingWithdrawal => write!(f, "No pending withdrawal request"),
-            PoolError::UnauthorizedDelegate => write!(f, "Unauthorized delegate"),
-            PoolError::InsufficientFees => write!(f, "Insufficient fees"),
-            PoolError::InvalidWithdrawalRequest => write!(f, "Invalid withdrawal request"),
-            PoolError::WithdrawalNotReady => write!(f, "Withdrawal not ready"),
+            PoolError::PoolSwapsPaused => write!(f, "Pool swaps are currently paused by owner"),
+            PoolError::PoolSwapsAlreadyPaused => write!(f, "Pool swaps are already paused"),
+            PoolError::PoolSwapsNotPaused => write!(f, "Pool swaps are not currently paused"),
+            PoolError::SystemPaused => write!(f, "System is paused - all operations blocked except unpause"),
+            PoolError::SystemAlreadyPaused => write!(f, "System is already paused"),
+            PoolError::SystemNotPaused => write!(f, "System is not paused"),
+            PoolError::UnauthorizedAccess => write!(f, "Unauthorized access to system controls"),
+            PoolError::ArithmeticOverflow => write!(f, "Arithmetic overflow"),
             PoolError::Unauthorized => write!(f, "Unauthorized"),
         }
     }
@@ -142,17 +134,15 @@ impl PoolError {
             PoolError::InvalidSwapAmount { .. } => 1005,
             PoolError::RentExemptError { .. } => 1006,
             PoolError::PoolPaused => 1007,
-            PoolError::DelegateLimitExceeded => 1008,
-            PoolError::DelegateAlreadyExists { .. } => 1009,
-            PoolError::DelegateNotFound { .. } => 1010,
-            PoolError::InvalidWaitTime { .. } => 1011,
-            PoolError::PendingWithdrawalExists => 1012,
-            PoolError::NoPendingWithdrawal => 1013,
-            PoolError::UnauthorizedDelegate => 1014,
-            PoolError::InsufficientFees => 1015,
-            PoolError::InvalidWithdrawalRequest => 1016,
-            PoolError::WithdrawalNotReady => 1017,
-            PoolError::Unauthorized => 1018,
+            PoolError::PoolSwapsPaused => 1008,
+            PoolError::PoolSwapsAlreadyPaused => 1009,
+            PoolError::PoolSwapsNotPaused => 1010,
+            PoolError::SystemPaused => 1011,
+            PoolError::SystemAlreadyPaused => 1012,
+            PoolError::SystemNotPaused => 1013,
+            PoolError::UnauthorizedAccess => 1014,
+            PoolError::ArithmeticOverflow => 1015,
+            PoolError::Unauthorized => 1016,
         }
     }
 }
