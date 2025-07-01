@@ -117,6 +117,71 @@ echo -e "${CYAN}External HTTP RPC: $EXTERNAL_RPC_URL${NC}"
 echo -e "${CYAN}ngrok Tunnel: $NGROK_URL${NC}"
 echo ""
 
+# Function to detect and add Solana to PATH for SSH sessions
+detect_and_setup_solana() {
+    # If Solana is already in PATH, we're good
+    if command -v solana &> /dev/null; then
+        SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
+        echo -e "${GREEN}✅ solana CLI available: $SOLANA_VERSION${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}⚠️  Solana not in PATH (common in SSH sessions), checking common locations...${NC}"
+    
+    # Common Solana installation paths (static paths)
+    SOLANA_PATHS=(
+        "/home/$USER/.local/share/solana/install/active_release/bin"
+        "/home/dev/.local/share/solana/install/active_release/bin"  
+        "$HOME/.local/share/solana/install/active_release/bin"
+        "/root/.local/share/solana/install/active_release/bin"
+        "/usr/local/bin"
+        "/opt/solana/bin"
+    )
+    
+    SOLANA_FOUND=false
+    
+    # First check static paths
+    for solana_path in "${SOLANA_PATHS[@]}"; do
+        if [ -f "$solana_path/solana" ] && [ -f "$solana_path/solana-test-validator" ]; then
+            echo -e "${GREEN}✅ Found Solana at: $solana_path${NC}"
+            export PATH="$solana_path:$PATH"
+            SOLANA_FOUND=true
+            break
+        fi
+    done
+    
+    # If not found, check release directories with wildcards
+    if [ "$SOLANA_FOUND" = false ]; then
+        for base_dir in "/home/$USER/.local/share/solana/install/releases" "/home/dev/.local/share/solana/install/releases" "$HOME/.local/share/solana/install/releases"; do
+            if [ -d "$base_dir" ]; then
+                for release_dir in "$base_dir"/*/solana-release/bin; do
+                    if [ -f "$release_dir/solana" ] && [ -f "$release_dir/solana-test-validator" ]; then
+                        echo -e "${GREEN}✅ Found Solana at: $release_dir${NC}"
+                        export PATH="$release_dir:$PATH"
+                        SOLANA_FOUND=true
+                        break 2
+                    fi
+                done
+            fi
+        done
+    fi
+    
+    if [ "$SOLANA_FOUND" = true ]; then
+        SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
+        echo -e "${GREEN}✅ solana CLI available: $SOLANA_VERSION${NC}"
+        return 0
+    else
+        echo -e "${RED}❌ Solana CLI not found in PATH or common locations${NC}"
+        echo -e "${YELLOW}💡 Please install Solana CLI or add it to PATH${NC}"
+        echo -e "${YELLOW}💡 Common locations checked:${NC}"
+        for path in "${SOLANA_PATHS[@]}"; do
+            echo -e "${YELLOW}   - $path${NC}"
+        done
+        echo -e "${YELLOW}💡 To install: sh -c \"\$(curl -sSfL https://release.solana.com/stable/install)\"${NC}"
+        return 1
+    fi
+}
+
 # Check dependencies
 echo -e "${YELLOW}🔍 Checking dependencies...${NC}"
 
@@ -142,12 +207,9 @@ else
     echo -e "${GREEN}✅ ngrok available: $NGROK_VERSION${NC}"
 fi
 
-if ! command -v solana &> /dev/null; then
-    echo -e "${RED}❌ solana CLI not found - please install Solana CLI${NC}"
+# Detect and setup Solana (handles SSH sessions)
+if ! detect_and_setup_solana; then
     exit 1
-else
-    SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
-    echo -e "${GREEN}✅ solana CLI available: $SOLANA_VERSION${NC}"
 fi
 
 # Check if ngrok is already running
@@ -279,6 +341,12 @@ fi
 echo -e "${YELLOW}🔍 Checking for Solana validator...${NC}"
 if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
     echo -e "${GREEN}✅ Solana validator detected and responding${NC}"
+    
+    # Verify Solana CLI is still available (PATH persistence check)
+    if ! command -v solana &> /dev/null; then
+        echo -e "${RED}❌ Solana CLI lost from PATH - please restart script${NC}"
+        return 1
+    fi
     
     # Configure Solana CLI
     echo -e "${YELLOW}⚙️  Configuring Solana CLI...${NC}"
