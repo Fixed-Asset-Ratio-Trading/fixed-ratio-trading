@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy Fixed Ratio Trading Contract to Remote Solana Validator
 # This script builds the contract and deploys/upgrades the program to the remote validator
-# Targets the direct validator endpoint at http://192.168.9.81:8899
+# Targets the direct validator endpoint at http://192.168.2.88:8899
 #
 # Usage:
 #   ./remote_build_and_deploy.sh [--reset|--noreset]
@@ -53,7 +53,7 @@ echo "🚀 Fixed Ratio Trading - Remote Deployment Script"
 echo "=================================================="
 echo "📂 Project Root: $PROJECT_ROOT"
 echo ""
-echo -e "${BLUE}🌐 Targeting Direct Validator Endpoint: http://192.168.9.81:8899${NC}"
+echo -e "${BLUE}🌐 Targeting Direct Validator Endpoint: http://192.168.2.88:8899${NC}"
 echo -e "${BLUE}🎒 Backpack Address: 5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t${NC}"
 echo -e "${BLUE}   Run './scripts/setup_backpack_keypair.sh' first if you need the keypair file${NC}"
 
@@ -79,7 +79,7 @@ if [ -f "$PROGRAM_KEYPAIR" ]; then
 else
     PROGRAM_ID="Will be generated during build"
 fi
-RPC_URL="http://192.168.9.81:8899"
+RPC_URL="http://192.168.2.88:8899"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
 BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 

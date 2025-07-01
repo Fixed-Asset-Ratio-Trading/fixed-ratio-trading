@@ -16,7 +16,7 @@ echo "🌐 Testing TPU on Direct Validator Endpoint"
 echo "============================================="
 
 # Configuration
-VALIDATOR_URL="http://192.168.9.81:8899"
+VALIDATOR_URL="http://192.168.2.88:8899"
 BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
