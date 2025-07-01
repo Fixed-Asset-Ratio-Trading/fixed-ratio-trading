@@ -118,15 +118,19 @@ pub fn process_create_pool_state_account(
     let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
         if multiple_token_mint_account.key < base_token_mint_account.key {
             // Multiple token is token A: direct mapping
+            msg!("DEBUG: process_create_pool_state_account: Multiple token ({}) < Base token ({}) - TokenA is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, true)
         } else {
             // Multiple token is token B: use canonical form to prevent economic duplicates
             // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
+            msg!("DEBUG: process_create_pool_state_account: Multiple token ({}) >= Base token ({}) - TokenB is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, false)
         };
 
-    msg!("DEBUG: process_create_pool_state_account: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
-         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
+    msg!("DEBUG: process_create_pool_state_account: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}, token_a_is_the_multiple={}", 
+         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple);
 
     let token_a_mint_account_info_ref = if token_a_is_the_multiple { multiple_token_mint_account } else { base_token_mint_account };
     let token_b_mint_account_info_ref = if token_a_is_the_multiple { base_token_mint_account } else { multiple_token_mint_account };
@@ -543,15 +547,19 @@ pub fn process_initialize_pool_data(
     let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
         if multiple_token_mint_account.key < base_token_mint_account.key {
             // Multiple token is token A: direct mapping
+            msg!("DEBUG: process_initialize_pool_data: Multiple token ({}) < Base token ({}) - TokenA is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, true)
         } else {
             // Multiple token is token B: use canonical form to prevent economic duplicates
             // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
+            msg!("DEBUG: process_initialize_pool_data: Multiple token ({}) >= Base token ({}) - TokenB is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, false)
         };
 
-    msg!("DEBUG: process_initialize_pool_data: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
-         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
+    msg!("DEBUG: process_initialize_pool_data: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}, token_a_is_the_multiple={}", 
+         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple);
 
     // Verify the pool state PDA is derived correctly using normalized values
     msg!("DEBUG: process_initialize_pool_data: Verifying Pool State PDA. Pool Auth Bump Seed from instr: {}", pool_authority_bump_seed);
@@ -629,6 +637,8 @@ pub fn process_initialize_pool_data(
     pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
     pool_state_data.ratio_a_numerator = ratio_a_numerator;
     pool_state_data.ratio_b_denominator = ratio_b_denominator;
+    pool_state_data.token_a_is_the_multiple = token_a_is_the_multiple;
+    msg!("DEBUG: process_initialize_pool_data: Set token_a_is_the_multiple = {} in PoolState", token_a_is_the_multiple);
     pool_state_data.total_token_a_liquidity = 0;
     pool_state_data.total_token_b_liquidity = 0;
     pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;
@@ -787,10 +797,17 @@ pub fn process_initialize_pool(
     
     let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
         if multiple_token_mint_account.key < base_token_mint_account.key {
+            msg!("DEBUG: process_initialize_pool: Multiple token ({}) < Base token ({}) - TokenA is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, true)
         } else {
+            msg!("DEBUG: process_initialize_pool: Multiple token ({}) >= Base token ({}) - TokenB is the multiple", 
+                 multiple_token_mint_account.key, base_token_mint_account.key);
             (multiple_per_base, 1u64, false)
         };
+
+    msg!("DEBUG: process_initialize_pool: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}, token_a_is_the_multiple={}", 
+         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple);
 
     // Verify the pool state PDA
     let pool_state_pda_seeds = &[
@@ -1028,6 +1045,8 @@ pub fn process_initialize_pool(
     pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
     pool_state_data.ratio_a_numerator = ratio_a_numerator;
     pool_state_data.ratio_b_denominator = ratio_b_denominator;
+    pool_state_data.token_a_is_the_multiple = token_a_is_the_multiple;
+    msg!("DEBUG: process_initialize_pool: Set token_a_is_the_multiple = {} in PoolState", token_a_is_the_multiple);
     pool_state_data.total_token_a_liquidity = 0;
     pool_state_data.total_token_b_liquidity = 0;
     pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;

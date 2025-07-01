@@ -242,6 +242,7 @@ public class SolanaRpcService : ISolanaRpcService
             {
                 // These need to be properly parsed from the binary data
                 IsInitialized = true,
+                TokenAIsTheMultiple = false, // TODO: Parse from binary data
                 // Add proper field parsing here
             };
         }

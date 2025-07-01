@@ -191,6 +191,7 @@ public class PoolSyncService : IPoolSyncService
         existingPool.LpTokenAMint = poolStateData.LpTokenAMint;
         existingPool.LpTokenBMint = poolStateData.LpTokenBMint;
                     existingPool.Ratio = poolStateData.Ratio;
+        existingPool.TokenAIsTheMultiple = poolStateData.TokenAIsTheMultiple;
         existingPool.TotalTokenALiquidity = poolStateData.TotalTokenALiquidity;
         existingPool.TotalTokenBLiquidity = poolStateData.TotalTokenBLiquidity;
         existingPool.PoolAuthorityBumpSeed = poolStateData.PoolAuthorityBumpSeed;
@@ -227,6 +228,7 @@ public class PoolSyncService : IPoolSyncService
             LpTokenAMint = poolStateData.LpTokenAMint,
             LpTokenBMint = poolStateData.LpTokenBMint,
             Ratio = poolStateData.Ratio,
+            TokenAIsTheMultiple = poolStateData.TokenAIsTheMultiple,
             TotalTokenALiquidity = poolStateData.TotalTokenALiquidity,
             TotalTokenBLiquidity = poolStateData.TotalTokenBLiquidity,
             PoolAuthorityBumpSeed = poolStateData.PoolAuthorityBumpSeed,

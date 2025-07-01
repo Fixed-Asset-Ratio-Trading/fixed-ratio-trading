@@ -83,6 +83,12 @@ Retrieve all pools with optional filtering and pagination. Results are sorted by
       // The Solana program-derived address (PDA) of this pool on the blockchain
       "poolAddress": "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
       
+      // Mint address of the first token on the Solana blockchain
+      "tokenAMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      
+      // Mint address of the second token on the Solana blockchain
+      "tokenBMint": "So11111111111111111111111111111111111111112",
+      
       // Symbol of the first token in the trading pair (e.g., "BTC", "SOL")
       "tokenASymbol": "BTC",
       
@@ -95,11 +101,19 @@ Retrieve all pools with optional filtering and pagination. Results are sorted by
       // Full display name of the second token (e.g., "USD Coin")
       "tokenBName": "USD Coin",
       
-      // Human-readable ratio string combining numerator and denominator (e.g., "10000:1")
-      "ratioDisplay": "10000:1",
+      // Human-readable ratio string in format: "1 (Symbol of base) = ratio (Symbol of multiple)"
+      // When tokenAIsTheMultiple=false: TokenA=base, TokenB=multiple, display "1 TokenA = ratio TokenB"
+      // Example: "1 BTC = 10000 USDC" means 1 unit of base token equals ratio units of multiple token
+      "ratioDisplay": "1 BTC = 10000 USDC",
         
       // Trading ratio representing how many units of TokenA per 1 unit of TokenB
       "ratio": 10000,
+      
+      // Whether TokenA is the multiple token in the trading pair calculation
+      // When true: TokenA is multiple (abundant), TokenB is base (valuable), display "1 TokenB = ratio TokenA"
+      // When false: TokenA is base (valuable), TokenB is multiple (abundant), display "1 TokenA = ratio TokenB"  
+      // Used to construct correct human-readable ratio strings
+      "tokenAIsTheMultiple": false,
       
       // Current total liquidity amount of TokenA in the pool (in smallest token units, e.g., satoshis for BTC)
       "totalTokenALiquidity": 50000000000,
@@ -204,11 +218,17 @@ Retrieve detailed information for a specific pool.
     // Full display name of the second token
     "tokenBName": "USD Coin",
     
-    // Human-readable ratio string (e.g., "10000:1")
-    "ratioDisplay": "10000:1",
+    // Human-readable ratio string (e.g., "1 BTC = 10000 USDC")
+    "ratioDisplay": "1 BTC = 10000 USDC",
     
     // Trading ratio representing how many units of TokenA per 1 unit of TokenB
     "ratio": 10000,
+    
+    // Whether TokenA is the multiple token in the trading pair calculation
+    // When true: TokenA is multiple (abundant), TokenB is base (valuable), display "1 TokenB = ratio TokenA"
+    // When false: TokenA is base (valuable), TokenB is multiple (abundant), display "1 TokenA = ratio TokenB"
+    // Used to construct correct human-readable ratio strings
+    "tokenAIsTheMultiple": false,
     
     // Current total liquidity amount of TokenA in the pool (smallest units)
     "totalTokenALiquidity": 50000000000,

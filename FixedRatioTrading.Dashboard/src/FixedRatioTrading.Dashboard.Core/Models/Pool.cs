@@ -109,6 +109,15 @@ public class Pool
     public ulong Ratio { get; set; }
     
     /// <summary>
+    /// Whether TokenA is the multiple token in the ratio calculation.
+    /// This flag determines how to interpret the ratio for display purposes.
+    /// When true: TokenA is the multiple, ratio shows "ratio TokenA per 1 TokenB"
+    /// When false: TokenB is the multiple, ratio shows "1 TokenA per ratio TokenB"
+    /// Used to construct human-readable ratio strings like "1 USDC = 10000 BTC"
+    /// </summary>
+    public bool TokenAIsTheMultiple { get; set; } = false;
+    
+    /// <summary>
     /// Current total liquidity amount of TokenA in the pool (in smallest units)
     /// </summary>
     public ulong TotalTokenALiquidity { get; set; } = 0;

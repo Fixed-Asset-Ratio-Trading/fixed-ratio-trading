@@ -83,6 +83,7 @@ public class PoolStateData
     public string LpTokenAMint { get; set; } = string.Empty;
     public string LpTokenBMint { get; set; } = string.Empty;
     public ulong Ratio { get; set; }
+    public bool TokenAIsTheMultiple { get; set; }
     public ulong TotalTokenALiquidity { get; set; }
     public ulong TotalTokenBLiquidity { get; set; }
     public byte PoolAuthorityBumpSeed { get; set; }
