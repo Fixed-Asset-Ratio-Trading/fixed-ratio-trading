@@ -404,7 +404,7 @@ fn test_normalize_pool_config_functionality() {
 }
 
 #[test]
-#[should_panic(expected = "Primary and Base token mints cannot be the same")]
+#[should_panic(expected = "Multiple and Base token mints cannot be the same")]
 fn test_normalize_pool_config_identical_tokens_panics() {
     let mint = Keypair::new();
     normalize_pool_config(&mint.pubkey(), &mint.pubkey(), 2);

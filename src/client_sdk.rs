@@ -36,17 +36,26 @@ SOFTWARE.
 //!
 //! ## Quick Start
 //! 
-//! ```rust
+//! ```rust,no_run
 //! use fixed_ratio_trading::client_sdk::{PoolClient, PoolConfig};
 //! use solana_program::pubkey::Pubkey;
+//! 
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! // Set up variables
+//! let program_id = Pubkey::new_unique();
+//! let multiple_token_mint = Pubkey::new_unique();
+//! let base_token_mint = Pubkey::new_unique();
+//! let payer = Pubkey::new_unique();
+//! let lp_token_a_mint = Pubkey::new_unique();
+//! let lp_token_b_mint = Pubkey::new_unique();
 //! 
 //! // Create a pool client
 //! let client = PoolClient::new(program_id);
 //! 
 //! // Configure a pool
 //! let config = PoolConfig {
-//!     multiple_token_mint: multiple_token_mint,
-//!     base_token_mint: base_token_mint,
+//!     multiple_token_mint,
+//!     base_token_mint,
 //!     multiple_per_base: 2,
 //! };
 //! 
@@ -55,6 +64,8 @@ SOFTWARE.
 //! 
 //! // Create pool instruction
 //! let instruction = client.create_pool_instruction(&payer, &config, &lp_token_a_mint, &lp_token_b_mint)?;
+//! # Ok(())
+//! # }
 //! ```
 
 use borsh::BorshSerialize;
@@ -135,6 +146,7 @@ impl PoolConfig {
     /// 
     /// # Errors
     /// * `InvalidRatio` - If multiple_per_base is 0
+    /// * `InvalidDepositToken` - If multiple_token_mint and base_token_mint are identical
     pub fn new(
         multiple_token_mint: Pubkey,
         base_token_mint: Pubkey,
@@ -142,6 +154,10 @@ impl PoolConfig {
     ) -> Result<Self, PoolClientError> {
         if multiple_per_base == 0 {
             return Err(PoolClientError::InvalidRatio);
+        }
+
+        if multiple_token_mint == base_token_mint {
+            return Err(PoolClientError::InvalidDepositToken);
         }
 
         Ok(Self {
@@ -325,8 +341,8 @@ impl PoolClient {
                 AccountMeta::new(addresses.pool_state, false),          // Pool state PDA
                 AccountMeta::new_readonly(config.multiple_token_mint, false), // Multiple token mint
                 AccountMeta::new_readonly(config.base_token_mint, false),     // Base token mint
-                AccountMeta::new(*lp_token_a_mint, true),               // LP Token A mint (signer)
-                AccountMeta::new(*lp_token_b_mint, true),               // LP Token B mint (signer)
+                AccountMeta::new(*lp_token_a_mint, false),              // LP Token A mint (non-signer)
+                AccountMeta::new(*lp_token_b_mint, false),              // LP Token B mint (non-signer)
                 AccountMeta::new(addresses.token_a_vault, false),       // Token A vault PDA
                 AccountMeta::new(addresses.token_b_vault, false),       // Token B vault PDA
                 AccountMeta::new_readonly(system_program::id(), false), // System program
