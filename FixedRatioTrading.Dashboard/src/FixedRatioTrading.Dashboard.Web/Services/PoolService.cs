@@ -343,6 +343,11 @@ public class PoolService : IPoolService
     {
         var (status, statusDescription) = await ComputePoolStatusAsync(pool);
         
+        // TODO: Implement UX_DESIGN_TOKEN_PAIR_DISPLAY pattern here
+        // This method should reorder tokens to display most valuable token first
+        // Currently returning raw database storage order (lexicographic)
+        // See docs/codepolicy/UX_DESIGN_TOKEN_PAIR_DISPLAY.md for implementation details
+        
         return new PoolSummaryResult
         {
             Id = pool.Id,
@@ -351,8 +356,7 @@ public class PoolService : IPoolService
             TokenBSymbol = pool.TokenBSymbol,
             TokenAName = pool.TokenAName,
             TokenBName = pool.TokenBName,
-            RatioANumerator = pool.RatioANumerator,
-            RatioBDenominator = pool.RatioBDenominator,
+            Ratio = pool.Ratio,
             TotalTokenALiquidity = pool.TotalTokenALiquidity,
             TotalTokenBLiquidity = pool.TotalTokenBLiquidity,
             TotalVolumeTokenA = pool.TotalVolumeTokenA,
@@ -374,6 +378,11 @@ public class PoolService : IPoolService
         var recentTransactions = await _transactionRepository.GetByPoolIdAsync(pool.Id, 10);
         var (status, statusDescription) = await ComputePoolStatusAsync(pool);
         
+        // TODO: Implement UX_DESIGN_TOKEN_PAIR_DISPLAY pattern here
+        // This method should reorder tokens to display most valuable token first
+        // Currently returning raw database storage order (lexicographic)
+        // See docs/codepolicy/UX_DESIGN_TOKEN_PAIR_DISPLAY.md for implementation details
+        
         return new PoolDetailsResult
         {
             Id = pool.Id,
@@ -389,8 +398,7 @@ public class PoolService : IPoolService
             TokenBVault = pool.TokenBVault,
             LpTokenAMint = pool.LpTokenAMint,
             LpTokenBMint = pool.LpTokenBMint,
-            RatioANumerator = pool.RatioANumerator,
-            RatioBDenominator = pool.RatioBDenominator,
+            Ratio = pool.Ratio,
             TotalTokenALiquidity = pool.TotalTokenALiquidity,
             TotalTokenBLiquidity = pool.TotalTokenBLiquidity,
             TotalVolumeTokenA = pool.TotalVolumeTokenA,
@@ -400,15 +408,11 @@ public class PoolService : IPoolService
             Status = status,
             StatusDescription = statusDescription,
             
-            IsInitialized = pool.IsInitialized,
-            WithdrawalProtectionActive = pool.WithdrawalProtectionActive,
             CollectedFeesTokenA = pool.CollectedFeesTokenA,
             CollectedFeesTokenB = pool.CollectedFeesTokenB,
             SwapFeeBasisPoints = pool.SwapFeeBasisPoints,
             CollectedSolFees = pool.CollectedSolFees,
             UniqueLiquidityProviders = pool.UniqueLiquidityProviders,
-            CreationBlockNumber = pool.CreationBlockNumber,
-            CreationTxSignature = pool.CreationTxSignature,
             CreatedAt = pool.CreatedAt,
             LastUpdated = pool.LastUpdated,
             Network = pool.Network,

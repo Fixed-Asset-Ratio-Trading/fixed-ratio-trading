@@ -65,10 +65,11 @@ public interface IPoolService
     Task<PoolDetailsResult?> GetPoolByAddressAsync(string poolAddress);
     
     /// <summary>
-    /// Search pools by token symbols or names
+    /// Search pools by token symbols, names, or token pairs
+    /// Supports both individual token search (e.g., "BTC") and token pair search (e.g., "BTC/USDC")
     /// Results are sorted by creation date (newest to oldest)
     /// </summary>
-    /// <param name="searchTerm">Search term</param>
+    /// <param name="searchTerm">Search term - supports individual tokens ("BTC") or token pairs ("BTC/USDC", "USDC/BTC")</param>
     /// <param name="network">Network filter (optional)</param>
     /// <param name="page">Page number</param>
     /// <param name="pageSize">Page size</param>
@@ -130,9 +131,8 @@ public class PoolSummaryResult
     public string TokenBSymbol { get; set; } = string.Empty;
     public string TokenAName { get; set; } = string.Empty;
     public string TokenBName { get; set; } = string.Empty;
-    public string Ratio => $"{RatioANumerator}:{RatioBDenominator}";
-    public ulong RatioANumerator { get; set; }
-    public ulong RatioBDenominator { get; set; }
+    public string RatioDisplay => $"{Ratio}:1";
+    public ulong Ratio { get; set; }
     public ulong TotalTokenALiquidity { get; set; }
     public ulong TotalTokenBLiquidity { get; set; }
     public ulong TotalVolumeTokenA { get; set; }
@@ -159,15 +159,11 @@ public class PoolDetailsResult : PoolSummaryResult
     public string TokenBVault { get; set; } = string.Empty;
     public string LpTokenAMint { get; set; } = string.Empty;
     public string LpTokenBMint { get; set; } = string.Empty;
-    public bool IsInitialized { get; set; }
-    public bool WithdrawalProtectionActive { get; set; }
     public ulong CollectedFeesTokenA { get; set; }
     public ulong CollectedFeesTokenB { get; set; }
     public ulong SwapFeeBasisPoints { get; set; }
     public ulong CollectedSolFees { get; set; }
     public int UniqueLiquidityProviders { get; set; }
-    public ulong CreationBlockNumber { get; set; }
-    public string CreationTxSignature { get; set; } = string.Empty;
     public IEnumerable<PoolTransactionResult> RecentTransactions { get; set; } = Enumerable.Empty<PoolTransactionResult>();
 }
 

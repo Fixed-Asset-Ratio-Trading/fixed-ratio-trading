@@ -223,12 +223,48 @@ public class PoolRepository : IPoolRepository
 
     public async Task<IEnumerable<Pool>> SearchPoolsAsync(string searchTerm, string? network = null)
     {
-        var query = _context.Pools.Where(p => 
-            p.TokenASymbol.Contains(searchTerm) || 
-            p.TokenBSymbol.Contains(searchTerm) ||
-            p.TokenAName.Contains(searchTerm) ||
-            p.TokenBName.Contains(searchTerm) ||
-            p.PoolAddress.Contains(searchTerm));
+        // TODO: Implement UX_DESIGN_TOKEN_PAIR_DISPLAY - pools should be stored/ordered with most valuable token first
+        // for better searching and user experience. Currently using lexicographic storage which may not match user expectations.
+        // See docs/codepolicy/UX_DESIGN_TOKEN_PAIR_DISPLAY.md for implementation guidelines.
+        
+        var query = _context.Pools.AsQueryable();
+        
+        // Check if search term contains "/" for token pair searching (e.g., "BTC/USDC")
+        if (searchTerm.Contains("/"))
+        {
+            var tokens = searchTerm.Split('/');
+            if (tokens.Length == 2)
+            {
+                var token1 = tokens[0].Trim();
+                var token2 = tokens[1].Trim();
+                
+                // Search for pools with these token pairs in either order
+                // This accounts for storage order vs display order differences
+                query = query.Where(p => 
+                    (p.TokenASymbol == token1 && p.TokenBSymbol == token2) ||
+                    (p.TokenASymbol == token2 && p.TokenBSymbol == token1));
+            }
+            else
+            {
+                // Invalid token pair format, fallback to basic search
+                query = query.Where(p => 
+                    p.TokenASymbol.Contains(searchTerm) || 
+                    p.TokenBSymbol.Contains(searchTerm) ||
+                    p.TokenAName.Contains(searchTerm) ||
+                    p.TokenBName.Contains(searchTerm) ||
+                    p.PoolAddress.Contains(searchTerm));
+            }
+        }
+        else
+        {
+            // Standard search for individual token symbols, names, or pool address
+            query = query.Where(p => 
+                p.TokenASymbol.Contains(searchTerm) || 
+                p.TokenBSymbol.Contains(searchTerm) ||
+                p.TokenAName.Contains(searchTerm) ||
+                p.TokenBName.Contains(searchTerm) ||
+                p.PoolAddress.Contains(searchTerm));
+        }
         
         if (!string.IsNullOrEmpty(network))
         {

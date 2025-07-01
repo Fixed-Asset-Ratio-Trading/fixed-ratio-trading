@@ -11,26 +11,26 @@
 
 ### **🧠 Critical Understanding: Interpreting Stored Ratios**
 
-**IMPORTANT**: The stored ratio `ratioANumerator:ratioBDenominator` means:
-> **"ratioANumerator of TokenA per ratioBDenominator of TokenB"**
+**IMPORTANT**: The stored ratio represents:
+> **"ratio units of TokenA per 1 unit of TokenB"**
 
-**Example**: If ratio is 10000:1, this means "10000 TokenA per 1 TokenB"
+**Example**: If ratio is 10000, this means "10000 TokenA per 1 TokenB"
 - Many TokenA needed → TokenB is more valuable → TokenB should be base token
 - Display as: **"1 TokenB = 10,000 TokenA"**
 
 ### **Step 1: Calculate Exchange Rates**
 ```javascript
 // CRITICAL: Understand what the stored ratio represents
-const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // How many A per B
-const tokensB_per_tokenA = ratioBDenominator / ratioANumerator;  // How many B per A
+const tokensA_per_tokenB = ratio;  // How many A per B
+const tokensB_per_tokenA = 1 / ratio;  // How many B per A
 ```
 
 ### **Step 2: Determine Base Token (Logical Decision Tree)**
 ```javascript
-function determineDisplayOrder(tokenASymbol, tokenBSymbol, ratioANumerator, ratioBDenominator) {
+function determineDisplayOrder(tokenASymbol, tokenBSymbol, ratio) {
     // Calculate what the stored ratio means
-    const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;
-    const tokensB_per_tokenA = ratioBDenominator / ratioANumerator;
+    const tokensA_per_tokenB = ratio;
+    const tokensB_per_tokenA = 1 / ratio;
     
     if (tokensA_per_tokenB >= 1.0) {
         // Many TokenA per 1 TokenB → TokenB is more valuable → TokenB is base
@@ -57,15 +57,15 @@ function determineDisplayOrder(tokenASymbol, tokenBSymbol, ratioANumerator, rati
 ### **Step 3: Worked Examples**
 
 #### **Example 1: TS/MST Pool (User Created: 1 TS = 10,000 MST)**
-- **Normalized Storage**: MST=TokenA, TS=TokenB, ratio=10000:1
-- **Calculation**: `tokensA_per_tokenB = 10000/1 = 10000`
+- **Storage**: MST=TokenA, TS=TokenB, ratio=10000
+- **Calculation**: `tokensA_per_tokenB = 10000`
 - **Logic**: `10000 >= 1.0` → TS is more valuable → TS is base token
 - **Display**: **"1 TS = 10,000.00 MST"** ✅
 
 #### **Example 2: BTC/USDC Pool (User Created: 1 BTC = 50,000 USDC)**
-- **Normalized Storage**: BTC=TokenA, USDC=TokenB, ratio=1:50000
-- **Calculation**: `tokensA_per_tokenB = 1/50000 = 0.00002`
-- **Logic**: `0.00002 < 1.0` → BTC is more valuable → BTC is base token
+- **Storage**: BTC=TokenA, USDC=TokenB, ratio=0.00002
+- **Calculation**: `tokensA_per_tokenB = 0.00002`
+- **Logic**: `0.00002 < 1.0` → BTC is more valuable → BTC is base token  
 - **Display**: **"1 BTC = 50,000.00 USDC"** ✅
 
 ## 🚨 **Common Pitfalls & Debugging**
@@ -73,10 +73,10 @@ function determineDisplayOrder(tokenASymbol, tokenBSymbol, ratioANumerator, rati
 ### **❌ Mistake 1: Misinterpreting the Ratio Direction**
 ```javascript
 // WRONG - Thinking ratio means "how many B per A"
-const ratioA_to_B = ratioANumerator / ratioBDenominator;  // This is backwards!
+const ratioA_to_B = 1 / ratio;  // This is backwards!
 
 // CORRECT - Understanding ratio means "how many A per B"  
-const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // This is right!
+const tokensA_per_tokenB = ratio;  // This is right!
 ```
 
 ### **❌ Mistake 2: Confusing Which Token is More Valuable**
@@ -84,16 +84,16 @@ const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // This is righ
 - **Low ratio (1:10000)** = Few TokenA per TokenB = **TokenA is MORE valuable**
 
 ### **🛠️ Debug Methodology**
-1. **Check the stored ratio**: What does `ratioANumerator:ratioBDenominator` represent?
+1. **Check the stored ratio**: What does the `ratio` value represent?
 2. **Calculate the meaning**: How many TokenA per TokenB?
 3. **Apply logic**: Which token requires fewer units? That's the base token.
 4. **Verify with user intent**: Does the result match what the user originally created?
 
 ### **🔄 Decision Flowchart**
 ```
-Given: ratioANumerator:ratioBDenominator (e.g., 10000:1)
+Given: ratio (e.g., 10000)
    ↓
-Calculate: tokensA_per_tokenB = ratioANumerator / ratioBDenominator
+Calculate: tokensA_per_tokenB = ratio
    ↓
 Question: Is tokensA_per_tokenB >= 1.0?
    ↓                                    ↓
@@ -111,11 +111,11 @@ Display: "1 TokenB = X TokenA"      Display: "1 TokenA = Y TokenB"
 
 ### **📊 Visual Examples**
 
-| Technical (Normalized) | User Display | Exchange Rate          | Debug Logic                       |
-|------------------------|--------------|------------------------|-----------------------------------|
-| MST/TS (10000:1)       | **TS/MST**   | 1 TS = 10,000.00 MST   | 10000 MST per TS → TS valuable    |
-| USDC/BTC (50000:1)     | **BTC/USDC** | 1 BTC = 50,000.00 USDC | 50000 USDC per BTC → BTC valuable |
-| SOL/mSOL (1000:1)      | **mSOL/SOL** | 1 mSOL = 1,000.00 SOL  | 1000 SOL per mSOL → mSOL valuable |
+| Technical Storage | User Display | Exchange Rate          | Debug Logic                       |
+|-------------------|--------------|------------------------|-----------------------------------|
+| MST/TS (10000)    | **TS/MST**   | 1 TS = 10,000.00 MST   | 10000 MST per TS → TS valuable    |
+| USDC/BTC (0.00002) | **BTC/USDC** | 1 BTC = 50,000.00 USDC | 0.00002 BTC per USDC → BTC valuable |
+| SOL/mSOL (1000)   | **mSOL/SOL** | 1 mSOL = 1,000.00 SOL  | 1000 SOL per mSOL → mSOL valuable |
 
 ## 🎨 **UI/UX Guidelines**
 
@@ -163,28 +163,28 @@ Display: "1 TokenB = X TokenA"      Display: "1 TokenA = Y TokenB"
 ```javascript
 // File: dashboard/utils.js (new file)
 function getDisplayTokenOrder(pool) {
-    const ratioA_to_B = pool.ratioANumerator / pool.ratioBDenominator;
+    const ratioA_to_B = pool.ratio;
     
     if (ratioA_to_B >= 1.0) {
-        return {
-            baseToken: pool.tokenASymbol,
-            quoteToken: pool.tokenBSymbol,
-            baseLiquidity: pool.tokenALiquidity,
-            quoteLiquidity: pool.tokenBLiquidity,
-            exchangeRate: ratioA_to_B,
-            displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
-            rateText: `1 ${pool.tokenASymbol} = ${ratioA_to_B.toFixed(2)} ${pool.tokenBSymbol}`
-        };
-    } else {
-        const ratioB_to_A = pool.ratioBDenominator / pool.ratioANumerator;
         return {
             baseToken: pool.tokenBSymbol,
             quoteToken: pool.tokenASymbol,
             baseLiquidity: pool.tokenBLiquidity,
             quoteLiquidity: pool.tokenALiquidity,
-            exchangeRate: ratioB_to_A,
+            exchangeRate: ratioA_to_B,
             displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
-            rateText: `1 ${pool.tokenBSymbol} = ${ratioB_to_A.toFixed(2)} ${pool.tokenASymbol}`
+            rateText: `1 ${pool.tokenBSymbol} = ${ratioA_to_B.toFixed(2)} ${pool.tokenASymbol}`
+        };
+    } else {
+        const ratioB_to_A = 1 / pool.ratio;
+        return {
+            baseToken: pool.tokenASymbol,
+            quoteToken: pool.tokenBSymbol,
+            baseLiquidity: pool.tokenALiquidity,
+            quoteLiquidity: pool.tokenBLiquidity,
+            exchangeRate: ratioB_to_A,
+            displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
+            rateText: `1 ${pool.tokenASymbol} = ${ratioB_to_A.toFixed(2)} ${pool.tokenBSymbol}`
         };
     }
 }
@@ -223,23 +223,23 @@ function getDisplayTokenOrder(pool) {
 // Test Case 1: High-value base token (like TS in TS/MST)
 const test1 = getDisplayTokenOrder({
     tokenASymbol: 'MST', tokenBSymbol: 'TS',
-    ratioANumerator: 10000, ratioBDenominator: 1
+    ratio: 10000
 });
 // Expected: baseToken='TS', rateText='1 TS = 10,000.00 MST'
 
 // Test Case 2: Low-value base token (like USDC in BTC/USDC)  
 const test2 = getDisplayTokenOrder({
     tokenASymbol: 'BTC', tokenBSymbol: 'USDC',
-    ratioANumerator: 1, ratioBDenominator: 50000
+    ratio: 0.00002
 });
 // Expected: baseToken='BTC', rateText='1 BTC = 50,000.00 USDC'
 
 // Test Case 3: Equal ratio (edge case)
 const test3 = getDisplayTokenOrder({
     tokenASymbol: 'USDC', tokenBSymbol: 'USDT',
-    ratioANumerator: 1, ratioBDenominator: 1
+    ratio: 1
 });
-// Expected: baseToken='USDC' (alphabetical), rateText='1 USDC = 1.00 USDT'
+// Expected: baseToken='USDT' (reverse logic), rateText='1 USDT = 1.00 USDC'
 ```
 
 ### **Quick Validation Questions**

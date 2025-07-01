@@ -58,8 +58,7 @@ public class PoolController : ControllerBase
                 // - tokenAName: Full display name of the first token (e.g., "Bitcoin")
                 // - tokenBName: Full display name of the second token (e.g., "USD Coin")
                 // - ratio: Human-readable ratio string combining numerator and denominator (e.g., "10000:1")
-                // - ratioANumerator: Numerator part of the trading ratio - how many units of TokenA per RatioBDenominator units of TokenB
-                // - ratioBDenominator: Denominator part of the trading ratio - the base unit count for TokenB in the ratio
+                // - ratio: Trading ratio representing how many units of TokenA per 1 unit of TokenB
                 // - totalTokenALiquidity: Current total liquidity amount of TokenA in the pool (in smallest token units, e.g., satoshis for BTC)
                 // - totalTokenBLiquidity: Current total liquidity amount of TokenB in the pool (in smallest token units, e.g., micro-USDC for USDC)
                 // - totalVolumeTokenA: Total trading volume of TokenA that has passed through this pool since creation
@@ -130,24 +129,19 @@ public class PoolController : ControllerBase
                 // - tokenBSymbol: Symbol of the second token (e.g., "USDC", "ETH")
                 // - tokenAName: Full display name of the first token
                 // - tokenBName: Full display name of the second token
-                // - ratio: Human-readable ratio string (e.g., "10000:1")
-                // - ratioANumerator: Numerator part of the trading ratio
-                // - ratioBDenominator: Denominator part of the trading ratio
+                // - ratioDisplay: Human-readable ratio string (e.g., "10000:1")
+                // - ratio: Trading ratio representing how many units of TokenA per 1 unit of TokenB
                 // - totalTokenALiquidity: Current total liquidity amount of TokenA in the pool (smallest units)
                 // - totalTokenBLiquidity: Current total liquidity amount of TokenB in the pool (smallest units)
                 // - totalVolumeTokenA: Total trading volume of TokenA since pool creation
                 // - totalVolumeTokenB: Total trading volume of TokenB since pool creation
                 // - status: Simplified operational status (Operational, Inactive, SystemPaused, PoolPaused, SwapsPaused)
                 // - statusDescription: Human-readable description of the current pool status
-                // - isInitialized: Whether the pool has been properly initialized on the blockchain
-                // - withdrawalProtectionActive: Whether automatic withdrawal protection is active (READ-ONLY)
                 // - collectedFeesTokenA: Collected fees in TokenA awaiting withdrawal by owner (READ-ONLY, in smallest units)
                 // - collectedFeesTokenB: Collected fees in TokenB awaiting withdrawal by owner (READ-ONLY, in smallest units)
                 // - swapFeeBasisPoints: Current swap fee rate in basis points (e.g., 30 = 0.3%) (READ-ONLY)
                 // - collectedSolFees: Collected SOL fees in lamports (READ-ONLY)
                 // - uniqueLiquidityProviders: Number of unique addresses that have provided liquidity to this pool
-                // - creationBlockNumber: Block number when this pool was created on the blockchain
-                // - creationTxSignature: Transaction signature of the pool creation transaction
                 // - createdAt: UTC timestamp when this pool was created
                 // - lastUpdated: UTC timestamp when pool data was last synchronized from blockchain
                 // - network: Blockchain network where this pool exists
@@ -212,10 +206,11 @@ public class PoolController : ControllerBase
     }
 
     /// <summary>
-    /// Search pools by token symbols or names
+    /// Search pools by token symbols, names, or token pairs
+    /// Supports both individual token search (e.g., "BTC") and token pair search (e.g., "BTC/USDC")
     /// Results are sorted by creation date (newest to oldest)
     /// </summary>
-    /// <param name="q">Search query</param>
+    /// <param name="q">Search query - supports individual tokens ("BTC") or token pairs ("BTC/USDC", "USDC/BTC")</param>
     /// <param name="network">Network filter (optional)</param>
     /// <param name="page">Page number (default: 1)</param>
     /// <param name="pageSize">Page size (default: 20)</param>
@@ -246,6 +241,11 @@ public class PoolController : ControllerBase
                 success = true,
                 
                 // Array of pool summary objects matching the search criteria
+                // Search supports:
+                // - Individual token symbols: "BTC", "USDC", "SOL"
+                // - Individual token names: "Bitcoin", "USD Coin"
+                // - Token pairs: "BTC/USDC", "USDC/BTC" (order independent)
+                // - Pool addresses: partial or full blockchain addresses
                 // Each pool has the same structure as the Get All Pools response
                 data = result.Pools,
                 
@@ -265,7 +265,7 @@ public class PoolController : ControllerBase
                     totalPages = result.TotalPages
                 },
                 
-                // The search query that was executed against token symbols and names
+                // The search query that was executed against token symbols, names, and token pairs
                 query = q
             });
         }

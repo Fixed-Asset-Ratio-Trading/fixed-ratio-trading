@@ -100,18 +100,13 @@ public class Pool
     public string TokenBName { get; set; } = string.Empty;
     
     /// <summary>
-    /// The numerator of the ratio for TokenA (e.g., 10000 in 10000:1)
-    /// IMPORTANT: This means "RatioANumerator of TokenA per RatioBDenominator of TokenB"
+    /// Trading ratio representing how many units of TokenA per 1 unit of TokenB.
+    /// Example: If ratio is 10000, this means "10000 TokenA per 1 TokenB"
+    /// High ratio → TokenB is more valuable → TokenB should be base token
+    /// Low ratio → TokenA is more valuable → TokenA should be base token
     /// </summary>
     [Required]
-    public ulong RatioANumerator { get; set; }
-    
-    /// <summary>
-    /// The denominator of the ratio for TokenB (e.g., 1 in 10000:1)
-    /// IMPORTANT: This means "RatioANumerator of TokenA per RatioBDenominator of TokenB"
-    /// </summary>
-    [Required]
-    public ulong RatioBDenominator { get; set; }
+    public ulong Ratio { get; set; }
     
     /// <summary>
     /// Current total liquidity amount of TokenA in the pool (in smallest units)

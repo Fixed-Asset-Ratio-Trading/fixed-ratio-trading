@@ -96,13 +96,10 @@ Retrieve all pools with optional filtering and pagination. Results are sorted by
       "tokenBName": "USD Coin",
       
       // Human-readable ratio string combining numerator and denominator (e.g., "10000:1")
-      "ratio": "10000:1",
-      
-      // Numerator part of the trading ratio - how many units of TokenA per RatioBDenominator units of TokenB
-      "ratioANumerator": 10000,
-      
-      // Denominator part of the trading ratio - the base unit count for TokenB in the ratio
-      "ratioBDenominator": 1,
+      "ratioDisplay": "10000:1",
+        
+      // Trading ratio representing how many units of TokenA per 1 unit of TokenB
+      "ratio": 10000,
       
       // Current total liquidity amount of TokenA in the pool (in smallest token units, e.g., satoshis for BTC)
       "totalTokenALiquidity": 50000000000,
@@ -208,13 +205,10 @@ Retrieve detailed information for a specific pool.
     "tokenBName": "USD Coin",
     
     // Human-readable ratio string (e.g., "10000:1")
-    "ratio": "10000:1",
+    "ratioDisplay": "10000:1",
     
-    // Numerator part of the trading ratio
-    "ratioANumerator": 10000,
-    
-    // Denominator part of the trading ratio
-    "ratioBDenominator": 1,
+    // Trading ratio representing how many units of TokenA per 1 unit of TokenB
+    "ratio": 10000,
     
     // Current total liquidity amount of TokenA in the pool (smallest units)
     "totalTokenALiquidity": 50000000000,
@@ -234,12 +228,6 @@ Retrieve detailed information for a specific pool.
     // Human-readable description of the current pool status
     "statusDescription": "Swaps are paused - liquidity operations available",
     
-    // Whether the pool has been properly initialized on the blockchain
-    "isInitialized": true,
-    
-    // Whether automatic withdrawal protection is active (READ-ONLY)
-    "withdrawalProtectionActive": false,
-    
     // Collected fees in TokenA awaiting withdrawal by owner (READ-ONLY, in smallest units)
     "collectedFeesTokenA": 100000000,
     
@@ -254,12 +242,6 @@ Retrieve detailed information for a specific pool.
     
     // Number of unique addresses that have provided liquidity to this pool
     "uniqueLiquidityProviders": 25,
-    
-    // Block number when this pool was created on the blockchain
-    "creationBlockNumber": 123456789,
-    
-    // Transaction signature of the pool creation transaction
-    "creationTxSignature": "5VfYD7jQoQMTsXFZLpqK3cP6uT9wE2hB1Xm7A3vC8kD5tG9qL4jF2Bs",
     
     // UTC timestamp when this pool was created
     "createdAt": "2024-01-15T10:30:00Z",
@@ -336,15 +318,23 @@ Same as Get Pool by ID - returns detailed pool information with the `status` fie
 ### 4. Search Pools
 **GET** `/api/pool/search`
 
-Search pools by token symbols or names. Results are sorted by creation date (newest to oldest).
+Search pools by token symbols, names, or token pairs. Supports both individual token search and token pair search with slash notation. Results are sorted by creation date (newest to oldest).
 
 #### Query Parameters
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `q` | string | Yes | - | Search query for token symbols or names |
+| `q` | string | Yes | - | Search query - supports individual tokens ("BTC") or token pairs ("BTC/USDC", "USDC/BTC") |
 | `network` | string | No | null | Network filter |
 | `page` | integer | No | 1 | Page number |
 | `pageSize` | integer | No | 20 | Page size |
+
+#### Search Query Examples
+- **Individual token symbols**: `"BTC"`, `"USDC"`, `"SOL"`
+- **Individual token names**: `"Bitcoin"`, `"USD Coin"`
+- **Token pairs (order independent)**: `"BTC/USDC"`, `"USDC/BTC"`, `"SOL/USDT"`
+- **Pool addresses**: Partial or full blockchain addresses
+
+**Note**: Token pair searches work regardless of how pools are stored in the database. Pools are internally stored in lexicographic order for technical consistency, but the API supports searching by the user-friendly display format (most valuable token first) as defined in UX_DESIGN_TOKEN_PAIR_DISPLAY guidelines.
 
 #### Response Structure
 ```json
@@ -352,7 +342,12 @@ Search pools by token symbols or names. Results are sorted by creation date (new
   // Indicates whether the search was processed successfully
   "success": true,
   
-  // Array of pool summary objects matching the search criteria (includes status field)
+  // Array of pool summary objects matching the search criteria
+  // Search supports:
+  // - Individual token symbols: "BTC", "USDC", "SOL"
+  // - Individual token names: "Bitcoin", "USD Coin"
+  // - Token pairs: "BTC/USDC", "USDC/BTC" (order independent)
+  // - Pool addresses: partial or full blockchain addresses
   "data": [
     // Pool objects with same structure as Get All Pools response
   ],
@@ -365,8 +360,8 @@ Search pools by token symbols or names. Results are sorted by creation date (new
     "totalPages": 3
   },
   
-  // The search query that was executed
-  "query": "BTC"
+  // The search query that was executed against token symbols, names, and token pairs
+  "query": "BTC/USDC"
 }
 ```
 

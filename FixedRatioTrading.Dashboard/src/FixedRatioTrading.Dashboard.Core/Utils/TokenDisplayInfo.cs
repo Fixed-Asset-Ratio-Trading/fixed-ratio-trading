@@ -55,8 +55,8 @@ public class TokenDisplayInfo
     /// <summary>
     /// Gets display information for a pool based on the UX design pattern.
     /// 
-    /// CRITICAL UNDERSTANDING: The stored ratio RatioANumerator:RatioBDenominator means:
-    /// "RatioANumerator of TokenA per RatioBDenominator of TokenB"
+    /// CRITICAL UNDERSTANDING: The stored ratio represents:
+    /// "Ratio units of TokenA per 1 unit of TokenB"
     /// 
     /// The logic determines which token should be the base token (ratio = 1) for user-friendly display.
     /// </summary>
@@ -65,8 +65,8 @@ public class TokenDisplayInfo
     public static TokenDisplayInfo GetDisplayInfo(Pool pool)
     {
         // Calculate what the stored ratio means
-        var tokensA_per_tokenB = (decimal)pool.RatioANumerator / pool.RatioBDenominator;
-        var tokensB_per_tokenA = (decimal)pool.RatioBDenominator / pool.RatioANumerator;
+        var tokensA_per_tokenB = (decimal)pool.Ratio;
+        var tokensB_per_tokenA = 1m / (decimal)pool.Ratio;
         
         if (tokensA_per_tokenB >= 1.0m)
         {
@@ -143,14 +143,14 @@ public class TokenDisplayInfo
     }
     
     /// <summary>
-    /// Gets the original pool ratios (as stored) for a given display arrangement
+    /// Gets the original pool ratio (as stored) for a given display arrangement
     /// This is useful when we need to work backwards from display to storage
     /// </summary>
     /// <param name="pool">The pool</param>
-    /// <returns>Tuple of (ratioANumerator, ratioBDenominator) as stored</returns>
-    public static (ulong ratioANumerator, ulong ratioBDenominator) GetStoredRatios(Pool pool)
+    /// <returns>The stored ratio value</returns>
+    public static ulong GetStoredRatio(Pool pool)
     {
-        return (pool.RatioANumerator, pool.RatioBDenominator);
+        return pool.Ratio;
     }
     
     /// <summary>
