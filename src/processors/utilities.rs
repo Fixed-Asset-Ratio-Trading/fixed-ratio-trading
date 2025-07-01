@@ -20,45 +20,63 @@ use crate::error::PoolError;
 // PDA HELPER UTILITIES
 // ================================================================================================
 
-/// **PDA HELPER**: Computes and returns the Pool State PDA address for given tokens and ratio.
+/// **PDA HELPER**: Returns the Pool State PDA for given token mints and ratio.
 /// 
-/// This utility function helps clients derive the Pool State PDA address without requiring
-/// account creation or on-chain calls. Essential for preparing transaction account lists.
+/// This utility function computes the Program Derived Address (PDA) for a pool
+/// without requiring any account setup. It's useful for address derivation in
+/// client applications and testing scenarios.
+/// 
+/// # Enhanced Normalization Logic
+/// This function implements the same token normalization and ratio mapping logic
+/// used during pool creation to ensure consistent PDA derivation. It prevents
+/// creation of economically equivalent pools by normalizing token pairs to a
+/// canonical form.
 /// 
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `primary_token_mint` - Primary token mint pubkey
-/// * `base_token_mint` - Base token mint pubkey  
-/// * `ratio_primary_per_base` - Exchange ratio between tokens
+/// * `program_id` - The program ID of the Fixed Ratio Trading Pool program
+/// * `multiple_token_mint` - The abundant token mint address
+/// * `base_token_mint` - The valuable token mint address
+/// * `multiple_per_base` - Exchange ratio between tokens
 /// 
 /// # Returns
-/// * `ProgramResult` - Logs the derived PDA address and bump seed
+/// * `ProgramResult` - Success (logs the PDA) or error
+/// 
+/// # Logging Output
+/// This function logs the following information for client consumption:
+/// - Final Pool State PDA address
+/// - PDA bump seed for signing operations  
+/// - Normalized token A and token B addresses (lexicographic order)
+/// - Normalized ratio numerator and denominator
+/// 
+/// # Note
+/// The logged PDA can be used by clients to derive the correct pool address
+/// for subsequent operations like deposits, withdrawals, and swaps.
 pub fn get_pool_state_pda(
     program_id: &Pubkey,
-    primary_token_mint: Pubkey,
+    multiple_token_mint: Pubkey,
     base_token_mint: Pubkey,
-    ratio_primary_per_base: u64,
+    multiple_per_base: u64,
 ) -> ProgramResult {
     msg!("DEBUG: get_pool_state_pda: Computing Pool State PDA");
     
     // Enhanced normalization to prevent economic duplicates (same logic as pool creation)
     // Step 1: Lexicographic token ordering
     let (token_a_mint_key, token_b_mint_key) = 
-        if primary_token_mint < base_token_mint {
-            (primary_token_mint, base_token_mint)
+        if multiple_token_mint < base_token_mint {
+            (multiple_token_mint, base_token_mint)
         } else {
-            (base_token_mint, primary_token_mint)
+            (base_token_mint, multiple_token_mint)
         };
     
     // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
     let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
-        if primary_token_mint < base_token_mint {
-            // Tokens are in normal order: primary = token_a, base = token_b
-            (ratio_primary_per_base, 1u64)
+        if multiple_token_mint < base_token_mint {
+            // Tokens are in normal order: multiple = token_a, base = token_b
+            (multiple_per_base, 1u64)
         } else {
-            // Tokens are swapped: primary = token_b, base = token_a
-            // So ratio needs to be inverted: if primary/base was N:1, then token_a/token_b is 1:N
-            (1u64, ratio_primary_per_base)
+            // Tokens are swapped: multiple = token_b, base = token_a
+            // So ratio needs to be inverted: if multiple/base was N:1, then token_a/token_b is 1:N
+            (1u64, multiple_per_base)
         };
     
     // Find PDA with canonical bump seed

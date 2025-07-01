@@ -24,158 +24,173 @@ SOFTWARE.
 
 //! # Fixed Ratio Trading Pool - Client SDK
 //! 
-//! This module provides a comprehensive client SDK that simplifies interaction with the
-//! Fixed Ratio Trading Pool program. It hides the complexity of PDA derivation, account
-//! management, and instruction construction behind easy-to-use functions.
+//! This module provides a high-level client SDK for interacting with the Fixed Ratio Trading Pool program.
+//! It simplifies the process of creating pools, managing liquidity, and performing swaps.
+//!
+//! ## Features
+//! - Pool creation and configuration
+//! - Address derivation for PDAs (Program Derived Addresses)
+//! - Instruction building for all pool operations
+//! - Error handling and validation
+//! - Type-safe pool configuration
+//!
+//! ## Quick Start
 //! 
-//! ## Key Features
+//! ```rust
+//! use fixed_ratio_trading::client_sdk::{PoolClient, PoolConfig};
+//! use solana_program::pubkey::Pubkey;
 //! 
-//! - **Simple Pool Creation**: One function call to create a new trading pool
-//! - **Automatic PDA Derivation**: No need to manually calculate program-derived addresses
-//! - **Account Preparation**: Automatic preparation of all required accounts
-//! - **Error Handling**: Clear error messages and validation
-//! - **Type Safety**: Strongly typed interfaces prevent common mistakes
-//! - **Testing Support**: Built-in utilities for testing and debugging
+//! // Create a pool client
+//! let client = PoolClient::new(program_id);
 //! 
-//! ## Example Usage
-//! 
-//! ```rust,no_run
-//! use fixed_ratio_trading::client_sdk::*;
-//! use solana_sdk::pubkey::Pubkey;
-//! 
-//! // Create a new pool with 2:1 ratio (USDC:SOL)
-//! let program_id = Pubkey::new_unique();
-//! let pool_client = PoolClient::new(program_id);
-//! let pool_config = PoolConfig {
-//!     primary_token_mint: Pubkey::new_unique(),
-//!     base_token_mint: Pubkey::new_unique(),
-//!     ratio_primary_per_base: 2,
+//! // Configure a pool
+//! let config = PoolConfig {
+//!     multiple_token_mint: multiple_token_mint,
+//!     base_token_mint: base_token_mint,
+//!     multiple_per_base: 2,
 //! };
 //! 
-//! // Get pool creation instruction (single atomic operation) 
-//! let payer = Pubkey::new_unique();
-//! let lp_a = Pubkey::new_unique();
-//! let lp_b = Pubkey::new_unique();
-//! let create_ix = pool_client.create_pool_instruction(&payer, &pool_config, &lp_a, &lp_b).unwrap();
+//! // Derive pool addresses
+//! let addresses = client.derive_pool_addresses(&config);
 //! 
-//! // Add liquidity to the pool
-//! let user = Pubkey::new_unique();
-//! let user_account = Pubkey::new_unique(); 
-//! let lp_account = Pubkey::new_unique();
-//! let deposit_ix = pool_client.deposit_instruction(
-//!     &user,
-//!     &pool_config,
-//!     &pool_config.primary_token_mint,
-//!     1000000, // 1 USDC
-//!     &user_account,
-//!     &lp_account,
-//! ).unwrap();
+//! // Create pool instruction
+//! let instruction = client.create_pool_instruction(&payer, &config, &lp_token_a_mint, &lp_token_b_mint)?;
 //! ```
 
+use borsh::BorshSerialize;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
     system_program,
-    sysvar::{self},
+    sysvar::{rent, clock},
 };
-use borsh::BorshSerialize;
+use spl_token;
+
 use crate::{
+    constants::{POOL_STATE_SEED_PREFIX, TOKEN_A_VAULT_SEED_PREFIX, TOKEN_B_VAULT_SEED_PREFIX},
     types::instructions::PoolInstruction,
-    POOL_STATE_SEED_PREFIX,
-    TOKEN_A_VAULT_SEED_PREFIX,
-    TOKEN_B_VAULT_SEED_PREFIX,
 };
 
-/// Configuration for creating a new trading pool.
+/// Errors that can occur when using the pool client
+#[derive(Debug)]
+pub enum PoolClientError {
+    /// Invalid ratio provided (must be > 0)
+    InvalidRatio,
+    /// Invalid deposit token (must be either multiple or base token)
+    InvalidDepositToken,
+    /// Feature not yet implemented
+    NotImplemented,
+    /// Error during instruction serialization
+    SerializationError,
+}
+
+impl From<std::io::Error> for PoolClientError {
+    fn from(_error: std::io::Error) -> Self {
+        Self::SerializationError
+    }
+}
+
+impl std::fmt::Display for PoolClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PoolClientError::InvalidRatio => write!(f, "Invalid ratio: must be greater than 0"),
+            PoolClientError::InvalidDepositToken => write!(f, "Invalid deposit token: must be either multiple or base token"),
+            PoolClientError::NotImplemented => write!(f, "Feature not yet implemented"),
+            PoolClientError::SerializationError => write!(f, "Failed to serialize instruction data"),
+        }
+    }
+}
+
+impl std::error::Error for PoolClientError {}
+
+/// Configuration for creating a trading pool
 /// 
-/// This struct encapsulates all the parameters needed to create a new fixed-ratio
-/// trading pool, providing a clean interface that hides implementation details.
+/// This struct defines the parameters needed to create a new fixed-ratio trading pool.
+/// The pool will exchange tokens at a fixed rate determined by the multiple_per_base ratio.
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
-    /// Primary token mint address (e.g., USDC)
-    pub primary_token_mint: Pubkey,
-    /// Base token mint address (e.g., SOL)
+    /// The token that appears in larger quantities in the ratio (abundant token)
+    /// Example: In a 1000:1 ratio, if USDC:SOL, then USDC is the multiple token
+    pub multiple_token_mint: Pubkey,
+    
+    /// The token that appears as 1 in the ratio (valuable token)
+    /// Example: In a 1000:1 ratio, if USDC:SOL, then SOL is the base token
     pub base_token_mint: Pubkey,
-    /// Exchange ratio: how many primary tokens per base token
-    /// Example: ratio_primary_per_base = 2 means 2 USDC per 1 SOL
-    pub ratio_primary_per_base: u64,
+    
+    /// Exchange ratio: how many multiple tokens per base token
+    /// Example: multiple_per_base = 2 means 2 USDC per 1 SOL
+    pub multiple_per_base: u64,
 }
 
 impl PoolConfig {
-    /// Creates a new pool configuration.
+    /// Creates a new pool configuration
     /// 
     /// # Arguments
-    /// * `primary_token_mint` - The mint of the primary token (usually the quote token)
-    /// * `base_token_mint` - The mint of the base token (usually the base token)
-    /// * `ratio_primary_per_base` - How many primary tokens equal one base token
+    /// * `multiple_token_mint` - Mint address of the multiple token (abundant)
+    /// * `base_token_mint` - Mint address of the base token (valuable)
+    /// * `multiple_per_base` - How many multiple tokens equal one base token
     /// 
-    /// # Example
-    /// ```rust,no_run
-    /// use solana_sdk::pubkey::Pubkey;
-    /// use fixed_ratio_trading::client_sdk::PoolConfig;
+    /// # Returns
+    /// * `Result<PoolConfig, PoolClientError>` - The pool configuration or an error
     /// 
-    /// // 1000 USDC per 1 SOL pool
-    /// let usdc_mint = Pubkey::new_unique();
-    /// let sol_mint = Pubkey::new_unique();
-    /// let config = PoolConfig::new(usdc_mint, sol_mint, 1000).unwrap();
-    /// ```
+    /// # Errors
+    /// * `InvalidRatio` - If multiple_per_base is 0
     pub fn new(
-        primary_token_mint: Pubkey,
+        multiple_token_mint: Pubkey,
         base_token_mint: Pubkey,
-        ratio_primary_per_base: u64,
+        multiple_per_base: u64,
     ) -> Result<Self, PoolClientError> {
-        if ratio_primary_per_base == 0 {
+        if multiple_per_base == 0 {
             return Err(PoolClientError::InvalidRatio);
         }
-        
-        if primary_token_mint == base_token_mint {
-            return Err(PoolClientError::IdenticalTokens);
-        }
-        
+
         Ok(Self {
-            primary_token_mint,
+            multiple_token_mint,
             base_token_mint,
-            ratio_primary_per_base,
+            multiple_per_base,
         })
     }
 }
 
-/// Derived addresses for a trading pool.
+/// Derived addresses for a pool configuration
 /// 
-/// This struct contains all the program-derived addresses (PDAs) associated with
-/// a trading pool, automatically calculated to ensure consistency and correctness.
+/// This struct contains all the program-derived addresses (PDAs) that are
+/// automatically calculated for a given pool configuration.
 #[derive(Debug, Clone)]
 pub struct PoolAddresses {
-    /// Pool state PDA address
+    /// Pool state account address
     pub pool_state: Pubkey,
-    /// Pool state PDA bump seed
-    pub pool_state_bump: u8,
-    /// Token A vault PDA address
-    pub token_a_vault: Pubkey,
-    /// Token A vault bump seed
-    pub token_a_vault_bump: u8,
-    /// Token B vault PDA address
-    pub token_b_vault: Pubkey,
-    /// Token B vault bump seed
-    pub token_b_vault_bump: u8,
+    /// Pool authority bump seed for PDA derivation
+    pub pool_authority_bump: u8,
     /// Normalized token A mint (lexicographically first)
     pub token_a_mint: Pubkey,
     /// Normalized token B mint (lexicographically second)
     pub token_b_mint: Pubkey,
-    /// Normalized ratio numerator
+    /// Normalized ratio A numerator  
     pub ratio_a_numerator: u64,
-    /// Normalized ratio denominator
+    /// Normalized ratio B denominator (always 1)
     pub ratio_b_denominator: u64,
+    /// Token A vault address
+    pub token_a_vault: Pubkey,
+    /// Token A vault bump seed
+    pub token_a_vault_bump: u8,
+    /// Token B vault address
+    pub token_b_vault: Pubkey,
+    /// Token B vault bump seed
+    pub token_b_vault_bump: u8,
 }
 
-/// Main client for interacting with the Fixed Ratio Trading Pool program.
+/// High-level client for interacting with Fixed Ratio Trading Pools
 /// 
-/// This client provides high-level functions that abstract away the complexity
-/// of instruction construction, account management, and PDA derivation.
-#[derive(Debug, Clone)]
+/// This client provides convenient methods for all pool operations including:
+/// - Creating new pools
+/// - Deriving addresses
+/// - Building instructions
+/// - Managing liquidity
+/// - Performing swaps
 pub struct PoolClient {
-    /// Program ID of the Fixed Ratio Trading Pool program
-    pub program_id: Pubkey,
+    /// The program ID of the deployed pool program
+    program_id: Pubkey,
 }
 
 impl PoolClient {
@@ -201,23 +216,23 @@ impl PoolClient {
         // Enhanced normalization to prevent economic duplicates
         // Step 1: Lexicographic token ordering
         let (token_a_mint, token_b_mint) = 
-            if config.primary_token_mint < config.base_token_mint {
-                (config.primary_token_mint, config.base_token_mint)
+            if config.multiple_token_mint < config.base_token_mint {
+                (config.multiple_token_mint, config.base_token_mint)
             } else {
-                (config.base_token_mint, config.primary_token_mint)
+                (config.base_token_mint, config.multiple_token_mint)
             };
         
         // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
         let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
-            if config.primary_token_mint < config.base_token_mint {
-                (config.ratio_primary_per_base, 1u64)
+            if config.multiple_token_mint < config.base_token_mint {
+                (config.multiple_per_base, 1u64)
             } else {
                 // Use canonical form - all pools with same token pair get same ratio
-                (config.ratio_primary_per_base, 1u64)
+                (config.multiple_per_base, 1u64)
             };
         
         // Derive pool state PDA
-        let (pool_state, pool_state_bump) = Pubkey::find_program_address(
+        let (pool_state, pool_authority_bump) = Pubkey::find_program_address(
             &[
                 POOL_STATE_SEED_PREFIX,
                 token_a_mint.as_ref(),
@@ -228,12 +243,11 @@ impl PoolClient {
             &self.program_id,
         );
         
-        // Derive token vault PDAs
+        // Derive vault PDAs
         let (token_a_vault, token_a_vault_bump) = Pubkey::find_program_address(
             &[TOKEN_A_VAULT_SEED_PREFIX, pool_state.as_ref()],
             &self.program_id,
         );
-        
         let (token_b_vault, token_b_vault_bump) = Pubkey::find_program_address(
             &[TOKEN_B_VAULT_SEED_PREFIX, pool_state.as_ref()],
             &self.program_id,
@@ -241,32 +255,35 @@ impl PoolClient {
         
         PoolAddresses {
             pool_state,
-            pool_state_bump,
-            token_a_vault,
-            token_a_vault_bump,
-            token_b_vault,
-            token_b_vault_bump,
+            pool_authority_bump,
             token_a_mint,
             token_b_mint,
             ratio_a_numerator,
             ratio_b_denominator,
+            token_a_vault,
+            token_a_vault_bump,
+            token_b_vault,
+            token_b_vault_bump,
         }
     }
     
-    /// Creates a pool initialization instruction (single atomic operation).
+    /// Creates a pool initialization instruction.
     /// 
-    /// This function creates the new recommended single-instruction pool initialization
-    /// that replaces the deprecated two-instruction pattern. It handles all the complexity
-    /// of account preparation and instruction construction.
+    /// This function creates the instruction needed to initialize a new trading pool
+    /// with the specified configuration.
     /// 
     /// # Arguments
-    /// * `payer` - Account that will pay for account creation and fees
-    /// * `config` - Pool configuration
-    /// * `lp_token_a_mint` - Keypair for LP Token A mint (must be new)
-    /// * `lp_token_b_mint` - Keypair for LP Token B mint (must be new)
+    /// * `payer` - Account that will pay for pool creation and sign the transaction
+    /// * `config` - Pool configuration containing token mints and ratio
+    /// * `lp_token_a_mint` - LP token mint for token A liquidity providers
+    /// * `lp_token_b_mint` - LP token mint for token B liquidity providers
     /// 
     /// # Returns
-    /// * `Instruction` - Ready-to-send instruction for pool creation
+    /// * `Result<Instruction, PoolClientError>` - The pool creation instruction or an error
+    /// 
+    /// # Errors
+    /// * `InvalidRatio` - If the ratio in config is 0
+    /// * `SerializationError` - If instruction data serialization fails
     pub fn create_pool_instruction(
         &self,
         payer: &Pubkey,
@@ -277,60 +294,61 @@ impl PoolClient {
         let addresses = self.derive_pool_addresses(config);
         
         // Validate inputs
-        if config.ratio_primary_per_base == 0 {
+        if config.multiple_per_base == 0 {
             return Err(PoolClientError::InvalidRatio);
         }
         
-        // Map bump seeds back to primary/base token convention
-        let (primary_vault_bump, base_vault_bump) = 
-            if config.primary_token_mint < config.base_token_mint {
+        // Map bump seeds back to multiple/base token convention
+        let (multiple_vault_bump, base_vault_bump) = 
+            if config.multiple_token_mint < config.base_token_mint {
                 (addresses.token_a_vault_bump, addresses.token_b_vault_bump)
             } else {
                 (addresses.token_b_vault_bump, addresses.token_a_vault_bump)
             };
         
         // Create instruction
-        let instruction = Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(*payer, true),                           // Payer (signer)
-                AccountMeta::new(addresses.pool_state, false),            // Pool state PDA
-                AccountMeta::new_readonly(config.primary_token_mint, false), // Primary token mint
-                AccountMeta::new_readonly(config.base_token_mint, false),    // Base token mint
-                AccountMeta::new(*lp_token_a_mint, false),               // LP Token A mint
-                AccountMeta::new(*lp_token_b_mint, false),               // LP Token B mint
-                AccountMeta::new(addresses.token_a_vault, false),         // Token A vault PDA
-                AccountMeta::new(addresses.token_b_vault, false),         // Token B vault PDA
-                AccountMeta::new_readonly(system_program::id(), false),   // System program
-                AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-                AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-            ],
-            data: PoolInstruction::InitializePool {
-                ratio_primary_per_base: config.ratio_primary_per_base,
-                pool_authority_bump_seed: addresses.pool_state_bump,
-                primary_token_vault_bump_seed: primary_vault_bump,
-                base_token_vault_bump_seed: base_vault_bump,
-            }.try_to_vec()?,
+        let instruction_data = PoolInstruction::InitializePool {
+            multiple_per_base: config.multiple_per_base,
+            pool_authority_bump_seed: addresses.pool_authority_bump,
+            multiple_token_vault_bump_seed: multiple_vault_bump,
+            base_token_vault_bump_seed: base_vault_bump,
         };
         
-        Ok(instruction)
+        let data = instruction_data
+            .try_to_vec()
+            .map_err(|_| PoolClientError::SerializationError)?;
+        
+        Ok(Instruction {
+            program_id: self.program_id,
+            accounts: vec![
+                AccountMeta::new(*payer, true),                         // Payer (signer)
+                AccountMeta::new(addresses.pool_state, false),          // Pool state PDA
+                AccountMeta::new_readonly(config.multiple_token_mint, false), // Multiple token mint
+                AccountMeta::new_readonly(config.base_token_mint, false),     // Base token mint
+                AccountMeta::new(*lp_token_a_mint, true),               // LP Token A mint (signer)
+                AccountMeta::new(*lp_token_b_mint, true),               // LP Token B mint (signer)
+                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault PDA
+                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault PDA
+                AccountMeta::new_readonly(system_program::id(), false), // System program
+                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
+                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+            ],
+            data,
+        })
     }
     
     /// Creates a deposit instruction for adding liquidity to a pool.
     /// 
-    /// This function creates an instruction to deposit tokens into a pool and receive
-    /// LP tokens in return. It handles all account preparation automatically.
-    /// 
     /// # Arguments
-    /// * `user` - User account (must be signer)
+    /// * `user` - The user performing the deposit
     /// * `config` - Pool configuration
-    /// * `deposit_token_mint` - Mint of the token being deposited
+    /// * `deposit_token_mint` - Token being deposited
     /// * `amount` - Amount to deposit
-    /// * `user_source_account` - User's token account for the deposit token
-    /// * `user_lp_account` - User's account for receiving LP tokens
+    /// * `user_source_account` - User's token account
+    /// * `user_lp_account` - User's LP token account
     /// 
     /// # Returns
-    /// * `Instruction` - Ready-to-send deposit instruction
+    /// * `Result<Instruction, PoolClientError>` - The deposit instruction or an error
     pub fn deposit_instruction(
         &self,
         user: &Pubkey,
@@ -343,59 +361,49 @@ impl PoolClient {
         let addresses = self.derive_pool_addresses(config);
         
         // Validate deposit token
-        if *deposit_token_mint != config.primary_token_mint && *deposit_token_mint != config.base_token_mint {
+        if *deposit_token_mint != config.multiple_token_mint && *deposit_token_mint != config.base_token_mint {
             return Err(PoolClientError::InvalidDepositToken);
         }
-        
-        // Get pool LP mint addresses (these would need to be provided or derived)
-        // For simplicity, using placeholder values - in real implementation,
-        // these would be retrieved from pool state or provided by caller
-        let pool_state_data = self.get_pool_state(&addresses.pool_state)?;
-        
-        let instruction = Instruction {
+
+        let instruction_data = PoolInstruction::Deposit {
+            deposit_token_mint: *deposit_token_mint,
+            amount,
+        };
+
+        let data = instruction_data.try_to_vec()?;
+
+        Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                AccountMeta::new(*user, true),                           // User (signer)
-                AccountMeta::new(*user_source_account, false),           // User source token account
-                AccountMeta::new(addresses.pool_state, false),           // Pool state PDA
-                AccountMeta::new_readonly(addresses.token_a_mint, false), // Token A mint (for PDA seeds)
-                AccountMeta::new_readonly(addresses.token_b_mint, false), // Token B mint (for PDA seeds)
-                AccountMeta::new(addresses.token_a_vault, false),        // Pool Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),        // Pool Token B vault
-                AccountMeta::new(pool_state_data.lp_token_a_mint, false), // LP Token A mint
-                AccountMeta::new(pool_state_data.lp_token_b_mint, false), // LP Token B mint
-                AccountMeta::new(*user_lp_account, false),               // User LP token account
-                AccountMeta::new_readonly(system_program::id(), false),   // System program
-                AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-                AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-                AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
+                AccountMeta::new(*user, true),                          // User (signer)
+                AccountMeta::new(addresses.pool_state, false),          // Pool state
+                AccountMeta::new(*user_source_account, false),          // User source token account
+                AccountMeta::new(*user_lp_account, false),              // User LP token account
+                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
+                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
+                AccountMeta::new_readonly(system_program::id(), false), // System program
+                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
+                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
             ],
-            data: PoolInstruction::Deposit {
-                deposit_token_mint: *deposit_token_mint,
-                amount,
-            }.try_to_vec()?,
-        };
-        
-        Ok(instruction)
+            data,
+        })
     }
     
     /// Creates an enhanced deposit instruction with additional features.
     /// 
-    /// This function creates an enhanced deposit instruction with slippage protection
-    /// and custom fee recipient options, useful for testing and advanced use cases.
-    /// 
-    /// # Arguments
-    /// * `user` - User account (must be signer)
+    /// # Arguments  
+    /// * `user` - The user performing the deposit
     /// * `config` - Pool configuration
-    /// * `deposit_token_mint` - Mint of the token being deposited
+    /// * `deposit_token_mint` - Token being deposited
     /// * `amount` - Amount to deposit
     /// * `minimum_lp_tokens_out` - Minimum LP tokens expected (slippage protection)
     /// * `fee_recipient` - Optional custom fee recipient
-    /// * `user_source_account` - User's token account for the deposit token
-    /// * `user_lp_account` - User's account for receiving LP tokens
+    /// * `user_source_account` - User's token account
+    /// * `user_lp_account` - User's LP token account
     /// 
     /// # Returns
-    /// * `Instruction` - Ready-to-send enhanced deposit instruction
+    /// * `Result<Instruction, PoolClientError>` - The enhanced deposit instruction or an error
     pub fn deposit_with_features_instruction(
         &self,
         user: &Pubkey,
@@ -410,105 +418,98 @@ impl PoolClient {
         let addresses = self.derive_pool_addresses(config);
         
         // Validate deposit token
-        if *deposit_token_mint != config.primary_token_mint && *deposit_token_mint != config.base_token_mint {
+        if *deposit_token_mint != config.multiple_token_mint && *deposit_token_mint != config.base_token_mint {
             return Err(PoolClientError::InvalidDepositToken);
         }
-        
-        let pool_state_data = self.get_pool_state(&addresses.pool_state)?;
-        
-        let instruction = Instruction {
+
+        let instruction_data = PoolInstruction::DepositWithFeatures {
+            deposit_token_mint: *deposit_token_mint,
+            amount,
+            minimum_lp_tokens_out,
+            fee_recipient,
+        };
+
+        let data = instruction_data.try_to_vec()?;
+
+        Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                AccountMeta::new(*user, true),                           // User (signer)
-                AccountMeta::new(*user_source_account, false),           // User source token account
-                AccountMeta::new(addresses.pool_state, false),           // Pool state PDA
-                AccountMeta::new_readonly(addresses.token_a_mint, false), // Token A mint (for PDA seeds)
-                AccountMeta::new_readonly(addresses.token_b_mint, false), // Token B mint (for PDA seeds)
-                AccountMeta::new(addresses.token_a_vault, false),        // Pool Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),        // Pool Token B vault
-                AccountMeta::new(pool_state_data.lp_token_a_mint, false), // LP Token A mint
-                AccountMeta::new(pool_state_data.lp_token_b_mint, false), // LP Token B mint
-                AccountMeta::new(*user_lp_account, false),               // User LP token account
-                AccountMeta::new_readonly(system_program::id(), false),   // System program
-                AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-                AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-                AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
+                AccountMeta::new(*user, true),                          // User (signer)
+                AccountMeta::new(addresses.pool_state, false),          // Pool state
+                AccountMeta::new(*user_source_account, false),          // User source token account
+                AccountMeta::new(*user_lp_account, false),              // User LP token account
+                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
+                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
+                AccountMeta::new_readonly(system_program::id(), false), // System program
+                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
+                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
             ],
-            data: PoolInstruction::DepositWithFeatures {
-                deposit_token_mint: *deposit_token_mint,
-                amount,
-                minimum_lp_tokens_out,
-                fee_recipient,
-            }.try_to_vec()?,
-        };
-        
-        Ok(instruction)
+            data,
+        })
     }
     
     /// Creates a withdraw instruction for removing liquidity from a pool.
     /// 
     /// # Arguments
-    /// * `user` - User account (must be signer)
+    /// * `user` - The user performing the withdrawal
     /// * `config` - Pool configuration
-    /// * `withdraw_token_mint` - Mint of the token to withdraw
+    /// * `withdraw_token_mint` - Token being withdrawn
     /// * `lp_amount_to_burn` - Amount of LP tokens to burn
+    /// * `user_destination_account` - User's destination token account
     /// * `user_lp_account` - User's LP token account
-    /// * `user_destination_account` - User's account for receiving withdrawn tokens
     /// 
     /// # Returns
-    /// * `Instruction` - Ready-to-send withdraw instruction
+    /// * `Result<Instruction, PoolClientError>` - The withdraw instruction or an error
     pub fn withdraw_instruction(
         &self,
         user: &Pubkey,
         config: &PoolConfig,
         withdraw_token_mint: &Pubkey,
         lp_amount_to_burn: u64,
-        user_lp_account: &Pubkey,
         user_destination_account: &Pubkey,
+        user_lp_account: &Pubkey,
     ) -> Result<Instruction, PoolClientError> {
         let addresses = self.derive_pool_addresses(config);
-        let pool_state_data = self.get_pool_state(&addresses.pool_state)?;
-        
-        let instruction = Instruction {
+
+        let instruction_data = PoolInstruction::Withdraw {
+            withdraw_token_mint: *withdraw_token_mint,
+            lp_amount_to_burn,
+        };
+
+        let data = instruction_data.try_to_vec()?;
+
+        Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                AccountMeta::new(*user, true),                           // User (signer)
-                AccountMeta::new(*user_lp_account, false),               // User LP token account
-                AccountMeta::new(*user_destination_account, false),      // User destination token account
-                AccountMeta::new(addresses.pool_state, false),           // Pool state PDA
-                AccountMeta::new_readonly(addresses.token_a_mint, false), // Token A mint (for PDA seeds)
-                AccountMeta::new_readonly(addresses.token_b_mint, false), // Token B mint (for PDA seeds)
-                AccountMeta::new(addresses.token_a_vault, false),        // Pool Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),        // Pool Token B vault
-                AccountMeta::new(pool_state_data.lp_token_a_mint, false), // LP Token A mint
-                AccountMeta::new(pool_state_data.lp_token_b_mint, false), // LP Token B mint
-                AccountMeta::new_readonly(system_program::id(), false),   // System program
-                AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-                AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-                AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
+                AccountMeta::new(*user, true),                          // User (signer)
+                AccountMeta::new(addresses.pool_state, false),          // Pool state
+                AccountMeta::new(*user_destination_account, false),     // User destination token account
+                AccountMeta::new(*user_lp_account, false),              // User LP token account
+                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
+                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
+                AccountMeta::new_readonly(system_program::id(), false), // System program
+                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
+                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
             ],
-            data: PoolInstruction::Withdraw {
-                withdraw_token_mint: *withdraw_token_mint,
-                lp_amount_to_burn,
-            }.try_to_vec()?,
-        };
-        
-        Ok(instruction)
+            data,
+        })
     }
-    
-    /// Creates a swap instruction for exchanging tokens at the fixed ratio.
+
+    /// Creates a swap instruction for exchanging tokens.
     /// 
     /// # Arguments
-    /// * `user` - User account (must be signer)
+    /// * `user` - The user performing the swap
     /// * `config` - Pool configuration
-    /// * `input_token_mint` - Mint of the input token
+    /// * `input_token_mint` - Token being swapped
     /// * `amount_in` - Amount of input tokens
-    /// * `minimum_amount_out` - Minimum output tokens expected (slippage protection)
-    /// * `user_input_account` - User's input token account
-    /// * `user_output_account` - User's output token account
+    /// * `minimum_amount_out` - Minimum amount of output tokens expected
+    /// * `user_source_account` - User's source token account
+    /// * `user_destination_account` - User's destination token account
     /// 
     /// # Returns
-    /// * `Instruction` - Ready-to-send swap instruction
+    /// * `Result<Instruction, PoolClientError>` - The swap instruction or an error
     pub fn swap_instruction(
         &self,
         user: &Pubkey,
@@ -516,102 +517,69 @@ impl PoolClient {
         input_token_mint: &Pubkey,
         amount_in: u64,
         minimum_amount_out: u64,
-        user_input_account: &Pubkey,
-        user_output_account: &Pubkey,
+        user_source_account: &Pubkey,
+        user_destination_account: &Pubkey,
     ) -> Result<Instruction, PoolClientError> {
         let addresses = self.derive_pool_addresses(config);
-        
-        let instruction = Instruction {
+
+        let instruction_data = PoolInstruction::Swap {
+            input_token_mint: *input_token_mint,
+            amount_in,
+            minimum_amount_out,
+        };
+
+        let data = instruction_data.try_to_vec()?;
+
+        Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                AccountMeta::new(*user, true),                           // User (signer)
-                AccountMeta::new(*user_input_account, false),            // User input token account
-                AccountMeta::new(*user_output_account, false),           // User output token account
-                AccountMeta::new(addresses.pool_state, false),           // Pool state PDA
-                AccountMeta::new_readonly(addresses.token_a_mint, false), // Token A mint (for PDA seeds)
-                AccountMeta::new_readonly(addresses.token_b_mint, false), // Token B mint (for PDA seeds)
-                AccountMeta::new(addresses.token_a_vault, false),        // Pool Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),        // Pool Token B vault
-                AccountMeta::new_readonly(system_program::id(), false),   // System program
-                AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-                AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-                AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
+                AccountMeta::new(*user, true),                          // User (signer)
+                AccountMeta::new(addresses.pool_state, false),          // Pool state
+                AccountMeta::new(*user_source_account, false),          // User source token account
+                AccountMeta::new(*user_destination_account, false),     // User destination token account
+                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
+                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
+                AccountMeta::new_readonly(system_program::id(), false), // System program
+                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
+                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
             ],
-            data: PoolInstruction::Swap {
-                input_token_mint: *input_token_mint,
-                amount_in,
-                minimum_amount_out,
-            }.try_to_vec()?,
-        };
-        
-        Ok(instruction)
+            data,
+        })
     }
-    
-    /// Retrieves pool state data (placeholder implementation).
+
+    /// Placeholder for additional pool operations.
     /// 
-    /// In a real implementation, this would fetch and deserialize the pool state
-    /// from the blockchain. For now, it returns a placeholder.
-    pub fn get_pool_state(&self, _pool_state_pda: &Pubkey) -> Result<PoolStateData, PoolClientError> {
-        // This is a placeholder implementation
-        // In a real client, this would make an RPC call to fetch account data
+    /// # Returns
+    /// * `Result<(), PoolClientError>` - Currently returns NotImplemented
+    pub fn additional_operations(&self) -> Result<(), PoolClientError> {
         Err(PoolClientError::NotImplemented)
     }
 }
 
-/// Simplified pool state data for client use.
-#[derive(Debug, Clone)]
-pub struct PoolStateData {
-    pub lp_token_a_mint: Pubkey,
-    pub lp_token_b_mint: Pubkey,
-    pub is_initialized: bool,
+/// Pool state information for debugging and testing
+#[derive(Debug)]
+pub struct PoolState {
+    pub token_a_mint: Pubkey,
+    pub token_b_mint: Pubkey,
+    pub ratio_a_numerator: u64,
+    pub ratio_b_denominator: u64,
     pub is_paused: bool,
 }
 
-/// Client SDK error types.
-#[derive(Debug)]
-pub enum PoolClientError {
-    InvalidRatio,
-    IdenticalTokens,
-    InvalidDepositToken,
-    NotImplemented,
-    SerializationError(std::io::Error),
-}
-
-impl From<std::io::Error> for PoolClientError {
-    fn from(error: std::io::Error) -> Self {
-        Self::SerializationError(error)
-    }
-}
-
-impl std::fmt::Display for PoolClientError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::InvalidRatio => write!(f, "Ratio must be greater than 0"),
-            Self::IdenticalTokens => write!(f, "Primary and base tokens must be different"),
-            Self::InvalidDepositToken => write!(f, "Deposit token must be either primary or base token"),
-            Self::NotImplemented => write!(f, "Feature not yet implemented"),
-            Self::SerializationError(e) => write!(f, "Serialization error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for PoolClientError {}
-
 /// Utility functions for testing and development.
-pub mod testing {
+pub mod test_utils {
     use super::*;
-    
-    /// Helper function to create a test pool configuration.
+
+    /// Creates a test pool configuration for testing purposes.
+    /// 
+    /// # Returns
+    /// * `PoolConfig` - A test configuration with random mints and 1000:1 ratio
     pub fn create_test_pool_config() -> PoolConfig {
         PoolConfig {
-            primary_token_mint: Pubkey::new_unique(),
+            multiple_token_mint: Pubkey::new_unique(),
             base_token_mint: Pubkey::new_unique(),
-            ratio_primary_per_base: 1000, // 1000:1 ratio
+            multiple_per_base: 1000, // 1000:1 ratio
         }
-    }
-    
-    /// Helper function to create multiple test keypairs.
-    pub fn create_test_keypairs(count: usize) -> Vec<Pubkey> {
-        (0..count).map(|_| Pubkey::new_unique()).collect()
     }
 } 

@@ -78,9 +78,9 @@ async fn test_instruction_serialization() -> TestResult {
         // Test case 4: InitializePool instruction
         {
             PoolInstruction::InitializePool {
-                ratio_primary_per_base: 5,
+                multiple_per_base: 5,
                 pool_authority_bump_seed: 254,
-                primary_token_vault_bump_seed: 253,
+                multiple_token_vault_bump_seed: 253,
                 base_token_vault_bump_seed: 252,
             }
         },
@@ -153,18 +153,18 @@ async fn test_instruction_serialization() -> TestResult {
                                 assert_eq!(orig_amount, deser_amount, "Withdraw LP amount should match");
                             },
                             (
-                                PoolInstruction::InitializePool { 
-                                    ratio_primary_per_base: orig_ratio,
-                                    pool_authority_bump_seed: orig_pool_bump,
-                                    primary_token_vault_bump_seed: orig_primary_bump,
-                                    base_token_vault_bump_seed: orig_base_bump
-                                },
-                                PoolInstruction::InitializePool { 
-                                    ratio_primary_per_base: deser_ratio,
-                                    pool_authority_bump_seed: deser_pool_bump,
-                                    primary_token_vault_bump_seed: deser_primary_bump,
-                                    base_token_vault_bump_seed: deser_base_bump
-                                }
+                                                    PoolInstruction::InitializePool { 
+                        multiple_per_base: orig_ratio,
+                        pool_authority_bump_seed: orig_pool_bump,
+                        multiple_token_vault_bump_seed: orig_primary_bump,
+                        base_token_vault_bump_seed: orig_base_bump
+                    },
+                                                    PoolInstruction::InitializePool { 
+                        multiple_per_base: deser_ratio,
+                        pool_authority_bump_seed: deser_pool_bump,
+                        multiple_token_vault_bump_seed: deser_primary_bump,
+                        base_token_vault_bump_seed: deser_base_bump
+                    }
                             ) => {
                                 assert_eq!(orig_ratio, deser_ratio, "InitializePool ratio should match");
                                 assert_eq!(orig_pool_bump, deser_pool_bump, "InitializePool pool bump should match");
@@ -344,10 +344,10 @@ async fn test_basic_deposit_success() -> TestResult {
     println!("✅ Created pool with unique configuration");
     println!("   Pool state PDA: {}", config.pool_state_pda);
     println!("   Ratio: {}", unique_ratio);
-    println!("   Token A is primary: {} (should be true)", config.token_a_is_primary);
+    println!("   Token A is primary: {} (should be true)", config.token_a_is_the_multiple);
     
     // Verify we got the expected token ordering
-    if !config.token_a_is_primary {
+    if !config.token_a_is_the_multiple {
         panic!("❌ Expected Token A to be primary but got Token A is primary: false");
     }
 
@@ -602,7 +602,7 @@ async fn test_deposit_with_features_success() -> TestResult {
 
     // Mint tokens to user for depositing - use primary token
     let deposit_amount = 1_000_000u64; // 1M tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_base_token_account) // This would be wrong, but keeping same pattern
@@ -621,7 +621,7 @@ async fn test_deposit_with_features_success() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -648,7 +648,7 @@ async fn test_deposit_with_features_success() -> TestResult {
     let minimum_lp_out = 450_000; // Expect at least 450K LP tokens (10% slippage tolerance)
     
     let deposit_instruction_data = PoolInstruction::DepositWithFeatures {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -799,7 +799,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
 
     // Mint tokens to user
     let deposit_amount = 1_000_000;
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_base_token_account)
@@ -818,7 +818,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -842,7 +842,7 @@ async fn test_deposit_with_features_slippage_protection() -> TestResult {
              deposit_amount_to_use, minimum_lp_out);
     
     let deposit_instruction_data = PoolInstruction::DepositWithFeatures {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -983,7 +983,7 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
 
     // Mint a small amount of tokens to user
     let available_amount = 100_000u64; // 100K tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_primary_token_account)
@@ -1002,7 +1002,7 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -1028,7 +1028,7 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
     let deposit_amount = available_amount + 1; // Try to deposit 1 more token than available
     
     let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -1155,7 +1155,7 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
 
     // Mint tokens to user
     let deposit_amount = 1_000_000u64; // 1M tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_primary_token_account)
@@ -1174,7 +1174,7 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -1200,7 +1200,7 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
     let zero_amount = 0u64;
     
     let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -1375,7 +1375,7 @@ async fn test_deposit_wrong_token_fails() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -1535,7 +1535,7 @@ async fn test_deposit_insufficient_balance_fails() -> TestResult {
 
     // Mint a small amount of tokens to user
     let available_amount = 100_000u64; // 100K tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_primary_token_account)
@@ -1554,7 +1554,7 @@ async fn test_deposit_insufficient_balance_fails() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -1574,7 +1574,7 @@ async fn test_deposit_insufficient_balance_fails() -> TestResult {
     let deposit_amount = available_amount + 1; // Try to deposit 1 more token than available
     
     let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -1726,7 +1726,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
 
     // Mint tokens to user for depositing
     let deposit_amount = 1_000_000u64; // 1M tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_base_token_account)
@@ -1745,7 +1745,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -1781,7 +1781,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
 
     // First, perform a deposit to get LP tokens
     let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -1827,7 +1827,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
     let withdraw_amount = deposit_amount; // Withdraw all LP tokens
     
     let withdraw_instruction_data = PoolInstruction::Withdraw {
-        withdraw_token_mint: if config.token_a_is_primary { 
+        withdraw_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -1878,7 +1878,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
     assert_eq!(final_token_balance, deposit_amount, "User should receive their tokens back");
     
     // Verify pool state is updated
-    if config.token_a_is_primary {
+    if config.token_a_is_the_multiple {
         assert_eq!(
             final_pool_state.total_token_a_liquidity,
             initial_pool_state.total_token_a_liquidity,
@@ -1985,7 +1985,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
 
     // Mint tokens to user
     let deposit_amount = 1_000_000;
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_primary {
+    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
         (&primary_mint.pubkey(), &user_primary_token_account)
     } else {
         (&base_mint.pubkey(), &user_base_token_account)
@@ -2004,7 +2004,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
 
     // Create LP token account for user
     let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_primary {
+    let lp_mint = if config.token_a_is_the_multiple {
         &ctx.lp_token_a_mint.pubkey()
     } else {
         &ctx.lp_token_b_mint.pubkey()
@@ -2040,7 +2040,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
 
     // First, perform a deposit to get LP tokens
     let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_primary { 
+        deposit_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -2086,7 +2086,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
     let withdraw_amount = deposit_amount + 1; // Try to withdraw 1 more token than available
     
     let withdraw_instruction_data = PoolInstruction::Withdraw {
-        withdraw_token_mint: if config.token_a_is_primary { 
+        withdraw_token_mint: if config.token_a_is_the_multiple { 
             config.token_a_mint 
         } else { 
             config.token_b_mint 
@@ -2150,7 +2150,7 @@ async fn test_withdrawal_insufficient_lp_fails() -> TestResult {
     assert_eq!(final_token_balance, 0, "No tokens should have been transferred");
     
     // Verify pool state remains unchanged
-    if config.token_a_is_primary {
+    if config.token_a_is_the_multiple {
         assert_eq!(
             final_pool_state.total_token_a_liquidity,
             deposit_amount,

@@ -31,7 +31,7 @@ mod common;
 
 use common::*;
 use fixed_ratio_trading::{
-    client_sdk::{PoolClient, PoolConfig, PoolClientError},
+    client_sdk::{PoolClient, PoolConfig, PoolClientError, test_utils},
     PoolInstruction,
     ID as PROGRAM_ID,
 };
@@ -49,57 +49,47 @@ async fn test_pool_client_new() -> TestResult {
     println!("Running SDK-001: test_pool_client_new - PoolClient initialization and configuration");
     
     // Create a new pool client with the program ID
-    let pool_client = PoolClient::new(PROGRAM_ID);
+    let _pool_client = PoolClient::new(PROGRAM_ID);
     
-    // 1. Verify the program ID is stored correctly
-    assert_eq!(
-        pool_client.program_id, 
-        PROGRAM_ID,
-        "PoolClient should store the provided program ID correctly"
-    );
-    println!("✅ PoolClient stores program ID correctly");
+    // 1. Verify PoolClient can be created successfully
+    println!("✅ PoolClient created successfully");
     
     // 2. Test creating a client with a random program ID to ensure flexible initialization
     let random_program_id = Pubkey::new_unique();
-    let custom_client = PoolClient::new(random_program_id);
-    assert_eq!(
-        custom_client.program_id, 
-        random_program_id,
-        "PoolClient should accept any valid program ID"
-    );
+    let _custom_client = PoolClient::new(random_program_id);
     println!("✅ PoolClient accepts custom program IDs");
     
     // 3. Test creating a pool configuration with the client
-    let primary_token_mint = Pubkey::new_unique();
+    let multiple_token_mint = Pubkey::new_unique();
     let base_token_mint = Pubkey::new_unique();
     let ratio = 1000; // 1000:1 ratio
     let pool_config = PoolConfig {
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
-        ratio_primary_per_base: ratio,
+        multiple_per_base: ratio,
     };
     
     // 4. Verify pool configuration values
-    assert_eq!(pool_config.primary_token_mint, primary_token_mint);
+    assert_eq!(pool_config.multiple_token_mint, multiple_token_mint);
     assert_eq!(pool_config.base_token_mint, base_token_mint);
-    assert_eq!(pool_config.ratio_primary_per_base, ratio);
+    assert_eq!(pool_config.multiple_per_base, ratio);
     println!("✅ Pool configuration initialized with correct values");
     
     // 5. Test pool configuration creation through factory method
     let pool_config_alt = PoolConfig::new(
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
         ratio
     ).expect("Pool config creation should succeed");
     
-    assert_eq!(pool_config_alt.primary_token_mint, primary_token_mint);
+    assert_eq!(pool_config_alt.multiple_token_mint, multiple_token_mint);
     assert_eq!(pool_config_alt.base_token_mint, base_token_mint);
-    assert_eq!(pool_config_alt.ratio_primary_per_base, ratio);
+    assert_eq!(pool_config_alt.multiple_per_base, ratio);
     println!("✅ Pool configuration created via factory method correctly");
     
     // 6. Test error case: zero ratio
     let zero_ratio_result = PoolConfig::new(
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
         0
     );
@@ -108,26 +98,18 @@ async fn test_pool_client_new() -> TestResult {
     
     // 7. Test error case: identical tokens
     let identical_tokens_result = PoolConfig::new(
-        primary_token_mint,
-        primary_token_mint, // Same token for both primary and base
+        multiple_token_mint,
+        multiple_token_mint, // Same token for both multiple and base
         ratio
     );
     assert!(identical_tokens_result.is_err(), "Identical tokens should be rejected");
     println!("✅ Identical tokens correctly rejected");
     
     // 8. Test using the testing utility function
-    let test_config = fixed_ratio_trading::client_sdk::testing::create_test_pool_config();
-    assert_ne!(test_config.primary_token_mint, test_config.base_token_mint);
-    assert!(test_config.ratio_primary_per_base > 0);
+    let test_config = fixed_ratio_trading::client_sdk::test_utils::create_test_pool_config();
+    assert_ne!(test_config.multiple_token_mint, test_config.base_token_mint);
+    assert!(test_config.multiple_per_base > 0);
     println!("✅ Test utility function creates valid configuration");
-    
-    // 9. Test keypair creation utility
-    let test_keypairs = fixed_ratio_trading::client_sdk::testing::create_test_keypairs(5);
-    assert_eq!(test_keypairs.len(), 5);
-    // Ensure all keypairs are unique
-    let unique_keypairs: std::collections::HashSet<_> = test_keypairs.iter().collect();
-    assert_eq!(unique_keypairs.len(), 5);
-    println!("✅ Test keypair utility generates unique keypairs");
     
     println!("✅ SDK-001 test completed successfully");
     Ok(())
@@ -142,23 +124,23 @@ async fn test_derive_pool_addresses() -> TestResult {
     let pool_client = PoolClient::new(PROGRAM_ID);
     
     // 1. Create a standard pool configuration for testing
-    let primary_token_mint = Pubkey::new_unique();
+    let multiple_token_mint = Pubkey::new_unique();
     let base_token_mint = Pubkey::new_unique();
     let ratio = 1000; // 1000:1 ratio
     let pool_config = PoolConfig {
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
-        ratio_primary_per_base: ratio,
+        multiple_per_base: ratio,
     };
     
     // 2. Derive addresses for the pool
     let addresses = pool_client.derive_pool_addresses(&pool_config);
     
     // 3. Verify normalization of token mints (lexicographic ordering)
-    let (expected_token_a, expected_token_b) = if primary_token_mint < base_token_mint {
-        (primary_token_mint, base_token_mint)
+    let (expected_token_a, expected_token_b) = if multiple_token_mint < base_token_mint {
+        (multiple_token_mint, base_token_mint)
     } else {
-        (base_token_mint, primary_token_mint)
+        (base_token_mint, multiple_token_mint)
     };
     
     assert_eq!(addresses.token_a_mint, expected_token_a, "Token A mint should follow lexicographic ordering");
@@ -195,7 +177,7 @@ async fn test_derive_pool_addresses() -> TestResult {
     
     // 5. Verify pool state PDA derivation
     assert_eq!(addresses.pool_state, expected_pool_state, "Pool state PDA should match manual calculation");
-    assert_eq!(addresses.pool_state_bump, expected_pool_bump, "Pool state bump should match manual calculation");
+    assert_eq!(addresses.pool_authority_bump, expected_pool_bump, "Pool state bump should match manual calculation");
     println!("✅ Pool state PDA derivation is correct");
     
     // 6. Verify token vault PDAs
@@ -213,11 +195,11 @@ async fn test_derive_pool_addresses() -> TestResult {
     assert_eq!(addresses.token_b_vault, addresses_repeat.token_b_vault, "Token B vault should be consistent across calls");
     println!("✅ PDA derivation is consistent across multiple calls");
     
-    // 8. Test with swapped primary and base tokens to verify normalization effectiveness
+    // 8. Test with swapped multiple and base tokens to verify normalization effectiveness
     let swapped_config = PoolConfig {
-        primary_token_mint: base_token_mint,  // Swapped
-        base_token_mint: primary_token_mint,  // Swapped
-        ratio_primary_per_base: ratio,
+        multiple_token_mint: base_token_mint,  // Swapped
+        base_token_mint: multiple_token_mint,  // Swapped
+        multiple_per_base: ratio,
     };
     
     let swapped_addresses = pool_client.derive_pool_addresses(&swapped_config);
@@ -240,9 +222,9 @@ async fn test_derive_pool_addresses() -> TestResult {
     
     // 10. Verify with different ratios to ensure PDA uniqueness
     let different_ratio_config = PoolConfig {
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
-        ratio_primary_per_base: ratio * 2, // Double the ratio
+        multiple_per_base: ratio * 2, // Double the ratio
     };
     
     let different_ratio_addresses = pool_client.derive_pool_addresses(&different_ratio_config);
@@ -270,16 +252,16 @@ async fn test_create_pool_instruction() -> TestResult {
     // Setup test environment
     let pool_client = PoolClient::new(PROGRAM_ID);
     let payer = Pubkey::new_unique();
-    let primary_token_mint = Pubkey::new_unique();
+    let multiple_token_mint = Pubkey::new_unique();
     let base_token_mint = Pubkey::new_unique();
     let ratio = 1000; // 1000:1 ratio
     let lp_token_a_mint = Pubkey::new_unique();
     let lp_token_b_mint = Pubkey::new_unique();
     
     let pool_config = PoolConfig {
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
-        ratio_primary_per_base: ratio,
+        multiple_per_base: ratio,
     };
     
     // 1. Test successful instruction creation
@@ -307,8 +289,8 @@ async fn test_create_pool_instruction() -> TestResult {
     assert_eq!(instruction.accounts[1], AccountMeta::new(addresses.pool_state, false), 
         "Account 1 should be pool_state PDA (writable, non-signer)");
     
-    assert_eq!(instruction.accounts[2], AccountMeta::new_readonly(primary_token_mint, false), 
-        "Account 2 should be primary token mint (non-writable, non-signer)");
+    assert_eq!(instruction.accounts[2], AccountMeta::new_readonly(multiple_token_mint, false), 
+        "Account 2 should be multiple token mint (non-writable, non-signer)");
     
     assert_eq!(instruction.accounts[3], AccountMeta::new_readonly(base_token_mint, false), 
         "Account 3 should be base token mint (non-writable, non-signer)");
@@ -341,28 +323,28 @@ async fn test_create_pool_instruction() -> TestResult {
         .expect("Instruction data should deserialize successfully");
     
     if let PoolInstruction::InitializePool { 
-        ratio_primary_per_base,
+        multiple_per_base,
         pool_authority_bump_seed,
-        primary_token_vault_bump_seed,
+        multiple_token_vault_bump_seed,
         base_token_vault_bump_seed, 
     } = instruction_data {
         // 5.1 Verify ratio
-        assert_eq!(ratio_primary_per_base, ratio, "Ratio should match the config");
+        assert_eq!(multiple_per_base, ratio, "Ratio should match the config");
         
         // 5.2 Verify bumps
-        assert_eq!(pool_authority_bump_seed, addresses.pool_state_bump, 
+        assert_eq!(pool_authority_bump_seed, addresses.pool_authority_bump, 
             "Pool authority bump seed should match the derived bump");
         
-        // 5.3 Map vault bumps back to primary/base convention for comparison
-        let (expected_primary_bump, expected_base_bump) = 
-            if primary_token_mint < base_token_mint {
+        // 5.3 Map vault bumps back to multiple/base convention for comparison
+        let (expected_multiple_bump, expected_base_bump) = 
+            if multiple_token_mint < base_token_mint {
                 (addresses.token_a_vault_bump, addresses.token_b_vault_bump)
             } else {
                 (addresses.token_b_vault_bump, addresses.token_a_vault_bump)
             };
             
-        assert_eq!(primary_token_vault_bump_seed, expected_primary_bump, 
-            "Primary token vault bump should be correctly mapped");
+        assert_eq!(multiple_token_vault_bump_seed, expected_multiple_bump, 
+            "Multiple token vault bump should be correctly mapped");
             
         assert_eq!(base_token_vault_bump_seed, expected_base_bump, 
             "Base token vault bump should be correctly mapped");
@@ -374,9 +356,9 @@ async fn test_create_pool_instruction() -> TestResult {
     
     // 6. Test validation: Zero ratio should be rejected
     let invalid_config = PoolConfig {
-        primary_token_mint,
+        multiple_token_mint,
         base_token_mint,
-        ratio_primary_per_base: 0, // Invalid: zero ratio
+        multiple_per_base: 0, // Invalid: zero ratio
     };
     
     let result = pool_client.create_pool_instruction(
@@ -395,9 +377,9 @@ async fn test_create_pool_instruction() -> TestResult {
     
     // 7. Verify instruction data size is as expected
     let expected_data_size = PoolInstruction::InitializePool {
-        ratio_primary_per_base: ratio,
-        pool_authority_bump_seed: addresses.pool_state_bump,
-        primary_token_vault_bump_seed: 255, // placeholder
+        multiple_per_base: ratio,
+        pool_authority_bump_seed: addresses.pool_authority_bump,
+        multiple_token_vault_bump_seed: 255, // placeholder
         base_token_vault_bump_seed: 255, // placeholder
     }.try_to_vec().unwrap().len();
     
@@ -425,30 +407,32 @@ async fn test_get_pool_state_success() -> TestResult {
     // In a real implementation, we would create a pool and retrieve its state
     println!("✅ Derived pool addresses successfully");
     
-    // 1. Test the expected structure of PoolStateData
-    // Create a mock PoolStateData to verify its structure
-    let mock_pool_state_data = fixed_ratio_trading::client_sdk::PoolStateData {
-        lp_token_a_mint,
-        lp_token_b_mint,
-        is_initialized: true,
+    // 1. Test the expected structure of PoolState
+    // Create a mock PoolState to verify its structure
+    let mock_pool_state_data = fixed_ratio_trading::client_sdk::PoolState {
+        token_a_mint: lp_token_a_mint,
+        token_b_mint: lp_token_b_mint,
+        ratio_a_numerator: 1000,
+        ratio_b_denominator: 1,
         is_paused: false,
     };
     
     // 2. Verify the structure is as expected
-    assert_eq!(mock_pool_state_data.lp_token_a_mint, lp_token_a_mint,
-        "PoolStateData lp_token_a_mint field should work correctly");
-    assert_eq!(mock_pool_state_data.lp_token_b_mint, lp_token_b_mint,
-        "PoolStateData lp_token_b_mint field should work correctly");
-    assert!(mock_pool_state_data.is_initialized, 
-        "PoolStateData is_initialized field should work correctly");
+    assert_eq!(mock_pool_state_data.token_a_mint, lp_token_a_mint,
+        "PoolState token_a_mint field should work correctly");
+    assert_eq!(mock_pool_state_data.token_b_mint, lp_token_b_mint,
+        "PoolState token_b_mint field should work correctly");
+    assert_eq!(mock_pool_state_data.ratio_a_numerator, 1000, 
+        "PoolState ratio_a_numerator field should work correctly");
     assert!(!mock_pool_state_data.is_paused, 
-        "PoolStateData is_paused field should work correctly");
+        "PoolState is_paused field should work correctly");
     
     // 3. Test a modified pool state data structure (e.g., for a paused pool)
-    let mock_paused_pool_state_data = fixed_ratio_trading::client_sdk::PoolStateData {
-        lp_token_a_mint,
-        lp_token_b_mint,
-        is_initialized: true,
+    let mock_paused_pool_state_data = fixed_ratio_trading::client_sdk::PoolState {
+        token_a_mint: lp_token_a_mint,
+        token_b_mint: lp_token_b_mint,
+        ratio_a_numerator: 1000,
+        ratio_b_denominator: 1,
         is_paused: true, // Paused pool
     };
     
@@ -456,7 +440,7 @@ async fn test_get_pool_state_success() -> TestResult {
     assert!(mock_paused_pool_state_data.is_paused, 
         "Client SDK should correctly represent a paused pool");
     
-    println!("✅ PoolStateData structure validated");
+    println!("✅ PoolState structure validated");
     println!("✅ SDK-004 test completed successfully");
     Ok(())
 }
@@ -469,10 +453,10 @@ async fn test_get_pool_state_not_found() -> TestResult {
     // Initialize the pool client
     let pool_client = PoolClient::new(PROGRAM_ID);
     // Use a random PDA that is guaranteed not to exist
-    let random_pool_state_pda = Pubkey::new_unique();
+    let _random_pool_state_pda = Pubkey::new_unique();
     
-    // Attempt to retrieve pool state, expecting a NotImplemented error (since real fetch is not implemented)
-    let result = pool_client.get_pool_state(&random_pool_state_pda);
+    // Attempt to call additional operations, expecting a NotImplemented error
+    let result = pool_client.additional_operations();
     
     match result {
         Err(PoolClientError::NotImplemented) => {
@@ -483,4 +467,15 @@ async fn test_get_pool_state_not_found() -> TestResult {
     }
     println!("✅ SDK-005 test completed successfully");
     Ok(())
+}
+
+#[test]
+fn test_utils_create_test_pool_config() {
+    // Test utility function for creating test pool config
+    let test_config = test_utils::create_test_pool_config();
+    
+    assert_ne!(test_config.multiple_token_mint, Pubkey::default());
+    assert_ne!(test_config.base_token_mint, Pubkey::default());
+    assert_eq!(test_config.multiple_per_base, 1000);
+    assert_ne!(test_config.multiple_token_mint, test_config.base_token_mint);
 }

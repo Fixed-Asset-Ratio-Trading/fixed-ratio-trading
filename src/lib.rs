@@ -175,12 +175,12 @@ pub fn process_instruction(
 
     match instruction {
         PoolInstruction::InitializePool {
-            ratio_primary_per_base,
+            multiple_per_base,
             pool_authority_bump_seed,
-            primary_token_vault_bump_seed,
+            multiple_token_vault_bump_seed,
             base_token_vault_bump_seed,
-        } => process_initialize_pool(program_id, accounts, ratio_primary_per_base, 
-            pool_authority_bump_seed, primary_token_vault_bump_seed, base_token_vault_bump_seed),
+        } => process_initialize_pool(program_id, accounts, multiple_per_base, 
+            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
 
         PoolInstruction::Deposit {
             deposit_token_mint,
@@ -223,10 +223,10 @@ pub fn process_instruction(
         PoolInstruction::UnpausePoolSwaps => process_unpause_pool_swaps(program_id, accounts),
 
         PoolInstruction::GetPoolStatePDA {
-            primary_token_mint,
+            multiple_token_mint,
             base_token_mint,
-            ratio_primary_per_base,
-        } => get_pool_state_pda(program_id, primary_token_mint, base_token_mint, ratio_primary_per_base),
+            multiple_per_base,
+        } => get_pool_state_pda(program_id, multiple_token_mint, base_token_mint, multiple_per_base),
 
         PoolInstruction::GetTokenVaultPDAs {
             pool_state_pda,
@@ -246,21 +246,21 @@ pub fn process_instruction(
 
         #[allow(deprecated)]
         PoolInstruction::CreatePoolStateAccount {
-            ratio_primary_per_base,
+            multiple_per_base,
             pool_authority_bump_seed,
-            primary_token_vault_bump_seed,
+            multiple_token_vault_bump_seed,
             base_token_vault_bump_seed,
-        } => process_create_pool_state_account(program_id, accounts, ratio_primary_per_base, 
-            pool_authority_bump_seed, primary_token_vault_bump_seed, base_token_vault_bump_seed),
+        } => process_create_pool_state_account(program_id, accounts, multiple_per_base, 
+            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
 
         #[allow(deprecated)]
         PoolInstruction::InitializePoolData {
-            ratio_primary_per_base,
+            multiple_per_base,
             pool_authority_bump_seed,
-            primary_token_vault_bump_seed,
+            multiple_token_vault_bump_seed,
             base_token_vault_bump_seed,
-        } => process_initialize_pool_data(program_id, accounts, ratio_primary_per_base, 
-            pool_authority_bump_seed, primary_token_vault_bump_seed, base_token_vault_bump_seed),
+        } => process_initialize_pool_data(program_id, accounts, multiple_per_base, 
+            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
 
         PoolInstruction::PauseSystem {
             reason,

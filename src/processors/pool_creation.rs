@@ -23,44 +23,33 @@ use spl_token::{
     state::{Account as TokenAccount, Mint as MintAccount},
 };
 
-/// Creates the Pool State PDA account and all related accounts (LP mints, vaults).
-/// This is Step 1 of the two-instruction pool initialization pattern.
-///
-/// WORKAROUND CONTEXT:
-/// This function implements the first part of a workaround for Solana AccountInfo.data
-/// issue where AccountInfo.data doesn't get updated after CPI account creation within
-/// the same instruction. See GitHub Issue #31960 and related community discussions.
-///
-/// WHY THIS APPROACH:
-/// 1. Creates all required accounts via CPI (Pool State PDA, LP mints, token vaults)
-/// 2. Deliberately AVOIDS writing PoolState data to prevent AccountInfo.data issues
-/// 3. Allows the second instruction (InitializePoolData) to run with fresh AccountInfo
-///    references that properly point to the allocated on-chain account buffers
-///
-/// WHAT THIS FUNCTION DOES:
-/// - Validates all input parameters and PDA derivations
-/// - Creates Pool State PDA account with correct size via system_instruction::create_account
-/// - Creates and initializes LP token mints, transfers authority to pool
-/// - Creates and initializes token vault PDAs
-/// - Transfers registration fees to pool
-/// - Does NOT serialize any PoolState data (that's done in Step 2)
-///
+/// Creates Pool State PDA Account (DEPRECATED - Use InitializePool instead)
+/// 
+/// **DEPRECATED**: This instruction is part of the legacy two-instruction pattern.
+/// Use `process_initialize_pool` instead for better reliability and performance.
+/// 
+/// This function creates the Pool State PDA account and all associated accounts
+/// (vaults, LP token mints) but does not initialize the pool data. It's the first
+/// step in the deprecated two-instruction pattern that was needed to work around
+/// Solana AccountInfo.data issues.
+/// 
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for pool creation
-/// * `ratio_primary_per_base` - The ratio of primary tokens per base token
+/// * `program_id` - The program ID for PDA validation
+/// * `accounts` - Array of account infos in the required order
+/// * `multiple_per_base` - The ratio of multiple tokens per base token
 /// * `pool_authority_bump_seed` - Bump seed for pool authority PDA
-/// * `primary_token_vault_bump_seed` - Bump seed for primary token vault PDA
+/// * `multiple_token_vault_bump_seed` - Bump seed for multiple token vault PDA
 /// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
-///
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
+#[deprecated(note = "Use process_initialize_pool instead")]
 pub fn process_create_pool_state_account(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    ratio_primary_per_base: u64,
+    multiple_per_base: u64,
     pool_authority_bump_seed: u8,
-    primary_token_vault_bump_seed: u8,
+    multiple_token_vault_bump_seed: u8,
     base_token_vault_bump_seed: u8,
 ) -> ProgramResult {
     msg!("DEBUG: process_create_pool_state_account: Entered");
@@ -73,8 +62,8 @@ pub fn process_create_pool_state_account(
     msg!("DEBUG: process_create_pool_state_account: Payer: {}", payer.key);
     let pool_state_pda_account = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_create_pool_state_account: Pool State PDA Account (from client): {}", pool_state_pda_account.key);
-    let primary_token_mint_account = next_account_info(account_info_iter)?;
-    msg!("DEBUG: process_create_pool_state_account: Primary Token Mint Account: {}", primary_token_mint_account.key);
+    let multiple_token_mint_account = next_account_info(account_info_iter)?;
+    msg!("DEBUG: process_create_pool_state_account: Multiple Token Mint Account: {}", multiple_token_mint_account.key);
     let base_token_mint_account = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_create_pool_state_account: Base Token Mint Account: {}", base_token_mint_account.key);
     let lp_token_a_mint_account = next_account_info(account_info_iter)?;
@@ -104,7 +93,7 @@ pub fn process_create_pool_state_account(
     msg!("DEBUG: process_create_pool_state_account: Payer is signer check passed");
 
     // Verify ratio is non-zero
-    if ratio_primary_per_base == 0 {
+    if multiple_per_base == 0 {
         msg!("DEBUG: process_create_pool_state_account: Ratio cannot be zero");
         return Err(ProgramError::InvalidArgument);
     }
@@ -115,37 +104,37 @@ pub fn process_create_pool_state_account(
     
     // Step 1: Lexicographic token ordering
     let (token_a_mint_key, token_b_mint_key) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            msg!("DEBUG: process_create_pool_state_account: Primary mint < Base mint");
-            (primary_token_mint_account.key, base_token_mint_account.key)
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            msg!("DEBUG: process_create_pool_state_account: Multiple mint < Base mint");
+            (multiple_token_mint_account.key, base_token_mint_account.key)
         } else {
-            msg!("DEBUG: process_create_pool_state_account: Primary mint > Base mint");
-            (base_token_mint_account.key, primary_token_mint_account.key)
+            msg!("DEBUG: process_create_pool_state_account: Multiple mint > Base mint");
+            (base_token_mint_account.key, multiple_token_mint_account.key)
         };
     
     // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
     // CRITICAL: All pools with the same token pair normalize to the same ratio
     // This prevents both "X A per 1 B" and "X B per 1 A" from being separate pools
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            // Primary is token A: direct mapping
-            (ratio_primary_per_base, 1u64, true)
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            // Multiple token is token A: direct mapping
+            (multiple_per_base, 1u64, true)
         } else {
-            // Primary is token B: use canonical form to prevent economic duplicates
+            // Multiple token is token B: use canonical form to prevent economic duplicates
             // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
-            (ratio_primary_per_base, 1u64, false)
+            (multiple_per_base, 1u64, false)
         };
 
     msg!("DEBUG: process_create_pool_state_account: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
          token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
 
-    let token_a_mint_account_info_ref = if token_a_is_primary { primary_token_mint_account } else { base_token_mint_account };
-    let token_b_mint_account_info_ref = if token_a_is_primary { base_token_mint_account } else { primary_token_mint_account };
+    let token_a_mint_account_info_ref = if token_a_is_the_multiple { multiple_token_mint_account } else { base_token_mint_account };
+    let token_b_mint_account_info_ref = if token_a_is_the_multiple { base_token_mint_account } else { multiple_token_mint_account };
     msg!("DEBUG: process_create_pool_state_account: Set token_a/b_mint_account_info_refs");
 
     // Validate mint accounts
-    if !primary_token_mint_account.owner.eq(&spl_token::id()) || primary_token_mint_account.data_len() != MintAccount::LEN {
-        msg!("DEBUG: process_create_pool_state_account: Primary token mint account is not a valid mint account");
+    if !multiple_token_mint_account.owner.eq(&spl_token::id()) || multiple_token_mint_account.data_len() != MintAccount::LEN {
+        msg!("DEBUG: process_create_pool_state_account: Multiple token mint account is not a valid mint account");
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -183,11 +172,11 @@ pub fn process_create_pool_state_account(
     }
 
     // Map vault bump seeds
-    msg!("DEBUG: process_create_pool_state_account: Mapping vault bump seeds. Primary Vault Bump: {}, Base Vault Bump: {}", primary_token_vault_bump_seed, base_token_vault_bump_seed);
-    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_primary {
-        (primary_token_vault_bump_seed, base_token_vault_bump_seed)
+    msg!("DEBUG: process_create_pool_state_account: Mapping vault bump seeds. Multiple Vault Bump: {}, Base Vault Bump: {}", multiple_token_vault_bump_seed, base_token_vault_bump_seed);
+    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_the_multiple {
+        (multiple_token_vault_bump_seed, base_token_vault_bump_seed)
     } else {
-        (base_token_vault_bump_seed, primary_token_vault_bump_seed)
+        (base_token_vault_bump_seed, multiple_token_vault_bump_seed)
     };
     msg!("DEBUG: process_create_pool_state_account: Normalized token_a_vault_bump: {}, token_b_vault_bump: {}", token_a_vault_bump, token_b_vault_bump);
 
@@ -470,9 +459,9 @@ pub fn process_create_pool_state_account(
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `accounts` - The same accounts used in pool creation (order must match)
-/// * `ratio_primary_per_base` - The fixed ratio between primary and base tokens
+/// * `multiple_per_base` - The fixed ratio between multiple and base tokens
 /// * `pool_authority_bump_seed` - Bump seed for pool authority PDA
-/// * `primary_token_vault_bump_seed` - Bump seed for primary token vault PDA  
+/// * `multiple_token_vault_bump_seed` - Bump seed for multiple token vault PDA  
 /// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
 /// 
 /// # Returns
@@ -486,9 +475,9 @@ pub fn process_create_pool_state_account(
 pub fn process_initialize_pool_data(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    ratio_primary_per_base: u64,
+    multiple_per_base: u64,
     pool_authority_bump_seed: u8,
-    primary_token_vault_bump_seed: u8,
+    multiple_token_vault_bump_seed: u8,
     base_token_vault_bump_seed: u8,
 ) -> ProgramResult {
     msg!("DEBUG: process_initialize_pool_data: Entered");
@@ -501,8 +490,8 @@ pub fn process_initialize_pool_data(
     msg!("DEBUG: process_initialize_pool_data: Payer: {}", payer.key);
     let pool_state_pda_account = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_initialize_pool_data: Pool State PDA Account (from client): {}", pool_state_pda_account.key);
-    let primary_token_mint_account = next_account_info(account_info_iter)?;
-    msg!("DEBUG: process_initialize_pool_data: Primary Token Mint Account: {}", primary_token_mint_account.key);
+    let multiple_token_mint_account = next_account_info(account_info_iter)?;
+    msg!("DEBUG: process_initialize_pool_data: Multiple Token Mint Account: {}", multiple_token_mint_account.key);
     let base_token_mint_account = next_account_info(account_info_iter)?;
     msg!("DEBUG: process_initialize_pool_data: Base Token Mint Account: {}", base_token_mint_account.key);
     let lp_token_a_mint_account = next_account_info(account_info_iter)?;
@@ -529,7 +518,7 @@ pub fn process_initialize_pool_data(
     msg!("DEBUG: process_initialize_pool_data: Payer is signer check passed");
 
     // Verify ratio is non-zero
-    if ratio_primary_per_base == 0 {
+    if multiple_per_base == 0 {
         msg!("DEBUG: process_initialize_pool_data: Ratio cannot be zero");
         return Err(ProgramError::InvalidArgument);
     }
@@ -540,25 +529,25 @@ pub fn process_initialize_pool_data(
     
     // Step 1: Lexicographic token ordering
     let (token_a_mint_key, token_b_mint_key) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            msg!("DEBUG: process_initialize_pool_data: Primary mint < Base mint");
-            (primary_token_mint_account.key, base_token_mint_account.key)
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            msg!("DEBUG: process_initialize_pool_data: Multiple mint < Base mint");
+            (multiple_token_mint_account.key, base_token_mint_account.key)
         } else {
-            msg!("DEBUG: process_initialize_pool_data: Primary mint > Base mint");
-            (base_token_mint_account.key, primary_token_mint_account.key)
+            msg!("DEBUG: process_initialize_pool_data: Multiple mint > Base mint");
+            (base_token_mint_account.key, multiple_token_mint_account.key)
         };
     
     // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
     // CRITICAL: All pools with the same token pair normalize to the same ratio
     // This prevents both "X A per 1 B" and "X B per 1 A" from being separate pools
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            // Primary is token A: direct mapping
-            (ratio_primary_per_base, 1u64, true)
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            // Multiple token is token A: direct mapping
+            (multiple_per_base, 1u64, true)
         } else {
-            // Primary is token B: use canonical form to prevent economic duplicates
+            // Multiple token is token B: use canonical form to prevent economic duplicates
             // Both "X A per 1 B" and "X B per 1 A" normalize to same pool configuration
-            (ratio_primary_per_base, 1u64, false)
+            (multiple_per_base, 1u64, false)
         };
 
     msg!("DEBUG: process_initialize_pool_data: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
@@ -619,11 +608,11 @@ pub fn process_initialize_pool_data(
     }
 
     // Map vault bump seeds
-    msg!("DEBUG: process_initialize_pool_data: Mapping vault bump seeds. Primary Vault Bump: {}, Base Vault Bump: {}", primary_token_vault_bump_seed, base_token_vault_bump_seed);
-    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_primary {
-        (primary_token_vault_bump_seed, base_token_vault_bump_seed)
+    msg!("DEBUG: process_initialize_pool_data: Mapping vault bump seeds. Multiple Vault Bump: {}, Base Vault Bump: {}", multiple_token_vault_bump_seed, base_token_vault_bump_seed);
+    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_the_multiple {
+        (multiple_token_vault_bump_seed, base_token_vault_bump_seed)
     } else {
-        (base_token_vault_bump_seed, primary_token_vault_bump_seed)
+        (base_token_vault_bump_seed, multiple_token_vault_bump_seed)
     };
     msg!("DEBUG: process_initialize_pool_data: Normalized token_a_vault_bump: {}, token_b_vault_bump: {}", token_a_vault_bump, token_b_vault_bump);
 
@@ -695,43 +684,63 @@ pub fn process_initialize_pool_data(
     Ok(())
 }
 
-/// **RECOMMENDED**: Single-instruction pool initialization.
+/// **RECOMMENDED**: Single-instruction pool initialization (FIXED)
 /// 
-/// This function combines the functionality of both `process_create_pool_state_account` 
-/// and `process_initialize_pool_data` into a single atomic operation, eliminating the 
-/// need for the two-instruction workaround pattern.
+/// This function creates and initializes a pool in a single atomic operation,
+/// replacing the deprecated two-instruction pattern. It performs all necessary
+/// operations including account creation, PDA derivation, and data initialization.
 /// 
-/// # What it does:
-/// 1. Creates Pool State PDA with correct size allocation
-/// 2. Creates LP token mints and transfers authority to pool  
+/// # What it does (All in one atomic transaction):
+/// 1. Creates Pool State PDA account with proper size allocation
+/// 2. Creates LP token mints and transfers authority to pool
 /// 3. Creates token vault PDAs and initializes them
 /// 4. Initializes pool state data with all configuration
-/// 5. Transfers registration fees
-/// 6. Sets up fee tracking system
+/// 5. Transfers registration fees to pool state account
+/// 6. Uses buffer serialization workaround for reliable data persistence
 /// 
-/// # Benefits:
-/// - **Atomic Operation**: All-or-nothing execution prevents partial states
-/// - **Simpler Integration**: Single instruction call vs. two separate transactions
-/// - **Better UX**: Reduces transaction costs and complexity for users
-/// - **Eliminates Race Conditions**: No possibility of partial pool creation
-/// - **Future-Proof**: Uses modern Solana best practices
+/// # Key Improvements over Legacy Pattern:
+/// - **Atomic Operation**: All-or-nothing execution prevents partial state
+/// - **Simplified Client Integration**: Single instruction call
+/// - **Better Error Handling**: Clearer error messages and validation
+/// - **Enhanced Security**: Comprehensive validation and rent exemption checks
+/// - **Future-Proof**: Designed for extensibility and maintenance
 /// 
 /// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for pool initialization (same as legacy pattern)
-/// * `ratio_primary_per_base` - The ratio of primary tokens per base token
-/// * `pool_authority_bump_seed` - Bump seed for pool authority PDA
-/// * `primary_token_vault_bump_seed` - Bump seed for primary token vault PDA
+/// * `program_id` - The program ID for PDA validation and account creation
+/// * `accounts` - Array of account infos in the required order (see account list below)
+/// * `multiple_per_base` - The ratio of multiple tokens per base token
+/// * `pool_authority_bump_seed` - Bump seed for pool authority PDA derivation
+/// * `multiple_token_vault_bump_seed` - Bump seed for multiple token vault PDA
 /// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
+/// 
+/// # Account Order (11 accounts required):
+/// 0. **Payer** (signer, writable) - Pays for account creation and fees
+/// 1. **Pool State PDA** (writable) - Main pool account to be created
+/// 2. **Multiple Token Mint** (readable) - The abundant token mint
+/// 3. **Base Token Mint** (readable) - The valuable token mint  
+/// 4. **LP Token A Mint** (signer, writable) - LP token for Token A liquidity providers
+/// 5. **LP Token B Mint** (signer, writable) - LP token for Token B liquidity providers
+/// 6. **Token A Vault PDA** (writable) - Vault for Token A liquidity
+/// 7. **Token B Vault PDA** (writable) - Vault for Token B liquidity
+/// 8. **System Program** (readable) - For account creation
+/// 9. **SPL Token Program** (readable) - For token operations
+/// 10. **Rent Sysvar** (readable) - For rent exemption calculations
+/// 
+/// # Security Features
+/// - Enhanced normalization prevents economic duplicate pools
+/// - Comprehensive PDA validation ensures address correctness
+/// - Rent exemption validation prevents account closure
+/// - Buffer serialization prevents data corruption
+/// - System pause integration for emergency stops
 pub fn process_initialize_pool(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    ratio_primary_per_base: u64,
+    multiple_per_base: u64,
     pool_authority_bump_seed: u8,
-    primary_token_vault_bump_seed: u8,
+    multiple_token_vault_bump_seed: u8,
     base_token_vault_bump_seed: u8,
 ) -> ProgramResult {
     msg!("DEBUG: process_initialize_pool: Starting FIXED single-instruction pool initialization");
@@ -746,7 +755,7 @@ pub fn process_initialize_pool(
     let account_info_iter = &mut accounts.iter();
     let payer = next_account_info(account_info_iter)?;
     let pool_state_pda_account = next_account_info(account_info_iter)?;
-    let primary_token_mint_account = next_account_info(account_info_iter)?;
+    let multiple_token_mint_account = next_account_info(account_info_iter)?;
     let base_token_mint_account = next_account_info(account_info_iter)?;
     let lp_token_a_mint_account = next_account_info(account_info_iter)?;
     let lp_token_b_mint_account = next_account_info(account_info_iter)?;
@@ -764,23 +773,23 @@ pub fn process_initialize_pool(
     }
 
     // Verify ratio is non-zero
-    if ratio_primary_per_base == 0 {
+    if multiple_per_base == 0 {
         return Err(ProgramError::InvalidArgument);
     }
 
     // Enhanced normalization
     let (token_a_mint_key, token_b_mint_key) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            (primary_token_mint_account.key, base_token_mint_account.key)
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            (multiple_token_mint_account.key, base_token_mint_account.key)
         } else {
-            (base_token_mint_account.key, primary_token_mint_account.key)
+            (base_token_mint_account.key, multiple_token_mint_account.key)
         };
     
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
-        if primary_token_mint_account.key < base_token_mint_account.key {
-            (ratio_primary_per_base, 1u64, true)
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
+        if multiple_token_mint_account.key < base_token_mint_account.key {
+            (multiple_per_base, 1u64, true)
         } else {
-            (ratio_primary_per_base, 1u64, false)
+            (multiple_per_base, 1u64, false)
         };
 
     // Verify the pool state PDA
@@ -803,10 +812,10 @@ pub fn process_initialize_pool(
     }
 
     // Map vault bump seeds BEFORE calculating size
-    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_primary {
-        (primary_token_vault_bump_seed, base_token_vault_bump_seed)
+    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_the_multiple {
+        (multiple_token_vault_bump_seed, base_token_vault_bump_seed)
     } else {
-        (base_token_vault_bump_seed, primary_token_vault_bump_seed)
+        (base_token_vault_bump_seed, multiple_token_vault_bump_seed)
     };
 
     // Derive vault PDAs for size calculation
@@ -820,8 +829,6 @@ pub fn process_initialize_pool(
         pool_state_pda_account.key.as_ref(),
         &[token_b_vault_bump],
     ];
-
-
 
     // CRITICAL FIX: Use get_packed_len() to ensure max size allocation
     let pool_state_account_size = PoolState::get_packed_len();
@@ -943,8 +950,8 @@ pub fn process_initialize_pool(
 
     // Vault seeds already calculated above
 
-    let token_a_mint_account_ref = if token_a_is_primary { primary_token_mint_account } else { base_token_mint_account };
-    let token_b_mint_account_ref = if token_a_is_primary { base_token_mint_account } else { primary_token_mint_account };
+    let token_a_mint_account_ref = if token_a_is_the_multiple { multiple_token_mint_account } else { base_token_mint_account };
+    let token_b_mint_account_ref = if token_a_is_the_multiple { base_token_mint_account } else { multiple_token_mint_account };
 
     // Create token vaults
     let rent_for_vault = rent.minimum_balance(TokenAccount::LEN);

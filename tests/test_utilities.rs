@@ -569,9 +569,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
         println!("Test 1: Basic PDA derivation with output validation");
         
         let instruction_data = PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: token_a_mint.pubkey(),
+            multiple_token_mint: token_a_mint.pubkey(),
             base_token_mint: token_b_mint.pubkey(),
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
         };
         
         let instruction = Instruction {
@@ -694,9 +694,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
             ("Swapped order", token_b_mint.pubkey(), token_a_mint.pubkey()),
         ] {
             let instruction_data = PoolInstruction::GetPoolStatePDA {
-                primary_token_mint: primary,
+                multiple_token_mint: primary,
                 base_token_mint: base,
-                ratio_primary_per_base: ratio,
+                multiple_per_base: ratio,
             };
             
             let instruction = Instruction {
@@ -758,9 +758,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
             
             // Test the instruction with this ratio using retry logic
             let instruction_data = PoolInstruction::GetPoolStatePDA {
-                primary_token_mint: token_a_mint.pubkey(),
+                multiple_token_mint: token_a_mint.pubkey(),
                 base_token_mint: token_b_mint.pubkey(),
-                ratio_primary_per_base: test_ratio,
+                multiple_per_base: test_ratio,
             };
             
             let instruction = Instruction {
@@ -802,9 +802,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
         
         // Test 5a: Identical tokens (should succeed in utility but fail in pool creation)
         let instruction_data = PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: token_a_mint.pubkey(),
+            multiple_token_mint: token_a_mint.pubkey(),
             base_token_mint: token_a_mint.pubkey(), // Same token
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
         };
         
         let instruction = Instruction {
@@ -833,9 +833,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
         sleep(Duration::from_millis(100)).await; // Brief pause between edge cases
         
         let instruction_data = PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: token_a_mint.pubkey(),
+            multiple_token_mint: token_a_mint.pubkey(),
             base_token_mint: token_b_mint.pubkey(),
-            ratio_primary_per_base: 0, // Zero ratio
+            multiple_per_base: 0, // Zero ratio
         };
         
         let instruction = Instruction {
@@ -865,9 +865,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
         
         let max_ratio = u64::MAX;
         let instruction_data = PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: token_a_mint.pubkey(),
+            multiple_token_mint: token_a_mint.pubkey(),
             base_token_mint: token_b_mint.pubkey(),
-            ratio_primary_per_base: max_ratio,
+            multiple_per_base: max_ratio,
         };
         
         let instruction = Instruction {
@@ -909,9 +909,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
             
             // Use retry logic for each transaction
             let instruction_data = PoolInstruction::GetPoolStatePDA {
-                primary_token_mint: token_a_mint.pubkey(),
+                multiple_token_mint: token_a_mint.pubkey(),
                 base_token_mint: token_b_mint.pubkey(),
-                ratio_primary_per_base: test_ratio,
+                multiple_per_base: test_ratio,
             };
             
             let instruction = Instruction {
@@ -966,9 +966,9 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
         
         // Test that instruction data serializes and deserializes correctly
         let instruction_data = PoolInstruction::GetPoolStatePDA {
-            primary_token_mint: token_a_mint.pubkey(),
+            multiple_token_mint: token_a_mint.pubkey(),
             base_token_mint: token_b_mint.pubkey(),
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
         };
         
         let serialized = instruction_data.try_to_vec()?;

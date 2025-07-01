@@ -47,8 +47,8 @@ pub struct PoolConfig {
     pub ratio_a_numerator: u64,
     /// Normalized ratio B denominator
     pub ratio_b_denominator: u64,
-    /// True if primary mint became token A after normalization
-    pub token_a_is_primary: bool,
+    /// True if multiple token became token A after normalization
+    pub token_a_is_the_multiple: bool,
     /// Pool state PDA
     pub pool_state_pda: Pubkey,
     /// Pool authority bump seed
@@ -61,8 +61,8 @@ pub struct PoolConfig {
     pub token_b_vault_pda: Pubkey,
     /// Token B vault bump seed
     pub token_b_vault_bump: u8,
-    /// Primary token vault bump (for instruction)
-    pub primary_vault_bump: u8,
+    /// Multiple token vault bump (for instruction)
+    pub multiple_vault_bump: u8,
     /// Base token vault bump (for instruction)
     pub base_vault_bump: u8,
 }
@@ -78,9 +78,9 @@ pub struct PoolConfig {
 /// normalize to the same configuration, preventing duplicate economic pools.
 /// 
 /// # Arguments
-/// * `primary_mint` - Primary token mint
-/// * `base_mint` - Base token mint  
-/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// * `multiple_mint` - Multiple token mint (abundant token)
+/// * `base_mint` - Base token mint (valuable token)
+/// * `multiple_per_base` - Ratio of multiple tokens per base token
 /// 
 /// # Returns
 /// Normalized pool configuration with all derived addresses
@@ -89,34 +89,34 @@ pub struct PoolConfig {
 /// This prevents liquidity fragmentation by ensuring economically equivalent
 /// pools (like A/B at 3:1 and B/A at 1:3) resolve to the same pool configuration.
 pub fn normalize_pool_config(
-    primary_mint: &Pubkey,
+    multiple_mint: &Pubkey,
     base_mint: &Pubkey,
-    ratio_primary_per_base: u64,
+    multiple_per_base: u64,
 ) -> PoolConfig {
     // Step 1: Lexicographic token ordering  
     let (token_a_mint, token_b_mint) = 
-        if primary_mint.to_bytes() < base_mint.to_bytes() {
-            (*primary_mint, *base_mint)
-        } else if primary_mint.to_bytes() > base_mint.to_bytes() {
-            (*base_mint, *primary_mint)
+        if multiple_mint.to_bytes() < base_mint.to_bytes() {
+            (*multiple_mint, *base_mint)
+        } else if multiple_mint.to_bytes() > base_mint.to_bytes() {
+            (*base_mint, *multiple_mint)
         } else {
-            panic!("Primary and Base token mints cannot be the same");
+            panic!("Multiple and Base token mints cannot be the same");
         };
     
     // Step 2: Canonical ratio mapping
     // CRITICAL: For economic equivalence, we normalize ALL token pairs to the same ratio
     // This prevents liquidity fragmentation by ensuring that A/B and B/A pools
     // with equivalent exchange rates resolve to the same canonical configuration
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_primary) = 
-        if primary_mint.to_bytes() < base_mint.to_bytes() {
-            // Primary is token A: direct mapping
-            (ratio_primary_per_base, 1u64, true)
+    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
+        if multiple_mint.to_bytes() < base_mint.to_bytes() {
+            // Multiple token is token A: direct mapping
+            (multiple_per_base, 1u64, true)
         } else {
-            // Primary is token B: this represents an inverse relationship
+            // Multiple token is token B: this represents an inverse relationship
             // For economic equivalence, we use a canonical form
             // Both "X A per 1 B" and "X B per 1 A" normalize to the same pool
             // by always using the same canonical ratio for the same token pair
-            (ratio_primary_per_base, 1u64, false)
+            (multiple_per_base, 1u64, false)
         };
 
     // Derive pool state PDA using NORMALIZED values
@@ -142,7 +142,7 @@ pub fn normalize_pool_config(
     );
 
     // Map vault bumps back to instruction parameters
-    let (primary_vault_bump, base_vault_bump) = if token_a_is_primary {
+    let (multiple_vault_bump, base_vault_bump) = if token_a_is_the_multiple {
         (token_a_vault_bump, token_b_vault_bump)
     } else {
         (token_b_vault_bump, token_a_vault_bump)
@@ -153,14 +153,14 @@ pub fn normalize_pool_config(
         token_b_mint,
         ratio_a_numerator,
         ratio_b_denominator,
-        token_a_is_primary,
+        token_a_is_the_multiple,
         pool_state_pda,
         pool_authority_bump,
         token_a_vault_pda,
         token_a_vault_bump,
         token_b_vault_pda,
         token_b_vault_bump,
-        primary_vault_bump,
+        multiple_vault_bump,
         base_vault_bump,
     }
 }
@@ -174,11 +174,11 @@ pub fn normalize_pool_config(
 /// * `banks` - Banks client for transaction processing
 /// * `payer` - Account that pays for pool creation
 /// * `recent_blockhash` - Recent blockhash for transaction
-/// * `primary_mint` - Primary token mint keypair
-/// * `base_mint` - Base token mint keypair
+/// * `multiple_mint` - Multiple token mint keypair (abundant token)
+/// * `base_mint` - Base token mint keypair (valuable token)
 /// * `lp_token_a_mint` - LP Token A mint keypair
 /// * `lp_token_b_mint` - LP Token B mint keypair
-/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// * `multiple_per_base` - Ratio of multiple tokens per base token
 /// 
 /// # Returns
 /// Pool configuration with all derived addresses
@@ -187,16 +187,16 @@ pub async fn create_pool_new_pattern(
     banks: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
-    primary_mint: &Keypair,
+    multiple_mint: &Keypair,
     base_mint: &Keypair,
     lp_token_a_mint: &Keypair,
     lp_token_b_mint: &Keypair,
-    ratio_primary_per_base: Option<u64>,
+    multiple_per_base: Option<u64>,
 ) -> Result<PoolConfig, BanksClientError> {
-    let ratio = ratio_primary_per_base.unwrap_or(constants::DEFAULT_RATIO);
+    let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
     
     // Get normalized pool configuration
-    let config = normalize_pool_config(&primary_mint.pubkey(), &base_mint.pubkey(), ratio);
+    let config = normalize_pool_config(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
     // Create InitializePool instruction
     let initialize_pool_ix = Instruction {
@@ -204,7 +204,7 @@ pub async fn create_pool_new_pattern(
         accounts: vec![
             AccountMeta::new(payer.pubkey(), true),                          // Payer (signer)
             AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
-            AccountMeta::new_readonly(primary_mint.pubkey(), false),         // Primary token mint
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Multiple token mint
             AccountMeta::new_readonly(base_mint.pubkey(), false),            // Base token mint
             AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
             AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
@@ -215,9 +215,9 @@ pub async fn create_pool_new_pattern(
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
         ],
         data: PoolInstruction::InitializePool {
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
             pool_authority_bump_seed: config.pool_authority_bump,
-            primary_token_vault_bump_seed: config.primary_vault_bump,
+            multiple_token_vault_bump_seed: config.multiple_vault_bump,
             base_token_vault_bump_seed: config.base_vault_bump,
         }.try_to_vec().unwrap(),
     };
@@ -240,11 +240,11 @@ pub async fn create_pool_new_pattern(
 /// * `banks` - Banks client for transaction processing
 /// * `payer` - Account that pays for pool creation
 /// * `recent_blockhash` - Recent blockhash for transaction
-/// * `primary_mint` - Primary token mint keypair
-/// * `base_mint` - Base token mint keypair
+/// * `multiple_mint` - Multiple token mint keypair (abundant token)
+/// * `base_mint` - Base token mint keypair (valuable token)
 /// * `lp_token_a_mint` - LP Token A mint keypair
 /// * `lp_token_b_mint` - LP Token B mint keypair
-/// * `ratio_primary_per_base` - Ratio of primary tokens per base token
+/// * `multiple_per_base` - Ratio of multiple tokens per base token
 /// 
 /// # Returns
 /// Pool configuration with all derived addresses
@@ -253,16 +253,16 @@ pub async fn create_pool_legacy_pattern(
     banks: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
-    primary_mint: &Keypair,
+    multiple_mint: &Keypair,
     base_mint: &Keypair,
     lp_token_a_mint: &Keypair,
     lp_token_b_mint: &Keypair,
-    ratio_primary_per_base: Option<u64>,
+    multiple_per_base: Option<u64>,
 ) -> Result<PoolConfig, BanksClientError> {
-    let ratio = ratio_primary_per_base.unwrap_or(constants::DEFAULT_RATIO);
+    let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
     
     // Get normalized pool configuration
-    let config = normalize_pool_config(&primary_mint.pubkey(), &base_mint.pubkey(), ratio);
+    let config = normalize_pool_config(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
     // Step 1: CreatePoolStateAccount instruction
     let create_ix = Instruction {
@@ -270,7 +270,7 @@ pub async fn create_pool_legacy_pattern(
         accounts: vec![
             AccountMeta::new(payer.pubkey(), true),                          // Signer
             AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
-            AccountMeta::new(primary_mint.pubkey(), false),                  // Primary token mint
+            AccountMeta::new(multiple_mint.pubkey(), false),                 // Multiple token mint
             AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
             AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
             AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
@@ -282,9 +282,9 @@ pub async fn create_pool_legacy_pattern(
         ],
         #[allow(deprecated)]
         data: PoolInstruction::CreatePoolStateAccount {
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
             pool_authority_bump_seed: config.pool_authority_bump,
-            primary_token_vault_bump_seed: config.primary_vault_bump,
+            multiple_token_vault_bump_seed: config.multiple_vault_bump,
             base_token_vault_bump_seed: config.base_vault_bump,
         }.try_to_vec().unwrap(),
     };
@@ -300,7 +300,7 @@ pub async fn create_pool_legacy_pattern(
         accounts: vec![
             AccountMeta::new(payer.pubkey(), true),                          // Signer
             AccountMeta::new(config.pool_state_pda, false),                  // Pool state account
-            AccountMeta::new(primary_mint.pubkey(), false),                  // Primary token mint
+            AccountMeta::new(multiple_mint.pubkey(), false),                 // Multiple token mint
             AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
             AccountMeta::new(lp_token_a_mint.pubkey(), false),               // LP Token A mint
             AccountMeta::new(lp_token_b_mint.pubkey(), false),               // LP Token B mint
@@ -312,9 +312,9 @@ pub async fn create_pool_legacy_pattern(
         ],
         #[allow(deprecated)]
         data: PoolInstruction::InitializePoolData {
-            ratio_primary_per_base: ratio,
+            multiple_per_base: ratio,
             pool_authority_bump_seed: config.pool_authority_bump,
-            primary_token_vault_bump_seed: config.primary_vault_bump,
+            multiple_token_vault_bump_seed: config.multiple_vault_bump,
             base_token_vault_bump_seed: config.base_vault_bump,
         }.try_to_vec().unwrap(),
     };

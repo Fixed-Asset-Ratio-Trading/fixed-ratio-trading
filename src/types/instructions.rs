@@ -17,9 +17,9 @@ pub enum PoolInstruction {
     /// that have been resolved with improved implementation.
     #[deprecated(note = "Use InitializePool instead")]
     CreatePoolStateAccount {
-        ratio_primary_per_base: u64,
+        multiple_per_base: u64,
         pool_authority_bump_seed: u8,
-        primary_token_vault_bump_seed: u8,
+        multiple_token_vault_bump_seed: u8,
         base_token_vault_bump_seed: u8,
     },
     
@@ -28,9 +28,9 @@ pub enum PoolInstruction {
     /// that have been resolved with improved implementation.
     #[deprecated(note = "Use InitializePool instead")]
     InitializePoolData {
-        ratio_primary_per_base: u64,
+        multiple_per_base: u64,
         pool_authority_bump_seed: u8,
-        primary_token_vault_bump_seed: u8,
+        multiple_token_vault_bump_seed: u8,
         base_token_vault_bump_seed: u8,
     },
 
@@ -53,14 +53,14 @@ pub enum PoolInstruction {
     /// - Eliminates workaround complexity
     /// 
     /// # Arguments:
-    /// - `ratio_primary_per_base`: Exchange ratio between primary and base tokens
+    /// - `multiple_per_base`: Exchange ratio between multiple and base tokens (how many multiple tokens per 1 base token)
     /// - `pool_authority_bump_seed`: Bump seed for pool authority PDA derivation
-    /// - `primary_token_vault_bump_seed`: Bump seed for primary token vault PDA
+    /// - `multiple_token_vault_bump_seed`: Bump seed for multiple token vault PDA
     /// - `base_token_vault_bump_seed`: Bump seed for base token vault PDA
     InitializePool {
-        ratio_primary_per_base: u64,
+        multiple_per_base: u64,
         pool_authority_bump_seed: u8,
-        primary_token_vault_bump_seed: u8,
+        multiple_token_vault_bump_seed: u8,
         base_token_vault_bump_seed: u8,
     },
 
@@ -131,9 +131,9 @@ pub enum PoolInstruction {
     /// Get pool state PDA address for given tokens and ratio
     /// Useful for clients to derive addresses before calling other instructions
     GetPoolStatePDA {
-        primary_token_mint: Pubkey,
+        multiple_token_mint: Pubkey,
         base_token_mint: Pubkey,
-        ratio_primary_per_base: u64,
+        multiple_per_base: u64,
     },
     
     /// Returns the Token Vault PDA addresses for a given pool

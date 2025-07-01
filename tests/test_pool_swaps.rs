@@ -425,7 +425,7 @@ async fn test_successful_a_to_b_swap() -> TestResult {
     
     for &swap_amount in &test_amounts {
         // Calculate expected output based on fixed ratio
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             // Primary token is Token A, so A→B swap: out_B = in_A * B_denom / A_num
             swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
         } else {
@@ -453,7 +453,7 @@ async fn test_successful_a_to_b_swap() -> TestResult {
 
     // Test swap instruction construction and validation
     let swap_amount = 100_000u64;
-    let expected_output = if config.token_a_is_primary {
+    let expected_output = if config.token_a_is_the_multiple {
         swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
     } else {
         swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -525,7 +525,7 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     
     for &swap_amount in &test_amounts {
         // Calculate expected output for B→A swap based on fixed ratio
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             // Primary token is Token A, A:B ratio, B→A swap: out_A = in_B * A_num / B_denom
             swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
         } else {
@@ -556,14 +556,14 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     let test_amount = 1_000_000u64;
     
     // Calculate A→B
-    let a_to_b_output = if config.token_a_is_primary {
+    let a_to_b_output = if config.token_a_is_the_multiple {
         test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
     } else {
         test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
     };
     
     // Calculate B→A using the A→B output
-    let b_to_a_output = if config.token_a_is_primary {
+    let b_to_a_output = if config.token_a_is_the_multiple {
         a_to_b_output * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
     } else {
         a_to_b_output * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
@@ -579,7 +579,7 @@ async fn test_successful_b_to_a_swap() -> TestResult {
 
     // Test B→A swap instruction construction
     let swap_amount = 200_000u64; // Use Token B for input
-    let expected_output = if config.token_a_is_primary {
+    let expected_output = if config.token_a_is_the_multiple {
         swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
     } else {
         swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
@@ -800,14 +800,14 @@ async fn test_swap_with_various_ratios() -> TestResult {
         
         for &swap_amount in &test_amounts {
             // Calculate A→B expected output
-            let a_to_b_output = if config.token_a_is_primary {
+            let a_to_b_output = if config.token_a_is_the_multiple {
                 swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
             } else {
                 swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
             };
 
             // Calculate B→A expected output
-            let b_to_a_output = if config.token_a_is_primary {
+            let b_to_a_output = if config.token_a_is_the_multiple {
                 swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
             } else {
                 swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
@@ -829,7 +829,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
                 },
                 2 => {
                     // 2:1 ratio - depends on which token is primary
-                    if config.token_a_is_primary {
+                    if config.token_a_is_the_multiple {
                         assert_eq!(a_to_b_output, swap_amount / 2, "A→B should give half when A is primary (2A per B)");
                         assert_eq!(b_to_a_output, swap_amount * 2, "B→A should give double when A is primary");
                     } else {
@@ -839,7 +839,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
                 },
                 3 => {
                     // 3:1 ratio
-                    if config.token_a_is_primary {
+                    if config.token_a_is_the_multiple {
                         assert_eq!(a_to_b_output, swap_amount / 3, "A→B should give 1/3 when A is primary (3A per B)");
                         assert_eq!(b_to_a_output, swap_amount * 3, "B→A should give 3x when A is primary");
                     } else {
@@ -849,7 +849,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
                 },
                 5 => {
                     // 5:1 ratio
-                    if config.token_a_is_primary {
+                    if config.token_a_is_the_multiple {
                         assert_eq!(a_to_b_output, swap_amount / 5, "A→B should give 1/5 when A is primary (5A per B)");
                         assert_eq!(b_to_a_output, swap_amount * 5, "B→A should give 5x when A is primary");
                     } else {
@@ -859,7 +859,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
                 },
                 100 => {
                     // 100:1 ratio - large ratio with overflow protection
-                    if config.token_a_is_primary {
+                    if config.token_a_is_the_multiple {
                         assert_eq!(a_to_b_output, swap_amount / 100, "A→B should give 1/100 when A is primary (100A per B)");
                         assert_eq!(b_to_a_output, swap_amount * 100, "B→A should give 100x when A is primary");
                     } else {
@@ -869,7 +869,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
                     
                     // Test overflow protection for large amounts
                     let large_amount = 1_000_000_000u64; // 1 billion
-                    if config.token_a_is_primary && b_to_a_output == swap_amount * 100 {
+                    if config.token_a_is_the_multiple && b_to_a_output == swap_amount * 100 {
                         // Check that we don't overflow u64 with large amounts
                         let large_b_to_a = large_amount.checked_mul(100);
                         if large_b_to_a.is_none() {
@@ -894,14 +894,14 @@ async fn test_swap_with_various_ratios() -> TestResult {
         let consistency_test_amount = 1_000_000u64;
         
         // Forward: A→B
-        let forward_result = if config.token_a_is_primary {
+        let forward_result = if config.token_a_is_the_multiple {
             consistency_test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
         } else {
             consistency_test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
         };
         
         // Reverse: B→A using forward result
-        let reverse_result = if config.token_a_is_primary {
+        let reverse_result = if config.token_a_is_the_multiple {
             forward_result * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
         } else {
             forward_result * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
@@ -958,7 +958,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
         println!("--- Testing Swap Instruction Construction ---");
         
         let instruction_test_amount = 50_000u64;
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             instruction_test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
         } else {
             instruction_test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -998,7 +998,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
             
             // Test that we handle large inputs safely
             let large_test_amount = 1_000_000_000u64; // 1 billion
-            if config.token_a_is_primary {
+            if config.token_a_is_the_multiple {
                 // B→A gives 100x, check for overflow
                 let safe_output = large_test_amount.checked_mul(100);
                 if safe_output.is_some() {
@@ -1010,7 +1010,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
             
             // Test very small amounts don't underflow
             let small_test_amount = 1u64;
-            let small_output = if config.token_a_is_primary {
+            let small_output = if config.token_a_is_the_multiple {
                 small_test_amount / 100
             } else {
                 small_test_amount * 100
@@ -1072,7 +1072,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     
     for &swap_amount in &test_amounts {
         // Calculate exact expected output
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
         } else {
             swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -1118,7 +1118,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     println!("\n--- Test 2: Boundary Condition Validation ---");
     
     let boundary_test_amount = 1_000_000u64;
-    let expected_output = if config.token_a_is_primary {
+    let expected_output = if config.token_a_is_the_multiple {
         boundary_test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
     } else {
         boundary_test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -1165,7 +1165,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     println!("\n--- Test 3: Zero Slippage Tolerance Validation ---");
     
     let zero_slippage_amount = 500_000u64;
-    let exact_expected = if config.token_a_is_primary {
+    let exact_expected = if config.token_a_is_the_multiple {
         zero_slippage_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
     } else {
         zero_slippage_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -1207,7 +1207,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     ];
 
     for (amount, description) in market_scenarios {
-        let expected = if config.token_a_is_primary {
+        let expected = if config.token_a_is_the_multiple {
             amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
         } else {
             amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
@@ -1230,7 +1230,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
         assert!(!market_serialized.is_empty(), "Market instruction should serialize");
         
         // In fixed-ratio systems, there should be no market impact
-        let fixed_ratio_value = if config.token_a_is_primary {
+        let fixed_ratio_value = if config.token_a_is_the_multiple {
             pool_state.ratio_b_denominator as f64 / pool_state.ratio_a_numerator as f64
         } else {
             pool_state.ratio_a_numerator as f64 / pool_state.ratio_b_denominator as f64
@@ -1255,7 +1255,7 @@ async fn test_slippage_protection_boundaries() -> TestResult {
     ];
 
     for (amount, description) in edge_case_tests {
-        let expected = if config.token_a_is_primary {
+        let expected = if config.token_a_is_the_multiple {
             amount.saturating_mul(pool_state.ratio_b_denominator) / pool_state.ratio_a_numerator.max(1)
         } else {
             amount.saturating_mul(pool_state.ratio_a_numerator) / pool_state.ratio_b_denominator.max(1)
@@ -1365,7 +1365,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     
     for &swap_amount in &sufficient_swap_amounts {
         // Calculate expected output for A→B swap
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             swap_amount * initial_pool_state.ratio_b_denominator / initial_pool_state.ratio_a_numerator
         } else {
             swap_amount * initial_pool_state.ratio_a_numerator / initial_pool_state.ratio_b_denominator
@@ -1407,7 +1407,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     
     // Calculate the maximum swap amount that would use all available output tokens (theoretical)
     let max_output_available = theoretical_token_b_vault_balance;
-    let max_input_for_exact_output = if config.token_a_is_primary {
+    let max_input_for_exact_output = if config.token_a_is_the_multiple {
         max_output_available * initial_pool_state.ratio_a_numerator / initial_pool_state.ratio_b_denominator
     } else {
         max_output_available * initial_pool_state.ratio_b_denominator / initial_pool_state.ratio_a_numerator
@@ -1437,7 +1437,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     
     // Test swap that would require more output than available
     let over_boundary_input = max_input_for_exact_output + 1000; 
-    let over_boundary_output = if config.token_a_is_primary {
+    let over_boundary_output = if config.token_a_is_the_multiple {
         over_boundary_input * initial_pool_state.ratio_b_denominator / initial_pool_state.ratio_a_numerator
     } else {
         over_boundary_input * initial_pool_state.ratio_a_numerator / initial_pool_state.ratio_b_denominator
@@ -1475,7 +1475,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     ];
     
     for (input_amount, description) in stress_test_amounts {
-        let expected_output = if config.token_a_is_primary {
+        let expected_output = if config.token_a_is_the_multiple {
             input_amount * initial_pool_state.ratio_b_denominator / initial_pool_state.ratio_a_numerator
         } else {
             input_amount * initial_pool_state.ratio_a_numerator / initial_pool_state.ratio_b_denominator
