@@ -1,20 +1,23 @@
 #!/bin/bash
-# Production Solana Validator Setup Script - Direct HTTP Access
-# ============================================================
+# Production Environment Setup Script - ngrok Focus
+# =================================================
 #
 # DESCRIPTION:
-#   This script creates a production-like Solana validator environment with:
-#   - Direct HTTP access (no nginx reverse proxy)
-#   - TPU access (automatic ports)
-#   - External network access
-#   - Remote access capability for wallets and clients
+#   This script sets up a production environment with:
+#   - Auto-detection of host IP address
+#   - ngrok tunnel in dedicated screen session
+#   - Independent operation (works with or without validator)
+#   - Smart ngrok management (doesn't restart if already running)
 #
 # USAGE:
-#   ./scripts/start_production_validator_direct.sh
+#   ./scripts/start_production_validator.sh
+#   
+#   Or with custom IP:
+#   EXTERNAL_IP=192.168.1.100 ./scripts/start_production_validator.sh
 #
 # AUTHOR: Fixed Ratio Trading Development Team
-# VERSION: 2.0
-# UPDATED: June 2025
+# VERSION: 3.0
+# UPDATED: January 2025
 
 set -e
 
@@ -27,88 +30,96 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Function to auto-detect external IP
+detect_external_ip() {
+    local detected_ip=""
+    
+    # Method 1: Get IP from default route interface
+    if command -v ip &> /dev/null; then
+        detected_ip=$(ip route get 8.8.8.8 2>/dev/null | grep -oP 'src \K\S+' | head -1)
+        if [[ -n "$detected_ip" && "$detected_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$detected_ip"
+            return 0
+        fi
+    fi
+    
+    # Method 2: Get primary interface IP
+    if command -v hostname &> /dev/null; then
+        detected_ip=$(hostname -I | awk '{print $1}')
+        if [[ -n "$detected_ip" && "$detected_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$detected_ip"
+            return 0
+        fi
+    fi
+    
+    # Method 3: Check common network interfaces
+    for interface in eth0 enp0s3 enp0s8 wlan0 ens33; do
+        if command -v ip &> /dev/null; then
+            detected_ip=$(ip addr show $interface 2>/dev/null | grep 'inet ' | awk '{print $2}' | cut -d/ -f1 | head -1)
+            if [[ -n "$detected_ip" && "$detected_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "$detected_ip"
+                return 0
+            fi
+        fi
+    done
+    
+    # Method 4: Fallback to ifconfig if available
+    if command -v ifconfig &> /dev/null; then
+        detected_ip=$(ifconfig | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -1)
+        if [[ -n "$detected_ip" && "$detected_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$detected_ip"
+            return 0
+        fi
+    fi
+    
+    echo "127.0.0.1"
+    return 1
+}
+
 # Configuration
-DOMAIN="vmdevbox1.dcs1.cc"
+RPC_PORT=8899
+NGROK_URL="https://fixed.ngrok.app"
+NGROK_SESSION_NAME="ngrok-tunnel"
+
+# Account Configuration
 PRIMARY_ACCOUNT="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 SECONDARY_ACCOUNT="3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f"
-AIRDROP_AMOUNT=1000
-SECONDARY_AIRDROP_AMOUNT=100
+AIRDROP_AMOUNT=100
+SECONDARY_AIRDROP_AMOUNT=10
 
-# Network Configuration - External IP for TPU access
-EXTERNAL_IP="192.168.9.81"
+# Network Configuration - Auto-detect or use environment variable
+if [[ -n "$EXTERNAL_IP" ]]; then
+    echo -e "${CYAN}🔧 Using provided EXTERNAL_IP: $EXTERNAL_IP${NC}"
+    if [[ ! "$EXTERNAL_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid IP address format: $EXTERNAL_IP${NC}"
+        exit 1
+    fi
+else
+    echo -e "${YELLOW}🔍 Auto-detecting external IP address...${NC}"
+    EXTERNAL_IP=$(detect_external_ip)
+    if [[ "$EXTERNAL_IP" == "127.0.0.1" ]]; then
+        echo -e "${RED}❌ Could not auto-detect IP address${NC}"
+        echo -e "${YELLOW}⚠️  Using localhost - remote access will be limited${NC}"
+        echo -e "${YELLOW}💡 To specify a custom IP: EXTERNAL_IP=your.ip.address ./scripts/start_production_validator.sh${NC}"
+    else
+        echo -e "${GREEN}✅ Auto-detected IP: $EXTERNAL_IP${NC}"
+    fi
+fi
 
-# Port Configuration
-RPC_PORT=8899
-WEBSOCKET_PORT=8900  # Automatically assigned by Solana
-GOSSIP_PORT=8003
-FAUCET_PORT=9900
-
-# Network Configuration - Direct HTTP access
 LOCAL_RPC_URL="http://localhost:$RPC_PORT"
 EXTERNAL_RPC_URL="http://$EXTERNAL_IP:$RPC_PORT"
-EXTERNAL_WS_URL="ws://$EXTERNAL_IP:$WEBSOCKET_PORT"
 
-SCREEN_SESSION_NAME="production-validator"
-
-echo -e "${BLUE}🚀 Production Solana Validator Setup - Direct HTTP Access${NC}"
-echo "========================================================="
-echo -e "${CYAN}External IP: $EXTERNAL_IP${NC}"
-echo -e "${CYAN}HTTP RPC: $EXTERNAL_RPC_URL${NC}"
-echo -e "${CYAN}WebSocket: $EXTERNAL_WS_URL${NC}"
-echo -e "${CYAN}RPC Port: $RPC_PORT${NC}"
-echo -e "${CYAN}WebSocket Port: $WEBSOCKET_PORT (auto)${NC}"
-echo -e "${CYAN}Gossip Port: $GOSSIP_PORT${NC}"
-echo -e "${CYAN}TPU Access: External (via $EXTERNAL_IP)${NC}"
-echo -e "${CYAN}Primary Account: $PRIMARY_ACCOUNT${NC}"
-echo -e "${CYAN}Secondary Account: $SECONDARY_ACCOUNT${NC}"
+echo -e "${BLUE}🚀 Production Environment Setup - ngrok Focus${NC}"
+echo "================================================"
+echo -e "${CYAN}Auto-detected IP: $EXTERNAL_IP${NC}"
+echo -e "${CYAN}Local HTTP RPC: $LOCAL_RPC_URL${NC}"
+echo -e "${CYAN}External HTTP RPC: $EXTERNAL_RPC_URL${NC}"
+echo -e "${CYAN}ngrok Tunnel: $NGROK_URL${NC}"
 echo ""
-
-# Check if running as root
-if [[ $EUID -eq 0 ]]; then
-    echo -e "${RED}❌ Do not run this script as root${NC}"
-    echo -e "${YELLOW}💡 Run as regular user${NC}"
-    exit 1
-fi
 
 # Check dependencies
 echo -e "${YELLOW}🔍 Checking dependencies...${NC}"
 
-# Check Solana and add to PATH if needed
-if ! command -v solana-test-validator &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Solana not in PATH, checking common locations...${NC}"
-    
-    # Common Solana installation paths
-    SOLANA_PATHS=(
-        "/home/$USER/.local/share/solana/install/active_release/bin"
-        "/home/dev/.local/share/solana/install/active_release/bin"
-        "$HOME/.local/share/solana/install/active_release/bin"
-    )
-    
-    SOLANA_FOUND=false
-    for solana_path in "${SOLANA_PATHS[@]}"; do
-        if [ -f "$solana_path/solana-test-validator" ]; then
-            echo -e "${GREEN}✅ Found Solana at: $solana_path${NC}"
-            export PATH="$solana_path:$PATH"
-            SOLANA_FOUND=true
-            break
-        fi
-    done
-    
-    if [ "$SOLANA_FOUND" = false ]; then
-        echo -e "${RED}❌ Solana test validator not found in PATH or common locations${NC}"
-        echo -e "${YELLOW}💡 Please install Solana or add it to PATH${NC}"
-        echo -e "${YELLOW}💡 Common locations checked:${NC}"
-        for path in "${SOLANA_PATHS[@]}"; do
-            echo -e "${YELLOW}   - $path${NC}"
-        done
-        exit 1
-    fi
-fi
-
-SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
-echo -e "${GREEN}✅ Solana available: $SOLANA_VERSION${NC}"
-
-# Check required packages
 if ! command -v screen &> /dev/null; then
     echo -e "${RED}❌ screen not found - please install: apt install screen${NC}"
     exit 1
@@ -123,280 +134,263 @@ else
     echo -e "${GREEN}✅ curl available${NC}"
 fi
 
-if ! command -v jq &> /dev/null; then
-    echo -e "${RED}❌ jq not found - please install: apt install jq${NC}"
+if ! command -v ngrok &> /dev/null; then
+    echo -e "${RED}❌ ngrok not found - please install ngrok${NC}"
     exit 1
 else
-    echo -e "${GREEN}✅ jq available${NC}"
+    NGROK_VERSION=$(ngrok version 2>/dev/null | head -1)
+    echo -e "${GREEN}✅ ngrok available: $NGROK_VERSION${NC}"
 fi
 
-# Stop existing services
-echo -e "${YELLOW}🛑 Stopping existing services...${NC}"
-if pgrep -f "solana-test-validator" > /dev/null; then
-    echo -e "${YELLOW}⚠️  Stopping existing validator...${NC}"
-    pkill -f "solana-test-validator"
-    sleep 3
+if ! command -v solana &> /dev/null; then
+    echo -e "${RED}❌ solana CLI not found - please install Solana CLI${NC}"
+    exit 1
+else
+    SOLANA_VERSION=$(solana --version 2>/dev/null | head -1)
+    echo -e "${GREEN}✅ solana CLI available: $SOLANA_VERSION${NC}"
 fi
 
-if screen -list | grep -q "$SCREEN_SESSION_NAME"; then
-    echo -e "${YELLOW}⚠️  Terminating existing screen session...${NC}"
-    screen -S "$SCREEN_SESSION_NAME" -X quit 2>/dev/null || true
-    sleep 2
+# Check if ngrok is already running
+echo -e "${YELLOW}🔍 Checking ngrok status...${NC}"
+if pgrep -f "ngrok.*8899" > /dev/null; then
+    echo -e "${GREEN}✅ ngrok already running on port $RPC_PORT${NC}"
+    NGROK_ALREADY_RUNNING=true
+else
+    echo -e "${YELLOW}⚠️  ngrok not running on port $RPC_PORT${NC}"
+    NGROK_ALREADY_RUNNING=false
 fi
 
 # Create logs directory
 mkdir -p logs
 
-# Start production validator with direct external access
-echo -e "${YELLOW}🏁 Starting production Solana validator with direct HTTP access...${NC}"
-
-screen -dmS "$SCREEN_SESSION_NAME" bash -c "
-    echo '�� Production Solana Validator - Direct HTTP Access'
-    echo '=================================================='
-    echo 'Started: \$(date)'
-    echo 'External IP: $EXTERNAL_IP'
-    echo 'HTTP RPC: $EXTERNAL_RPC_URL'
-    echo 'WebSocket: $EXTERNAL_WS_URL'
-    echo 'Local RPC: $LOCAL_RPC_URL'
-    echo 'Session: $SCREEN_SESSION_NAME'
-    echo 'Ledger: logs/test-ledger'
-    echo ''
-    echo 'Screen Commands:'
-    echo '  Detach: Ctrl+A, then D'
-    echo '  Kill session: screen -S $SCREEN_SESSION_NAME -X quit'
-    echo ''
-    echo '════════════════════════════════════════════════════════════════'
-    echo ''
+# Handle ngrok setup
+if [ "$NGROK_ALREADY_RUNNING" = true ]; then
+    echo -e "${CYAN}🔄 Keeping existing ngrok tunnel running${NC}"
+    echo -e "${YELLOW}💡 To restart ngrok: pkill -f ngrok && run this script again${NC}"
+else
+    echo -e "${YELLOW}🌐 Starting ngrok tunnel in dedicated screen session...${NC}"
     
-    # Start validator with external access
-    echo 'Starting production Solana validator with external HTTP access...'
-    echo \"External IP: $EXTERNAL_IP\"
-    echo \"HTTP RPC accessible at: $EXTERNAL_RPC_URL\"
-    echo \"WebSocket accessible at: $EXTERNAL_WS_URL\"
-    echo \"TPU will be accessible from external networks\"
-    solana-test-validator \\
-        --rpc-port $RPC_PORT \\
-        --gossip-port $GOSSIP_PORT \\
-        --gossip-host $EXTERNAL_IP \\
-        --faucet-port $FAUCET_PORT \\
-        --bind-address 0.0.0.0 \\
-        --compute-unit-limit 1400000 \\
-        --reset \\
-        --log \\
-        --ledger logs/test-ledger \\
-        2>&1 | tee logs/validator.log &
-    
-    VALIDATOR_PID=\$!
-    echo \"✅ Production validator started with PID: \$VALIDATOR_PID\"
-    echo \"\"
-    
-    # Wait for validator to be ready
-    sleep 8
-    echo \"✅ Validator initialization complete\"
-    echo \"\"
-    
-    # Monitor and display useful information
-    echo \"Starting production status monitor...\"
-    echo \"\"
-    
-    while kill -0 \$VALIDATOR_PID 2>/dev/null; do
-        echo \"════════ \$(date) ════════\"
-        
-        # Check validator status
-        if kill -0 \$VALIDATOR_PID 2>/dev/null; then
-            echo \"✅ Validator: RUNNING (PID: \$VALIDATOR_PID)\"
-        else
-            echo \"❌ Validator: STOPPED\"
-        fi
-        
-        # Check local RPC health
-        if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getHealth\\\"}' | grep -q '\\\"ok\\\"' 2>/dev/null; then
-            echo \"✅ Local RPC: HEALTHY\"
-        else
-            echo \"❌ Local RPC: NOT RESPONDING\"
-        fi
-        
-        # Check external HTTP endpoint health
-        if curl -s $EXTERNAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getHealth\\\"}' | grep -q '\\\"ok\\\"' 2>/dev/null; then
-            echo \"✅ External HTTP RPC: HEALTHY ($EXTERNAL_RPC_URL)\"
-        else
-            echo \"⚠️  External HTTP RPC: NOT RESPONDING\"
-        fi
-        
-        # Get blockchain info
-        SLOT_INFO=\$(curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getSlot\\\"}' | jq -r '.result // \\\"N/A\\\"' 2>/dev/null || echo 'N/A')
-        echo \"📊 Current Slot: \$SLOT_INFO\"
-        
-        EPOCH_INFO=\$(curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"method\\\":\\\"getEpochInfo\\\"}' | jq -r '.result.epoch // \\\"N/A\\\"' 2>/dev/null || echo 'N/A')
-        echo \"🕒 Epoch: \$EPOCH_INFO\"
-        
-        # Check account balances
-        PRIMARY_BALANCE=\$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo 'Error')
-        SECONDARY_BALANCE=\$(solana balance $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo 'Error')
-        echo \"💰 Primary Account: \$PRIMARY_BALANCE SOL\"
-        echo \"💰 Secondary Account: \$SECONDARY_BALANCE SOL\"
-        
-        # Show recent activity
-        echo \"📝 Recent Validator Activity:\"
-        tail -n 2 logs/validator.log | sed 's/^/   /'
-        
-        echo \"\"
-        echo \"🌐 HTTP RPC Endpoint: $EXTERNAL_RPC_URL\"
-        echo \"🔌 WebSocket Endpoint: $EXTERNAL_WS_URL\"
-        echo \"⚡ TPU: Available on dynamic ports\"
-        echo \"Press Ctrl+C to stop validator\"
-        echo \"Press Ctrl+A, D to detach from screen\"
-        echo \"\"
-        
-        sleep 15
-    done
-    
-    echo \"❌ Validator process stopped unexpectedly\"
-    echo \"Check logs: tail -f logs/validator.log\"
-    read -p \"Press Enter to close...\"
-"
-
-echo -e "${GREEN}✅ Production validator started in screen session '$SCREEN_SESSION_NAME'${NC}"
-
-# Wait for validator to start
-echo -e "${YELLOW}⏳ Waiting for validator to initialize...${NC}"
-sleep 10
-
-# Check if validator is responding
-echo -e "${YELLOW}🔍 Checking validator status...${NC}"
-for i in {1..15}; do
-    if curl -s $LOCAL_RPC_URL -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok"; then
-        echo -e "${GREEN}✅ Validator is responding${NC}"
-        break
-    else
-        if [ $i -eq 15 ]; then
-            echo -e "${RED}❌ Validator failed to start after 15 attempts${NC}"
-            echo -e "${YELLOW}💡 Check screen session: screen -r $SCREEN_SESSION_NAME${NC}"
-            echo -e "${YELLOW}💡 Check logs: tail -f logs/validator.log${NC}"
-            exit 1
-        fi
-        echo -e "${YELLOW}   Attempt $i/15 - waiting...${NC}"
-        sleep 4
+    # Stop any existing ngrok screen session
+    if screen -list | grep -q "$NGROK_SESSION_NAME"; then
+        echo -e "${YELLOW}⚠️  Terminating existing ngrok screen session...${NC}"
+        screen -S "$NGROK_SESSION_NAME" -X quit 2>/dev/null || true
+        sleep 2
     fi
-done
-
-# Configure Solana CLI
-echo -e "${YELLOW}⚙️  Configuring Solana CLI for production validator...${NC}"
-solana config set --url $LOCAL_RPC_URL
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ CLI configured for production validator${NC}"
-else
-    echo -e "${RED}❌ CLI configuration failed${NC}"
-    exit 1
+    
+    # Start ngrok in screen session
+    screen -dmS "$NGROK_SESSION_NAME" bash -c "
+        echo '🌐 ngrok Tunnel Manager'
+        echo '======================'
+        echo 'Started: \$(date)'
+        echo 'Local Port: $RPC_PORT'
+        echo 'Public URL: $NGROK_URL'
+        echo 'Log File: logs/ngrok.log'
+        echo 'Session: $NGROK_SESSION_NAME'
+        echo ''
+        echo 'Screen Commands:'
+        echo '  Detach: Ctrl+A, then D'
+        echo '  Kill session: screen -S $NGROK_SESSION_NAME -X quit'
+        echo ''
+        echo '════════════════════════════════════════════════════════════════'
+        echo ''
+        
+        echo 'Starting ngrok tunnel...'
+        echo \"Target: http://localhost:$RPC_PORT\"
+        echo \"Public URL: $NGROK_URL\"
+        echo \"Log: logs/ngrok.log\"
+        echo ''
+        
+        ngrok http $RPC_PORT --hostname=fixed.ngrok.app --log=logs/ngrok.log &
+        NGROK_PID=\$!
+        
+        echo \"✅ ngrok started with PID: \$NGROK_PID\"
+        echo \"\"
+        
+        # Wait for ngrok to initialize
+        sleep 5
+        echo \"✅ ngrok tunnel ready\"
+        echo \"\"
+        
+        # Monitor ngrok status
+        echo \"Starting ngrok status monitor...\"
+        echo \"\"
+        
+        while kill -0 \$NGROK_PID 2>/dev/null; do
+            echo \"════════ \$(date) ════════\"
+            
+            # Check ngrok process status
+            if kill -0 \$NGROK_PID 2>/dev/null; then
+                echo \"✅ ngrok Process: RUNNING (PID: \$NGROK_PID)\"
+            else
+                echo \"❌ ngrok Process: STOPPED\"
+                break
+            fi
+            
+            # Check local port accessibility
+            if curl -s http://localhost:$RPC_PORT > /dev/null 2>&1; then
+                echo \"✅ Local Port $RPC_PORT: ACCESSIBLE\"
+            else
+                echo \"⚠️  Local Port $RPC_PORT: NOT ACCESSIBLE (no service running)\"
+            fi
+            
+            # Check tunnel health
+            if curl -s $NGROK_URL > /dev/null 2>&1; then
+                echo \"✅ ngrok Tunnel: ACTIVE ($NGROK_URL)\"
+            else
+                echo \"⚠️  ngrok Tunnel: NOT RESPONDING\"
+            fi
+            
+            # Show recent ngrok activity
+            echo \"📝 Recent ngrok Activity:\"
+            tail -n 2 logs/ngrok.log 2>/dev/null | sed 's/^/   /' || echo '   (no recent activity)'
+            
+            echo \"\"
+            echo \"🌐 Tunnel URL: $NGROK_URL\"
+            echo \"📍 Local Target: http://localhost:$RPC_PORT\"
+            echo \"📱 Screen Session: $NGROK_SESSION_NAME\"
+            echo \"Press Ctrl+C to stop tunnel\"
+            echo \"Press Ctrl+A, D to detach from screen\"
+            echo \"\"
+            
+            sleep 15
+        done
+        
+        echo \"❌ ngrok process stopped unexpectedly\"
+        echo \"Check logs: tail -f logs/ngrok.log\"
+        read -p \"Press Enter to close...\"
+    "
+    
+    echo -e "${GREEN}✅ ngrok tunnel started in screen session '$NGROK_SESSION_NAME'${NC}"
+    
+    # Wait for ngrok to initialize
+    echo -e "${YELLOW}⏳ Waiting for ngrok to initialize...${NC}"
+    sleep 8
 fi
 
-# Airdrop SOL to accounts
-echo -e "${YELLOW}💰 Airdropping SOL to accounts...${NC}"
-
-# Primary account airdrop
-echo -e "${CYAN}   Primary Target: $PRIMARY_ACCOUNT${NC}"
-solana airdrop $AIRDROP_AMOUNT $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Primary airdrop successful${NC}"
-    sleep 2
-    BALANCE=$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null || echo "Error retrieving balance")
-    echo -e "${GREEN}   Primary Account Balance: $BALANCE${NC}"
+# Test ngrok tunnel
+echo -e "${YELLOW}🧪 Testing ngrok tunnel...${NC}"
+if curl -s $NGROK_URL > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ ngrok tunnel is accessible at $NGROK_URL${NC}"
 else
-    echo -e "${RED}❌ Primary airdrop failed${NC}"
+    echo -e "${YELLOW}⚠️  ngrok tunnel not responding yet (may need more time or no service on port $RPC_PORT)${NC}"
 fi
 
+# Check for Solana validator and perform airdrops
+echo -e "${YELLOW}🔍 Checking for Solana validator...${NC}"
+if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
+    echo -e "${GREEN}✅ Solana validator detected and responding${NC}"
+    
+    # Configure Solana CLI
+    echo -e "${YELLOW}⚙️  Configuring Solana CLI...${NC}"
+    solana config set --url $LOCAL_RPC_URL >/dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✅ CLI configured for local validator${NC}"
+    else
+        echo -e "${RED}❌ CLI configuration failed${NC}"
+    fi
+    
+    # Perform airdrops
+    echo -e "${YELLOW}💰 Performing SOL airdrops...${NC}"
+    
+    # Primary account airdrop
+    echo -e "${CYAN}   Primary Target: $PRIMARY_ACCOUNT${NC}"
+    if solana airdrop $AIRDROP_AMOUNT $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
+        sleep 2
+        BALANCE=$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
+        echo -e "${GREEN}✅ Primary airdrop successful: $BALANCE SOL${NC}"
+    else
+        echo -e "${RED}❌ Primary airdrop failed${NC}"
+    fi
+    
+    # Secondary account airdrop
+    echo -e "${CYAN}   Secondary Target: $SECONDARY_ACCOUNT${NC}"
+    if solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
+        sleep 2
+        SECONDARY_BALANCE=$(solana balance $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
+        echo -e "${GREEN}✅ Secondary airdrop successful: $SECONDARY_BALANCE SOL${NC}"
+    else
+        echo -e "${RED}❌ Secondary airdrop failed${NC}"
+    fi
+    
+    echo ""
+else
+    echo -e "${YELLOW}⚠️  No Solana validator detected on port $RPC_PORT${NC}"
+    echo -e "${YELLOW}💡 Start a validator manually to enable airdrops:${NC}"
+    echo -e "${CYAN}    solana-test-validator --rpc-port $RPC_PORT --bind-address 0.0.0.0 --reset${NC}"
+    echo ""
+fi
+
+# Display service information
 echo ""
-
-# Secondary account airdrop
-echo -e "${CYAN}   Secondary Target: $SECONDARY_ACCOUNT${NC}"
-solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Secondary airdrop successful${NC}"
-    sleep 2
-    SECONDARY_BALANCE=$(solana balance $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null || echo "Error retrieving balance")
-    echo -e "${GREEN}   Secondary Account Balance: $SECONDARY_BALANCE${NC}"
-else
-    echo -e "${RED}❌ Secondary airdrop failed${NC}"
-fi
-
-# Test external HTTP endpoint
-echo -e "${YELLOW}🌐 Testing external HTTP endpoint...${NC}"
-sleep 3
-if curl -s $EXTERNAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok"; then
-    echo -e "${GREEN}✅ External HTTP endpoint is working perfectly!${NC}"
-else
-    echo -e "${YELLOW}⚠️  External HTTP endpoint not responding yet (may need more time)${NC}"
-fi
-
-# Display success information
+echo -e "${GREEN}🎉 ENVIRONMENT SETUP COMPLETE!${NC}"
+echo -e "${GREEN}===============================${NC}"
 echo ""
-echo -e "${GREEN}🎉 PRODUCTION SOLANA VALIDATOR STARTED SUCCESSFULLY!${NC}"
-echo -e "${GREEN}====================================================${NC}"
-echo ""
-echo -e "${BLUE}📊 Production Service Information:${NC}"
-echo -e "  🌐 HTTP RPC: $EXTERNAL_RPC_URL"
-echo -e "  🔌 WebSocket: $EXTERNAL_WS_URL"
-echo -e "  ⚡ TPU Access: External via $EXTERNAL_IP (dynamic ports)"
-echo -e "  🌍 External IP: $EXTERNAL_IP"
-echo -e "  🔒 Local RPC: $LOCAL_RPC_URL"
-echo -e "  🔒 Local WebSocket: ws://localhost:$WEBSOCKET_PORT"
-echo -e "  📋 Primary Account: $PRIMARY_ACCOUNT ($AIRDROP_AMOUNT SOL)"
-echo -e "  📋 Secondary Account: $SECONDARY_ACCOUNT ($SECONDARY_AIRDROP_AMOUNT SOL)"
+echo -e "${BLUE}📊 Service Information:${NC}"
+echo -e "  🌍 Auto-detected IP: $EXTERNAL_IP"
+echo -e "  🔗 Local RPC: $LOCAL_RPC_URL"
+echo -e "  🌐 External RPC: $EXTERNAL_RPC_URL"
+echo -e "  🌍 Global ngrok URL: $NGROK_URL"
 echo -e "  📂 Logs Directory: $(pwd)/logs/"
-echo -e "  📱 Screen Session: $SCREEN_SESSION_NAME"
+echo -e "  📱 ngrok Screen: $NGROK_SESSION_NAME"
+echo ""
+echo -e "${BLUE}💰 Account Configuration:${NC}"
+echo -e "  🥇 Primary Account: $PRIMARY_ACCOUNT ($AIRDROP_AMOUNT SOL)"
+echo -e "  🥈 Secondary Account: $SECONDARY_ACCOUNT ($SECONDARY_AIRDROP_AMOUNT SOL)"
 echo ""
 
-echo -e "${YELLOW}📺 Screen Session Commands:${NC}"
-echo -e "${CYAN}  View validator output:${NC}"
-echo -e "    screen -r $SCREEN_SESSION_NAME"
+echo -e "${YELLOW}📺 ngrok Screen Commands:${NC}"
+echo -e "${CYAN}  View ngrok status:${NC}"
+echo -e "    screen -r $NGROK_SESSION_NAME"
 echo ""
-echo -e "${CYAN}  Detach from screen (while viewing):${NC}"
+echo -e "${CYAN}  Detach from screen:${NC}"
 echo -e "    Press: Ctrl+A, then D"
 echo ""
-echo -e "${CYAN}  Kill validator session:${NC}"
-echo -e "    screen -S $SCREEN_SESSION_NAME -X quit"
+echo -e "${CYAN}  Stop ngrok tunnel:${NC}"
+echo -e "    screen -S $NGROK_SESSION_NAME -X quit"
 echo ""
 
-echo -e "${YELLOW}🔍 Direct HTTP Endpoints:${NC}"
-echo -e "${CYAN}  Test HTTP RPC health:${NC}"
-echo -e "    curl $EXTERNAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}'"
+echo -e "${YELLOW}🧪 Testing Commands:${NC}"
+echo -e "${CYAN}  Test tunnel health:${NC}"
+echo -e "    curl $NGROK_URL"
 echo ""
-echo -e "${CYAN}  Check account balances via HTTP:${NC}"
-echo -e "    solana balance $PRIMARY_ACCOUNT --url $EXTERNAL_RPC_URL"
-echo -e "    solana balance $SECONDARY_ACCOUNT --url $EXTERNAL_RPC_URL"
+echo -e "${CYAN}  Test with mock server:${NC}"
+echo -e "    python3 -m http.server $RPC_PORT &"
+echo -e "    curl $NGROK_URL"
 echo ""
-echo -e "${CYAN}  Check TPU endpoints:${NC}"
-echo -e "    curl -s $EXTERNAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getClusterNodes\"}' | jq '.result[] | {rpc: .rpc, tpu: .tpu, gossip: .gossip}'"
-echo ""
-echo -e "${CYAN}  View live logs:${NC}"
-echo -e "    tail -f logs/validator.log"
+echo -e "${CYAN}  View ngrok logs:${NC}"
+echo -e "    tail -f logs/ngrok.log"
 echo ""
 
-echo -e "${YELLOW}🔧 Client Configuration:${NC}"
-echo -e "${CYAN}  RPC URL: $EXTERNAL_RPC_URL${NC}"
-echo -e "${CYAN}  WebSocket URL: $EXTERNAL_WS_URL${NC}"
-echo -e "${CYAN}  Network: Custom${NC}"
-echo -e "${GREEN}  ✅ Direct HTTP access - no certificate issues!${NC}"
+echo -e "${YELLOW}🔧 For Solana Validator:${NC}"
+echo -e "${CYAN}  Start validator manually (clean environment):${NC}"
+echo -e "    solana-test-validator --rpc-port $RPC_PORT --bind-address 0.0.0.0 --reset"
+echo -e "${YELLOW}    Note: --reset ensures fresh blockchain state each startup${NC}"
+echo ""
+echo -e "${CYAN}  Test RPC via tunnel:${NC}"
+echo -e "    curl $NGROK_URL -X POST -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getHealth\"}'"
+echo ""
+echo -e "${CYAN}  Check account balances:${NC}"
+echo -e "    solana balance $PRIMARY_ACCOUNT"
+echo -e "    solana balance $SECONDARY_ACCOUNT"
+echo ""
+echo -e "${CYAN}  Manual airdrop (if needed):${NC}"
+echo -e "    solana airdrop $AIRDROP_AMOUNT $PRIMARY_ACCOUNT"
+echo -e "    solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT"
 echo ""
 
-echo -e "${YELLOW}🛑 To Stop All Services:${NC}"
-echo -e "${RED}    screen -S $SCREEN_SESSION_NAME -X quit${NC}"
+echo -e "${PURPLE}🔥 FEATURES ENABLED:${NC}"
+echo -e "${GREEN}   ✅ Auto-detection of host IP address${NC}"
+echo -e "${GREEN}   ✅ Smart ngrok management (preserves existing tunnels)${NC}"
+echo -e "${GREEN}   ✅ Dedicated ngrok screen session${NC}"
+echo -e "${GREEN}   ✅ Independent operation (works with/without validator)${NC}"
+echo -e "${GREEN}   ✅ Global tunnel access ($NGROK_URL)${NC}"
+echo -e "${GREEN}   ✅ Automatic SOL airdrops (when validator detected)${NC}"
+echo -e "${GREEN}   ✅ Real-time status monitoring${NC}"
+echo -e "${GREEN}   ✅ Comprehensive logging${NC}"
 echo ""
 
-echo -e "${PURPLE}🔥 PRODUCTION FEATURES ENABLED:${NC}"
-echo -e "${GREEN}   ✅ Direct HTTP access (no nginx proxy)${NC}"
-echo -e "${GREEN}   ✅ TPU access on dynamic ports${NC}"
-echo -e "${GREEN}   ✅ External network access${NC}"
-echo -e "${GREEN}   ✅ Production validator configuration${NC}"
-echo -e "${GREEN}   ✅ Extended transaction metadata${NC}"
-echo -e "${GREEN}   ✅ Transaction history enabled${NC}"
-echo -e "${GREEN}   ✅ Native Solana CORS handling${NC}"
-echo -e "${GREEN}   ✅ WebSocket support${NC}"
-echo -e "${GREEN}   ✅ Remote network access${NC}"
-echo ""
-
-echo -e "${GREEN}✨ Your production Solana validator is ready for direct HTTP access!${NC}"
-echo -e "${BLUE}   Clients can now connect directly via $EXTERNAL_RPC_URL${NC}"
-echo -e "${BLUE}   No certificate issues - pure HTTP access!${NC}"
-echo -e "${BLUE}   TPU access available for high-performance transaction submission${NC}"
-echo -e "${BLUE}   Use the screen commands above to monitor and manage the validator.${NC}"
+echo -e "${GREEN}✨ ngrok tunnel is now running independently!${NC}"
+echo -e "${BLUE}   Global access: $NGROK_URL${NC}"
+echo -e "${BLUE}   Works with any service on port $RPC_PORT${NC}"
+echo -e "${BLUE}   Monitor status: screen -r $NGROK_SESSION_NAME${NC}"
+echo -e "${BLUE}   The tunnel will persist and work with or without a validator${NC}"
