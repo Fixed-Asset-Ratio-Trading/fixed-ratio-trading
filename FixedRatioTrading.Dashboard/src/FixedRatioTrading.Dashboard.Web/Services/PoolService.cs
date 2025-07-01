@@ -12,17 +12,20 @@ public class PoolService : IPoolService
     private readonly IPoolRepository _poolRepository;
     private readonly IPoolTransactionRepository _transactionRepository;
     private readonly IPoolSyncService _poolSyncService;
+    private readonly ISystemStateRepository _systemStateRepository;
     private readonly ILogger<PoolService> _logger;
 
     public PoolService(
         IPoolRepository poolRepository,
         IPoolTransactionRepository transactionRepository,
         IPoolSyncService poolSyncService,
+        ISystemStateRepository systemStateRepository,
         ILogger<PoolService> logger)
     {
         _poolRepository = poolRepository;
         _transactionRepository = transactionRepository;
         _poolSyncService = poolSyncService;
+        _systemStateRepository = systemStateRepository;
         _logger = logger;
     }
 
@@ -53,12 +56,18 @@ public class PoolService : IPoolService
             var paginatedPools = pools
                 .OrderByDescending(p => p.CreatedAt)
                 .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(MapToSummary);
+                .Take(pageSize);
+
+            var poolSummaries = new List<PoolSummaryResult>();
+            foreach (var pool in paginatedPools)
+            {
+                var summary = await MapToSummaryAsync(pool);
+                poolSummaries.Add(summary);
+            }
 
             return new PoolListResult
             {
-                Pools = paginatedPools,
+                Pools = poolSummaries,
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
@@ -109,13 +118,20 @@ public class PoolService : IPoolService
             var totalCount = pools.Count();
             
             var paginatedPools = pools
+                .OrderByDescending(p => p.CreatedAt)  // Sort newest to oldest
                 .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .Select(MapToSummary);
+                .Take(pageSize);
+
+            var poolSummaries = new List<PoolSummaryResult>();
+            foreach (var pool in paginatedPools)
+            {
+                var summary = await MapToSummaryAsync(pool);
+                poolSummaries.Add(summary);
+            }
 
             return new PoolListResult
             {
-                Pools = paginatedPools,
+                Pools = poolSummaries,
                 TotalCount = totalCount,
                 Page = page,
                 PageSize = pageSize
@@ -257,7 +273,14 @@ public class PoolService : IPoolService
                     break;
             }
 
-            return pools.Select(MapToSummary);
+            var poolSummaries = new List<PoolSummaryResult>();
+            foreach (var pool in pools)
+            {
+                var summary = await MapToSummaryAsync(pool);
+                poolSummaries.Add(summary);
+            }
+
+            return poolSummaries;
         }
         catch (Exception ex)
         {
@@ -266,8 +289,60 @@ public class PoolService : IPoolService
         }
     }
 
-    private PoolSummaryResult MapToSummary(Pool pool)
+    /// <summary>
+    /// Compute the simplified pool status based on all pause/active states
+    /// </summary>
+    private async Task<(PoolStatus Status, string Description)> ComputePoolStatusAsync(Pool pool)
     {
+        try
+        {
+            // Check database active flag first
+            if (!pool.IsActive)
+            {
+                return (PoolStatus.Inactive, "Pool is inactive (deprecated or failed)");
+            }
+
+            // Check system-wide pause
+            var systemState = await _systemStateRepository.GetByNetworkAsync(pool.Network);
+            if (systemState?.IsPaused == true)
+            {
+                return (PoolStatus.SystemPaused, $"System is paused: {systemState.PauseReason}");
+            }
+
+            // Check pool-wide pause
+            if (pool.IsPaused)
+            {
+                return (PoolStatus.PoolPaused, "Pool is paused by owner");
+            }
+
+            // Check swap-only pause
+            if (pool.SwapsPaused)
+            {
+                return (PoolStatus.SwapsPaused, "Swaps are paused - liquidity operations available");
+            }
+
+            // All good!
+            return (PoolStatus.Operational, "Pool is fully operational");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error computing pool status for {PoolAddress}", pool.PoolAddress);
+            // Fallback to the old logic
+            if (!pool.IsActive)
+                return (PoolStatus.Inactive, "Pool is inactive");
+            if (pool.IsPaused)
+                return (PoolStatus.PoolPaused, "Pool is paused");
+            if (pool.SwapsPaused)
+                return (PoolStatus.SwapsPaused, "Swaps are paused");
+            
+            return (PoolStatus.Operational, "Pool status unknown");
+        }
+    }
+
+    private async Task<PoolSummaryResult> MapToSummaryAsync(Pool pool)
+    {
+        var (status, statusDescription) = await ComputePoolStatusAsync(pool);
+        
         return new PoolSummaryResult
         {
             Id = pool.Id,
@@ -282,9 +357,11 @@ public class PoolService : IPoolService
             TotalTokenBLiquidity = pool.TotalTokenBLiquidity,
             TotalVolumeTokenA = pool.TotalVolumeTokenA,
             TotalVolumeTokenB = pool.TotalVolumeTokenB,
-            IsActive = pool.IsActive,
-            IsPaused = pool.IsPaused,
-            SwapsPaused = pool.SwapsPaused,
+            
+            // Simplified status
+            Status = status,
+            StatusDescription = statusDescription,
+            
             CreatedAt = pool.CreatedAt,
             LastUpdated = pool.LastUpdated,
             Network = pool.Network
@@ -295,6 +372,7 @@ public class PoolService : IPoolService
     {
         // Get recent transactions for this pool
         var recentTransactions = await _transactionRepository.GetByPoolIdAsync(pool.Id, 10);
+        var (status, statusDescription) = await ComputePoolStatusAsync(pool);
         
         return new PoolDetailsResult
         {
@@ -317,10 +395,12 @@ public class PoolService : IPoolService
             TotalTokenBLiquidity = pool.TotalTokenBLiquidity,
             TotalVolumeTokenA = pool.TotalVolumeTokenA,
             TotalVolumeTokenB = pool.TotalVolumeTokenB,
-            IsActive = pool.IsActive,
+            
+            // Simplified status
+            Status = status,
+            StatusDescription = statusDescription,
+            
             IsInitialized = pool.IsInitialized,
-            IsPaused = pool.IsPaused,
-            SwapsPaused = pool.SwapsPaused,
             WithdrawalProtectionActive = pool.WithdrawalProtectionActive,
             CollectedFeesTokenA = pool.CollectedFeesTokenA,
             CollectedFeesTokenB = pool.CollectedFeesTokenB,

@@ -22,12 +22,13 @@ public class PoolController : ControllerBase
 
     /// <summary>
     /// Get all pools with optional filtering and pagination
+    /// Results are sorted by creation date (newest to oldest)
     /// </summary>
     /// <param name="network">Network filter (testnet, mainnet, devnet)</param>
     /// <param name="isActive">Active status filter</param>
     /// <param name="page">Page number (default: 1)</param>
     /// <param name="pageSize">Page size (default: 20, max: 100)</param>
-    /// <returns>Paginated list of pools</returns>
+    /// <returns>Paginated list of pools sorted newest to oldest</returns>
     [HttpGet]
     public async Task<IActionResult> GetPools(
         [FromQuery] string? network = null,
@@ -45,13 +46,44 @@ public class PoolController : ControllerBase
             
             return Ok(new
             {
+                // Indicates whether the API request was processed successfully
                 success = true,
+                
+                // Array of pool summary objects containing essential pool information
+                // Each pool object contains:
+                // - id: Unique identifier for the pool in the database
+                // - poolAddress: The Solana program-derived address (PDA) of this pool on the blockchain
+                // - tokenASymbol: Symbol of the first token in the trading pair (e.g., "BTC", "SOL")
+                // - tokenBSymbol: Symbol of the second token in the trading pair (e.g., "USDC", "ETH")
+                // - tokenAName: Full display name of the first token (e.g., "Bitcoin")
+                // - tokenBName: Full display name of the second token (e.g., "USD Coin")
+                // - ratio: Human-readable ratio string combining numerator and denominator (e.g., "10000:1")
+                // - ratioANumerator: Numerator part of the trading ratio - how many units of TokenA per RatioBDenominator units of TokenB
+                // - ratioBDenominator: Denominator part of the trading ratio - the base unit count for TokenB in the ratio
+                // - totalTokenALiquidity: Current total liquidity amount of TokenA in the pool (in smallest token units, e.g., satoshis for BTC)
+                // - totalTokenBLiquidity: Current total liquidity amount of TokenB in the pool (in smallest token units, e.g., micro-USDC for USDC)
+                // - totalVolumeTokenA: Total trading volume of TokenA that has passed through this pool since creation
+                // - totalVolumeTokenB: Total trading volume of TokenB that has passed through this pool since creation
+                // - status: Simplified operational status (Operational, Inactive, SystemPaused, PoolPaused, SwapsPaused)
+                // - statusDescription: Human-readable description of the current pool status
+                // - createdAt: UTC timestamp when this pool was created on the blockchain
+                // - lastUpdated: UTC timestamp when pool data was last synchronized from the blockchain
+                // - network: Blockchain network where this pool exists (mainnet-beta, testnet, or devnet)
                 data = result.Pools,
+                
+                // Pagination information for navigating through multiple pages of results
                 pagination = new
                 {
+                    // Current page number being returned (1-based indexing)
                     currentPage = result.Page,
+                    
+                    // Number of pools returned per page (maximum 100, default 20)
                     pageSize = result.PageSize,
+                    
+                    // Total number of pools matching the search criteria across all pages
                     totalCount = result.TotalCount,
+                    
+                    // Total number of pages available based on totalCount and pageSize
                     totalPages = result.TotalPages
                 }
             });
@@ -80,7 +112,63 @@ public class PoolController : ControllerBase
                 return NotFound(new { success = false, error = "Pool not found" });
             }
 
-            return Ok(new { success = true, data = pool });
+            return Ok(new { 
+                // Indicates whether the API request was processed successfully
+                success = true, 
+                
+                // Detailed pool information object containing:
+                // - id: Unique identifier for the pool in the database
+                // - poolAddress: The Solana program-derived address (PDA) of this pool on the blockchain
+                // - owner: Pool owner (creator) public key - READ-ONLY field for display purposes
+                // - tokenAMint: First token mint address (TokenA) on the Solana blockchain
+                // - tokenBMint: Second token mint address (TokenB) on the Solana blockchain
+                // - tokenAVault: TokenA vault PDA address where TokenA liquidity is stored
+                // - tokenBVault: TokenB vault PDA address where TokenB liquidity is stored
+                // - lpTokenAMint: LP Token A mint address for liquidity providers in TokenA
+                // - lpTokenBMint: LP Token B mint address for liquidity providers in TokenB
+                // - tokenASymbol: Symbol of the first token (e.g., "BTC", "SOL")
+                // - tokenBSymbol: Symbol of the second token (e.g., "USDC", "ETH")
+                // - tokenAName: Full display name of the first token
+                // - tokenBName: Full display name of the second token
+                // - ratio: Human-readable ratio string (e.g., "10000:1")
+                // - ratioANumerator: Numerator part of the trading ratio
+                // - ratioBDenominator: Denominator part of the trading ratio
+                // - totalTokenALiquidity: Current total liquidity amount of TokenA in the pool (smallest units)
+                // - totalTokenBLiquidity: Current total liquidity amount of TokenB in the pool (smallest units)
+                // - totalVolumeTokenA: Total trading volume of TokenA since pool creation
+                // - totalVolumeTokenB: Total trading volume of TokenB since pool creation
+                // - status: Simplified operational status (Operational, Inactive, SystemPaused, PoolPaused, SwapsPaused)
+                // - statusDescription: Human-readable description of the current pool status
+                // - isInitialized: Whether the pool has been properly initialized on the blockchain
+                // - withdrawalProtectionActive: Whether automatic withdrawal protection is active (READ-ONLY)
+                // - collectedFeesTokenA: Collected fees in TokenA awaiting withdrawal by owner (READ-ONLY, in smallest units)
+                // - collectedFeesTokenB: Collected fees in TokenB awaiting withdrawal by owner (READ-ONLY, in smallest units)
+                // - swapFeeBasisPoints: Current swap fee rate in basis points (e.g., 30 = 0.3%) (READ-ONLY)
+                // - collectedSolFees: Collected SOL fees in lamports (READ-ONLY)
+                // - uniqueLiquidityProviders: Number of unique addresses that have provided liquidity to this pool
+                // - creationBlockNumber: Block number when this pool was created on the blockchain
+                // - creationTxSignature: Transaction signature of the pool creation transaction
+                // - createdAt: UTC timestamp when this pool was created
+                // - lastUpdated: UTC timestamp when pool data was last synchronized from blockchain
+                // - network: Blockchain network where this pool exists
+                // - recentTransactions: Array of recent transactions for this pool (up to 10 most recent)
+                //   Each transaction contains:
+                //   - id: Unique identifier for the transaction in the database
+                //   - type: Type of transaction (1=Swap, 2=AddLiquidity, 3=RemoveLiquidity, 7=PoolCreation)
+                //   - typeDisplay: Human-readable transaction type (e.g., "Swap", "AddLiquidity")
+                //   - transactionSignature: Solana transaction signature for this transaction
+                //   - userAddress: Public key of the user who initiated this transaction
+                //   - tokenAAmount: Amount of TokenA involved in this transaction (0 if not applicable, in smallest units)
+                //   - tokenBAmount: Amount of TokenB involved in this transaction (0 if not applicable, in smallest units)
+                //   - lpTokenAmount: Amount of LP tokens involved (for liquidity operations, in smallest units)
+                //   - processedAt: UTC timestamp when this transaction was processed on the blockchain
+                //   - isSuccessful: Whether the transaction completed successfully
+                //   - errorMessage: Error message if transaction failed (null if successful)
+                //   - gasFee: Gas fees paid for this transaction (in lamports)
+                //   - swapPrice: Exchange rate at time of swap (TokenA per TokenB, null for non-swap transactions)
+                //   - description: Human-readable description of what this transaction accomplished
+                data = pool 
+            });
         }
         catch (Exception ex)
         {
@@ -106,7 +194,15 @@ public class PoolController : ControllerBase
                 return NotFound(new { success = false, error = "Pool not found" });
             }
 
-            return Ok(new { success = true, data = pool });
+            return Ok(new { 
+                // Indicates whether the API request was processed successfully
+                success = true, 
+                
+                // Detailed pool information object (same structure as Get Pool by ID response)
+                // Contains all pool details including owner, token mints, vaults, LP tokens,
+                // liquidity amounts, trading volumes, status information, fees, and recent transactions
+                data = pool 
+            });
         }
         catch (Exception ex)
         {
@@ -117,12 +213,13 @@ public class PoolController : ControllerBase
 
     /// <summary>
     /// Search pools by token symbols or names
+    /// Results are sorted by creation date (newest to oldest)
     /// </summary>
     /// <param name="q">Search query</param>
     /// <param name="network">Network filter (optional)</param>
     /// <param name="page">Page number (default: 1)</param>
     /// <param name="pageSize">Page size (default: 20)</param>
-    /// <returns>Search results</returns>
+    /// <returns>Search results sorted newest to oldest</returns>
     [HttpGet("search")]
     public async Task<IActionResult> SearchPools(
         [FromQuery] string q,
@@ -145,15 +242,30 @@ public class PoolController : ControllerBase
             
             return Ok(new
             {
+                // Indicates whether the search was processed successfully
                 success = true,
+                
+                // Array of pool summary objects matching the search criteria
+                // Each pool has the same structure as the Get All Pools response
                 data = result.Pools,
+                
+                // Pagination information for navigating through search results
                 pagination = new
                 {
+                    // Current page number being returned (1-based indexing)
                     currentPage = result.Page,
+                    
+                    // Number of pools returned per page (maximum 100, default 20)
                     pageSize = result.PageSize,
+                    
+                    // Total number of pools matching the search criteria across all pages
                     totalCount = result.TotalCount,
+                    
+                    // Total number of pages available based on totalCount and pageSize
                     totalPages = result.TotalPages
                 },
+                
+                // The search query that was executed against token symbols and names
                 query = q
             });
         }
@@ -175,7 +287,21 @@ public class PoolController : ControllerBase
         try
         {
             var stats = await _poolService.GetPoolStatisticsAsync(network);
-            return Ok(new { success = true, data = stats });
+            return Ok(new { 
+                // Indicates whether statistics were retrieved successfully
+                success = true, 
+                
+                // Aggregated statistics object containing:
+                // - totalPools: Total number of pools across all networks (or filtered network)
+                // - activePools: Number of pools currently accepting transactions
+                // - pausedPools: Number of pools that are paused (either globally or swaps-only)
+                // - totalValueLocked: Total value locked across all pools (sum of all token liquidity in smallest units)
+                // - volume24h: Total trading volume in the last 24 hours (in smallest units)
+                // - uniqueUsers24h: Number of unique user addresses that traded in the last 24 hours
+                // - totalTransactions: Total number of transactions across all pools since inception
+                // - lastUpdated: UTC timestamp when these statistics were last calculated
+                data = stats 
+            });
         }
         catch (Exception ex)
         {
@@ -201,9 +327,30 @@ public class PoolController : ControllerBase
             
             return Ok(new 
             { 
+                // Indicates whether transactions were retrieved successfully
                 success = true, 
+                
+                // Array of transaction objects for this pool, each containing:
+                // - id: Unique identifier for the transaction in the database
+                // - type: Type of transaction as enum value (1=Swap, 2=AddLiquidity, 3=RemoveLiquidity, 7=PoolCreation)
+                // - typeDisplay: Human-readable transaction type string
+                // - transactionSignature: Solana transaction signature for verification on blockchain
+                // - userAddress: Public key of the user who initiated this transaction
+                // - tokenAAmount: Amount of TokenA involved (0 if not applicable, in smallest token units)
+                // - tokenBAmount: Amount of TokenB involved (0 if not applicable, in smallest token units)
+                // - lpTokenAmount: Amount of LP tokens minted/burned (for liquidity operations, in smallest units)
+                // - processedAt: UTC timestamp when transaction was processed on blockchain
+                // - isSuccessful: Whether the transaction completed successfully on blockchain
+                // - errorMessage: Error message if transaction failed (null if successful)
+                // - gasFee: Gas fees paid for this transaction (in lamports)
+                // - swapPrice: Exchange rate at time of swap (TokenA per TokenB, null for non-swap transactions)
+                // - description: Human-readable description of what this transaction accomplished
                 data = transactions,
+                
+                // The pool ID these transactions belong to
                 poolId = id,
+                
+                // The limit parameter that was applied to this query
                 limit = limit
             });
         }
@@ -230,7 +377,20 @@ public class PoolController : ControllerBase
             
             if (result.Success)
             {
-                return Ok(new { success = true, data = result, message = "Pool synchronized successfully" });
+                return Ok(new { 
+                    // Indicates whether the sync operation was initiated successfully
+                    success = true, 
+                    
+                    // Sync operation result object containing:
+                    // - success: Whether the blockchain sync operation completed successfully
+                    // - errorMessage: Error message if sync failed (null if successful)
+                    // - syncedAt: UTC timestamp when the sync operation was performed
+                    // - pool: The updated pool data after sync (same structure as Get Pool by ID response)
+                    data = result, 
+                    
+                    // Human-readable message about the sync operation result
+                    message = "Pool synchronized successfully" 
+                });
             }
             else
             {
@@ -271,10 +431,20 @@ public class PoolController : ControllerBase
             
             return Ok(new 
             { 
+                // Indicates whether top pools were retrieved successfully
                 success = true, 
+                
+                // Array of top pool summary objects (same structure as individual pools in Get All Pools)
+                // Ordered by the specified criteria (volume, liquidity, or recent creation)
                 data = pools,
+                
+                // The sorting criteria that was applied ("volume", "liquidity", or "recent")
                 sortBy = sortBy,
+                
+                // The number of pools returned
                 count = count,
+                
+                // The network filter applied (null if no filter)
                 network = network
             });
         }

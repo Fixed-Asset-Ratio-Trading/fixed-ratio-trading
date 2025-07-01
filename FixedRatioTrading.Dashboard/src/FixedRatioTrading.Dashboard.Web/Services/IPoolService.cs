@@ -3,6 +3,37 @@ using FixedRatioTrading.Dashboard.Core.Models;
 namespace FixedRatioTrading.Dashboard.Web.Services;
 
 /// <summary>
+/// Pool operational status combining all pause/active states
+/// </summary>
+public enum PoolStatus
+{
+    /// <summary>
+    /// Pool is fully operational - all operations allowed
+    /// </summary>
+    Operational = 1,
+    
+    /// <summary>
+    /// Pool is inactive in database (deprecated/failed)
+    /// </summary>
+    Inactive = 2,
+    
+    /// <summary>
+    /// Entire system is paused - no operations allowed anywhere
+    /// </summary>
+    SystemPaused = 3,
+    
+    /// <summary>
+    /// This specific pool is paused by owner - no operations allowed
+    /// </summary>
+    PoolPaused = 4,
+    
+    /// <summary>
+    /// Only swaps are paused - liquidity operations still allowed
+    /// </summary>
+    SwapsPaused = 5
+}
+
+/// <summary>
 /// Business service interface for pool operations
 /// Provides high-level business logic for pool management
 /// </summary>
@@ -10,12 +41,13 @@ public interface IPoolService
 {
     /// <summary>
     /// Get all pools with optional filtering
+    /// Results are sorted by creation date (newest to oldest)
     /// </summary>
     /// <param name="network">Network filter (optional)</param>
     /// <param name="isActive">Active status filter (optional)</param>
     /// <param name="page">Page number for pagination</param>
     /// <param name="pageSize">Page size for pagination</param>
-    /// <returns>Paginated pool results</returns>
+    /// <returns>Paginated pool results sorted newest to oldest</returns>
     Task<PoolListResult> GetPoolsAsync(string? network = null, bool? isActive = null, int page = 1, int pageSize = 20);
     
     /// <summary>
@@ -34,12 +66,13 @@ public interface IPoolService
     
     /// <summary>
     /// Search pools by token symbols or names
+    /// Results are sorted by creation date (newest to oldest)
     /// </summary>
     /// <param name="searchTerm">Search term</param>
     /// <param name="network">Network filter (optional)</param>
     /// <param name="page">Page number</param>
     /// <param name="pageSize">Page size</param>
-    /// <returns>Search results</returns>
+    /// <returns>Search results sorted newest to oldest</returns>
     Task<PoolListResult> SearchPoolsAsync(string searchTerm, string? network = null, int page = 1, int pageSize = 20);
     
     /// <summary>
@@ -104,9 +137,11 @@ public class PoolSummaryResult
     public ulong TotalTokenBLiquidity { get; set; }
     public ulong TotalVolumeTokenA { get; set; }
     public ulong TotalVolumeTokenB { get; set; }
-    public bool IsActive { get; set; }
-    public bool IsPaused { get; set; }
-    public bool SwapsPaused { get; set; }
+    
+    // Simplified status that combines all pause/active states
+    public PoolStatus Status { get; set; }
+    public string StatusDescription { get; set; } = string.Empty;
+    
     public DateTime CreatedAt { get; set; }
     public DateTime LastUpdated { get; set; }
     public string Network { get; set; } = string.Empty;
