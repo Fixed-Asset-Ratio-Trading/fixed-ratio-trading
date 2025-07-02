@@ -15,16 +15,46 @@
 #   ✅ Comprehensive logging
 #
 # USAGE:
-#   ./scripts/start_production_validator.sh
+#   ./scripts/start_production_validator.sh [--reset]
 #   
-#   Or with custom IP:
-#   EXTERNAL_IP=192.168.1.100 ./scripts/start_production_validator.sh
+#   Options:
+#     --reset    Force clean blockchain reset (removes all existing accounts/state)
+#   
+#   Environment variables:
+#     EXTERNAL_IP=192.168.1.100 ./scripts/start_production_validator.sh
 #
 # AUTHOR: Fixed Ratio Trading Development Team
 # VERSION: 4.0 - Full Automation Update
 # UPDATED: January 2025
 
 set -e
+
+# Parse command line arguments
+FORCE_RESET=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --reset)
+            FORCE_RESET=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--reset]"
+            echo ""
+            echo "Options:"
+            echo "  --reset    Force clean blockchain reset (removes all existing accounts/state)"
+            echo "  -h, --help Show this help message"
+            echo ""
+            echo "Environment variables:"
+            echo "  EXTERNAL_IP=<ip>  Specify custom external IP address"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -347,11 +377,35 @@ fi
 echo -e "${YELLOW}🔍 Checking for Solana validator...${NC}"
 
 VALIDATOR_RUNNING=false
+NEED_VALIDATOR_START=false
+
 if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
-    echo -e "${GREEN}✅ Solana validator already running and responding${NC}"
-    VALIDATOR_RUNNING=true
+    if [ "$FORCE_RESET" = true ]; then
+        echo -e "${YELLOW}⚠️  Validator detected but --reset flag specified${NC}"
+        echo -e "${YELLOW}🔄 Stopping existing validator to force clean reset...${NC}"
+        
+        # Stop existing validator for clean reset
+        if screen -list | grep -q "$VALIDATOR_SESSION_NAME"; then
+            screen -S "$VALIDATOR_SESSION_NAME" -X quit 2>/dev/null || true
+        fi
+        if pgrep -f "solana-test-validator" > /dev/null; then
+            pkill -f "solana-test-validator" 2>/dev/null || true
+            sleep 3
+        fi
+        VALIDATOR_RUNNING=false
+        NEED_VALIDATOR_START=true
+    else
+        echo -e "${GREEN}✅ Solana validator already running and responding${NC}"
+        echo -e "${CYAN}💡 Use --reset flag to force clean blockchain reset${NC}"
+        VALIDATOR_RUNNING=true
+    fi
 else
     echo -e "${YELLOW}⚠️  No Solana validator detected on port $RPC_PORT${NC}"
+    NEED_VALIDATOR_START=true
+fi
+
+# Start validator if needed
+if [ "$NEED_VALIDATOR_START" = true ]; then
     echo -e "${YELLOW}🚀 Starting Solana validator automatically...${NC}"
     
     # Stop any existing validator screen session
@@ -368,10 +422,35 @@ else
         sleep 3
     fi
     
-    # Remove old test ledger to ensure clean start
-    if [ -d "test-ledger" ]; then
-        echo -e "${YELLOW}🧹 Cleaning up old ledger data...${NC}"
-        rm -rf test-ledger
+    # Handle reset logic
+    RESET_FLAG=""
+    if [ "$FORCE_RESET" = true ]; then
+        echo -e "${CYAN}🔄 --reset flag detected: Forcing clean blockchain state${NC}"
+        RESET_FLAG="--reset"
+        
+        # Remove old test ledger to ensure clean start
+        if [ -d "test-ledger" ]; then
+            echo -e "${YELLOW}🧹 Cleaning up old ledger data...${NC}"
+            rm -rf test-ledger
+        fi
+        
+        # Also remove any backup ledger data
+        for ledger_dir in test-ledger-backup* .ledger-backup*; do
+            if [ -d "$ledger_dir" ]; then
+                echo -e "${YELLOW}🧹 Cleaning up backup ledger: $ledger_dir${NC}"
+                rm -rf "$ledger_dir"
+            fi
+        done
+    else
+        echo -e "${CYAN}💡 No --reset flag: Preserving existing blockchain state (if any)${NC}"
+        # Only remove ledger if it exists and seems corrupted
+        if [ -d "test-ledger" ]; then
+            if [ ! -f "test-ledger/genesis.bin" ]; then
+                echo -e "${YELLOW}🧹 Removing corrupted ledger data...${NC}"
+                rm -rf test-ledger
+                RESET_FLAG="--reset"
+            fi
+        fi
     fi
     
     # Start validator in screen session
@@ -400,7 +479,7 @@ else
         solana-test-validator \\
             --rpc-port $RPC_PORT \\
             --bind-address 0.0.0.0 \\
-            --reset \\
+            $RESET_FLAG \\
             --quiet
     "
     
@@ -409,7 +488,7 @@ else
     # Wait for validator to initialize
     echo -e "${YELLOW}⏳ Waiting for validator to initialize...${NC}"
     RETRY_COUNT=0
-    MAX_RETRIES=30
+    MAX_RETRIES=5
     
     while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
         if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
@@ -468,6 +547,20 @@ if [ "$VALIDATOR_RUNNING" = true ]; then
         echo -e "${GREEN}✅ Secondary airdrop successful: $SECONDARY_BALANCE SOL${NC}"
     else
         echo -e "${RED}❌ Secondary airdrop failed${NC}"
+    fi
+    
+    # Verify reset worked if --reset was used
+    if [ "$FORCE_RESET" = true ]; then
+        echo -e "${YELLOW}🔍 Verifying blockchain reset...${NC}"
+        CURRENT_BALANCE=$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
+        if [ "$CURRENT_BALANCE" = "$AIRDROP_AMOUNT" ]; then
+            echo -e "${GREEN}✅ Reset verification passed: Account has exactly $CURRENT_BALANCE SOL${NC}"
+        elif [ "$CURRENT_BALANCE" = "Error" ]; then
+            echo -e "${RED}❌ Reset verification failed: Could not check account balance${NC}"
+        else
+            echo -e "${RED}❌ Reset verification failed: Account has $CURRENT_BALANCE SOL (expected $AIRDROP_AMOUNT SOL)${NC}"
+            echo -e "${YELLOW}⚠️  This indicates the blockchain state was not properly reset${NC}"
+        fi
     fi
     
     echo ""
