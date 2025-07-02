@@ -300,10 +300,10 @@ async fn update_security_params(
     recent_blockhash: Hash,
     owner: &Keypair,
     pool_state_pda: &Pubkey,
-    system_paused: Option<bool>,
+    paused: Option<bool>,
 ) -> TestResult {
     let instruction_data = PoolInstruction::UpdateSecurityParams {
-        system_paused,
+        paused,
         only_lp_token_a_for_both: None, // Not implemented yet
     };
 

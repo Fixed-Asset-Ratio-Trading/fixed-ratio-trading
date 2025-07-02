@@ -647,7 +647,7 @@ pub fn process_initialize_pool_data(
     pool_state_data.is_initialized = true;
 
     // Initialize security parameters
-    pool_state_data.system_paused = false;
+    pool_state_data.paused = false;
 
     // Initialize rent requirements
     let rent_requirements = RentRequirements::new(rent);
@@ -1053,7 +1053,7 @@ pub fn process_initialize_pool(
     pool_state_data.token_a_vault_bump_seed = token_a_vault_bump;
     pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
     pool_state_data.is_initialized = true;
-    pool_state_data.system_paused = false;
+    pool_state_data.paused = false;
     pool_state_data.rent_requirements = RentRequirements::new(rent);
     pool_state_data.collected_fees_token_a = 0;
     pool_state_data.collected_fees_token_b = 0;

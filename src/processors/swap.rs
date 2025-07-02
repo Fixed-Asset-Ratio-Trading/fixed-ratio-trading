@@ -692,8 +692,6 @@ fn validate_pool_swaps_not_paused(pool_state_account: &AccountInfo) -> ProgramRe
     
     if pool_state_data.swaps_paused {
         msg!("Pool swaps are currently paused by owner");
-        msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
-        msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
         msg!("Note: Deposits and withdrawals are still available");
         msg!("Note: Owner can manage pause governance and reasons");
         return Err(PoolError::PoolSwapsPaused.into());

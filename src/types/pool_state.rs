@@ -90,11 +90,8 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
-    pub system_paused: bool,
-    // Pool-specific swap pause controls (separate from system pause)
-    pub swaps_paused: bool,
-    pub swaps_pause_initiated_by: Option<Pubkey>,
-    pub swaps_pause_initiated_timestamp: i64,
+    pub paused: bool, // Pool-specific pause (separate from system pause)
+    pub swaps_paused: bool, // Swap-specific pause within this pool
     
     // Automatic withdrawal protection
     pub withdrawal_protection_active: bool,
@@ -136,10 +133,8 @@ impl Default for PoolState {
             token_b_vault_bump_seed: 0,
             is_initialized: false,
             rent_requirements: RentRequirements::default(),
-            system_paused: false,
+            paused: false,
             swaps_paused: false,
-            swaps_pause_initiated_by: None,
-            swaps_pause_initiated_timestamp: 0,
             withdrawal_protection_active: false,
             only_lp_token_a_for_both: false,
             collected_fees_token_a: 0,
@@ -172,11 +167,8 @@ impl PoolState {
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
-        1 +  // system_paused
-        // Swap-specific pause fields
+        1 +  // paused
         1 +  // swaps_paused
-        33 + // swaps_pause_initiated_by (Option<Pubkey> = 1 + 32)
-        8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
         1 +  // only_lp_token_a_for_both
         

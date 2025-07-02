@@ -19,12 +19,10 @@ ALTER TABLE pools ADD COLUMN IF NOT EXISTS token_b_vault_bump_seed SMALLINT NOT 
 
 -- Add initialization and pause state fields
 ALTER TABLE pools ADD COLUMN IF NOT EXISTS is_initialized BOOLEAN NOT NULL DEFAULT true;
-ALTER TABLE pools ADD COLUMN IF NOT EXISTS system_paused BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE pools ADD COLUMN IF NOT EXISTS paused BOOLEAN NOT NULL DEFAULT false;
 
 -- Add pool-specific swap pause controls (separate from system pause)
 ALTER TABLE pools ADD COLUMN IF NOT EXISTS swaps_paused BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE pools ADD COLUMN IF NOT EXISTS swaps_pause_initiated_by VARCHAR(44);
-ALTER TABLE pools ADD COLUMN IF NOT EXISTS swaps_pause_initiated_timestamp BIGINT NOT NULL DEFAULT 0;
 
 -- Add automatic withdrawal protection
 ALTER TABLE pools ADD COLUMN IF NOT EXISTS withdrawal_protection_active BOOLEAN NOT NULL DEFAULT false;
@@ -52,7 +50,7 @@ UPDATE pools SET owner = creator_address WHERE owner = '' AND creator_address IS
 -- Create indexes for new fields to improve query performance
 CREATE INDEX IF NOT EXISTS idx_pools_owner ON pools(owner);
 CREATE INDEX IF NOT EXISTS idx_pools_swaps_paused ON pools(swaps_paused);
-CREATE INDEX IF NOT EXISTS idx_pools_system_paused ON pools(system_paused);
+CREATE INDEX IF NOT EXISTS idx_pools_paused ON pools(paused);
 CREATE INDEX IF NOT EXISTS idx_pools_fee_tracking ON pools(collected_fees_token_a, collected_fees_token_b);
 
 -- Drop any delegate-related tables or columns if they exist
@@ -71,7 +69,7 @@ ALTER TABLE pools DROP COLUMN IF EXISTS delegate_permissions;
 CREATE TABLE IF NOT EXISTS system_state (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     authority VARCHAR(44) NOT NULL,
-    system_paused BOOLEAN NOT NULL DEFAULT false,
+    system_paused BOOLEAN NOT NULL DEFAULT false, -- Note: This is system-wide pause, different from pool-level pause
     pause_timestamp BIGINT NOT NULL DEFAULT 0,
     pause_reason VARCHAR(200) NOT NULL DEFAULT '',
     network VARCHAR(20) NOT NULL DEFAULT 'testnet',

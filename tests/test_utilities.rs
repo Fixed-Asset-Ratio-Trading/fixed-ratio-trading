@@ -362,10 +362,8 @@ fn test_pool_state_get_packed_len() {
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
         40 + // rent_requirements
-        1 +  // system_paused
+        1 +  // paused
         1 +  // swaps_paused
-        33 + // swaps_pause_initiated_by (Option<Pubkey>)
-        8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
         1 +  // only_lp_token_a_for_both
         8 +  // collected_fees_token_a
@@ -1774,7 +1772,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         
         // Verify default operational state
         assert!(pool_state.is_initialized, "Pool should be initialized");
-        assert!(!pool_state.system_paused, "Pool should not be paused by default");
+        assert!(!pool_state.paused, "Pool should not be paused by default");
         assert!(!pool_state.swaps_paused, "Swaps should not be paused by default");
         assert!(!pool_state.withdrawal_protection_active, "Withdrawal protection should not be active by default");
         assert!(!pool_state.only_lp_token_a_for_both, "Single LP token mode should not be active by default");

@@ -32,7 +32,7 @@ use borsh::BorshDeserialize;
 /// 1. Validates the caller is the designated pool owner and signed the transaction
 /// 2. Loads current pool state data to verify ownership permissions
 /// 3. Applies any provided security parameter updates:
-///    - `system_paused`: Immediately enables/disables pool operations
+///    - `paused`: Immediately enables/disables pool operations
 /// 4. Serializes updated pool state back to on-chain storage
 /// 5. Logs changes for transparency and audit compliance
 ///
@@ -41,18 +41,18 @@ use borsh::BorshDeserialize;
 /// * `accounts` - Array of account infos in the following order:
 ///   - `accounts[0]` - Pool owner account (must be signer and match pool state owner)
 ///   - `accounts[1]` - Pool state PDA account (writable for parameter updates)
-/// * `system_paused` - Optional boolean to pause/unpause all pool operations (except owner functions)
+/// * `paused` - Optional boolean to pause/unpause all pool operations (except owner functions)
 ///
 /// # Account Requirements
 /// - Owner: Must be signer and match the owner field in pool state data
 /// - Pool state: Must be writable for parameter updates
 ///
 /// # Pause Functionality
-/// When `system_paused = true`:
+/// When `paused = true`:
 /// - Blocks all user operations: deposits, withdrawals, swaps
 /// - Allows owner operations: fee withdrawals, security updates
 /// - Provides emergency stop for security incidents or maintenance
-/// - Can be reversed by setting `system_paused = false`
+/// - Can be reversed by setting `paused = false`
 ///
 /// # Security Features
 /// - **Owner-only access**: Only designated pool owner can modify security parameters
@@ -73,18 +73,18 @@ use borsh::BorshDeserialize;
 /// ```ignore
 /// // Emergency pause all pool operations
 /// let instruction = PoolInstruction::UpdateSecurityParams {
-///     system_paused: Some(true),          // Pause operations
+///     paused: Some(true),          // Pause operations
 /// };
 ///
 /// // Resume normal operations
 /// let instruction = PoolInstruction::UpdateSecurityParams {
-///     system_paused: Some(false),         // Unpause operations
+///     paused: Some(false),         // Unpause operations
 /// };
 /// ```
 pub fn process_update_security_params(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
-    system_paused: Option<bool>,
+    paused: Option<bool>,
     only_lp_token_a_for_both: Option<bool>,
 ) -> ProgramResult {
     msg!("Processing UpdateSecurityParams");
@@ -109,9 +109,9 @@ pub fn process_update_security_params(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // Only update system_paused if provided
-    if let Some(paused) = system_paused {
-        pool_state_data.system_paused = paused;
+    // Only update paused if provided
+    if let Some(pause_state) = paused {
+        pool_state_data.paused = pause_state;
     }
     
     // Future feature: only_lp_token_a_for_both

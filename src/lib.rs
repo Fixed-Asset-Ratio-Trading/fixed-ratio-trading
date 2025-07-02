@@ -206,9 +206,9 @@ pub fn process_instruction(
         } => process_swap(program_id, accounts, input_token_mint, amount_in, minimum_amount_out),
 
         PoolInstruction::UpdateSecurityParams {
-            system_paused,
+            paused,
             only_lp_token_a_for_both,
-        } => process_update_security_params(program_id, accounts, system_paused, only_lp_token_a_for_both),
+        } => process_update_security_params(program_id, accounts, paused, only_lp_token_a_for_both),
 
         PoolInstruction::ChangeFee {
             new_fee_basis_points,

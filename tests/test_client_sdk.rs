@@ -414,7 +414,7 @@ async fn test_get_pool_state_success() -> TestResult {
         token_b_mint: lp_token_b_mint,
         ratio_a_numerator: 1000,
         ratio_b_denominator: 1,
-        system_paused: false,
+        paused: false,
         only_lp_token_a_for_both: false,
     };
     
@@ -425,8 +425,8 @@ async fn test_get_pool_state_success() -> TestResult {
         "PoolState token_b_mint field should work correctly");
     assert_eq!(mock_pool_state_data.ratio_a_numerator, 1000, 
         "PoolState ratio_a_numerator field should work correctly");
-        assert!(!mock_pool_state_data.system_paused,
-        "PoolState system_paused field should work correctly");
+        assert!(!mock_pool_state_data.paused,
+        "PoolState paused field should work correctly");
     
     // 3. Test a modified pool state data structure (e.g., for a paused pool)
     let mock_paused_pool_state_data = fixed_ratio_trading::client_sdk::PoolState {
@@ -434,12 +434,12 @@ async fn test_get_pool_state_success() -> TestResult {
         token_b_mint: lp_token_b_mint,
         ratio_a_numerator: 1000,
         ratio_b_denominator: 1,
-        system_paused: true, // Paused pool
+        paused: true, // Paused pool
         only_lp_token_a_for_both: false,
     };
     
     // Verify paused state is correctly represented
-    assert!(mock_paused_pool_state_data.system_paused, 
+    assert!(mock_paused_pool_state_data.paused, 
         "Client SDK should correctly represent a paused pool");
     
     println!("✅ PoolState structure validated");

@@ -333,14 +333,14 @@ pub async fn create_pool_legacy_pattern(
 /// * `payer` - Pool owner (pays for transaction)
 /// * `recent_blockhash` - Recent blockhash for transaction
 /// * `pool_state_pda` - Pool state account
-/// * `system_paused` - Whether pool is paused (optional)
+/// * `paused` - Whether pool is paused (optional)
 #[allow(dead_code)]
 pub async fn update_security_params(
     banks: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
     pool_state_pda: &Pubkey,
-    system_paused: Option<bool>,
+    paused: Option<bool>,
 ) -> TestResult {
     let update_ix = Instruction {
         program_id: PROGRAM_ID,
@@ -350,7 +350,7 @@ pub async fn update_security_params(
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Rent sysvar
         ],
         data: PoolInstruction::UpdateSecurityParams {
-            system_paused,
+            paused,
             only_lp_token_a_for_both: None, // Not implemented yet
         }.try_to_vec().unwrap(),
     };

@@ -190,7 +190,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
     msg!("Is Initialized: {}", pool_state.is_initialized);
-    msg!("System Paused: {}", pool_state.system_paused);
+    msg!("Pool Paused: {}", pool_state.paused);
     msg!("Swaps Paused: {}", pool_state.swaps_paused);
     msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
     
@@ -256,15 +256,11 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
         if pool_state_data.withdrawal_protection_active {
             msg!("=== TEMPORARY WITHDRAWAL PROTECTION ===");
             msg!("Swaps temporarily paused during large withdrawal (≥5% of pool)");
-            msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
-            msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
             msg!("Protection will auto-clear after withdrawal completion");
             msg!("NOTE: This is MEV protection, not an owner action");
         } else {
             msg!("=== OWNER PAUSE ===");
             msg!("Swaps paused by owner action");
-            msg!("Paused by: {:?}", pool_state_data.swaps_pause_initiated_by);
-            msg!("Paused at: {}", pool_state_data.swaps_pause_initiated_timestamp);
             msg!("Control: Pool owner");
             msg!("Note: No auto-unpause - requires manual unpause action");
         }
@@ -481,7 +477,7 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 
 /// Validates that a pool is not paused.
 pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
-    if pool_state.system_paused {
+    if pool_state.paused {
         msg!("Pool operations are currently paused");
         return Err(PoolError::PoolPaused.into());
     }

@@ -104,8 +104,8 @@ pub enum PoolInstruction {
     
     /// Updates security parameters for the pool (owner only)
     UpdateSecurityParams {
-        /// Whether to pause pool operations
-        system_paused: Option<bool>,
+        /// Whether to pause pool operations (pool-specific pause, not system-wide)
+        paused: Option<bool>,
         /// Future feature: Single LP token mode
         /// When implemented, this will allow only LP token A (the "multiple" token) to be issued
         /// for liquidity provision, while still allowing withdrawals of either token A or B

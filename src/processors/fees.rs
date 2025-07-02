@@ -466,9 +466,7 @@ pub fn process_pause_pool_swaps(
     let clock = &Clock::from_account_info(clock_sysvar)?;
 
     // Pause swaps
-    pool_state.swaps_paused = true;
-            pool_state.swaps_pause_initiated_by = Some(*owner.key);
-    pool_state.swaps_pause_initiated_timestamp = clock.unix_timestamp;
+        pool_state.swaps_paused = true;
 
     // Save updated state
     let mut serialized_data = Vec::new();
@@ -533,8 +531,6 @@ pub fn process_unpause_pool_swaps(
 
     // Unpause swaps
     pool_state.swaps_paused = false;
-    pool_state.swaps_pause_initiated_by = None;
-    pool_state.swaps_pause_initiated_timestamp = 0;
 
     // Save updated state
     let mut serialized_data = Vec::new();
