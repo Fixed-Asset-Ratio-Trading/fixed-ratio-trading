@@ -281,6 +281,9 @@
                 <button class="nav-btn secondary" onclick="window.location.href='index.html'">
                     ← Back to Dashboard
                 </button>
+                <button class="nav-btn secondary" onclick="window.location.href='token-images-preview.html'">
+                    🖼️ Preview Token Images
+                </button>
             </div>
         </div>
         
@@ -328,11 +331,20 @@
                 </div>
                 
                 <!-- Micro Sample Token -->
-                <div style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
                     <h4 style="color: #1e40af; margin-bottom: 10px;">🔬 Micro Sample Token (MST)</h4>
                     <p style="color: #374151; margin-bottom: 15px; font-size: 14px;">Create micro units token (Micro Sample Token, MST, 0 decimals, 100,000,000 supply) - 10,000 MST = 1 TS</p>
                     <button type="button" class="nav-btn" id="create-micro-sample-btn" onclick="createMicroSampleToken()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
                         🔬 Create Micro Sample Token
+                    </button>
+                </div>
+                
+                <!-- Large Sample Token -->
+                <div style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1e40af; margin-bottom: 10px;">💎 Large Sample Token (LTS)</h4>
+                    <p style="color: #374151; margin-bottom: 15px; font-size: 14px;">Create large units token (Large Sample Token, LTS, 9 decimals, 1,000 supply) - 1 LTS = 10 TS</p>
+                    <button type="button" class="nav-btn" id="create-large-sample-btn" onclick="createLargeSampleToken()" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        💎 Create Large Sample Token
                     </button>
                 </div>
             </div>

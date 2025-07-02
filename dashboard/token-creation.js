@@ -8,6 +8,99 @@ let wallet = null;
 let isConnected = false;
 let createdTokens = [];
 
+// Metaplex Token Metadata Program constants
+const TOKEN_METADATA_PROGRAM_ID = new solanaWeb3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+
+// Token image mappings
+const TOKEN_IMAGES = {
+    'TS': 'TS Token image.png',
+    'MST': 'MTS Token image.png', 
+    'MTS': 'MTS Token image.png',
+    'LTS': 'LTS Token image.png'
+};
+
+/**
+ * Get the image URI for a token symbol
+ */
+function getTokenImageURI(symbol) {
+    const imageFileName = TOKEN_IMAGES[symbol.toUpperCase()];
+    if (imageFileName) {
+        // For local testing with dashboard server
+        return `images/${imageFileName}`;
+        
+        // For production, replace with full URLs like:
+        // return `https://your-domain.com/images/${imageFileName}`;
+        // or IPFS URLs like:
+        // return `https://gateway.pinata.cloud/ipfs/YOUR_HASH/${imageFileName}`;
+    }
+    return null;
+}
+
+/**
+ * Get metadata account address for a mint
+ */
+async function getMetadataAccount(mint) {
+    const [metadataAccount] = await solanaWeb3.PublicKey.findProgramAddress(
+        [
+            Buffer.from('metadata'),
+            TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+            mint.toBuffer(),
+        ],
+        TOKEN_METADATA_PROGRAM_ID
+    );
+    return metadataAccount;
+}
+
+/**
+ * Create token metadata instruction
+ */
+function createMetadataInstruction(
+    metadataAccount,
+    mint,
+    mintAuthority,
+    payer,
+    updateAuthority,
+    tokenName,
+    symbol,
+    uri
+) {
+    const keys = [
+        { pubkey: metadataAccount, isSigner: false, isWritable: true },
+        { pubkey: mint, isSigner: false, isWritable: false },
+        { pubkey: mintAuthority, isSigner: true, isWritable: false },
+        { pubkey: payer, isSigner: true, isWritable: true },
+        { pubkey: updateAuthority, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+    ];
+
+    // Metadata Data structure
+    const data = {
+        name: tokenName,
+        symbol: symbol,
+        uri: uri || '',
+        sellerFeeBasisPoints: 0,
+        creators: null
+    };
+
+    // Build instruction data
+    const dataBytes = Buffer.concat([
+        Buffer.from([0]), // CreateMetadataAccount instruction (discriminator = 0)
+        Buffer.from(data.name.padEnd(32, '\0'), 'utf-8'),
+        Buffer.from(data.symbol.padEnd(10, '\0'), 'utf-8'),
+        Buffer.from(data.uri.padEnd(200, '\0'), 'utf-8'),
+        Buffer.from([0, 0]), // sellerFeeBasisPoints (u16)
+        Buffer.from([0]), // creators option (0 = None)
+        Buffer.from([1]), // isMutable (1 = true)
+    ]);
+
+    return new solanaWeb3.TransactionInstruction({
+        keys,
+        programId: TOKEN_METADATA_PROGRAM_ID,
+        data: dataBytes
+    });
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Token Creation Dashboard initializing...');
@@ -228,6 +321,7 @@ function updateCreateButtonState() {
     const createBtn = document.getElementById('create-btn');
     const sampleBtn = document.getElementById('create-sample-btn');
     const microSampleBtn = document.getElementById('create-micro-sample-btn');
+    const largeSampleBtn = document.getElementById('create-large-sample-btn');
     const requiredInputs = form.querySelectorAll('input[required]');
     
     let allValid = isConnected;
@@ -247,6 +341,10 @@ function updateCreateButtonState() {
     
     if (microSampleBtn) {
         microSampleBtn.disabled = !isConnected;
+    }
+    
+    if (largeSampleBtn) {
+        largeSampleBtn.disabled = !isConnected;
     }
 }
 
@@ -286,7 +384,8 @@ async function createSampleToken() {
         
         showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
         💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
-        🔑 Mint Address: ${tokenInfo.mint}`);
+        🔑 Mint Address: ${tokenInfo.mint}
+        🖼️ Token includes custom image metadata for wallet display`);
         
     } catch (error) {
         console.error('❌ Error creating sample token:', error);
@@ -334,7 +433,8 @@ async function createMicroSampleToken() {
         showStatus('success', `🎉 Micro sample token "${microSampleData.name}" created successfully! 
         💰 ${microSampleData.supply.toLocaleString()} ${microSampleData.symbol} tokens minted to your wallet
         🔑 Mint Address: ${tokenInfo.mint}
-        🔗 Exchange Rate: 10,000 MST = 1 TS`);
+        🔗 Exchange Rate: 10,000 MST = 1 TS
+        🖼️ Token includes custom image metadata for wallet display`);
         
     } catch (error) {
         console.error('❌ Error creating micro sample token:', error);
@@ -342,6 +442,55 @@ async function createMicroSampleToken() {
     } finally {
         microSampleBtn.disabled = false;
         microSampleBtn.textContent = originalText;
+    }
+}
+
+/**
+ * Create large sample token for quick testing
+ */
+async function createLargeSampleToken() {
+    if (!isConnected || !wallet) {
+        showStatus('error', 'Please connect your wallet first');
+        return;
+    }
+    
+    const largeSampleBtn = document.getElementById('create-large-sample-btn');
+    const originalText = largeSampleBtn.textContent;
+    
+    try {
+        largeSampleBtn.disabled = true;
+        largeSampleBtn.textContent = '🔄 Creating Large Sample Token...';
+        
+        // Large sample token data
+        const largeSampleData = {
+            name: 'Large Sample Token',
+            symbol: 'LTS',
+            decimals: 9,
+            supply: 1000,
+            description: 'Large Sample Token represents the highest denomination of sample tokens and are interchangeable as 1 LTS = 10 TS'
+        };
+        
+        showStatus('info', `Creating large sample token "${largeSampleData.name}" (${largeSampleData.symbol})...`);
+        
+        // Create token
+        const tokenInfo = await createSPLToken(largeSampleData);
+        
+        // Store created token
+        createdTokens.push(tokenInfo);
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        
+        showStatus('success', `🎉 Large sample token "${largeSampleData.name}" created successfully! 
+        💰 ${largeSampleData.supply.toLocaleString()} ${largeSampleData.symbol} tokens minted to your wallet
+        🔑 Mint Address: ${tokenInfo.mint}
+        🔗 Exchange Rate: 1 LTS = 10 TS
+        🖼️ Token includes custom image metadata for wallet display`);
+        
+    } catch (error) {
+        console.error('❌ Error creating large sample token:', error);
+        showStatus('error', 'Failed to create large sample token: ' + error.message);
+    } finally {
+        largeSampleBtn.disabled = false;
+        largeSampleBtn.textContent = originalText;
     }
 }
 
@@ -380,7 +529,8 @@ async function handleTokenCreation(event) {
         
         showStatus('success', `🎉 Token "${formData.name}" created successfully! 
         💰 ${formData.supply.toLocaleString()} ${formData.symbol} tokens minted to your wallet
-        🔑 Mint Address: ${tokenInfo.mint}`);
+        🔑 Mint Address: ${tokenInfo.mint}
+        🖼️ ${tokenInfo.imageURI ? 'Token includes custom image metadata for wallet display' : 'Token created with standard metadata'}`);
         
     } catch (error) {
         console.error('❌ Error creating token:', error);
@@ -521,6 +671,16 @@ async function createSPLToken(tokenData) {
         // Get rent exemption for mint account
         const mintRent = await connection.getMinimumBalanceForRentExemption(window.splToken.MintLayout.span);
         
+        // Get metadata account address
+        const metadataAccount = await getMetadataAccount(mintKeypair.publicKey);
+        console.log('📄 Metadata account:', metadataAccount.toString());
+        
+        // Get image URI for token
+        const imageURI = getTokenImageURI(tokenData.symbol);
+        if (imageURI) {
+            console.log('🖼️ Token image URI:', imageURI);
+        }
+        
         // Build instructions array
         const instructions = [];
         
@@ -582,6 +742,37 @@ async function createSPLToken(tokenData) {
             )
         );
         
+        // 6. Create token metadata (for wallet display and images)
+        if (imageURI) {
+            console.log('📄 Adding metadata instruction with image...');
+            instructions.push(
+                createMetadataInstruction(
+                    metadataAccount,
+                    mintKeypair.publicKey,
+                    wallet.publicKey,     // mint authority
+                    wallet.publicKey,     // payer
+                    wallet.publicKey,     // update authority
+                    tokenData.name,
+                    tokenData.symbol,
+                    imageURI
+                )
+            );
+        } else {
+            console.log('📄 Adding metadata instruction without image...');
+            instructions.push(
+                createMetadataInstruction(
+                    metadataAccount,
+                    mintKeypair.publicKey,
+                    wallet.publicKey,     // mint authority
+                    wallet.publicKey,     // payer
+                    wallet.publicKey,     // update authority
+                    tokenData.name,
+                    tokenData.symbol,
+                    ''
+                )
+            );
+        }
+        
         // Create and send transaction
         const transaction = new solanaWeb3.Transaction().add(...instructions);
         
@@ -626,6 +817,8 @@ async function createSPLToken(tokenData) {
             description: tokenData.description,
             owner: wallet.publicKey.toString(),
             associatedTokenAccount: associatedTokenAccount.toString(),
+            metadataAccount: metadataAccount.toString(),
+            imageURI: imageURI || null,
             createdAt: new Date().toISOString()
         };
         
@@ -645,8 +838,6 @@ function clearForm() {
     document.getElementById('token-form').reset();
     document.getElementById('token-decimals').value = '9'; // Reset default
 }
-
-
 
 /**
  * Show status message
