@@ -140,8 +140,8 @@ if [ "$VALIDATOR_RESET" = true ]; then
     echo "   Starting fresh validator (script will handle stopping previous one)..."
     
     # Start fresh validator and show output
-    echo "   Running: cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh"
-    if ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh'; then
+    echo "   Running: cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh --reset"
+    if ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh --reset'; then
         echo -e "${GREEN}✅ Validator start script completed${NC}"
         
         # Verify validator is actually running by testing connectivity
