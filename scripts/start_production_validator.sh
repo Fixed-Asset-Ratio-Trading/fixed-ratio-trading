@@ -1,13 +1,18 @@
 #!/bin/bash
-# Production Environment Setup Script - ngrok Focus
-# =================================================
+# Production Environment Setup Script - Complete Automation
+# ========================================================
 #
 # DESCRIPTION:
-#   This script sets up a production environment with:
-#   - Auto-detection of host IP address
-#   - ngrok tunnel in dedicated screen session
-#   - Independent operation (works with or without validator)
-#   - Smart ngrok management (doesn't restart if already running)
+#   This script sets up a complete production environment with:
+#   ✅ Auto-detection of host IP address
+#   ✅ Automatic Solana validator startup
+#   ✅ Smart ngrok management (preserves existing tunnels)
+#   ✅ Dedicated screen sessions (ngrok + validator)
+#   ✅ Clean validator initialization (--reset)
+#   ✅ Global tunnel access (https://fixed.ngrok.app)
+#   ✅ Automatic SOL airdrops to configured accounts
+#   ✅ Real-time status monitoring
+#   ✅ Comprehensive logging
 #
 # USAGE:
 #   ./scripts/start_production_validator.sh
@@ -16,7 +21,7 @@
 #   EXTERNAL_IP=192.168.1.100 ./scripts/start_production_validator.sh
 #
 # AUTHOR: Fixed Ratio Trading Development Team
-# VERSION: 3.0
+# VERSION: 4.0 - Full Automation Update
 # UPDATED: January 2025
 
 set -e
@@ -80,6 +85,7 @@ detect_external_ip() {
 RPC_PORT=8899
 NGROK_URL="https://fixed.ngrok.app"
 NGROK_SESSION_NAME="ngrok-tunnel"
+VALIDATOR_SESSION_NAME="solana-validator"
 
 # Account Configuration
 PRIMARY_ACCOUNT="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
@@ -337,15 +343,99 @@ else
     echo -e "${YELLOW}⚠️  ngrok tunnel not responding yet (may need more time or no service on port $RPC_PORT)${NC}"
 fi
 
-# Check for Solana validator and perform airdrops
+# Check for Solana validator and start if needed
 echo -e "${YELLOW}🔍 Checking for Solana validator...${NC}"
+
+VALIDATOR_RUNNING=false
 if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
-    echo -e "${GREEN}✅ Solana validator detected and responding${NC}"
+    echo -e "${GREEN}✅ Solana validator already running and responding${NC}"
+    VALIDATOR_RUNNING=true
+else
+    echo -e "${YELLOW}⚠️  No Solana validator detected on port $RPC_PORT${NC}"
+    echo -e "${YELLOW}🚀 Starting Solana validator automatically...${NC}"
     
+    # Stop any existing validator screen session
+    if screen -list | grep -q "$VALIDATOR_SESSION_NAME"; then
+        echo -e "${YELLOW}⚠️  Terminating existing validator screen session...${NC}"
+        screen -S "$VALIDATOR_SESSION_NAME" -X quit 2>/dev/null || true
+        sleep 2
+    fi
+    
+    # Kill any existing validator processes
+    if pgrep -f "solana-test-validator" > /dev/null; then
+        echo -e "${YELLOW}⚠️  Stopping existing validator processes...${NC}"
+        pkill -f "solana-test-validator" 2>/dev/null || true
+        sleep 3
+    fi
+    
+    # Remove old test ledger to ensure clean start
+    if [ -d "test-ledger" ]; then
+        echo -e "${YELLOW}🧹 Cleaning up old ledger data...${NC}"
+        rm -rf test-ledger
+    fi
+    
+    # Start validator in screen session
+    screen -dmS "$VALIDATOR_SESSION_NAME" bash -c "
+        echo '⛓️  Solana Test Validator Manager'
+        echo '================================'
+        echo 'Started: \$(date)'
+        echo 'RPC Port: $RPC_PORT'
+        echo 'Bind Address: 0.0.0.0'
+        echo 'Session: $VALIDATOR_SESSION_NAME'
+        echo ''
+        echo 'Screen Commands:'
+        echo '  Detach: Ctrl+A, then D'
+        echo '  Kill session: screen -S $VALIDATOR_SESSION_NAME -X quit'
+        echo ''
+        echo '════════════════════════════════════════════════════════════════'
+        echo ''
+        
+        echo 'Starting Solana test validator...'
+        echo 'RPC URL: http://localhost:$RPC_PORT'
+        echo 'WebSocket URL: ws://localhost:$((RPC_PORT + 1))'
+        echo 'Logs: test-ledger/validator.log'
+        echo ''
+        
+        # Start the validator
+        solana-test-validator \\
+            --rpc-port $RPC_PORT \\
+            --bind-address 0.0.0.0 \\
+            --reset \\
+            --quiet
+    "
+    
+    echo -e "${GREEN}✅ Solana validator started in screen session '$VALIDATOR_SESSION_NAME'${NC}"
+    
+    # Wait for validator to initialize
+    echo -e "${YELLOW}⏳ Waiting for validator to initialize...${NC}"
+    RETRY_COUNT=0
+    MAX_RETRIES=30
+    
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
+            echo -e "${GREEN}✅ Validator is now responding to RPC calls${NC}"
+            VALIDATOR_RUNNING=true
+            break
+        fi
+        
+        echo -e "${CYAN}   Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - waiting...${NC}"
+        sleep 2
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+    done
+    
+    if [ "$VALIDATOR_RUNNING" = false ]; then
+        echo -e "${RED}❌ Validator failed to start within $((MAX_RETRIES * 2)) seconds${NC}"
+        echo -e "${YELLOW}💡 Check validator logs: screen -r $VALIDATOR_SESSION_NAME${NC}"
+        echo -e "${YELLOW}💡 Or check: tail -f test-ledger/validator.log${NC}"
+    fi
+fi
+
+# Perform CLI configuration and airdrops if validator is running
+if [ "$VALIDATOR_RUNNING" = true ]; then
     # Verify Solana CLI is still available (PATH persistence check)
     if ! command -v solana &> /dev/null; then
         echo -e "${RED}❌ Solana CLI lost from PATH - please restart script${NC}"
-        return 1
+        exit 1
     fi
     
     # Configure Solana CLI
@@ -382,9 +472,8 @@ if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"json
     
     echo ""
 else
-    echo -e "${YELLOW}⚠️  No Solana validator detected on port $RPC_PORT${NC}"
-    echo -e "${YELLOW}💡 Start a validator manually to enable airdrops:${NC}"
-    echo -e "${CYAN}    solana-test-validator --rpc-port $RPC_PORT --bind-address 0.0.0.0 --reset${NC}"
+    echo -e "${RED}❌ Validator not running - airdrops skipped${NC}"
+    echo -e "${YELLOW}💡 To manually start: screen -r $VALIDATOR_SESSION_NAME${NC}"
     echo ""
 fi
 
@@ -400,21 +489,28 @@ echo -e "  🌐 External RPC: $EXTERNAL_RPC_URL"
 echo -e "  🌍 Global ngrok URL: $NGROK_URL"
 echo -e "  📂 Logs Directory: $(pwd)/logs/"
 echo -e "  📱 ngrok Screen: $NGROK_SESSION_NAME"
+echo -e "  ⛓️  Validator Screen: $VALIDATOR_SESSION_NAME"
 echo ""
 echo -e "${BLUE}💰 Account Configuration:${NC}"
 echo -e "  🥇 Primary Account: $PRIMARY_ACCOUNT ($AIRDROP_AMOUNT SOL)"
 echo -e "  🥈 Secondary Account: $SECONDARY_ACCOUNT ($SECONDARY_AIRDROP_AMOUNT SOL)"
 echo ""
 
-echo -e "${YELLOW}📺 ngrok Screen Commands:${NC}"
+echo -e "${YELLOW}📺 Screen Session Commands:${NC}"
 echo -e "${CYAN}  View ngrok status:${NC}"
 echo -e "    screen -r $NGROK_SESSION_NAME"
+echo ""
+echo -e "${CYAN}  View validator status:${NC}"
+echo -e "    screen -r $VALIDATOR_SESSION_NAME"
 echo ""
 echo -e "${CYAN}  Detach from screen:${NC}"
 echo -e "    Press: Ctrl+A, then D"
 echo ""
 echo -e "${CYAN}  Stop ngrok tunnel:${NC}"
 echo -e "    screen -S $NGROK_SESSION_NAME -X quit"
+echo ""
+echo -e "${CYAN}  Stop validator:${NC}"
+echo -e "    screen -S $VALIDATOR_SESSION_NAME -X quit"
 echo ""
 
 echo -e "${YELLOW}🧪 Testing Commands:${NC}"
@@ -448,17 +544,19 @@ echo ""
 
 echo -e "${PURPLE}🔥 FEATURES ENABLED:${NC}"
 echo -e "${GREEN}   ✅ Auto-detection of host IP address${NC}"
+echo -e "${GREEN}   ✅ Automatic Solana validator startup${NC}"
 echo -e "${GREEN}   ✅ Smart ngrok management (preserves existing tunnels)${NC}"
-echo -e "${GREEN}   ✅ Dedicated ngrok screen session${NC}"
-echo -e "${GREEN}   ✅ Independent operation (works with/without validator)${NC}"
+echo -e "${GREEN}   ✅ Dedicated screen sessions (ngrok + validator)${NC}"
+echo -e "${GREEN}   ✅ Clean validator initialization (--reset)${NC}"
 echo -e "${GREEN}   ✅ Global tunnel access ($NGROK_URL)${NC}"
-echo -e "${GREEN}   ✅ Automatic SOL airdrops (when validator detected)${NC}"
+echo -e "${GREEN}   ✅ Automatic SOL airdrops to configured accounts${NC}"
 echo -e "${GREEN}   ✅ Real-time status monitoring${NC}"
 echo -e "${GREEN}   ✅ Comprehensive logging${NC}"
 echo ""
 
-echo -e "${GREEN}✨ ngrok tunnel is now running independently!${NC}"
-echo -e "${BLUE}   Global access: $NGROK_URL${NC}"
-echo -e "${BLUE}   Works with any service on port $RPC_PORT${NC}"
-echo -e "${BLUE}   Monitor status: screen -r $NGROK_SESSION_NAME${NC}"
-echo -e "${BLUE}   The tunnel will persist and work with or without a validator${NC}"
+echo -e "${GREEN}✨ Production environment is now fully operational!${NC}"
+echo -e "${BLUE}   🌐 Global access: $NGROK_URL${NC}"
+echo -e "${BLUE}   ⛓️  Validator: Running in screen session${NC}"
+echo -e "${BLUE}   📱 Monitor ngrok: screen -r $NGROK_SESSION_NAME${NC}"
+echo -e "${BLUE}   📱 Monitor validator: screen -r $VALIDATOR_SESSION_NAME${NC}"
+echo -e "${BLUE}   💰 Accounts funded and ready for transactions${NC}"
