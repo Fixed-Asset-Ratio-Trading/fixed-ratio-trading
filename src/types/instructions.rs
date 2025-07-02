@@ -105,7 +105,13 @@ pub enum PoolInstruction {
     /// Updates security parameters for the pool (owner only)
     UpdateSecurityParams {
         /// Whether to pause pool operations
-        is_paused: Option<bool>,
+        system_paused: Option<bool>,
+        /// Future feature: Single LP token mode
+        /// When implemented, this will allow only LP token A (the "multiple" token) to be issued
+        /// for liquidity provision, while still allowing withdrawals of either token A or B
+        /// at the fixed ratio. This simplifies LP token management for certain pool configurations.
+        /// NOTE: Currently not implemented - remains false regardless of input
+        only_lp_token_a_for_both: Option<bool>,
     },
     
     /// Change swap fee rate (owner only)

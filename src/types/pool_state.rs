@@ -90,7 +90,7 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
-    pub is_paused: bool,
+    pub system_paused: bool,
     // Pool-specific swap pause controls (separate from system pause)
     pub swaps_paused: bool,
     pub swaps_pause_initiated_by: Option<Pubkey>,
@@ -98,6 +98,13 @@ pub struct PoolState {
     
     // Automatic withdrawal protection
     pub withdrawal_protection_active: bool,
+    
+    // Future feature: Single LP token mode
+    // When implemented, this will allow only LP token A (the "multiple" token) to be issued
+    // for liquidity provision, while still allowing withdrawals of either token A or B
+    // at the fixed ratio. This simplifies LP token management for certain pool configurations.
+    // NOTE: Currently not implemented - remains false regardless of input
+    pub only_lp_token_a_for_both: bool,
     
     // Fee collection and withdrawal tracking
     pub collected_fees_token_a: u64,
@@ -129,11 +136,12 @@ impl Default for PoolState {
             token_b_vault_bump_seed: 0,
             is_initialized: false,
             rent_requirements: RentRequirements::default(),
-            is_paused: false,
+            system_paused: false,
             swaps_paused: false,
             swaps_pause_initiated_by: None,
             swaps_pause_initiated_timestamp: 0,
             withdrawal_protection_active: false,
+            only_lp_token_a_for_both: false,
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
             total_fees_withdrawn_token_a: 0,
@@ -164,12 +172,13 @@ impl PoolState {
         1 +  // token_b_vault_bump_seed
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
-        1 +  // is_paused
+        1 +  // system_paused
         // Swap-specific pause fields
         1 +  // swaps_paused
         33 + // swaps_pause_initiated_by (Option<Pubkey> = 1 + 32)
         8 +  // swaps_pause_initiated_timestamp
         1 +  // withdrawal_protection_active
+        1 +  // only_lp_token_a_for_both
         
         // Fee collection and withdrawal tracking
         8 +  // collected_fees_token_a

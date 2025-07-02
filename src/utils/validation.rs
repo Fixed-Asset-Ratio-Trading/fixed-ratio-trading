@@ -144,7 +144,7 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Success if pool is not paused, error if paused
 pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
-    if pool_state.is_paused {
+    if pool_state.system_paused {
         msg!("Pool operations are currently paused (indefinite until manual unpause)");
         msg!("Use owner action to unpause pool operations");
         return Err(PoolError::PoolPaused.into());

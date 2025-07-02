@@ -300,10 +300,11 @@ async fn update_security_params(
     recent_blockhash: Hash,
     owner: &Keypair,
     pool_state_pda: &Pubkey,
-    is_paused: Option<bool>,
+    system_paused: Option<bool>,
 ) -> TestResult {
     let instruction_data = PoolInstruction::UpdateSecurityParams {
-        is_paused,
+        system_paused,
+        only_lp_token_a_for_both: None, // Not implemented yet
     };
 
     let serialized = instruction_data.try_to_vec().unwrap();

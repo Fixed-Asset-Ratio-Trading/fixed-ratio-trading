@@ -580,7 +580,10 @@ pub struct PoolState {
     pub token_b_mint: Pubkey,
     pub ratio_a_numerator: u64,
     pub ratio_b_denominator: u64,
-    pub is_paused: bool,
+    pub system_paused: bool,
+    /// Future feature: Single LP token mode
+    /// NOTE: Currently not implemented - remains false regardless of input
+    pub only_lp_token_a_for_both: bool,
 }
 
 /// Utility functions for testing and development.

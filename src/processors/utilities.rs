@@ -190,7 +190,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
     msg!("Is Initialized: {}", pool_state.is_initialized);
-    msg!("Is Paused: {}", pool_state.is_paused);
+    msg!("System Paused: {}", pool_state.system_paused);
     msg!("Swaps Paused: {}", pool_state.swaps_paused);
     msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
     
@@ -481,7 +481,7 @@ pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
 
 /// Validates that a pool is not paused.
 pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
-    if pool_state.is_paused {
+    if pool_state.system_paused {
         msg!("Pool operations are currently paused");
         return Err(PoolError::PoolPaused.into());
     }
