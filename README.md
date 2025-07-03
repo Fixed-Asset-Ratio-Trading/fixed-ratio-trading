@@ -146,7 +146,7 @@ These are **operational fees paid in Solana (SOL)** to cover transaction process
 |-----------|------------|---------|
 | **Pool Creation** | **1.15 SOL** | One-time fee for creating a new trading pool, including account setup and PDA creation |
 | **Deposit/Withdrawal** | **0.0013 SOL** | Fee for liquidity operations (adding or removing liquidity from pools) |
-| **Token Swap** | **0.0000125 SOL** | Fee for executing token swaps and updating pool state |
+| **Token Swap** | **0.00002715 SOL** | Fee for executing token swaps and updating pool state |
 
 ### 2. **Pool Fees** (Percentage-Based on Traded Assets) 📊
 
@@ -165,7 +165,7 @@ These are **trading fees paid as a percentage of the tokens being traded**. They
 // User swaps 1000 USDC for SOL
 // Pool Fee: 0 USDC (no trading fee)  
 // User receives: SOL equivalent of full 1000 USDC at pool ratio
-// Contract Fee: 0.0000125 SOL (separate operational fee)
+// Contract Fee: 0.00002715 SOL (separate operational fee)
 ```
 
 **With Trading Fee (0.25%):**
@@ -175,7 +175,7 @@ These are **trading fees paid as a percentage of the tokens being traded**. They
 // Effective Input: 997.5 USDC (1000 - 2.5 fee)
 // User receives: SOL equivalent of 997.5 USDC at pool ratio
 // Pool retains: 2.5 USDC (revenue for pool operator)
-// Contract Fee: 0.0000125 SOL (separate operational fee)
+// Contract Fee: 0.00002715 SOL (separate operational fee)
 ```
 
 ### **Benefits of This Dual Fee Structure:**

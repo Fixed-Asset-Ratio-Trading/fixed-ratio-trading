@@ -50,16 +50,16 @@ pub const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 /// **Purpose**: Cover transaction processing costs for liquidity operations
 pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 
-/// Fee charged for swap operations in lamports (0.0000125 SOL)
+/// Fee charged for swap operations in lamports (0.00002715 SOL)
 /// 
 /// This fee covers the computational cost of token swaps including ratio calculations,
 /// token transfers, pool balance updates, and fee collection tracking.
 /// 
 /// **Type**: Contract Fee (Fixed SOL amount)
 /// **When Charged**: During `Swap` operations  
-/// **Amount**: 0.0000125 SOL (12,500 lamports)
+/// **Amount**: 0.00002715 SOL (27,150 lamports)
 /// **Purpose**: Cover transaction processing costs for swap operations
-pub const SWAP_FEE: u64 = 12_500; // 0.0000125 SOL
+pub const SWAP_FEE: u64 = 27_150; // 0.00002715 SOL
 
 //-----------------------------------------------------------------------------
 // POOL FEES (Percentage-based on traded assets)
@@ -113,13 +113,13 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 //
 // **Example 3: Token Swap (0% pool fee)**
 // - User swaps 1000 USDC for SOL
-// - Contract Fee: 0.0000125 SOL (paid to pool)
+// - Contract Fee: 0.00002715 SOL (paid to pool)
 // - Pool Fee: 0 USDC (pool fee set to 0%)
 // - User receives: Full SOL amount based on 1000 USDC input
 //
 // **Example 4: Token Swap (0.25% pool fee)**  
 // - User swaps 1000 USDC for SOL
-// - Contract Fee: 0.0000125 SOL (paid to pool)
+// - Contract Fee: 0.00002715 SOL (paid to pool)
 // - Pool Fee: 2.5 USDC (1000 * 0.0025 = 2.5 USDC)  
 // - Effective Input: 997.5 USDC (1000 - 2.5 fee)
 // - User receives: SOL amount based on 997.5 USDC

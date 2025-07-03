@@ -6,7 +6,7 @@
 	•	Wait time is set for each individual delegate by contract owner.
 	•	Only one active withdrawal request per delegate is allowed.
 	•	Prevent additional withdrawal requests while one is pending.
-	•	Contract owner can cancel any delegate’s pending withdrawal.
+	•	Contract owner can cancel any delegate's pending withdrawal.
 	•	Token swap fees are adjustable by owner up to 0.5%.
 	•	Default starting fee at 0% initially.
-	•	There is a fixed fee of 0.0000125 SOL per swap transaction.
+	•	There is a fixed fee of 0.00002715 SOL per swap transaction.

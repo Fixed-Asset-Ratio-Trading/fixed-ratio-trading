@@ -10,7 +10,7 @@
 //! ### 1. Contract Fees (Fixed SOL amounts)
 //! - **Pool Creation**: 1.15 SOL per pool creation
 //! - **Liquidity Operations**: 0.0013 SOL per deposit/withdrawal  
-//! - **Swaps**: 0.0000125 SOL per swap transaction
+//! - **Swaps**: 0.00002715 SOL per swap transaction
 //! - **Purpose**: Cover operational costs and prevent spam
 //! - **Collection**: Automatically transferred to pool state PDA
 //! - **Withdrawal**: Via `process_withdraw_fees()` by pool owner
@@ -46,7 +46,7 @@ use spl_token;
 /// collected from pool operations. These are the fixed SOL amounts charged for:
 /// - Pool creation (1.15 SOL)
 /// - Deposits/withdrawals (0.0013 SOL each)  
-/// - Swaps (0.0000125 SOL each)
+/// - Swaps (0.00002715 SOL each)
 ///
 /// The withdrawal maintains rent-exempt status by ensuring sufficient SOL remains in the 
 /// pool state account. Only the designated pool owner can execute SOL fee withdrawals.
