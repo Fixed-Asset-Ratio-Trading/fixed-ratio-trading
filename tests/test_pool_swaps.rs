@@ -68,9 +68,17 @@ use fixed_ratio_trading::{
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
     pubkey::Pubkey,
+    system_program,
+    sysvar::{self, rent, clock},
 };
-use solana_sdk::{signature::Keypair, transaction::Transaction};
+use solana_program_test::*;
+use solana_sdk::{
+    signature::{Keypair, Signer},
+    transaction::Transaction,
+    account::Account,
+};
 use borsh::BorshSerialize;
 
 // ================================================================================================
@@ -88,7 +96,8 @@ const _SMALL_SWAP_AMOUNT: u64 = 1_000;      // 0.001 tokens
 const _MEDIUM_SWAP_AMOUNT: u64 = 100_000;   // 0.1 tokens  
 const _LARGE_SWAP_AMOUNT: u64 = 1_000_000;  // 1 token
 
-/// Helper to create a basic swap instruction
+/// Helper function to create Swap instruction for testing
+/// Constructs a properly formatted swap instruction with all required accounts
 pub fn create_swap_instruction(
     user: &Pubkey,
     user_input_account: &Pubkey,
@@ -100,29 +109,31 @@ pub fn create_swap_instruction(
     token_b_vault: &Pubkey,
     input_token_mint: &Pubkey,
     amount_in: u64,
-    minimum_amount_out: u64,
 ) -> Instruction {
+    let instruction_data = PoolInstruction::Swap {
+        input_token_mint: *input_token_mint,
+        amount_in,
+    };
+
+    let accounts = vec![
+        AccountMeta::new(*user, true),                              // User (signer)
+        AccountMeta::new(*user_input_account, false),               // User input token account
+        AccountMeta::new(*user_output_account, false),              // User output token account
+        AccountMeta::new(*pool_state_pda, false),                   // Pool state PDA
+        AccountMeta::new_readonly(*token_a_mint, false),            // Token A mint (for PDA seeds)
+        AccountMeta::new_readonly(*token_b_mint, false),            // Token B mint (for PDA seeds)
+        AccountMeta::new(*token_a_vault, false),                    // Pool Token A vault
+        AccountMeta::new(*token_b_vault, false),                    // Pool Token B vault
+        AccountMeta::new_readonly(system_program::id(), false),     // System program
+        AccountMeta::new_readonly(spl_token::id(), false),          // SPL Token program
+        AccountMeta::new_readonly(sysvar::rent::id(), false),       // Rent sysvar
+        AccountMeta::new_readonly(sysvar::clock::id(), false),      // Clock sysvar
+    ];
+
     Instruction {
         program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*user, true),
-            AccountMeta::new(*user_input_account, false),
-            AccountMeta::new(*user_output_account, false),
-            AccountMeta::new(*pool_state_pda, false),
-            AccountMeta::new_readonly(*token_a_mint, false),
-            AccountMeta::new_readonly(*token_b_mint, false),
-            AccountMeta::new(*token_a_vault, false),
-            AccountMeta::new(*token_b_vault, false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: PoolInstruction::Swap {
-            input_token_mint: *input_token_mint,
-            amount_in,
-            minimum_amount_out,
-        }.try_to_vec().unwrap(),
+        accounts,
+        data: instruction_data.try_to_vec().unwrap(),
     }
 }
 
@@ -276,7 +287,6 @@ async fn test_pool_instruction_serialization() -> TestResult {
     let swap_instruction = PoolInstruction::Swap {
         input_token_mint: test_mint,
         amount_in: 1000000u64,
-        minimum_amount_out: 900000u64,
     };
     
     // Test serialization
@@ -292,10 +302,9 @@ async fn test_pool_instruction_serialization() -> TestResult {
     assert!(deserialized.is_ok(), "Swap instruction deserialization should succeed");
     
     // Verify the data matches
-    if let Ok(PoolInstruction::Swap { input_token_mint, amount_in, minimum_amount_out }) = deserialized {
+    if let Ok(PoolInstruction::Swap { input_token_mint, amount_in }) = deserialized {
         assert_eq!(input_token_mint, test_mint);
         assert_eq!(amount_in, 1000000u64);
-        assert_eq!(minimum_amount_out, 900000u64);
         println!("✅ Serialization roundtrip successful");
     } else {
         panic!("Unexpected instruction variant after deserialization");
@@ -330,7 +339,6 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
 
     // Attempt swap: base token for primary token (demonstrates liquidity protection)
     let swap_amount = 1u64;
-    let minimum_amount_out = 0u64;
 
     let swap_ix = create_swap_instruction(
         &user.pubkey(),
@@ -343,7 +351,6 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.base_mint.pubkey(),
         swap_amount,
-        minimum_amount_out,
     );
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
@@ -387,7 +394,6 @@ async fn test_swap_zero_amount_fails() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.base_mint.pubkey(),
         0u64, // Zero amount
-        0u64,
     );
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
@@ -439,16 +445,7 @@ async fn test_successful_a_to_b_swap() -> TestResult {
         // Verify calculation is reasonable
         assert!(expected_output > 0, "Output should be positive for positive input");
         
-        // Test slippage protection calculation
-        let slippage_5_percent = expected_output * 95 / 100;
-        let slippage_1_percent = expected_output * 99 / 100;
-        
-        assert!(slippage_5_percent < expected_output, "5% slippage should be less than expected");
-        assert!(slippage_1_percent < expected_output, "1% slippage should be less than expected");
-        assert!(slippage_1_percent > slippage_5_percent, "1% slippage should be more than 5%");
-        
         println!("    ✓ Price calculation: {} → {} (expected)", swap_amount, expected_output);
-        println!("    ✓ Slippage protection: 5%={}, 1%={}", slippage_5_percent, slippage_1_percent);
     }
 
     // Test swap instruction construction and validation
@@ -458,8 +455,6 @@ async fn test_successful_a_to_b_swap() -> TestResult {
     } else {
         swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
     };
-    let minimum_amount_out = expected_output * 95 / 100; // 5% slippage tolerance
-
     // Construct swap instruction with proper account setup
     let swap_ix = create_swap_instruction(
         &user.pubkey(),
@@ -472,7 +467,6 @@ async fn test_successful_a_to_b_swap() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(), // Swapping Token A (primary)
         swap_amount,
-        minimum_amount_out,
     );
 
     // Verify instruction construction
@@ -484,7 +478,7 @@ async fn test_successful_a_to_b_swap() -> TestResult {
     println!("    ✓ 12 accounts configured with proper permissions");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
-    println!("    ✓ Swap parameters: {} → {} (min: {})", swap_amount, expected_output, minimum_amount_out);
+    println!("    ✓ Swap parameters: {} → {} (deterministic output)", swap_amount, expected_output);
 
     // Test user balance verification
     let user_balance_a = get_token_balance(&mut ctx.env.banks_client, &user_primary_account).await;
@@ -539,16 +533,7 @@ async fn test_successful_b_to_a_swap() -> TestResult {
         // Verify calculation is reasonable for B→A
         assert!(expected_output > 0, "Output should be positive for positive input");
         
-        // Test slippage protection calculation for reverse direction
-        let slippage_5_percent = expected_output * 95 / 100;
-        let slippage_1_percent = expected_output * 99 / 100;
-        
-        assert!(slippage_5_percent < expected_output, "5% slippage should be less than expected");
-        assert!(slippage_1_percent < expected_output, "1% slippage should be less than expected");
-        assert!(slippage_1_percent > slippage_5_percent, "1% slippage should be more than 5%");
-        
         println!("    ✓ Reverse price calculation: {} → {} (expected)", swap_amount, expected_output);
-        println!("    ✓ Slippage protection: 5%={}, 1%={}", slippage_5_percent, slippage_1_percent);
     }
 
     // Test bidirectional consistency
@@ -584,8 +569,6 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     } else {
         swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
     };
-    let minimum_amount_out = expected_output * 95 / 100; // 5% slippage tolerance
-
     // Construct B→A swap instruction
     let swap_ix = create_swap_instruction(
         &user.pubkey(),
@@ -598,7 +581,6 @@ async fn test_successful_b_to_a_swap() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.base_mint.pubkey(), // Swapping Token B (base) for Token A
         swap_amount,
-        minimum_amount_out,
     );
 
     // Verify instruction construction for B→A swap
@@ -610,7 +592,7 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     println!("    ✓ 12 accounts configured with proper permissions");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
-    println!("    ✓ B→A swap parameters: {} B → {} A (min: {})", swap_amount, expected_output, minimum_amount_out);
+    println!("    ✓ B→A swap parameters: {} B → {} A (deterministic output)", swap_amount, expected_output);
 
     // Test user balance verification for B→A swap
     let user_balance_a = get_token_balance(&mut ctx.env.banks_client, &user_primary_account).await;
@@ -963,7 +945,6 @@ async fn test_swap_with_various_ratios() -> TestResult {
         } else {
             instruction_test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
         };
-        let minimum_amount_out = expected_output * 95 / 100; // 5% slippage tolerance
 
         // Construct A→B swap instruction
         let swap_ix = create_swap_instruction(
@@ -977,7 +958,6 @@ async fn test_swap_with_various_ratios() -> TestResult {
             &config.token_b_vault_pda,
             &ctx.primary_mint.pubkey(),
             instruction_test_amount,
-            minimum_amount_out,
         );
 
         // Verify instruction construction
@@ -986,7 +966,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
         println!("✅ Swap instruction constructed successfully for {}", ratio_description);
-        println!("    ✓ Amount: {} → {} (min: {})", instruction_test_amount, expected_output, minimum_amount_out);
+        println!("    ✓ Amount: {} → {} (deterministic fixed-ratio output)", instruction_test_amount, expected_output);
 
         // Test arithmetic boundary conditions for large ratios
         if *ratio_primary_per_base == 100 {
@@ -1051,261 +1031,113 @@ async fn test_swap_with_various_ratios() -> TestResult {
     Ok(())
 }
 
-/// Test slippage protection boundaries
-/// ✅ MIGRATED: test_slippage_protection_boundaries
+/// Test fixed ratio calculation boundaries and edge cases
+/// ✅ MIGRATED & REWRITTEN: Replaces test_slippage_protection_boundaries
 #[tokio::test]
-async fn test_slippage_protection_boundaries() -> TestResult {
-    println!("===== SWAP-010: Slippage Protection Boundaries Testing =====");
+async fn test_fixed_ratio_calculation_boundaries() -> TestResult {
+    println!("===== SWAP-010: Fixed Ratio Calculation Boundaries Testing =====");
     
-    let (mut ctx, config, _user, _user_primary_account, _user_base_account) = setup_swap_test_environment(Some(2)).await?;
+    let (mut ctx, config, _user, _user_primary_account, _user_base_account) = 
+        setup_swap_test_environment(Some(2)).await?;
 
-    // Verify pool creation succeeded
+    // Get pool state to verify ratio configuration
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
-        .expect("Failed to get pool state after creation");
+        .expect("Failed to get pool state");
     
-    assert!(pool_state.is_initialized, "Pool should be initialized");
-    println!("✅ Pool created successfully with 2:1 ratio");
+    println!("Pool ratio: {} Token A = {} Token B", 
+             pool_state.ratio_a_numerator, pool_state.ratio_b_denominator);
 
-    // Test 1: Slippage Calculation Accuracy
-    println!("\n--- Test 1: Slippage Calculation Accuracy ---");
-    let test_amounts = vec![100_000u64, 500_000u64, 1_000_000u64, 5_000_000u64];
+    // Test 1: Fixed Ratio Calculation Accuracy
+    println!("\n--- Test 1: Fixed Ratio Calculation Accuracy ---");
     
-    for &swap_amount in &test_amounts {
-        // Calculate exact expected output
-        let expected_output = if config.token_a_is_the_multiple {
-            swap_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
-        } else {
-            swap_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
-        };
-
-        println!("  Testing slippage calculations for {} tokens → {} tokens", swap_amount, expected_output);
-
-        // Test various slippage tolerances
-        let slippage_tests = vec![
-            (0.1, 999, 1000, "0.1% slippage"),
-            (1.0, 99, 100, "1% slippage"),
-            (5.0, 95, 100, "5% slippage"),
-            (10.0, 90, 100, "10% slippage"),
-        ];
-
-        for (percent, num, den, description) in slippage_tests {
-            let minimum_with_slippage = expected_output * num / den;
-            let actual_slippage = ((expected_output - minimum_with_slippage) as f64 / expected_output as f64) * 100.0;
-            
-            println!("    {} → minimum: {} (actual slippage: {:.2}%)", 
-                     description, minimum_with_slippage, actual_slippage);
-            
-            // Verify slippage calculation accuracy
-            assert!((actual_slippage - percent).abs() < 0.01, 
-                    "Slippage calculation should be accurate within 0.01%");
-            
-            // Verify instruction data serializes correctly
-            let swap_instruction_data = PoolInstruction::Swap {
-                input_token_mint: ctx.primary_mint.pubkey(),
-                amount_in: swap_amount,
-                minimum_amount_out: minimum_with_slippage,
-            };
-            
-            let serialized = swap_instruction_data.try_to_vec();
-            assert!(serialized.is_ok(), "Slippage instruction should serialize correctly");
-            assert!(!serialized.unwrap().is_empty(), "Serialized instruction should not be empty");
-        }
+    let test_amounts = vec![1u64, 10u64, 100u64, 1_000u64, 10_000u64, 100_000u64, 1_000_000u64];
+    
+    for &amount in &test_amounts {
+        // Calculate expected outputs for both directions
+        let a_to_b_output = amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+        let b_to_a_output = amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
         
-        println!("    ✓ All slippage calculations accurate for amount {}", swap_amount);
-    }
-
-    // Test 2: Boundary Condition Validation
-    println!("\n--- Test 2: Boundary Condition Validation ---");
-    
-    let boundary_test_amount = 1_000_000u64;
-    let expected_output = if config.token_a_is_the_multiple {
-        boundary_test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
-    } else {
-        boundary_test_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
-    };
-
-    println!("  Testing boundary conditions for {} tokens → {} tokens", boundary_test_amount, expected_output);
-
-    // Test exact minimum (boundary case)
-    let exact_minimum_instruction = PoolInstruction::Swap {
-        input_token_mint: ctx.primary_mint.pubkey(),
-        amount_in: boundary_test_amount,
-        minimum_amount_out: expected_output, // Exact minimum
-    };
-    let exact_serialized = exact_minimum_instruction.try_to_vec().unwrap();
-    assert!(!exact_serialized.is_empty(), "Exact minimum instruction should serialize");
-    println!("    ✓ Exact minimum boundary instruction: {} tokens (valid)", expected_output);
-
-    // Test just below expected (should be valid since we expect exactly this amount)
-    if expected_output > 0 {
-        let below_expected_instruction = PoolInstruction::Swap {
-            input_token_mint: ctx.primary_mint.pubkey(),
-            amount_in: boundary_test_amount,
-            minimum_amount_out: expected_output - 1, // Just below expected
-        };
-        let below_serialized = below_expected_instruction.try_to_vec().unwrap();
-        assert!(!below_serialized.is_empty(), "Below expected instruction should serialize");
-        println!("    ✓ Below expected minimum instruction: {} tokens (valid)", expected_output - 1);
-    }
-
-    // Test unrealistic minimum (would fail in execution due to slippage)
-    let unrealistic_minimum = expected_output * 2; // Expecting double the output
-    let unrealistic_instruction = PoolInstruction::Swap {
-        input_token_mint: ctx.primary_mint.pubkey(),
-        amount_in: boundary_test_amount,
-        minimum_amount_out: unrealistic_minimum,
-    };
-    let unrealistic_serialized = unrealistic_instruction.try_to_vec().unwrap();
-    assert!(!unrealistic_serialized.is_empty(), "Unrealistic minimum instruction should serialize");
-    println!("    ✓ Unrealistic minimum instruction: {} tokens (would fail in execution)", unrealistic_minimum);
-
-    println!("    ✓ All boundary condition instructions validate correctly");
-
-    // Test 3: Zero Slippage Tolerance Validation
-    println!("\n--- Test 3: Zero Slippage Tolerance Validation ---");
-    
-    let zero_slippage_amount = 500_000u64;
-    let exact_expected = if config.token_a_is_the_multiple {
-        zero_slippage_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
-    } else {
-        zero_slippage_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
-    };
-
-    println!("  Testing zero slippage tolerance: {} → exactly {} tokens", zero_slippage_amount, exact_expected);
-
-    // Zero slippage instruction (must receive exact amount)
-    let zero_slippage_instruction = PoolInstruction::Swap {
-        input_token_mint: ctx.primary_mint.pubkey(),
-        amount_in: zero_slippage_amount,
-        minimum_amount_out: exact_expected, // Zero slippage - exact amount
-    };
-    
-    let zero_serialized = zero_slippage_instruction.try_to_vec().unwrap();
-    assert!(!zero_serialized.is_empty(), "Zero slippage instruction should serialize");
-    
-    println!("    ✓ Zero slippage instruction validated: requires exactly {} tokens", exact_expected);
-    println!("    ✓ Fixed-ratio systems can provide exact amounts for zero slippage tolerance");
-    
-    // Test that zero slippage is more restrictive than other tolerances
-    let slippage_1_percent = exact_expected * 99 / 100;
-    let slippage_5_percent = exact_expected * 95 / 100;
-    
-    assert!(exact_expected > slippage_1_percent, "Zero slippage should be more restrictive than 1%");
-    assert!(exact_expected > slippage_5_percent, "Zero slippage should be more restrictive than 5%");
-    assert!(slippage_1_percent > slippage_5_percent, "1% slippage should be more restrictive than 5%");
-    
-    println!("    ✓ Slippage tolerance hierarchy validated: 0% > 1% > 5%");
-
-    // Test 4: Market Impact and Fixed-Ratio Behavior
-    println!("\n--- Test 4: Market Impact and Fixed-Ratio Behavior ---");
-    
-    let market_scenarios = vec![
-        (10_000u64, "small trade"),
-        (100_000u64, "medium trade"), 
-        (1_000_000u64, "large trade"),
-        (10_000_000u64, "very large trade"),
-    ];
-
-    for (amount, description) in market_scenarios {
-        let expected = if config.token_a_is_the_multiple {
-            amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator
-        } else {
-            amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator
-        };
-
-        // For fixed-ratio system, price should be consistent regardless of trade size
-        let price_ratio = expected as f64 / amount as f64;
+        println!("  Fixed ratio calculations for {} input:", amount);
+        println!("    A→B: {} Token A → {} Token B", amount, a_to_b_output);
+        println!("    B→A: {} Token B → {} Token A", amount, b_to_a_output);
         
-        println!("  {} ({}): {} → {} tokens (ratio: {:.6})", 
-                 description, amount, amount, expected, price_ratio);
-        
-        // Verify instruction construction works for all trade sizes
-        let market_instruction = PoolInstruction::Swap {
-            input_token_mint: ctx.primary_mint.pubkey(),
-            amount_in: amount,
-            minimum_amount_out: expected * 95 / 100, // 5% slippage tolerance
-        };
-        
-        let market_serialized = market_instruction.try_to_vec().unwrap();
-        assert!(!market_serialized.is_empty(), "Market instruction should serialize");
-        
-        // In fixed-ratio systems, there should be no market impact
-        let fixed_ratio_value = if config.token_a_is_the_multiple {
-            pool_state.ratio_b_denominator as f64 / pool_state.ratio_a_numerator as f64
-        } else {
-            pool_state.ratio_a_numerator as f64 / pool_state.ratio_b_denominator as f64
-        };
-        
-        let tolerance = 0.0001; // Very small tolerance for floating point comparison
-        assert!((price_ratio - fixed_ratio_value).abs() < tolerance, 
-                "Fixed-ratio should have consistent price regardless of trade size");
+        // Verify calculations are deterministic and correct
+        assert_eq!(a_to_b_output, amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator,
+                   "A→B calculation must be deterministic");
+        assert_eq!(b_to_a_output, amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator,
+                   "B→A calculation must be deterministic");
     }
     
-    println!("    ✓ Fixed-ratio system maintains consistent pricing across all trade sizes");
-    println!("    ✓ No market impact in fixed-ratio trading (predictable slippage behavior)");
+    println!("✅ All fixed ratio calculations are deterministic and accurate");
 
-    // Test 5: Comprehensive Instruction Validation
-    println!("\n--- Test 5: Comprehensive Instruction Validation ---");
+    // Test 2: Boundary Value Testing
+    println!("\n--- Test 2: Boundary Value Testing ---");
     
-    // Test instruction construction with edge cases
-    let edge_case_tests = vec![
-        (1u64, "minimum amount"),
-        (u64::MAX / 2, "large amount (no overflow)"),
-        (100u64, "small regular amount"),
-    ];
-
-    for (amount, description) in edge_case_tests {
-        let expected = if config.token_a_is_the_multiple {
-            amount.saturating_mul(pool_state.ratio_b_denominator) / pool_state.ratio_a_numerator.max(1)
-        } else {
-            amount.saturating_mul(pool_state.ratio_a_numerator) / pool_state.ratio_b_denominator.max(1)
-        };
-
-        println!("  Testing instruction validation for {} ({}): {} → {}", description, amount, amount, expected);
-
-        // Test instruction with various slippage settings
-        let slippage_tests = vec![0u64, expected / 2, expected, expected + 1];
-        
-        for minimum_out in slippage_tests {
-            let test_instruction = PoolInstruction::Swap {
-                input_token_mint: ctx.primary_mint.pubkey(),
-                amount_in: amount,
-                minimum_amount_out: minimum_out,
-            };
-            
-            let serialized = test_instruction.try_to_vec();
-            assert!(serialized.is_ok(), "Instruction should serialize for amount {} with minimum {}", amount, minimum_out);
-            
-            let serialized_data = serialized.unwrap();
-            assert!(!serialized_data.is_empty(), "Serialized instruction should not be empty");
-            
-            // Verify instruction can be deserialized back
-            let deserialized = PoolInstruction::try_from_slice(&serialized_data);
-            assert!(deserialized.is_ok(), "Instruction should deserialize correctly");
-        }
-        
-        println!("    ✓ All instruction variants validated for {}", description);
-    }
+    // Test with 1 unit (smallest meaningful amount)
+    let min_amount = 1u64;
+    let min_a_to_b = min_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    let min_b_to_a = min_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
     
-    println!("    ✓ Comprehensive instruction validation complete");
+    println!("  Minimum amounts (1 unit):");
+    println!("    1 Token A → {} Token B", min_a_to_b);
+    println!("    1 Token B → {} Token A", min_b_to_a);
+    
+    // Test with maximum practical amount
+    let max_amount = 1_000_000_000u64; // 1 billion units
+    let max_a_to_b = max_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    let max_b_to_a = max_amount * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
+    
+    println!("  Maximum amounts (1B units):");
+    println!("    {} Token A → {} Token B", max_amount, max_a_to_b);
+    println!("    {} Token B → {} Token A", max_amount, max_b_to_a);
+    
+    // Verify no overflow occurred
+    assert!(max_a_to_b > 0, "Large A→B calculation should not overflow to zero");
+    assert!(max_b_to_a > 0, "Large B→A calculation should not overflow to zero");
+    
+    println!("✅ Boundary value calculations handle min and max amounts correctly");
 
-    println!("\n===== SWAP-010 TEST SUMMARY =====");
-    println!("✅ Slippage Protection Boundaries Testing Complete:");
-    println!("   ✓ Slippage calculation accuracy verified across all tolerance levels");
-    println!("   ✓ Boundary condition validation for minimum output parameters");
-    println!("   ✓ Zero slippage tolerance hierarchy and restrictiveness verified");
-    println!("   ✓ Fixed-ratio market impact behavior validated (no price impact)");
-    println!("   ✓ Comprehensive instruction construction and serialization tested");
-    println!("   ✓ Edge case handling for extreme amounts and slippage values");
-    println!("   ✓ Mathematical precision maintained across all calculations");
+    // Test 3: Bidirectional Consistency
+    println!("\n--- Test 3: Bidirectional Consistency ---");
+    
+    let test_amount = 1_000_000u64;
+    let forward_result = test_amount * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    let reverse_result = forward_result * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
+    
+    println!("  Bidirectional test: {} A → {} B → {} A", test_amount, forward_result, reverse_result);
+    
+    // Should return to exactly the original amount (no fees in this calculation)
+    assert_eq!(reverse_result, test_amount, "Bidirectional conversion should be exact");
+    
+    println!("✅ Bidirectional consistency verified - perfect mathematical symmetry");
+
+    // Test 4: Zero Amount Handling
+    println!("\n--- Test 4: Zero Amount Handling ---");
+    
+    let zero_a_to_b = 0u64 * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    let zero_b_to_a = 0u64 * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
+    
+    assert_eq!(zero_a_to_b, 0, "Zero input should produce zero output A→B");
+    assert_eq!(zero_b_to_a, 0, "Zero input should produce zero output B→A");
+    
+    println!("  Zero amount handling:");
+    println!("    0 Token A → {} Token B", zero_a_to_b);
+    println!("    0 Token B → {} Token A", zero_b_to_a);
+    println!("✅ Zero amounts handled correctly (produce zero output)");
+
+    println!("\n===== Fixed Ratio Calculation Boundaries Test Summary =====");
+    println!("✅ Fixed Ratio Testing Complete:");
+    println!("   ✓ All calculations are deterministic and repeatable");
+    println!("   ✓ No slippage - output amounts are exactly calculable");
+    println!("   ✓ Boundary values (min/max) handle correctly");
+    println!("   ✓ Bidirectional consistency is perfect");
+    println!("   ✓ Zero amounts produce zero outputs");
     println!();
-    println!("🎯 SWAP-010 demonstrates comprehensive slippage protection validation:");
-    println!("   • Slippage calculations mathematically accurate within 0.01% tolerance");
-    println!("   • Fixed-ratio system provides predictable, deterministic pricing");
-    println!("   • Instruction construction robust across edge cases and large amounts");
-    println!("   • Zero slippage tolerance properly more restrictive than percentage tolerances");
-    println!("   • No market impact ensures consistent pricing regardless of trade size");
-    println!("   • Boundary conditions properly validated for realistic trading scenarios");
+    println!("🎯 This demonstrates true fixed-ratio trading:");
+    println!("   • Predictable outputs with zero variance");
+    println!("   • No slippage protection needed");
+    println!("   • Mathematical precision and consistency");
+    println!("   • All-or-nothing execution model");
     
     Ok(())
 }
@@ -1389,7 +1221,6 @@ async fn test_swap_liquidity_constraints() -> TestResult {
             &config.token_b_vault_pda,
             &ctx.primary_mint.pubkey(),
             swap_amount,
-            expected_output * 95 / 100, // 5% slippage tolerance
         );
         
         // Verify instruction construction
@@ -1421,7 +1252,6 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     let exact_boundary_instruction = PoolInstruction::Swap {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: max_input_for_exact_output,
-        minimum_amount_out: max_output_available,
     };
     
     let exact_boundary_data = exact_boundary_instruction.try_to_vec().unwrap();
@@ -1454,7 +1284,6 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     let insufficient_instruction = PoolInstruction::Swap {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: over_boundary_input,
-        minimum_amount_out: over_boundary_output,
     };
     
     let insufficient_data = insufficient_instruction.try_to_vec().unwrap();
@@ -1492,7 +1321,6 @@ async fn test_swap_liquidity_constraints() -> TestResult {
             let stress_instruction = PoolInstruction::Swap {
                 input_token_mint: ctx.primary_mint.pubkey(),
                 amount_in: input_amount,
-                minimum_amount_out: expected_output * 90 / 100, // 10% slippage tolerance
             };
             
             let stress_data = stress_instruction.try_to_vec().unwrap();
@@ -1563,7 +1391,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         0u64, // Zero amount - should fail
-        0u64,
     );
 
     let mut zero_swap_tx = Transaction::new_with_payer(&[zero_amount_swap_ix], Some(&user.pubkey()));
@@ -1588,7 +1415,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         near_max_amount,
-        0u64,
     );
 
     let mut max_swap_tx = Transaction::new_with_payer(&[max_amount_swap_ix], Some(&user.pubkey()));
@@ -1633,7 +1459,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        500u64,
     );
 
     let mut wrong_mint_tx = Transaction::new_with_payer(&[wrong_mint_swap_ix], Some(&user.pubkey()));
@@ -1669,7 +1494,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        500u64,
     );
 
     let mut ownership_tx = Transaction::new_with_payer(&[ownership_validation_ix], Some(&user.pubkey()));
@@ -1709,7 +1533,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        500u64,
     );
 
     let mut uninitialized_tx = Transaction::new_with_payer(&[uninitialized_pool_ix], Some(&user.pubkey()));
@@ -1745,7 +1568,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        500u64,
     );
 
     // Verify instruction construction works
@@ -1770,7 +1592,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         large_amount,
-        0u64,
     );
 
     let mut arithmetic_tx = Transaction::new_with_payer(&[arithmetic_boundary_ix], Some(&user.pubkey()));
@@ -1795,7 +1616,6 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        500u64,
     );
 
     // Verify instruction properties
@@ -1850,12 +1670,10 @@ async fn test_process_swap_a_to_b_execution() -> TestResult {
 
     // Calculate expected output amount (A→B: amount_out_B = amount_in_A * ratio_B_denominator / ratio_A_numerator)
     let expected_output_before_fees = swap_input_amount * initial_pool_state.ratio_b_denominator / initial_pool_state.ratio_a_numerator;
-    let minimum_amount_out = expected_output_before_fees * 95 / 100; // 5% slippage tolerance
     
     println!("A→B swap calculation:");
     println!("  Input amount (Token A): {}", swap_input_amount);
     println!("  Expected output before fees (Token B): {}", expected_output_before_fees);
-    println!("  Minimum amount out (5% slippage): {}", minimum_amount_out);
 
     // Get user balances before swap
     let user_token_a_balance_before = get_token_balance(&mut ctx.env.banks_client, &user_primary_account).await;
@@ -1877,7 +1695,6 @@ async fn test_process_swap_a_to_b_execution() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.primary_mint.pubkey(), // Token A input
         swap_input_amount,
-        minimum_amount_out,
     );
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
@@ -1929,7 +1746,6 @@ async fn test_process_swap_a_to_b_execution() -> TestResult {
     let test_instruction = PoolInstruction::Swap {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: 100_000u64,
-        minimum_amount_out: 45_000u64, // 10% slippage on 50k expected
     };
     
     let serialized = test_instruction.try_to_vec();
@@ -1985,12 +1801,9 @@ async fn test_process_swap_b_to_a_execution() -> TestResult {
 
     // Calculate expected output for B→A direction
     let expected_output_before_fees = swap_input_amount * initial_pool_state.ratio_a_numerator / initial_pool_state.ratio_b_denominator;
-    let minimum_amount_out = expected_output_before_fees * 95 / 100; // 5% slippage tolerance
-    
     println!("B→A swap calculation:");
     println!("  Input amount (Token B): {}", swap_input_amount);
     println!("  Expected output before fees (Token A): {}", expected_output_before_fees);
-    println!("  Minimum amount out (5% slippage): {}", minimum_amount_out);
 
     // Execute the B→A swap instruction
     let swap_ix = create_swap_instruction(
@@ -2004,7 +1817,6 @@ async fn test_process_swap_b_to_a_execution() -> TestResult {
         &config.token_b_vault_pda,
         &ctx.base_mint.pubkey(), // Token B input
         swap_input_amount,
-        minimum_amount_out,
     );
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
@@ -2075,7 +1887,6 @@ async fn test_process_swap_b_to_a_execution() -> TestResult {
     let test_instruction = PoolInstruction::Swap {
         input_token_mint: ctx.base_mint.pubkey(),
         amount_in: 100_000u64,
-        minimum_amount_out: 180_000u64, // 10% slippage on 200k expected
     };
     
     let serialized = test_instruction.try_to_vec();

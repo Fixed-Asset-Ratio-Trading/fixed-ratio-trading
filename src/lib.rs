@@ -195,8 +195,7 @@ pub fn process_instruction(
         PoolInstruction::Swap {
             input_token_mint,
             amount_in,
-            minimum_amount_out,
-        } => process_swap(program_id, accounts, input_token_mint, amount_in, minimum_amount_out),
+        } => process_swap(program_id, accounts, input_token_mint, amount_in),
 
         PoolInstruction::UpdateSecurityParams {
             paused,

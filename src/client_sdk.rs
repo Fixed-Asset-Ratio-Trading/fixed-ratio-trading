@@ -69,12 +69,13 @@ SOFTWARE.
 //! # }
 //! ```
 
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
     pubkey::Pubkey,
     system_program,
-    sysvar::{rent, clock},
+    sysvar::{self, rent, clock},
 };
 use spl_token;
 
@@ -457,54 +458,59 @@ impl PoolClient {
         })
     }
 
-    /// Creates a swap instruction for exchanging tokens.
+    /// Creates a Swap instruction
     /// 
     /// # Arguments
-    /// * `user` - The user performing the swap
-    /// * `config` - Pool configuration
-    /// * `input_token_mint` - Token being swapped
-    /// * `amount_in` - Amount of input tokens
-    /// * `minimum_amount_out` - Minimum amount of output tokens expected
-    /// * `user_source_account` - User's source token account
-    /// * `user_destination_account` - User's destination token account
+    /// * `user_signer` - User account performing the swap
+    /// * `user_input_token_account` - User's input token account
+    /// * `user_output_token_account` - User's output token account  
+    /// * `pool_state_pda` - Pool state PDA account
+    /// * `token_a_mint` - Token A mint account
+    /// * `token_b_mint` - Token B mint account
+    /// * `pool_token_a_vault` - Pool's Token A vault
+    /// * `pool_token_b_vault` - Pool's Token B vault
+    /// * `input_token_mint` - Mint of the token being swapped in
+    /// * `amount_in` - Amount of input tokens to swap
     /// 
     /// # Returns
-    /// * `Result<Instruction, PoolClientError>` - The swap instruction or an error
-    pub fn swap_instruction(
+    /// * `Result<Instruction, ProgramError>` - The swap instruction or error
+    pub fn create_swap_instruction(
         &self,
-        user: &Pubkey,
-        config: &PoolConfig,
-        input_token_mint: &Pubkey,
+        user_signer: &Pubkey,
+        user_input_token_account: &Pubkey,
+        user_output_token_account: &Pubkey,
+        pool_state_pda: &Pubkey,
+        token_a_mint: &Pubkey,
+        token_b_mint: &Pubkey,
+        pool_token_a_vault: &Pubkey,
+        pool_token_b_vault: &Pubkey,
+        input_token_mint: Pubkey,
         amount_in: u64,
-        minimum_amount_out: u64,
-        user_source_account: &Pubkey,
-        user_destination_account: &Pubkey,
-    ) -> Result<Instruction, PoolClientError> {
-        let addresses = self.derive_pool_addresses(config);
-
+    ) -> Result<Instruction, ProgramError> {
         let instruction_data = PoolInstruction::Swap {
-            input_token_mint: *input_token_mint,
+            input_token_mint,
             amount_in,
-            minimum_amount_out,
         };
 
-        let data = instruction_data.try_to_vec()?;
+        let accounts = vec![
+            AccountMeta::new(*user_signer, true),                     // User (signer)
+            AccountMeta::new(*user_input_token_account, false),       // User input token account
+            AccountMeta::new(*user_output_token_account, false),      // User output token account
+            AccountMeta::new(*pool_state_pda, false),                 // Pool state PDA
+            AccountMeta::new_readonly(*token_a_mint, false),          // Token A mint (for PDA seeds)
+            AccountMeta::new_readonly(*token_b_mint, false),          // Token B mint (for PDA seeds)
+            AccountMeta::new(*pool_token_a_vault, false),             // Pool Token A vault
+            AccountMeta::new(*pool_token_b_vault, false),             // Pool Token B vault
+            AccountMeta::new_readonly(system_program::id(), false),   // System program
+            AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
+            AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
+            AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
+        ];
 
         Ok(Instruction {
             program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(*user, true),                          // User (signer)
-                AccountMeta::new(addresses.pool_state, false),          // Pool state
-                AccountMeta::new(*user_source_account, false),          // User source token account
-                AccountMeta::new(*user_destination_account, false),     // User destination token account
-                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
-                AccountMeta::new_readonly(system_program::id(), false), // System program
-                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
-                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
-                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
-            ],
-            data,
+            accounts,
+            data: instruction_data.try_to_vec()?,
         })
     }
 

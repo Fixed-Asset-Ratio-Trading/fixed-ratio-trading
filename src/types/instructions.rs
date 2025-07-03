@@ -97,11 +97,15 @@ pub enum PoolInstruction {
         lp_amount_to_burn: u64,
     },
     
-    /// Swap tokens at the fixed ratio
+    /// Swap tokens at fixed ratio
+    /// 
+    /// Exchanges tokens using the pool's predetermined fixed exchange rate.
+    /// The output amount is deterministically calculated based on the ratio - 
+    /// either you get the exact calculated amount or the transaction fails.
+    /// No slippage protection needed since exchange rates are constant.
     Swap {
         input_token_mint: Pubkey,
         amount_in: u64,
-        minimum_amount_out: u64,
     },
     
     /// Updates security parameters for the pool (owner only)

@@ -206,7 +206,6 @@ async fn test_swap_when_paused(
         data: PoolInstruction::Swap {
             input_token_mint: pool_config.token_a_mint,
             amount_in: 1000,
-            minimum_amount_out: 100,
         }.try_to_vec().unwrap(),
     };
 

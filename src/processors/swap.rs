@@ -38,9 +38,9 @@ use crate::{
 /// Handles token swaps within the trading pool using fixed ratios.
 ///
 /// This function implements the core token swap functionality for the fixed-ratio trading pool.
-/// It enables users to exchange tokens at predetermined ratios with configurable trading fees,
-/// deterministic outputs, and comprehensive security validations. The swap system maintains
-/// pool liquidity balance while collecting fees for pool operators.
+/// It enables users to exchange tokens at predetermined ratios with configurable trading fees
+/// and deterministic outputs. The swap system provides exact calculated amounts based on 
+/// fixed exchange rates with an "all or nothing" approach.
 ///
 /// # System Pause Behavior
 /// This operation is **BLOCKED** when the system is paused. System pause
@@ -58,8 +58,8 @@ use crate::{
 ///
 /// # Purpose
 /// - Enables token exchange at fixed ratios between pool token pairs
-/// - Provides deterministic, predictable output amounts with no slippage
-/// - Validates user expectations against fixed ratio calculations
+/// - Provides deterministic, predictable output amounts with zero variance
+/// - Implements pure "all or nothing" approach - exact amounts or transaction failure
 /// - Collects configurable trading fees (0-0.5%) for pool sustainability
 /// - Maintains accurate pool liquidity accounting and fee tracking
 /// - Provides secure, validated token transfers with proper authorization
@@ -71,11 +71,10 @@ use crate::{
 ///    - A→B: `amount_out_B = (amount_in_A * ratio_B_denominator) / ratio_A_numerator`
 ///    - B→A: `amount_out_A = (amount_in_B * ratio_A_numerator) / ratio_B_denominator`
 /// 4. **Fee Processing**: Calculates and deducts configurable trading fees
-/// 5. **Expectation Validation**: Validates user calculated the fixed ratio correctly
-/// 6. **Liquidity Verification**: Ensures pool has sufficient output tokens
-/// 7. **Token Transfers**: Executes secure transfers with proper PDA signing
-/// 8. **State Updates**: Updates pool liquidity and fee accumulation tracking
-/// 9. **SOL Fee Collection**: Collects fixed SOL fee for transaction processing
+/// 5. **Liquidity Verification**: Ensures pool has sufficient output tokens
+/// 6. **Token Transfers**: Executes secure transfers with proper PDA signing
+/// 7. **State Updates**: Updates pool liquidity and fee accumulation tracking
+/// 8. **SOL Fee Collection**: Collects fixed SOL fee for transaction processing
 ///
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and signing
@@ -94,7 +93,6 @@ use crate::{
 ///   - `accounts[11]` - Clock sysvar account
 /// * `input_token_mint_key` - The mint address of the token being swapped in
 /// * `amount_in` - The amount of input tokens to swap (including fees)
-/// * `minimum_amount_out` - Expected minimum output tokens (user calculation validation)
 ///
 /// # Account Requirements
 /// - **User Signer**: Must sign the transaction and own input/output token accounts
@@ -114,7 +112,7 @@ use crate::{
 /// # Security Features
 /// - **Signature Validation**: User must sign the swap transaction
 /// - **Account Ownership**: Validates token account ownership and mint matching
-/// - **Fixed Ratio Validation**: Ensures users understand the deterministic exchange rate
+/// - **Deterministic Output**: Provides exact calculated amounts with no variance
 /// - **Liquidity Checks**: Ensures sufficient pool liquidity for output
 /// - **Rent Exemption**: Validates pool accounts maintain rent-exempt status
 /// - **PDA Authorization**: Uses proper PDA signing for pool vault transfers
@@ -134,7 +132,7 @@ use crate::{
 /// - **Rate**: 0-0.5% (0-50 basis points) configurable by pool owner
 /// - **Default**: 0% (free trading by default)
 /// - **Application**: Deducted from input token amount before calculating output
-/// - **Calculation**: `fee_amount = input_amount * pool.swap_fee_basis_points / 10_000`
+/// - **Calculation**: `fee = input * swap_fee_basis_points / 10_000`
 /// - **Purpose**: Revenue generation for pool operators
 /// - **Collection**: Accumulated in pool state, withdrawable by pool owner
 /// 
@@ -155,36 +153,28 @@ use crate::{
 /// - `ProgramError::InvalidArgument` - Invalid token mint or parameters
 /// - `ProgramError::InsufficientFunds` - Insufficient input tokens or pool liquidity
 /// - `ProgramError::ArithmeticOverflow` - Mathematical calculation errors
-/// - `PoolError::InvalidSwapAmount` - Output amount below minimum or zero
+/// - `PoolError::InvalidSwapAmount` - Zero output amount calculated
 ///
 /// # Example Usage
 /// ```ignore
-/// // Swap 1000 Token A for Token B in a fixed ratio pool (ratio: 1000 A = 1 B)
+/// // Swap 1000 Token A for Token B (fixed ratio: 1000 A = 1 B)
 /// let instruction = PoolInstruction::Swap {
 ///     input_token_mint: token_a_mint,
 ///     amount_in: 1_000_000, // 1000 tokens (assuming 6 decimals)
-///     minimum_amount_out: 1_000, // Expect exactly 1 Token B (fixed ratio calculation)
 /// };
-/// 
-/// // For user protection, you can set minimum_amount_out slightly lower:
-/// let instruction = PoolInstruction::Swap {
-///     input_token_mint: token_a_mint,
-///     amount_in: 1_000_000, // 1000 tokens
-///     minimum_amount_out: 999, // Accept 999+ Token B (allows for minor rounding)
-/// };
+/// // User will receive exactly 1 Token B or transaction fails
 /// ```
 ///
 /// # Performance Considerations
 /// - Fixed-ratio calculation is gas-efficient (simple multiplication/division)
 /// - No complex AMM curve calculations or oracle dependencies
-/// - Deterministic output amounts enable precise slippage calculations
+/// - Deterministic output amounts provide exact predictability
 /// - Single-step atomic operation ensures consistency
 pub fn process_swap(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     input_token_mint_key: Pubkey,
     amount_in: u64,
-    minimum_amount_out: u64,
 ) -> ProgramResult {
     msg!("Processing Swap v2");
     
@@ -325,34 +315,6 @@ pub fn process_swap(
         }.into());
     }
 
-    //=========================================================================
-    // FIXED RATIO EXPECTATION VALIDATION (Not Traditional Slippage Protection)
-    //=========================================================================
-    // In Fixed Ratio Trading, users should get EXACTLY the amount determined by
-    // the pool's fixed exchange rate. There is no slippage because rates are constant.
-    //
-    // The minimum_amount_out parameter serves as USER EXPECTATION VALIDATION:
-    // - If user expects MORE than the fixed ratio provides → They miscalculated
-    // - If user expects LESS than the fixed ratio provides → Transaction proceeds
-    // - If user expects EXACTLY what the ratio provides → Perfect calculation
-    //
-    // This protects users from their own calculation errors, not from slippage.
-    
-    if amount_out < minimum_amount_out {
-        msg!("❌ Fixed Ratio Expectation Mismatch:");
-        msg!("   User expected minimum: {} tokens", minimum_amount_out);
-        msg!("   Fixed ratio provides:  {} tokens", amount_out);
-        msg!("   This is not slippage - the exchange rate is fixed!");
-        msg!("   Please check your ratio calculation and try again.");
-        msg!("   Pool ratio: {} Token A = {} Token B", 
-             pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator);
-        return Err(PoolError::InvalidSwapAmount {
-            amount: amount_out,
-            min_amount: minimum_amount_out,
-            max_amount: u64::MAX,
-        }.into());
-    }
-    
     msg!("✅ Fixed Ratio Calculation: {} input → {} output (ratio: {}:{})", 
          amount_in, amount_out, 
          pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator);
