@@ -72,146 +72,13 @@ use spl_token::{
 };
 use crate::utils::validation::validate_non_zero_amount;
 
-/// Enhanced deposit operation with additional features for testing and advanced use cases.
-/// 
-/// This function extends the standard deposit functionality with:
-/// - Slippage protection through minimum LP token guarantees
-/// - Custom fee recipient specification for flexible fee distribution
-/// - Additional validation and error handling
-///
-/// # System Pause Behavior
-/// This operation is **BLOCKED** when the system is paused. System pause
-/// takes precedence over pool-specific pause. Only the system authority
-/// can unpause via UnpauseSystem instruction.
-///
-/// # Security
-/// - Validates system is not paused before any state changes
-/// - Returns SystemPaused error if system is paused
-/// - Logs pause status for audit trails
-/// - Existing pool pause validation continues to work after system pause check
-///
-/// # Arguments
-/// - `system_state_account`: Optional first account for system pause validation
-/// 
-/// # Features
-/// ## Slippage Protection
-/// - Validates that the LP tokens received meet the minimum threshold
-/// - Prevents unexpected losses due to changing pool conditions
-/// - Provides predictable user experience
-/// 
-/// ## Custom Fee Recipients
-/// - Allows specifying an alternative fee recipient
-/// - Useful for testing, partnerships, or custom fee structures
-/// - Falls back to default pool fee collection if None specified
-/// 
-/// ## Enhanced Validation
-/// - All standard deposit validations plus additional checks
-/// - Better error messages and debugging information
-/// - Future-extensible parameter structure
-/// 
-/// # Arguments
-/// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for deposit (same as standard deposit)
-/// * `deposit_token_mint` - Token mint being deposited
-/// * `amount` - Amount of tokens to deposit
-/// * `minimum_lp_tokens_out` - Minimum LP tokens expected (slippage protection)
-/// * `fee_recipient` - Optional custom fee recipient (None = default to pool)
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error code
-pub fn process_deposit_with_features(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    deposit_token_mint: Pubkey,
-    amount: u64,
-    minimum_lp_tokens_out: u64,
-    fee_recipient: Option<Pubkey>,
-) -> ProgramResult {
-    msg!("DEBUG: process_deposit_with_features: Enhanced deposit with slippage protection");
-    msg!("DEBUG: process_deposit_with_features: Amount: {}, Min LP out: {}, Custom fee recipient: {:?}", 
-         amount, minimum_lp_tokens_out, fee_recipient);
-    
-    // ✅ SYSTEM PAUSE: Backward compatible validation
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
-    
-    // Debug account validation
-    if accounts.len() < 14 {
-        msg!("DEBUG: process_deposit_with_features: Insufficient accounts provided: {}", accounts.len());
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    
-    // Get user destination LP token account to check balance before and after
-    let user_destination_lp_token_account = &accounts[9]; // Based on standard deposit account order
-    msg!("DEBUG: process_deposit_with_features: About to read initial LP balance from account: {}", user_destination_lp_token_account.key);
-    
-    let initial_lp_balance = {
-        match TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow()) {
-            Ok(account_data) => {
-                msg!("DEBUG: process_deposit_with_features: Initial LP balance: {}", account_data.amount);
-                account_data.amount
-            }
-            Err(e) => {
-                msg!("DEBUG: process_deposit_with_features: Failed to read initial LP balance: {:?}", e);
-                return Err(e.into());
-            }
-        }
-    };
-    
-    // Perform standard deposit operation
-    msg!("DEBUG: process_deposit_with_features: About to call process_deposit");
-    match process_deposit(program_id, accounts, deposit_token_mint, amount) {
-        Ok(_) => {
-            msg!("DEBUG: process_deposit_with_features: process_deposit completed successfully");
-        }
-        Err(e) => {
-            msg!("DEBUG: process_deposit_with_features: process_deposit FAILED with error: {:?}", e);
-            return Err(e);
-        }
-    }
-    
-    // Check slippage protection
-    msg!("DEBUG: process_deposit_with_features: About to read final LP balance");
-    let final_lp_balance = {
-        match TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow()) {
-            Ok(account_data) => {
-                msg!("DEBUG: process_deposit_with_features: Final LP balance: {}", account_data.amount);
-                account_data.amount
-            }
-            Err(e) => {
-                msg!("DEBUG: process_deposit_with_features: Failed to read final LP balance: {:?}", e);
-                return Err(e.into());
-            }
-        }
-    };
-    
-    let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-    
-    msg!("DEBUG: process_deposit_with_features: LP tokens received: {}, minimum required: {}", 
-         lp_tokens_received, minimum_lp_tokens_out);
-    
-    if lp_tokens_received < minimum_lp_tokens_out {
-        msg!("DEBUG: process_deposit_with_features: Slippage protection triggered. Received: {}, Minimum: {}", 
-             lp_tokens_received, minimum_lp_tokens_out);
-        return Err(ProgramError::Custom(2001)); // Custom slippage protection error
-    }
-    
-    // Handle custom fee recipient if specified
-    if let Some(custom_recipient) = fee_recipient {
-        msg!("DEBUG: process_deposit_with_features: Custom fee recipient specified: {}", custom_recipient);
-        // TODO: Implement custom fee recipient logic in future versions
-        // For now, just log the intent - fees still go to pool
-    }
-    
-    msg!("DEBUG: process_deposit_with_features: Enhanced deposit completed successfully. LP tokens received: {}", lp_tokens_received);
-    Ok(())
-}
 
-/// Handles user deposits into the trading pool.
+
+/// Handles user deposits into the trading pool with strict 1:1 LP token enforcement.
 ///
 /// This function allows users to deposit tokens into the pool in exchange for LP (Liquidity Provider)
-/// tokens. The deposit maintains the pool's fixed ratio structure and provides users with proportional
-/// ownership tokens that can later be redeemed for underlying assets.
+/// tokens at a guaranteed 1:1 ratio. If the exact 1:1 ratio cannot be achieved, the entire
+/// transaction is rolled back. All fees go to the internal pool PDA for centralized management.
 ///
 /// # System Pause Behavior
 /// This operation is **BLOCKED** when the system is paused. System pause
@@ -222,10 +89,16 @@ pub fn process_deposit_with_features(
 /// - Validates system is not paused before any state changes
 /// - Returns SystemPaused error if system is paused
 /// - Logs pause status for audit trails
-/// - Existing pool pause validation continues to work after system pause check
+/// - Enforces strict 1:1 ratio between deposited tokens and LP tokens
+/// - Transaction fails if 1:1 ratio cannot be maintained
 ///
-/// # Arguments
-/// - `system_state_account`: Optional first account for system pause validation
+/// # Guarantees
+/// - **Strict 1:1 ratio**: deposit N tokens → receive exactly N LP tokens
+/// - **Transaction rollback**: fails cleanly if 1:1 ratio cannot be maintained
+/// - **LP token precision**: LP tokens have same decimal precision as underlying tokens
+/// - **Unlimited supply**: LP tokens have no supply caps
+/// - **Contract-only minting**: Only the contract can mint LP tokens
+/// - **Centralized fees**: All fees go to pool PDA for future fee management
 ///
 /// # Arguments
 /// * `program_id` - The program ID of the contract
@@ -245,10 +118,14 @@ pub fn process_deposit_with_features(
 ///   - `accounts[12]` - Rent sysvar
 ///   - `accounts[13]` - Clock sysvar
 /// * `deposit_token_mint_key` - The mint of the token being deposited
-/// * `amount` - The amount to deposit
+/// * `amount` - The amount to deposit (will receive exactly this many LP tokens)
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error code
+/// 
+/// # Errors
+/// - `ProgramError::Custom(3001)` - Strict 1:1 ratio violation
+/// - `ProgramError::Custom(3002)` - LP token mint operation integrity violation
 pub fn process_deposit(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -367,6 +244,11 @@ pub fn process_deposit(
         return Err(ProgramError::InvalidAccountData);
     }
     
+    // STRICT 1:1 ENFORCEMENT: Record initial LP balance for verification
+    let initial_lp_balance = user_dest_lp_token_account_data.amount;
+    msg!("DEBUG: process_deposit: Initial LP balance: {}, expecting to mint exactly {} LP tokens", 
+         initial_lp_balance, amount);
+    
     // Validate SPL Token Program ID
     if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
         msg!("Invalid SPL Token Program ID");
@@ -458,7 +340,7 @@ pub fn process_deposit(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    msg!("Minting {} LP tokens for {} to user", amount, target_lp_mint_account.key);
+    msg!("Minting exactly {} LP tokens for {} to user (strict 1:1 enforcement)", amount, target_lp_mint_account.key);
     invoke_signed(
         &token_instruction::mint_to(
             token_program_account.key,
@@ -466,7 +348,7 @@ pub fn process_deposit(
             user_destination_lp_token_account.key,
             pool_state_account.key,
             &[], 
-            amount,
+            amount,  // CRITICAL: Must mint exactly the deposited amount
         )?,
         &[
             target_lp_mint_account.clone(),
@@ -476,6 +358,25 @@ pub fn process_deposit(
         ],
         &[pool_state_pda_seeds],
     )?;
+
+    // STRICT 1:1 ENFORCEMENT: Verify exact LP token amount was minted
+    let final_lp_balance = {
+        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
+        account_data.amount
+    };
+
+    let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+
+    // CRITICAL: Must be exactly 1:1 ratio - no tolerance for deviations
+    if lp_tokens_received != amount {
+        msg!("❌ STRICT 1:1 VIOLATION: Expected {} LP tokens, received {}. Rolling back transaction.", 
+             amount, lp_tokens_received);
+        return Err(ProgramError::Custom(3001)); // Strict ratio violation error
+    }
+
+    msg!("✅ Strict 1:1 deposit verified: {} tokens deposited → {} LP tokens minted", 
+         amount, lp_tokens_received);
 
     //=========================================================================
     // CONTRACT FEE TRANSFER (Fixed SOL Amount)  

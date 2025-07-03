@@ -71,28 +71,24 @@ pub enum PoolInstruction {
     },
 
     /// Standard deposit operation for adding liquidity to the pool
+    /// 
+    /// This instruction enforces a strict 1:1 ratio between deposited tokens and LP tokens.
+    /// If the exact 1:1 ratio cannot be achieved, the entire transaction is rolled back.
+    /// All fees go to the internal pool PDA for centralized management.
+    /// 
+    /// # Arguments:
+    /// - `deposit_token_mint`: Token mint being deposited (must match pool's Token A or Token B)
+    /// - `amount`: Amount of tokens to deposit (will receive exactly this many LP tokens)
+    /// 
+    /// # Guarantees:
+    /// - Strict 1:1 ratio: deposit N tokens → receive exactly N LP tokens
+    /// - Transaction fails if 1:1 ratio cannot be maintained
+    /// - LP tokens have same decimal precision as underlying tokens
+    /// - Unlimited LP token supply (no supply caps)
+    /// - Only the contract can mint LP tokens
     Deposit {
         deposit_token_mint: Pubkey,
         amount: u64,
-    },
-    
-    /// Enhanced deposit operation with additional features for testing and advanced use cases
-    /// 
-    /// # Additional Features:
-    /// - Slippage protection with minimum LP token guarantees
-    /// - Custom fee recipient specification
-    /// - Optional metadata for transaction tracking
-    /// 
-    /// # Arguments:
-    /// - `deposit_token_mint`: Token mint being deposited
-    /// - `amount`: Amount of tokens to deposit
-    /// - `minimum_lp_tokens_out`: Minimum LP tokens expected (slippage protection)
-    /// - `fee_recipient`: Optional custom fee recipient (None = default to pool)
-    DepositWithFeatures {
-        deposit_token_mint: Pubkey,
-        amount: u64,
-        minimum_lp_tokens_out: u64,
-        fee_recipient: Option<Pubkey>,
     },
     
     /// Withdraw liquidity from the pool by burning LP tokens

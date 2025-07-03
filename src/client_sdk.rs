@@ -407,64 +407,7 @@ impl PoolClient {
         })
     }
     
-    /// Creates an enhanced deposit instruction with additional features.
-    /// 
-    /// # Arguments  
-    /// * `user` - The user performing the deposit
-    /// * `config` - Pool configuration
-    /// * `deposit_token_mint` - Token being deposited
-    /// * `amount` - Amount to deposit
-    /// * `minimum_lp_tokens_out` - Minimum LP tokens expected (slippage protection)
-    /// * `fee_recipient` - Optional custom fee recipient
-    /// * `user_source_account` - User's token account
-    /// * `user_lp_account` - User's LP token account
-    /// 
-    /// # Returns
-    /// * `Result<Instruction, PoolClientError>` - The enhanced deposit instruction or an error
-    pub fn deposit_with_features_instruction(
-        &self,
-        user: &Pubkey,
-        config: &PoolConfig,
-        deposit_token_mint: &Pubkey,
-        amount: u64,
-        minimum_lp_tokens_out: u64,
-        fee_recipient: Option<Pubkey>,
-        user_source_account: &Pubkey,
-        user_lp_account: &Pubkey,
-    ) -> Result<Instruction, PoolClientError> {
-        let addresses = self.derive_pool_addresses(config);
-        
-        // Validate deposit token
-        if *deposit_token_mint != config.multiple_token_mint && *deposit_token_mint != config.base_token_mint {
-            return Err(PoolClientError::InvalidDepositToken);
-        }
 
-        let instruction_data = PoolInstruction::DepositWithFeatures {
-            deposit_token_mint: *deposit_token_mint,
-            amount,
-            minimum_lp_tokens_out,
-            fee_recipient,
-        };
-
-        let data = instruction_data.try_to_vec()?;
-
-        Ok(Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(*user, true),                          // User (signer)
-                AccountMeta::new(addresses.pool_state, false),          // Pool state
-                AccountMeta::new(*user_source_account, false),          // User source token account
-                AccountMeta::new(*user_lp_account, false),              // User LP token account
-                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
-                AccountMeta::new_readonly(system_program::id(), false), // System program
-                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
-                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
-                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
-            ],
-            data,
-        })
-    }
     
     /// Creates a withdraw instruction for removing liquidity from a pool.
     /// 

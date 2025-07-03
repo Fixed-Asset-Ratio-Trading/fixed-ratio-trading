@@ -116,7 +116,6 @@ use crate::processors::{
     },
     liquidity::{
         process_deposit,
-        process_deposit_with_features,
         process_withdraw,
     },
     fees::{
@@ -187,13 +186,6 @@ pub fn process_instruction(
             deposit_token_mint,
             amount,
         } => process_deposit(program_id, accounts, deposit_token_mint, amount),
-
-        PoolInstruction::DepositWithFeatures {
-            deposit_token_mint,
-            amount,
-            minimum_lp_tokens_out,
-            fee_recipient,
-        } => process_deposit_with_features(program_id, accounts, deposit_token_mint, amount, minimum_lp_tokens_out, fee_recipient),
 
         PoolInstruction::Withdraw {
             withdraw_token_mint,

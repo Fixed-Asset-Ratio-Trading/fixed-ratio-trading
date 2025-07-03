@@ -879,7 +879,33 @@ pub fn process_initialize_pool(
     msg!("✅ Pool creation contract fee transferred: {} lamports ({} SOL) from creator to pool", 
          REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
 
-    // Create and initialize LP token mints
+    // Map token mint accounts to normalized token A/B based on lexicographic order
+    let token_a_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
+        multiple_token_mint_account
+    } else {
+        base_token_mint_account
+    };
+    let token_b_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
+        base_token_mint_account
+    } else {
+        multiple_token_mint_account
+    };
+
+    // Get decimal precision from underlying token mints to ensure LP tokens match
+    let token_a_mint_data = token_a_mint_account_ref.try_borrow_data()?;
+    let token_a_mint_info = MintAccount::unpack(&token_a_mint_data)?;
+    let token_a_decimals = token_a_mint_info.decimals;
+    drop(token_a_mint_data); // Release borrow before next operation
+
+    let token_b_mint_data = token_b_mint_account_ref.try_borrow_data()?;
+    let token_b_mint_info = MintAccount::unpack(&token_b_mint_data)?;
+    let token_b_decimals = token_b_mint_info.decimals;
+    drop(token_b_mint_data); // Release borrow before next operation
+
+    msg!("DEBUG: process_initialize_pool: Token A decimals: {}, Token B decimals: {}", 
+         token_a_decimals, token_b_decimals);
+
+    // Create and initialize LP token mints with matching decimal precision
     let rent_for_mint = rent.minimum_balance(MintAccount::LEN);
     
     // Create LP Token A Mint
@@ -899,8 +925,8 @@ pub fn process_initialize_pool(
             token_program_account.key,
             lp_token_a_mint_account.key,
             payer.key,
-            None,
-            9,
+            None,                    // No freeze authority = unlimited supply
+            token_a_decimals,        // Match Token A decimal precision
         )?,
         &[lp_token_a_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
     )?;
@@ -922,8 +948,8 @@ pub fn process_initialize_pool(
             token_program_account.key,
             lp_token_b_mint_account.key,
             payer.key,
-            None,
-            9,
+            None,                    // No freeze authority = unlimited supply
+            token_b_decimals,        // Match Token B decimal precision
         )?,
         &[lp_token_b_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
     )?;
@@ -952,18 +978,6 @@ pub fn process_initialize_pool(
         )?,
         &[lp_token_b_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
     )?;
-
-    // Map token mint accounts to normalized token A/B based on lexicographic order
-    let token_a_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
-        multiple_token_mint_account
-    } else {
-        base_token_mint_account
-    };
-    let token_b_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
-        base_token_mint_account
-    } else {
-        multiple_token_mint_account
-    };
 
     // Create token vaults
     let rent_for_vault = rent.minimum_balance(TokenAccount::LEN);

@@ -45,7 +45,7 @@ pub const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 /// token transfers, LP token minting/burning, and pool state updates.
 /// 
 /// **Type**: Contract Fee (Fixed SOL amount)  
-/// **When Charged**: During `Deposit`, `DepositWithFeatures`, and `Withdraw` operations
+/// **When Charged**: During `Deposit` and `Withdraw` operations
 /// **Amount**: 0.0013 SOL (1,300,000 lamports)
 /// **Purpose**: Cover transaction processing costs for liquidity operations
 pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
