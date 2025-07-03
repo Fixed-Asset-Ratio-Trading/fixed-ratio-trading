@@ -175,12 +175,13 @@ pub fn process_instruction(
 
     match instruction {
         PoolInstruction::InitializePool {
-            multiple_per_base,
+            ratio_a_numerator,
+            ratio_b_denominator,
             pool_authority_bump_seed,
-            multiple_token_vault_bump_seed,
-            base_token_vault_bump_seed,
-        } => process_initialize_pool(program_id, accounts, multiple_per_base, 
-            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
+            token_a_vault_bump_seed,
+            token_b_vault_bump_seed,
+        } => process_initialize_pool(program_id, accounts, ratio_a_numerator, ratio_b_denominator,
+            pool_authority_bump_seed, token_a_vault_bump_seed, token_b_vault_bump_seed),
 
         PoolInstruction::Deposit {
             deposit_token_mint,

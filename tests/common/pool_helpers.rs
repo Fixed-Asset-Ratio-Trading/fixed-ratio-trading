@@ -67,6 +67,25 @@ pub struct PoolConfig {
     pub base_vault_bump: u8,
 }
 
+/// Backwards compatibility wrapper for normalize_pool_config
+/// 
+/// # Arguments
+/// * `multiple_mint` - Multiple token mint (abundant token)
+/// * `base_mint` - Base token mint (valuable token)
+/// * `multiple_per_base` - Ratio of multiple tokens per base token (legacy format)
+/// 
+/// # Returns
+/// Normalized pool configuration with all derived addresses
+pub fn normalize_pool_config_legacy(
+    multiple_mint: &Pubkey,
+    base_mint: &Pubkey,
+    multiple_per_base: u64,
+) -> PoolConfig {
+    // Convert legacy single ratio to new dual ratio format
+    // For backwards compatibility, we assume denominator of 1
+    normalize_pool_config(multiple_mint, base_mint, multiple_per_base, 1)
+}
+
 /// Normalize pool parameters and derive PDAs
 /// 
 /// This function performs enhanced normalization logic that prevents creation of 
@@ -80,7 +99,8 @@ pub struct PoolConfig {
 /// # Arguments
 /// * `multiple_mint` - Multiple token mint (abundant token)
 /// * `base_mint` - Base token mint (valuable token)
-/// * `multiple_per_base` - Ratio of multiple tokens per base token
+/// * `ratio_a_numerator` - Token A base units
+/// * `ratio_b_denominator` - Token B base units
 /// 
 /// # Returns
 /// Normalized pool configuration with all derived addresses
@@ -91,7 +111,8 @@ pub struct PoolConfig {
 pub fn normalize_pool_config(
     multiple_mint: &Pubkey,
     base_mint: &Pubkey,
-    multiple_per_base: u64,
+    ratio_a_numerator: u64,
+    ratio_b_denominator: u64,
 ) -> PoolConfig {
     // Step 1: Lexicographic token ordering  
     let (token_a_mint, token_b_mint) = 
@@ -103,21 +124,10 @@ pub fn normalize_pool_config(
             panic!("Multiple and Base token mints cannot be the same");
         };
     
-    // Step 2: Canonical ratio mapping
-    // CRITICAL: For economic equivalence, we normalize ALL token pairs to the same ratio
-    // This prevents liquidity fragmentation by ensuring that A/B and B/A pools
-    // with equivalent exchange rates resolve to the same canonical configuration
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
-        if multiple_mint.to_bytes() < base_mint.to_bytes() {
-            // Multiple token is token A: direct mapping
-            (multiple_per_base, 1u64, true)
-        } else {
-            // Multiple token is token B: this represents an inverse relationship
-            // For economic equivalence, we use a canonical form
-            // Both "X A per 1 B" and "X B per 1 A" normalize to the same pool
-            // by always using the same canonical ratio for the same token pair
-            (multiple_per_base, 1u64, false)
-        };
+    // Step 2: Use provided ratios directly (already in base units)
+    // The ratios are provided as base units, so we use them as-is
+    // Token ordering is handled by the lexicographic ordering above
+    let token_a_is_the_multiple = multiple_mint.to_bytes() < base_mint.to_bytes();
 
     // Derive pool state PDA using NORMALIZED values
     let (pool_state_pda, pool_authority_bump) = Pubkey::find_program_address(
@@ -196,7 +206,7 @@ pub async fn create_pool_new_pattern(
     let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
     
     // Get normalized pool configuration
-    let config = normalize_pool_config(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
+    let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
     // Create InitializePool instruction
     let initialize_pool_ix = Instruction {
@@ -215,10 +225,11 @@ pub async fn create_pool_new_pattern(
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
         ],
         data: PoolInstruction::InitializePool {
-            multiple_per_base: ratio,
+            ratio_a_numerator: config.ratio_a_numerator,
+            ratio_b_denominator: config.ratio_b_denominator,
             pool_authority_bump_seed: config.pool_authority_bump,
-            multiple_token_vault_bump_seed: config.multiple_vault_bump,
-            base_token_vault_bump_seed: config.base_vault_bump,
+            token_a_vault_bump_seed: config.token_a_vault_bump,
+            token_b_vault_bump_seed: config.token_b_vault_bump,
         }.try_to_vec().unwrap(),
     };
 
@@ -262,7 +273,7 @@ pub async fn create_pool_legacy_pattern(
     let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
     
     // Get normalized pool configuration
-    let config = normalize_pool_config(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
+    let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
     // Step 1: CreatePoolStateAccount instruction
     let create_ix = Instruction {

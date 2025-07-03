@@ -128,9 +128,10 @@ pub struct PoolConfig {
     /// Example: In a 1000:1 ratio, if USDC:SOL, then SOL is the base token
     pub base_token_mint: Pubkey,
     
-    /// Exchange ratio: how many multiple tokens per base token
-    /// Example: multiple_per_base = 2 means 2 USDC per 1 SOL
-    pub multiple_per_base: u64,
+    /// Token A base units
+    pub ratio_a_numerator: u64,
+    /// Token B base units 
+    pub ratio_b_denominator: u64,
 }
 
 impl PoolConfig {
@@ -139,20 +140,22 @@ impl PoolConfig {
     /// # Arguments
     /// * `multiple_token_mint` - Mint address of the multiple token (abundant)
     /// * `base_token_mint` - Mint address of the base token (valuable)
-    /// * `multiple_per_base` - How many multiple tokens equal one base token
+    /// * `ratio_a_numerator` - Token A base units
+    /// * `ratio_b_denominator` - Token B base units
     /// 
     /// # Returns
     /// * `Result<PoolConfig, PoolClientError>` - The pool configuration or an error
     /// 
     /// # Errors
-    /// * `InvalidRatio` - If multiple_per_base is 0
+    /// * `InvalidRatio` - If either ratio is 0
     /// * `InvalidDepositToken` - If multiple_token_mint and base_token_mint are identical
     pub fn new(
         multiple_token_mint: Pubkey,
         base_token_mint: Pubkey,
-        multiple_per_base: u64,
+        ratio_a_numerator: u64,
+        ratio_b_denominator: u64,
     ) -> Result<Self, PoolClientError> {
-        if multiple_per_base == 0 {
+        if ratio_a_numerator == 0 || ratio_b_denominator == 0 {
             return Err(PoolClientError::InvalidRatio);
         }
 
@@ -163,7 +166,8 @@ impl PoolConfig {
         Ok(Self {
             multiple_token_mint,
             base_token_mint,
-            multiple_per_base,
+            ratio_a_numerator,
+            ratio_b_denominator,
         })
     }
 }
@@ -184,7 +188,7 @@ pub struct PoolAddresses {
     pub token_b_mint: Pubkey,
     /// Normalized ratio A numerator  
     pub ratio_a_numerator: u64,
-    /// Normalized ratio B denominator (always 1)
+    /// Normalized ratio B denominator
     pub ratio_b_denominator: u64,
     /// Token A vault address
     pub token_a_vault: Pubkey,
@@ -238,13 +242,12 @@ impl PoolClient {
                 (config.base_token_mint, config.multiple_token_mint)
             };
         
-        // Step 2: Canonical ratio mapping to prevent liquidity fragmentation
+        // Step 2: Use the provided ratios directly (already in base units)
         let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
             if config.multiple_token_mint < config.base_token_mint {
-                (config.multiple_per_base, 1u64)
+                (config.ratio_a_numerator, config.ratio_b_denominator)
             } else {
-                // Use canonical form - all pools with same token pair get same ratio
-                (config.multiple_per_base, 1u64)
+                (config.ratio_a_numerator, config.ratio_b_denominator)
             };
         
         // Derive pool state PDA
@@ -310,24 +313,21 @@ impl PoolClient {
         let addresses = self.derive_pool_addresses(config);
         
         // Validate inputs
-        if config.multiple_per_base == 0 {
+        if config.ratio_a_numerator == 0 || config.ratio_b_denominator == 0 {
             return Err(PoolClientError::InvalidRatio);
         }
         
-        // Map bump seeds back to multiple/base token convention
-        let (multiple_vault_bump, base_vault_bump) = 
-            if config.multiple_token_mint < config.base_token_mint {
-                (addresses.token_a_vault_bump, addresses.token_b_vault_bump)
-            } else {
-                (addresses.token_b_vault_bump, addresses.token_a_vault_bump)
-            };
+        // Use vault bump seeds directly (already in correct order)
+        let token_a_vault_bump = addresses.token_a_vault_bump;
+        let token_b_vault_bump = addresses.token_b_vault_bump;
         
         // Create instruction
         let instruction_data = PoolInstruction::InitializePool {
-            multiple_per_base: config.multiple_per_base,
+            ratio_a_numerator: addresses.ratio_a_numerator,
+            ratio_b_denominator: addresses.ratio_b_denominator,
             pool_authority_bump_seed: addresses.pool_authority_bump,
-            multiple_token_vault_bump_seed: multiple_vault_bump,
-            base_token_vault_bump_seed: base_vault_bump,
+            token_a_vault_bump_seed: token_a_vault_bump,
+            token_b_vault_bump_seed: token_b_vault_bump,
         };
         
         let data = instruction_data
@@ -598,7 +598,8 @@ pub mod test_utils {
         PoolConfig {
             multiple_token_mint: Pubkey::new_unique(),
             base_token_mint: Pubkey::new_unique(),
-            multiple_per_base: 1000, // 1000:1 ratio
+            ratio_a_numerator: 1000,
+            ratio_b_denominator: 1,
         }
     }
 } 

@@ -128,7 +128,7 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 //=============================================================================
 
 /// PDA seed prefix for pool state accounts
-pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state_v2";
+pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
 
 /// PDA seed prefix for token A vault accounts
 pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";

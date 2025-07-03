@@ -53,15 +53,21 @@ pub enum PoolInstruction {
     /// - Eliminates workaround complexity
     /// 
     /// # Arguments:
-    /// - `multiple_per_base`: Exchange ratio between multiple and base tokens (how many multiple tokens per 1 base token)
+    /// - `ratio_a_numerator`: Token A base units (replaces multiple_per_base)
+    /// - `ratio_b_denominator`: Token B base units (was hardcoded to 1, now configurable)
     /// - `pool_authority_bump_seed`: Bump seed for pool authority PDA derivation
-    /// - `multiple_token_vault_bump_seed`: Bump seed for multiple token vault PDA
-    /// - `base_token_vault_bump_seed`: Bump seed for base token vault PDA
+    /// - `token_a_vault_bump_seed`: Bump seed for token A vault PDA (renamed from multiple_token_vault_bump_seed)
+    /// - `token_b_vault_bump_seed`: Bump seed for token B vault PDA (renamed from base_token_vault_bump_seed)
+    /// 
+    /// # Note:
+    /// - `one_to_many_ratio` is automatically determined by the contract based on the ratio values
+    /// - Display preferences are handled by individual applications, not the contract
     InitializePool {
-        multiple_per_base: u64,
+        ratio_a_numerator: u64,
+        ratio_b_denominator: u64,
         pool_authority_bump_seed: u8,
-        multiple_token_vault_bump_seed: u8,
-        base_token_vault_bump_seed: u8,
+        token_a_vault_bump_seed: u8,
+        token_b_vault_bump_seed: u8,
     },
 
     /// Standard deposit operation for adding liquidity to the pool

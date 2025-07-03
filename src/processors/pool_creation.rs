@@ -637,8 +637,10 @@ pub fn process_initialize_pool_data(
     pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
     pool_state_data.ratio_a_numerator = ratio_a_numerator;
     pool_state_data.ratio_b_denominator = ratio_b_denominator;
-    pool_state_data.token_a_is_the_multiple = token_a_is_the_multiple;
-    msg!("DEBUG: process_initialize_pool_data: Set token_a_is_the_multiple = {} in PoolState", token_a_is_the_multiple);
+    // Note: token_a_is_the_multiple field has been removed in favor of one_to_many_ratio
+    // This field was app-specific display logic that is now handled by applications
+    pool_state_data.one_to_many_ratio = false; // Will be enhanced with proper detection
+    msg!("DEBUG: process_initialize_pool_data: Set one_to_many_ratio = {} (placeholder for legacy function)", pool_state_data.one_to_many_ratio);
     pool_state_data.total_token_a_liquidity = 0;
     pool_state_data.total_token_b_liquidity = 0;
     pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;
@@ -718,10 +720,11 @@ pub fn process_initialize_pool_data(
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and account creation
 /// * `accounts` - Array of account infos in the required order (see account list below)
-/// * `multiple_per_base` - The ratio of multiple tokens per base token
+/// * `ratio_a_numerator` - Token A base units (replaces multiple_per_base)
+/// * `ratio_b_denominator` - Token B base units (was hardcoded to 1, now configurable)
 /// * `pool_authority_bump_seed` - Bump seed for pool authority PDA derivation
-/// * `multiple_token_vault_bump_seed` - Bump seed for multiple token vault PDA
-/// * `base_token_vault_bump_seed` - Bump seed for base token vault PDA
+/// * `token_a_vault_bump_seed` - Bump seed for token A vault PDA (renamed from multiple_token_vault_bump_seed)
+/// * `token_b_vault_bump_seed` - Bump seed for token B vault PDA (renamed from base_token_vault_bump_seed)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
@@ -748,10 +751,11 @@ pub fn process_initialize_pool_data(
 pub fn process_initialize_pool(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    multiple_per_base: u64,
+    ratio_a_numerator: u64,
+    ratio_b_denominator: u64,
     pool_authority_bump_seed: u8,
-    multiple_token_vault_bump_seed: u8,
-    base_token_vault_bump_seed: u8,
+    token_a_vault_bump_seed: u8,
+    token_b_vault_bump_seed: u8,
 ) -> ProgramResult {
     msg!("DEBUG: process_initialize_pool: Starting FIXED single-instruction pool initialization");
     
@@ -782,32 +786,19 @@ pub fn process_initialize_pool(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify ratio is non-zero
-    if multiple_per_base == 0 {
-        return Err(ProgramError::InvalidArgument);
-    }
+    // Validate ratio values
+    crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
 
-    // Enhanced normalization
+    // Token normalization: Always store tokens in lexicographic order (Token A < Token B)
     let (token_a_mint_key, token_b_mint_key) = 
         if multiple_token_mint_account.key < base_token_mint_account.key {
             (multiple_token_mint_account.key, base_token_mint_account.key)
         } else {
             (base_token_mint_account.key, multiple_token_mint_account.key)
         };
-    
-    let (ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple) = 
-        if multiple_token_mint_account.key < base_token_mint_account.key {
-            msg!("DEBUG: process_initialize_pool: Multiple token ({}) < Base token ({}) - TokenA is the multiple", 
-                 multiple_token_mint_account.key, base_token_mint_account.key);
-            (multiple_per_base, 1u64, true)
-        } else {
-            msg!("DEBUG: process_initialize_pool: Multiple token ({}) >= Base token ({}) - TokenB is the multiple", 
-                 multiple_token_mint_account.key, base_token_mint_account.key);
-            (multiple_per_base, 1u64, false)
-        };
 
-    msg!("DEBUG: process_initialize_pool: Normalized: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}, token_a_is_the_multiple={}", 
-         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator, token_a_is_the_multiple);
+    msg!("DEBUG: process_initialize_pool: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
+         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
 
     // Verify the pool state PDA
     let pool_state_pda_seeds = &[
@@ -828,12 +819,9 @@ pub fn process_initialize_pool(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // Map vault bump seeds BEFORE calculating size
-    let (token_a_vault_bump, token_b_vault_bump) = if token_a_is_the_multiple {
-        (multiple_token_vault_bump_seed, base_token_vault_bump_seed)
-    } else {
-        (base_token_vault_bump_seed, multiple_token_vault_bump_seed)
-    };
+    // Use the provided vault bump seeds directly (already named correctly)
+    let token_a_vault_bump = token_a_vault_bump_seed;
+    let token_b_vault_bump = token_b_vault_bump_seed;
 
     // Derive vault PDAs for size calculation
     let token_a_vault_seeds = &[
@@ -965,10 +953,17 @@ pub fn process_initialize_pool(
         &[lp_token_b_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
     )?;
 
-    // Vault seeds already calculated above
-
-    let token_a_mint_account_ref = if token_a_is_the_multiple { multiple_token_mint_account } else { base_token_mint_account };
-    let token_b_mint_account_ref = if token_a_is_the_multiple { base_token_mint_account } else { multiple_token_mint_account };
+    // Map token mint accounts to normalized token A/B based on lexicographic order
+    let token_a_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
+        multiple_token_mint_account
+    } else {
+        base_token_mint_account
+    };
+    let token_b_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
+        base_token_mint_account
+    } else {
+        multiple_token_mint_account
+    };
 
     // Create token vaults
     let rent_for_vault = rent.minimum_balance(TokenAccount::LEN);
@@ -1045,8 +1040,35 @@ pub fn process_initialize_pool(
     pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
     pool_state_data.ratio_a_numerator = ratio_a_numerator;
     pool_state_data.ratio_b_denominator = ratio_b_denominator;
-    pool_state_data.token_a_is_the_multiple = token_a_is_the_multiple;
-    msg!("DEBUG: process_initialize_pool: Set token_a_is_the_multiple = {} in PoolState", token_a_is_the_multiple);
+    
+    // Determine one-to-many ratio with token decimal information
+    let token_a_mint_data = token_a_mint_account_ref.try_borrow_data()?;
+    let token_b_mint_data = token_b_mint_account_ref.try_borrow_data()?;
+    
+    if token_a_mint_data.len() >= MintAccount::LEN && token_b_mint_data.len() >= MintAccount::LEN {
+        let token_a_mint_info = MintAccount::unpack(&token_a_mint_data)?;
+        let token_b_mint_info = MintAccount::unpack(&token_b_mint_data)?;
+        
+        pool_state_data.one_to_many_ratio = crate::utils::validation::check_one_to_many_ratio(
+            ratio_a_numerator,
+            ratio_b_denominator,
+            token_a_mint_info.decimals,
+            token_b_mint_info.decimals,
+        );
+        
+        msg!("DEBUG: process_initialize_pool: Token A decimals: {}, Token B decimals: {}", 
+             token_a_mint_info.decimals, token_b_mint_info.decimals);
+        msg!("DEBUG: process_initialize_pool: Determined one_to_many_ratio = {}", pool_state_data.one_to_many_ratio);
+    } else {
+        // Fallback: assume standard decimals (9 for both) and detect based on that
+        pool_state_data.one_to_many_ratio = crate::utils::validation::check_one_to_many_ratio(
+            ratio_a_numerator,
+            ratio_b_denominator,
+            9, // Default to 9 decimals
+            9, // Default to 9 decimals
+        );
+        msg!("DEBUG: process_initialize_pool: Using fallback decimals (9,9), one_to_many_ratio = {}", pool_state_data.one_to_many_ratio);
+    }
     pool_state_data.total_token_a_liquidity = 0;
     pool_state_data.total_token_b_liquidity = 0;
     pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;

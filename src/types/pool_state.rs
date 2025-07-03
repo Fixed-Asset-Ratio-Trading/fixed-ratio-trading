@@ -82,7 +82,7 @@ pub struct PoolState {
     pub lp_token_b_mint: Pubkey,
     pub ratio_a_numerator: u64,
     pub ratio_b_denominator: u64,
-    pub token_a_is_the_multiple: bool,
+    pub one_to_many_ratio: bool,
     pub total_token_a_liquidity: u64,
     pub total_token_b_liquidity: u64,
     pub pool_authority_bump_seed: u8,
@@ -125,7 +125,7 @@ impl Default for PoolState {
             lp_token_b_mint: Pubkey::default(),
             ratio_a_numerator: 0,
             ratio_b_denominator: 0,
-            token_a_is_the_multiple: false,
+            one_to_many_ratio: false,
             total_token_a_liquidity: 0,
             total_token_b_liquidity: 0,
             pool_authority_bump_seed: 0,
@@ -159,7 +159,7 @@ impl PoolState {
         32 + // lp_token_b_mint
         8 +  // ratio_a_numerator
         8 +  // ratio_b_denominator
-        1 +  // token_a_is_the_multiple
+        1 +  // one_to_many_ratio
         8 +  // total_token_a_liquidity
         8 +  // total_token_b_liquidity
         1 +  // pool_authority_bump_seed

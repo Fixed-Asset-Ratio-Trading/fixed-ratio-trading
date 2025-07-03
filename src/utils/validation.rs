@@ -212,4 +212,84 @@ pub fn validate_system_not_paused_safe(accounts: &[AccountInfo], expected_min_ac
         msg!("No system state account provided - skipping system pause check (backward compatibility)");
         Ok(())
     }
+}
+
+/// Validates ratio values and returns pool ID string for PDA derivation.
+///
+/// # Arguments
+/// * `ratio_a_numerator` - Token A base units
+/// * `ratio_b_denominator` - Token B base units
+///
+/// # Returns
+/// * `ProgramResult` - Success if ratios are valid, error otherwise
+pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -> ProgramResult {
+    if ratio_a_numerator == 0 {
+        msg!("Ratio A numerator cannot be zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    if ratio_b_denominator == 0 {
+        msg!("Ratio B denominator cannot be zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    Ok(())
+}
+
+/// Determines if a pool has a clean one-to-many ratio based on the provided ratios and token decimals.
+/// 
+/// A pool is considered one-to-many if:
+/// - Both ratios represent whole numbers (no fractional parts when converted to display units)
+/// - One of the tokens has exactly 1.0 ratio in display units
+/// - Both ratios are positive (greater than zero)
+///
+/// # Arguments
+/// * `ratio_a_numerator` - Token A base units
+/// * `ratio_b_denominator` - Token B base units
+/// * `token_a_decimals` - Number of decimal places for token A
+/// * `token_b_decimals` - Number of decimal places for token B
+///
+/// # Returns
+/// * `bool` - true if the pool qualifies as one-to-many, false otherwise
+///
+/// # Examples
+/// ```
+/// // 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
+/// let is_one_to_many = check_one_to_many_ratio(
+///     1_000_000_000,  // 1.0 SOL in base units
+///     2_000_000,      // 2.0 USDC in base units
+///     9,              // SOL decimals
+///     6               // USDC decimals
+/// ); // Returns true
+/// 
+/// // 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
+/// let is_one_to_many = check_one_to_many_ratio(
+///     100_000_000,    // 1.0 BTC in base units
+///     1_010_000,      // 1.01 USDT in base units
+///     8,              // BTC decimals
+///     6               // USDT decimals
+/// ); // Returns false (1.01 is not a whole number)
+/// ```
+pub fn check_one_to_many_ratio(
+    ratio_a_numerator: u64,
+    ratio_b_denominator: u64, 
+    token_a_decimals: u8,
+    token_b_decimals: u8
+) -> bool {
+    let token_a_decimal_factor = 10_u64.pow(token_a_decimals as u32);
+    let token_b_decimal_factor = 10_u64.pow(token_b_decimals as u32);
+    
+    // Check if both ratios represent whole numbers (no fractional parts)
+    let a_is_whole = (ratio_a_numerator % token_a_decimal_factor) == 0;
+    let b_is_whole = (ratio_b_denominator % token_b_decimal_factor) == 0;
+    
+    // Convert to display units
+    let display_ratio_a = ratio_a_numerator / token_a_decimal_factor;
+    let display_ratio_b = ratio_b_denominator / token_b_decimal_factor;
+    
+    // Check if both are greater than zero, whole numbers, and one equals exactly 1
+    let both_positive = display_ratio_a > 0 && display_ratio_b > 0;
+    let one_equals_one = display_ratio_a == 1 || display_ratio_b == 1;
+    
+    a_is_whole && b_is_whole && both_positive && one_equals_one
 } 
