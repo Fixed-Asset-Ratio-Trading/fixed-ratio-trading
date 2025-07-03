@@ -78,10 +78,11 @@ async fn test_instruction_serialization() -> TestResult {
         // Test case 4: InitializePool instruction
         {
             PoolInstruction::InitializePool {
-                multiple_per_base: 5,
+                ratio_a_numerator: 5,
+                ratio_b_denominator: 1,
                 pool_authority_bump_seed: 254,
-                multiple_token_vault_bump_seed: 253,
-                base_token_vault_bump_seed: 252,
+                token_a_vault_bump_seed: 253,
+                token_b_vault_bump_seed: 252,
             }
         },
     ];
@@ -154,16 +155,18 @@ async fn test_instruction_serialization() -> TestResult {
                             },
                             (
                                                     PoolInstruction::InitializePool { 
-                        multiple_per_base: orig_ratio,
+                        ratio_a_numerator: orig_ratio,
+                        ratio_b_denominator: orig_ratio_b,
                         pool_authority_bump_seed: orig_pool_bump,
-                        multiple_token_vault_bump_seed: orig_primary_bump,
-                        base_token_vault_bump_seed: orig_base_bump
+                        token_a_vault_bump_seed: orig_primary_bump,
+                        token_b_vault_bump_seed: orig_base_bump
                     },
                                                     PoolInstruction::InitializePool { 
-                        multiple_per_base: deser_ratio,
+                        ratio_a_numerator: deser_ratio,
+                        ratio_b_denominator: deser_ratio_b,
                         pool_authority_bump_seed: deser_pool_bump,
-                        multiple_token_vault_bump_seed: deser_primary_bump,
-                        base_token_vault_bump_seed: deser_base_bump
+                        token_a_vault_bump_seed: deser_primary_bump,
+                        token_b_vault_bump_seed: deser_base_bump
                     }
                             ) => {
                                 assert_eq!(orig_ratio, deser_ratio, "InitializePool ratio should match");

@@ -31,7 +31,7 @@ mod common;
 
 use common::*;
 use fixed_ratio_trading::{
-    client_sdk::{PoolClient, PoolConfig, PoolClientError, test_utils},
+    client_sdk::{PoolClient, PoolConfig, PoolClientError},
     PoolInstruction,
     ID as PROGRAM_ID,
 };
@@ -66,32 +66,35 @@ async fn test_pool_client_new() -> TestResult {
     let pool_config = PoolConfig {
         multiple_token_mint,
         base_token_mint,
-        multiple_per_base: ratio,
+        ratio_a_numerator: ratio,
+        ratio_b_denominator: 1,
     };
     
     // 4. Verify pool configuration values
     assert_eq!(pool_config.multiple_token_mint, multiple_token_mint);
     assert_eq!(pool_config.base_token_mint, base_token_mint);
-    assert_eq!(pool_config.multiple_per_base, ratio);
+    assert_eq!(pool_config.ratio_a_numerator, ratio);
     println!("✅ Pool configuration initialized with correct values");
     
     // 5. Test pool configuration creation through factory method
     let pool_config_alt = PoolConfig::new(
         multiple_token_mint,
         base_token_mint,
-        ratio
+        ratio,
+        1
     ).expect("Pool config creation should succeed");
     
     assert_eq!(pool_config_alt.multiple_token_mint, multiple_token_mint);
     assert_eq!(pool_config_alt.base_token_mint, base_token_mint);
-    assert_eq!(pool_config_alt.multiple_per_base, ratio);
+    assert_eq!(pool_config_alt.ratio_a_numerator, ratio);
     println!("✅ Pool configuration created via factory method correctly");
     
     // 6. Test error case: zero ratio
     let zero_ratio_result = PoolConfig::new(
         multiple_token_mint,
         base_token_mint,
-        0
+        0,
+        1
     );
     assert!(zero_ratio_result.is_err(), "Zero ratio should be rejected");
     println!("✅ Zero ratio correctly rejected");
@@ -100,15 +103,16 @@ async fn test_pool_client_new() -> TestResult {
     let identical_tokens_result = PoolConfig::new(
         multiple_token_mint,
         multiple_token_mint, // Same token for both multiple and base
-        ratio
+        ratio,
+        1
     );
     assert!(identical_tokens_result.is_err(), "Identical tokens should be rejected");
     println!("✅ Identical tokens correctly rejected");
     
     // 8. Test using the testing utility function
-    let test_config = fixed_ratio_trading::client_sdk::test_utils::create_test_pool_config();
+    let test_config = create_test_pool_config();
     assert_ne!(test_config.multiple_token_mint, test_config.base_token_mint);
-    assert!(test_config.multiple_per_base > 0);
+    assert!(test_config.ratio_a_numerator > 0);
     println!("✅ Test utility function creates valid configuration");
     
     println!("✅ SDK-001 test completed successfully");
@@ -130,7 +134,8 @@ async fn test_derive_pool_addresses() -> TestResult {
     let pool_config = PoolConfig {
         multiple_token_mint,
         base_token_mint,
-        multiple_per_base: ratio,
+        ratio_a_numerator: ratio,
+        ratio_b_denominator: 1,
     };
     
     // 2. Derive addresses for the pool
@@ -199,7 +204,8 @@ async fn test_derive_pool_addresses() -> TestResult {
     let swapped_config = PoolConfig {
         multiple_token_mint: base_token_mint,  // Swapped
         base_token_mint: multiple_token_mint,  // Swapped
-        multiple_per_base: ratio,
+        ratio_a_numerator: ratio,
+        ratio_b_denominator: 1,
     };
     
     let swapped_addresses = pool_client.derive_pool_addresses(&swapped_config);
@@ -224,7 +230,8 @@ async fn test_derive_pool_addresses() -> TestResult {
     let different_ratio_config = PoolConfig {
         multiple_token_mint,
         base_token_mint,
-        multiple_per_base: ratio * 2, // Double the ratio
+        ratio_a_numerator: ratio * 2, // Double the ratio
+        ratio_b_denominator: 1,
     };
     
     let different_ratio_addresses = pool_client.derive_pool_addresses(&different_ratio_config);
@@ -261,7 +268,8 @@ async fn test_create_pool_instruction() -> TestResult {
     let pool_config = PoolConfig {
         multiple_token_mint,
         base_token_mint,
-        multiple_per_base: ratio,
+        ratio_a_numerator: ratio,
+        ratio_b_denominator: 1,
     };
     
     // 1. Test successful instruction creation
@@ -323,31 +331,26 @@ async fn test_create_pool_instruction() -> TestResult {
         .expect("Instruction data should deserialize successfully");
     
     if let PoolInstruction::InitializePool { 
-        multiple_per_base,
+        ratio_a_numerator,
+        ratio_b_denominator,
         pool_authority_bump_seed,
-        multiple_token_vault_bump_seed,
-        base_token_vault_bump_seed, 
+        token_a_vault_bump_seed,
+        token_b_vault_bump_seed, 
     } = instruction_data {
         // 5.1 Verify ratio
-        assert_eq!(multiple_per_base, ratio, "Ratio should match the config");
+        assert_eq!(ratio_a_numerator, addresses.ratio_a_numerator, "Ratio A numerator should match the config");
+        assert_eq!(ratio_b_denominator, addresses.ratio_b_denominator, "Ratio B denominator should match the config");
         
         // 5.2 Verify bumps
         assert_eq!(pool_authority_bump_seed, addresses.pool_authority_bump, 
             "Pool authority bump seed should match the derived bump");
         
-        // 5.3 Map vault bumps back to multiple/base convention for comparison
-        let (expected_multiple_bump, expected_base_bump) = 
-            if multiple_token_mint < base_token_mint {
-                (addresses.token_a_vault_bump, addresses.token_b_vault_bump)
-            } else {
-                (addresses.token_b_vault_bump, addresses.token_a_vault_bump)
-            };
+        // 5.3 Verify vault bumps directly
+        assert_eq!(token_a_vault_bump_seed, addresses.token_a_vault_bump, 
+            "Token A vault bump should match");
             
-        assert_eq!(multiple_token_vault_bump_seed, expected_multiple_bump, 
-            "Multiple token vault bump should be correctly mapped");
-            
-        assert_eq!(base_token_vault_bump_seed, expected_base_bump, 
-            "Base token vault bump should be correctly mapped");
+        assert_eq!(token_b_vault_bump_seed, addresses.token_b_vault_bump, 
+            "Token B vault bump should match");
         
         println!("✅ Instruction data contains correct parameters");
     } else {
@@ -358,7 +361,8 @@ async fn test_create_pool_instruction() -> TestResult {
     let invalid_config = PoolConfig {
         multiple_token_mint,
         base_token_mint,
-        multiple_per_base: 0, // Invalid: zero ratio
+        ratio_a_numerator: 0, // Invalid: zero ratio
+        ratio_b_denominator: 1,
     };
     
     let result = pool_client.create_pool_instruction(
@@ -377,10 +381,11 @@ async fn test_create_pool_instruction() -> TestResult {
     
     // 7. Verify instruction data size is as expected
     let expected_data_size = PoolInstruction::InitializePool {
-        multiple_per_base: ratio,
+        ratio_a_numerator: ratio,
+        ratio_b_denominator: 1,
         pool_authority_bump_seed: addresses.pool_authority_bump,
-        multiple_token_vault_bump_seed: 255, // placeholder
-        base_token_vault_bump_seed: 255, // placeholder
+        token_a_vault_bump_seed: 255, // placeholder
+        token_b_vault_bump_seed: 255, // placeholder
     }.try_to_vec().unwrap().len();
     
     assert_eq!(instruction.data.len(), expected_data_size, 
@@ -474,10 +479,11 @@ async fn test_get_pool_state_not_found() -> TestResult {
 #[test]
 fn test_utils_create_test_pool_config() {
     // Test utility function for creating test pool config
-    let test_config = test_utils::create_test_pool_config();
+    let test_config = create_test_pool_config();
     
     assert_ne!(test_config.multiple_token_mint, Pubkey::default());
     assert_ne!(test_config.base_token_mint, Pubkey::default());
-    assert_eq!(test_config.multiple_per_base, 1000);
+    assert_eq!(test_config.ratio_a_numerator, 1000);
+    assert_eq!(test_config.ratio_b_denominator, 1);
     assert_ne!(test_config.multiple_token_mint, test_config.base_token_mint);
 }

@@ -254,6 +254,8 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 ///
 /// # Examples
 /// ```
+/// use fixed_ratio_trading::utils::validation::check_one_to_many_ratio;
+/// 
 /// // 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
 ///     1_000_000_000,  // 1.0 SOL in base units
@@ -261,6 +263,7 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 ///     9,              // SOL decimals
 ///     6               // USDC decimals
 /// ); // Returns true
+/// assert!(is_one_to_many);
 /// 
 /// // 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
@@ -269,6 +272,7 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 ///     8,              // BTC decimals
 ///     6               // USDT decimals
 /// ); // Returns false (1.01 is not a whole number)
+/// assert!(!is_one_to_many);
 /// ```
 pub fn check_one_to_many_ratio(
     ratio_a_numerator: u64,

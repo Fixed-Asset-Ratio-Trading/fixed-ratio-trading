@@ -398,7 +398,7 @@ async fn test_create_pool_identical_tokens_fails() -> TestResult {
     use std::panic;
     
     let result = panic::catch_unwind(|| {
-        normalize_pool_config(&ctx.primary_mint.pubkey(), &ctx.primary_mint.pubkey(), 2)
+        normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.primary_mint.pubkey(), 2)
     });
 
     assert!(result.is_err(), "normalize_pool_config should panic with identical tokens");
@@ -498,8 +498,8 @@ async fn test_pool_normalization_logic() -> TestResult {
     ).await?;
 
     // Test normalization directly with economically equivalent ratios
-    let config1 = normalize_pool_config(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 4);
-    let config2 = normalize_pool_config(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 4);
+    let config1 = normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 4);
+    let config2 = normalize_pool_config_legacy(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 4);
 
     // Both should normalize to the same token ordering (lexicographically)
     assert_eq!(config1.token_a_mint, config2.token_a_mint, "Token A should be the same after normalization");

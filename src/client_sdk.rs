@@ -56,7 +56,8 @@ SOFTWARE.
 //! let config = PoolConfig {
 //!     multiple_token_mint,
 //!     base_token_mint,
-//!     multiple_per_base: 2,
+//!     ratio_a_numerator: 2,
+//!     ratio_b_denominator: 1,
 //! };
 //! 
 //! // Derive pool addresses
@@ -586,20 +587,4 @@ pub struct PoolState {
     pub only_lp_token_a_for_both: bool,
 }
 
-/// Utility functions for testing and development.
-pub mod test_utils {
-    use super::*;
-
-    /// Creates a test pool configuration for testing purposes.
-    /// 
-    /// # Returns
-    /// * `PoolConfig` - A test configuration with random mints and 1000:1 ratio
-    pub fn create_test_pool_config() -> PoolConfig {
-        PoolConfig {
-            multiple_token_mint: Pubkey::new_unique(),
-            base_token_mint: Pubkey::new_unique(),
-            ratio_a_numerator: 1000,
-            ratio_b_denominator: 1,
-        }
-    }
-} 
+ 
