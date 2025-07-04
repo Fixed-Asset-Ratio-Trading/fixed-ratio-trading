@@ -504,8 +504,20 @@ if [ "$NEED_VALIDATOR_START" = true ]; then
     
     if [ "$VALIDATOR_RUNNING" = false ]; then
         echo -e "${RED}❌ Validator failed to start within $((MAX_RETRIES * 2)) seconds${NC}"
-        echo -e "${YELLOW}💡 Check validator logs: screen -r $VALIDATOR_SESSION_NAME${NC}"
-        echo -e "${YELLOW}💡 Or check: tail -f test-ledger/validator.log${NC}"
+        echo ""
+        echo -e "${YELLOW}📋 Last 20 lines of validator log:${NC}"
+        echo -e "${CYAN}════════════════════════════════════════${NC}"
+        if [ -f "test-ledger/validator.log" ]; then
+            tail -20 test-ledger/validator.log | sed 's/^/   /'
+        else
+            echo -e "${RED}   No validator log found at test-ledger/validator.log${NC}"
+        fi
+        echo -e "${CYAN}════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "${YELLOW}💡 Additional debugging options:${NC}"
+        echo -e "${YELLOW}   View live logs: screen -r $VALIDATOR_SESSION_NAME${NC}"
+        echo -e "${YELLOW}   Follow log file: tail -f test-ledger/validator.log${NC}"
+        echo -e "${YELLOW}   Check processes: ps aux | grep solana-test-validator${NC}"
     fi
 fi
 
