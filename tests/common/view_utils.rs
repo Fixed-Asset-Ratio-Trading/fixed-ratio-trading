@@ -26,6 +26,7 @@ use fixed_ratio_trading::{PoolState};
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive pool information
+#[allow(dead_code)]
 pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DEBUG: get_pool_info: Retrieving comprehensive pool information");
     
@@ -91,6 +92,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive pause status information
+#[allow(dead_code)]
 pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     let pool_state_account = &accounts[0];
     let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
@@ -131,6 +133,7 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs detailed liquidity information
+#[allow(dead_code)]
 pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("DEBUG: get_liquidity_info: Retrieving liquidity information");
     
@@ -168,6 +171,7 @@ pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs detailed fee information
+#[allow(dead_code)]
 pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let pool_state_account = next_account_info(account_info_iter)?;
@@ -231,6 +235,7 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs pool state PDA SOL balance information
+#[allow(dead_code)]
 pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
     let account_info_iter = &mut accounts.iter();
     let pool_state_account = next_account_info(account_info_iter)?;
@@ -269,6 +274,7 @@ pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive version information
+#[allow(dead_code)]
 pub fn process_get_version() -> ProgramResult {
     msg!("=== SMART CONTRACT VERSION ===");
     msg!("Contract Name: {}", env!("CARGO_PKG_NAME"));

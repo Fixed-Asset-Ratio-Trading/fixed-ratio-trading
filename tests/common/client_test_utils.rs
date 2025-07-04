@@ -9,6 +9,7 @@ use solana_program::pubkey::Pubkey;
 /// 
 /// # Returns
 /// * `PoolConfig` - A test configuration with random mints and 1000:1 ratio
+#[allow(dead_code)]
 pub fn create_test_pool_config() -> PoolConfig {
     PoolConfig {
         multiple_token_mint: Pubkey::new_unique(),

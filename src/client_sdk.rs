@@ -69,7 +69,7 @@ SOFTWARE.
 //! # }
 //! ```
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     program_error::ProgramError,

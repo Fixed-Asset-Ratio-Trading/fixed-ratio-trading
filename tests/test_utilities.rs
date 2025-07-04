@@ -48,6 +48,7 @@ use tokio::time::sleep;
 
 /// Helper function to retry transaction processing with exponential backoff
 /// This helps prevent intermittent test failures due to network timeouts
+#[allow(dead_code)]
 async fn retry_transaction(
     banks_client: &mut solana_program_test::BanksClient,
     transaction: solana_sdk::transaction::Transaction,

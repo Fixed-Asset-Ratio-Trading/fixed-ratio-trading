@@ -68,16 +68,13 @@ use fixed_ratio_trading::{
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
-    program_error::ProgramError,
     pubkey::Pubkey,
     system_program,
-    sysvar::{self, rent, clock},
+    sysvar,
 };
-use solana_program_test::*;
 use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
-    account::Account,
 };
 use borsh::BorshSerialize;
 
