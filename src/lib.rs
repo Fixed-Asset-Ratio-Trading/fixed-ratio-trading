@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 /*
 MIT License
 
@@ -42,23 +41,14 @@ SOFTWARE.
 //! 3. The AccountInfo.data reference still points to empty/uninitialized memory
 //! 
 //! ### The Solution:
-//! We implement a **two-instruction pattern** for pool creation:
-//! 
-//! #### Step 1: CreatePoolStateAccount (DEPRECATED - kept for compatibility)
-//! - Creates all required accounts via CPI
-//! - Creates Pool State PDA, LP token mints, token vaults
-//! - **CRITICALLY: Does NOT write PoolState data**
-//! - Allows accounts to be properly initialized on-chain
-//! 
-//! #### Step 2: InitializePoolData (DEPRECATED - kept for compatibility)  
-//! - Runs with fresh AccountInfo references
-//! - Writes actual PoolState data structure
-//! - Uses buffer serialization for reliability
+//! We implement a **single-instruction pattern** for pool creation:
 //! 
 //! #### Modern Approach: InitializePool (RECOMMENDED)
-//! - Single instruction that handles both steps internally
-//! - Uses careful account handling to avoid the issue
-//! - Implements buffer serialization workaround
+//! - Single instruction that handles all pool creation atomically
+//! - Creates all required accounts via CPI
+//! - Creates Pool State PDA, LP token mints, token vaults
+//! - Writes PoolState data structure with buffer serialization
+//! - Uses careful account handling to avoid the GitHub Issue #31960
 //! 
 //! ### Where This Affects:
 //! - Pool creation functions in `processors/pool_creation.rs`
@@ -111,15 +101,12 @@ pub use utils::*;
 use crate::processors::{
     pool_creation::{
         process_initialize_pool,
-        process_create_pool_state_account,
-        process_initialize_pool_data,
     },
     liquidity::{
         process_deposit,
         process_withdraw,
     },
     fees::{
-        process_withdraw_fees,
         process_change_fee,
         process_withdraw_pool_fees,
         process_pause_pool_swaps,
@@ -143,6 +130,12 @@ use crate::processors::{
         get_fee_info,
         get_pool_sol_balance,
         process_get_version,
+    },
+    treasury::{
+        process_withdraw_treasury_fees,
+        process_consolidate_treasuries,
+        process_get_treasury_info,
+        process_get_specialized_treasury_balances,
     },
 };
 
@@ -242,26 +235,6 @@ pub fn process_instruction(
         
         PoolInstruction::GetPoolSolBalance {} => get_pool_sol_balance(accounts),
         
-        PoolInstruction::WithdrawFees => process_withdraw_fees(program_id, accounts),
-
-        #[allow(deprecated)]
-        PoolInstruction::CreatePoolStateAccount {
-            multiple_per_base,
-            pool_authority_bump_seed,
-            multiple_token_vault_bump_seed,
-            base_token_vault_bump_seed,
-        } => process_create_pool_state_account(program_id, accounts, multiple_per_base, 
-            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
-
-        #[allow(deprecated)]
-        PoolInstruction::InitializePoolData {
-            multiple_per_base,
-            pool_authority_bump_seed,
-            multiple_token_vault_bump_seed,
-            base_token_vault_bump_seed,
-        } => process_initialize_pool_data(program_id, accounts, multiple_per_base, 
-            pool_authority_bump_seed, multiple_token_vault_bump_seed, base_token_vault_bump_seed),
-
         PoolInstruction::PauseSystem {
             reason,
         } => process_pause_system(program_id, accounts, reason),
@@ -269,6 +242,17 @@ pub fn process_instruction(
         PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
 
         PoolInstruction::GetVersion => process_get_version(),
+        
+        // Treasury Management Instructions
+        PoolInstruction::WithdrawTreasuryFees {
+            amount,
+        } => process_withdraw_treasury_fees(program_id, accounts, amount),
+
+        PoolInstruction::ConsolidateTreasuries => process_consolidate_treasuries(program_id, accounts),
+
+        PoolInstruction::GetTreasuryInfo {} => process_get_treasury_info(program_id, accounts),
+
+        PoolInstruction::GetSpecializedTreasuryBalances {} => process_get_specialized_treasury_balances(program_id, accounts),
     }
 }
 

@@ -12,32 +12,11 @@ use solana_program::pubkey::Pubkey;
 /// from initialization and liquidity management to owner-only operations.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub enum PoolInstruction {
-    /// **DEPRECATED**: Use `InitializePool` instead.
-    /// This instruction was part of a workaround for Solana AccountInfo.data issues
-    /// that have been resolved with improved implementation.
-    #[deprecated(note = "Use InitializePool instead")]
-    CreatePoolStateAccount {
-        multiple_per_base: u64,
-        pool_authority_bump_seed: u8,
-        multiple_token_vault_bump_seed: u8,
-        base_token_vault_bump_seed: u8,
-    },
-    
-    /// **DEPRECATED**: Use `InitializePool` instead.
-    /// This instruction was part of a workaround for Solana AccountInfo.data issues
-    /// that have been resolved with improved implementation.
-    #[deprecated(note = "Use InitializePool instead")]
-    InitializePoolData {
-        multiple_per_base: u64,
-        pool_authority_bump_seed: u8,
-        multiple_token_vault_bump_seed: u8,
-        base_token_vault_bump_seed: u8,
-    },
+
 
     /// **RECOMMENDED**: Single-instruction pool initialization
     /// 
-    /// This instruction replaces the deprecated two-instruction pattern 
-    /// (CreatePoolStateAccount + InitializePoolData) with a single, atomic operation.
+    /// This instruction provides a single, atomic operation for pool creation.
     /// 
     /// # What it does:
     /// - Creates Pool State PDA with correct size allocation
@@ -219,10 +198,6 @@ pub enum PoolInstruction {
         // No fields needed - reads from pool state account balance
     },
     
-    /// Withdraws accumulated SOL fees from the pool state account (owner only)
-    /// Maintains rent exemption for pool state account
-    WithdrawFees,
-    
     /// Pause the entire system - blocks all operations except unpause (system authority only)
     /// Takes precedence over all pool-specific pause states
     PauseSystem {
@@ -238,5 +213,68 @@ pub enum PoolInstruction {
     /// Returns version data including contract version and schema version
     /// No accounts required - returns constant version information
     GetVersion,
+    
+    /// **TREASURY MANAGEMENT**: Withdraw contract fees from main treasury (system authority only)
+    /// 
+    /// Allows the system authority to withdraw accumulated contract fees from the main treasury.
+    /// This is the only way to extract SOL fees collected by the protocol.
+    /// 
+    /// # Requirements:
+    /// - Caller must be the system authority (same as system pause authority)
+    /// - Main treasury must have sufficient balance above rent-exempt minimum
+    /// - Amount must not exceed available balance
+    /// 
+    /// # Arguments:
+    /// - `amount`: Amount of SOL to withdraw in lamports (0 = withdraw all available)
+    WithdrawTreasuryFees {
+        amount: u64,
+    },
+    
+    /// **TREASURY MANAGEMENT**: Consolidate specialized treasuries into main treasury
+    /// 
+    /// Empties the specialized swap and HFT treasuries, transferring their balances and
+    /// counters to the main treasury. This is triggered when fee counts are requested
+    /// to provide accurate analytics while maintaining performance during operations.
+    /// 
+    /// # What it does:
+    /// - Transfers all SOL from swap treasury to main treasury
+    /// - Transfers all SOL from HFT treasury to main treasury  
+    /// - Updates main treasury counters with consolidated data
+    /// - Resets specialized treasury balances to zero
+    /// - Updates consolidation timestamps
+    /// 
+    /// # Requirements:
+    /// - Can be called by anyone (no authorization required)
+    /// - Improves system efficiency by consolidating fragmented balances
+    /// - Provides accurate fee reporting through consolidation
+    ConsolidateTreasuries,
+    
+    /// **VIEW INSTRUCTION**: Get main treasury information and statistics
+    /// 
+    /// Returns comprehensive information about the main treasury including:
+    /// - Current balance and total withdrawn
+    /// - Fee counts by category (after consolidation)
+    /// - Total fees collected by type
+    /// - Last consolidation timestamp
+    /// 
+    /// # Triggers Consolidation:
+    /// This instruction automatically triggers treasury consolidation before
+    /// returning data to ensure the most accurate and up-to-date information.
+    GetTreasuryInfo {
+        // No parameters needed - reads treasury states and consolidates
+    },
+    
+    /// **VIEW INSTRUCTION**: Get specialized treasury balances (pre-consolidation)
+    /// 
+    /// Returns current balances in the specialized treasuries without triggering
+    /// consolidation. Useful for monitoring fee flow in real-time.
+    /// 
+    /// # Returns:
+    /// - Swap treasury: balance, count, total collected
+    /// - HFT treasury: balance, count, total collected  
+    /// - Last update timestamps for each treasury
+    GetSpecializedTreasuryBalances {
+        // No parameters needed - reads specialized treasury states
+    },
     
 } 

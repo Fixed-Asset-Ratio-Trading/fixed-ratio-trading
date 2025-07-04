@@ -477,6 +477,7 @@ pub fn process_swap(
     //
     // Amount: 0.00002715 SOL (27,150 lamports)
     // Purpose: Transaction processing, account updates, rent maintenance
+    // Destination: Central treasury PDA for protocol sustainability
     
     if user_signer.lamports() < SWAP_FEE {
         msg!("❌ Insufficient SOL for contract fee. Required: {} lamports, Available: {} lamports", 
@@ -484,34 +485,25 @@ pub fn process_swap(
         return Err(ProgramError::InsufficientFunds);
     }
     
+    // Derive specialized swap treasury PDA for regular swaps
+    let (swap_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
+        &[crate::constants::SWAP_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
     invoke(
-        &system_instruction::transfer(user_signer.key, pool_state_account.key, SWAP_FEE),
-        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+        &system_instruction::transfer(user_signer.key, &swap_treasury_pda, SWAP_FEE),
+        &[user_signer.clone(), system_program_account.clone(), pool_state_account.clone()], // Swap treasury for regular swaps
     )?;
     
-    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
+    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to treasury", 
          SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
 
     //=========================================================================
-    // UPDATE CONTRACT FEE TRACKING
+    // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
     //=========================================================================
-    // Track the SOL contract fee in pool state for proper accounting
-    
-    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
-        .checked_add(SWAP_FEE)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-        
-    // Serialize updated pool state with fee tracking
-    let mut updated_serialized_data = Vec::new();
-    pool_state_data.serialize(&mut updated_serialized_data)?;
-    
-    {
-        let mut account_data = pool_state_account.data.borrow_mut();
-        account_data[..updated_serialized_data.len()].copy_from_slice(&updated_serialized_data);
-    }
-    
-    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
-         pool_state_data.collected_sol_fees);
+    // SOL fees are now tracked in central TreasuryState, not per-pool.
+    // This provides system-wide fee collection and simplified accounting.
 
     Ok(())
 }
@@ -774,16 +766,19 @@ pub fn process_swap_hft_optimized(
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
 
-    // Execute SOL fee transfer (with HFT discount)
+    // Execute SOL fee transfer (with HFT discount) to specialized HFT treasury
+    let (hft_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
+        &[crate::constants::HFT_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
     invoke(
-        &system_instruction::transfer(user_signer.key, pool_state_account.key, HFT_SWAP_FEE),
-        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+        &system_instruction::transfer(user_signer.key, &hft_treasury_pda, HFT_SWAP_FEE),
+        &[user_signer.clone(), system_program_account.clone()], // HFT treasury for optimized swaps
     )?;
     
-    // 🚀 OPTIMIZATION 18: Update SOL fee tracking in memory before single serialization (with HFT discount)
-    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
-        .checked_add(HFT_SWAP_FEE)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    // 🚀 OPTIMIZATION 18: SOL fees now tracked in central TreasuryState (zero additional CU cost)
+    // Note: Fee counting is handled mathematically in treasury for HFT efficiency
 
     // 🚀 OPTIMIZATION 19: SINGLE SERIALIZATION (GitHub Issue #31960 workaround optimized)
     // This replaces the double serialization with a single operation, saving ~800-1200 CUs

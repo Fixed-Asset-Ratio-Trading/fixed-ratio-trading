@@ -9,6 +9,7 @@ pub mod fees;
 pub mod security;
 pub mod system_pause;
 pub mod utilities;
+pub mod treasury;
 
 // Re-export pool creation functions
 pub use pool_creation::*;
@@ -29,4 +30,7 @@ pub use security::*;
 pub use system_pause::*;
 
 // Re-export utility functions
-pub use utilities::*; 
+pub use utilities::*;
+
+// Re-export treasury management functions
+pub use treasury::*; 

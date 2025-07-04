@@ -109,8 +109,7 @@ pub struct PoolState {
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
     pub swap_fee_basis_points: u64,
-    pub collected_sol_fees: u64,
-    pub total_sol_fees_withdrawn: u64,
+    // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) moved to central TreasuryState
 }
 
 impl Default for PoolState {
@@ -142,8 +141,6 @@ impl Default for PoolState {
             total_fees_withdrawn_token_a: 0,
             total_fees_withdrawn_token_b: 0,
             swap_fee_basis_points: 0,
-            collected_sol_fees: 0,
-            total_sol_fees_withdrawn: 0,
         }
     }
 }
@@ -177,8 +174,8 @@ impl PoolState {
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
         8 +  // total_fees_withdrawn_token_b
-        8 +  // swap_fee_basis_points
-        8 +  // collected_sol_fees
-        8    // total_sol_fees_withdrawn
+        8    // swap_fee_basis_points
+        // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) removed
+        // These are now tracked in central TreasuryState (16 bytes removed)
     }
 } 

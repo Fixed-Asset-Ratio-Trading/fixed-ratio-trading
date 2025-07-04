@@ -178,24 +178,13 @@ pub fn process_withdraw_fees(
     //=========================================================================
     // UPDATE CONTRACT FEE TRACKING
     //=========================================================================
-    // Update withdrawal tracking for SOL fees
-    
-    let mut updated_pool_state = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
-    updated_pool_state.total_sol_fees_withdrawn = updated_pool_state.total_sol_fees_withdrawn
-        .checked_add(available_fees)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-        
-    // Serialize updated tracking data
-    let mut updated_data = Vec::new();
-    updated_pool_state.serialize(&mut updated_data)?;
-    
-    {
-        let mut account_data = pool_state.data.borrow_mut();
-        account_data[..updated_data.len()].copy_from_slice(&updated_data);
-    }
+    // Update withdrawal tracking for SOL fees - moved to central treasury
+    // Note: SOL fees are now tracked centrally in TreasuryState, not per-pool
+    msg!("✅ SOL fee tracking moved to central treasury system");
+    msg!("   Per-pool SOL fee tracking no longer available");
+    msg!("   Use GetTreasuryInfo instruction for system-wide SOL fee data");
 
     msg!("Fee withdrawal completed successfully. Amount: {} lamports", available_fees);
-    msg!("Total SOL fees withdrawn to date: {} lamports", updated_pool_state.total_sol_fees_withdrawn);
 
     Ok(())
 }

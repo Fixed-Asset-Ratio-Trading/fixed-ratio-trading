@@ -148,5 +148,18 @@ pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
 /// PDA seed prefix for token B vault accounts  
 pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
+/// PDA seed prefix for main treasury account that consolidates all contract fees
+pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
+
+/// PDA seed prefix for specialized treasury that collects regular swap fees
+pub const SWAP_TREASURY_SEED_PREFIX: &[u8] = b"swap_treasury";
+
+/// PDA seed prefix for specialized treasury that collects HFT swap fees
+pub const HFT_TREASURY_SEED_PREFIX: &[u8] = b"hft_treasury";
+
+/// Legacy treasury seed prefix (kept for backward compatibility)
+/// This points to the main treasury for any existing references
+pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
+
 /// Additional buffer for rent calculations to account for potential rent increases
 pub const MINIMUM_RENT_BUFFER: u64 = 1000; 

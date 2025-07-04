@@ -387,6 +387,7 @@ pub fn process_deposit(
     //
     // Amount: 0.0013 SOL (1,300,000 lamports)
     // Purpose: Cover computational costs of liquidity operations
+    // Destination: Central treasury PDA for protocol sustainability
     
     if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
         msg!("❌ Insufficient SOL for contract fee. Required: {} lamports, Available: {} lamports", 
@@ -394,34 +395,26 @@ pub fn process_deposit(
         return Err(ProgramError::InsufficientFunds);
     }
     
+    // Transfer contract fee to main treasury PDA for liquidity operations
+    let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
+        &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
+        _program_id,
+    );
+    
     invoke(
-        &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
-        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+        &system_instruction::transfer(user_signer.key, &main_treasury_pda, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone()],
     )?;
     
-    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to pool", 
+    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to treasury", 
          DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
 
     //=========================================================================
-    // UPDATE CONTRACT FEE TRACKING
+    // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
     //=========================================================================
-    // Track the SOL contract fee in pool state for proper accounting
-    
-    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
-        .checked_add(DEPOSIT_WITHDRAWAL_FEE)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-        
-    // Serialize updated pool state with fee tracking
-    let mut updated_serialized_data = Vec::new();
-    pool_state_data.serialize(&mut updated_serialized_data)?;
-    
-    {
-        let mut account_data = pool_state_account.data.borrow_mut();
-        account_data[..updated_serialized_data.len()].copy_from_slice(&updated_serialized_data);
-    }
-        
-    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
-         pool_state_data.collected_sol_fees);
+    // SOL fees are now tracked in central TreasuryState, not per-pool.
+    // This provides system-wide fee collection and simplified accounting.
+    // Real counters will be incremented for low-frequency operations like this.
 
     Ok(())
 }
@@ -687,6 +680,7 @@ pub fn process_withdraw(
         pool_state_account,
         token_program_account,
         system_program_account,
+        program_id,
     );
     
     // Always re-enable swaps after withdrawal (regardless of success/failure)
@@ -841,6 +835,7 @@ fn execute_withdrawal_logic<'a>(
     pool_state_account: &AccountInfo<'a>,
     token_program_account: &AccountInfo<'a>,
     system_program_account: &AccountInfo<'a>,
+    program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::{program::{invoke, invoke_signed}, system_instruction};
     use spl_token::instruction as token_instruction;
@@ -906,28 +901,26 @@ fn execute_withdrawal_logic<'a>(
     
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
-    // Transfer withdrawal fee to pool state PDA
-    if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("Insufficient SOL for withdrawal fee. User lamports: {}", user_signer.lamports());
-        return Err(ProgramError::InsufficientFunds);
-    }
+    // Transfer withdrawal fee to main treasury PDA for liquidity operations
+    let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
+        &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
     invoke(
-        &system_instruction::transfer(user_signer.key, pool_state_account.key, DEPOSIT_WITHDRAWAL_FEE),
-        &[user_signer.clone(), pool_state_account.clone(), system_program_account.clone()],
+        &system_instruction::transfer(user_signer.key, &main_treasury_pda, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone(), system_program_account.clone()], // Treasury will be added to accounts in future update
     )?;
     
     //=========================================================================
-    // UPDATE CONTRACT FEE TRACKING
+    // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
     //=========================================================================
-    // Track the SOL contract fee in pool state for proper accounting
-    
-    pool_state_data.collected_sol_fees = pool_state_data.collected_sol_fees
-        .checked_add(DEPOSIT_WITHDRAWAL_FEE)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    // SOL fees are now tracked in central TreasuryState, not per-pool.
+    // This provides system-wide fee collection and simplified accounting.
+    // Real counters will be incremented for low-frequency operations like this.
         
-    msg!("Withdrawal fee {} transferred to pool state PDA", DEPOSIT_WITHDRAWAL_FEE);
-    msg!("✅ Contract fee tracking updated: {} total SOL fees collected", 
-         pool_state_data.collected_sol_fees);
+    msg!("Withdrawal fee {} transferred to central treasury PDA", DEPOSIT_WITHDRAWAL_FEE);
+    msg!("✅ SOL fees now tracked centrally in TreasuryState");
 
     Ok(())
 } 

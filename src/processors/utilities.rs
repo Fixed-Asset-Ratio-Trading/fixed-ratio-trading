@@ -336,18 +336,19 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
          pool_state.swap_fee_basis_points, 
          pool_state.swap_fee_basis_points as f64 / 100.0);
     msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
-    msg!("  Collected Token B Fees: {}", pool_state.collected_fees_token_b);
-    msg!("  Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);
-    msg!("  Total Token B Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_b);
-    
-    // Contract fees (fixed SOL amounts)
-    msg!("Contract Fees (SOL):");
-    msg!("  Tracked SOL Fees Collected: {} lamports ({:.6} SOL)", 
-         pool_state.collected_sol_fees,
-         pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
-    msg!("  Total SOL Fees Withdrawn: {} lamports ({:.6} SOL)", 
-         pool_state.total_sol_fees_withdrawn,
-         pool_state.total_sol_fees_withdrawn as f64 / 1_000_000_000.0);
+    msg!("  Collected Token B Fees: {} ({} tokens)",
+         pool_state.collected_fees_token_b,
+         pool_state.collected_fees_token_b as f64 / 1_000_000.0);
+    msg!("   Withdrawn Token A Fees: {} ({} tokens)",
+         pool_state.total_fees_withdrawn_token_a,
+         pool_state.total_fees_withdrawn_token_a as f64 / 1_000_000.0);
+    msg!("   Withdrawn Token B Fees: {} ({} tokens)",
+         pool_state.total_fees_withdrawn_token_b,
+         pool_state.total_fees_withdrawn_token_b as f64 / 1_000_000.0);
+    msg!("📊 SOL FEES (MOVED TO CENTRAL TREASURY):");
+    msg!("   ⚠️  SOL fees are now tracked centrally in TreasuryState");
+    msg!("   ⚠️  Use GetTreasuryInfo instruction for SOL fee data");
+    msg!("   ⚠️  Per-pool SOL fee tracking no longer available");
     
     // Actual pool state PDA balance
     let current_pool_balance = pool_state_account.lamports();
