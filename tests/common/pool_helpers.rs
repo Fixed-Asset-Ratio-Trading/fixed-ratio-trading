@@ -291,12 +291,14 @@ pub async fn create_pool_legacy_pattern(
             AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
         ],
-        #[allow(deprecated)]
-        data: PoolInstruction::CreatePoolStateAccount {
-            multiple_per_base: ratio,
+        // DEPRECATED: CreatePoolStateAccount instruction removed
+        // Using InitializePool instruction instead
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: config.ratio_a_numerator,
+            ratio_b_denominator: config.ratio_b_denominator,
             pool_authority_bump_seed: config.pool_authority_bump,
-            multiple_token_vault_bump_seed: config.multiple_vault_bump,
-            base_token_vault_bump_seed: config.base_vault_bump,
+            token_a_vault_bump_seed: config.token_a_vault_bump,
+            token_b_vault_bump_seed: config.token_b_vault_bump,
         }.try_to_vec().unwrap(),
     };
 
@@ -305,34 +307,9 @@ pub async fn create_pool_legacy_pattern(
     create_tx.sign(&signers_for_create[..], recent_blockhash);
     banks.process_transaction(create_tx).await?;
 
-    // Step 2: InitializePoolData instruction
-    let init_data_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                          // Signer
-            AccountMeta::new(config.pool_state_pda, false),                  // Pool state account
-            AccountMeta::new(multiple_mint.pubkey(), false),                 // Multiple token mint
-            AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
-            AccountMeta::new(lp_token_a_mint.pubkey(), false),               // LP Token A mint
-            AccountMeta::new(lp_token_b_mint.pubkey(), false),               // LP Token B mint
-            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault
-            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
-            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
-        ],
-        #[allow(deprecated)]
-        data: PoolInstruction::InitializePoolData {
-            multiple_per_base: ratio,
-            pool_authority_bump_seed: config.pool_authority_bump,
-            multiple_token_vault_bump_seed: config.multiple_vault_bump,
-            base_token_vault_bump_seed: config.base_vault_bump,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut init_data_tx = Transaction::new_with_payer(&[init_data_ix], Some(&payer.pubkey()));
-    init_data_tx.sign(&[payer], recent_blockhash);
-    banks.process_transaction(init_data_tx).await?;
+    // Step 2: DEPRECATED - InitializePoolData instruction removed
+    // Pool is now fully initialized in step 1 with InitializePool instruction
+    println!("ℹ️ Pool creation completed in single instruction (InitializePool)");
 
     Ok(config)
 }

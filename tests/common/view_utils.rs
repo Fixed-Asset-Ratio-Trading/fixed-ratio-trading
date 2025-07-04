@@ -193,11 +193,11 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     // Contract fees (fixed SOL amounts)
     msg!("Contract Fees (SOL):");
     msg!("  Tracked SOL Fees Collected: {} lamports ({:.6} SOL)", 
-         pool_state.collected_sol_fees,
-         pool_state.collected_sol_fees as f64 / 1_000_000_000.0);
-    msg!("  Total SOL Fees Withdrawn: {} lamports ({:.6} SOL)", 
-         pool_state.total_sol_fees_withdrawn,
-         pool_state.total_sol_fees_withdrawn as f64 / 1_000_000_000.0);
+                  0u64, // SOL fees moved to treasury system
+         0.0);
+    msg!("  Total SOL Fees Withdrawn: {} lamports ({:.6} SOL) - MOVED TO TREASURY",
+         0u64, // SOL fees moved to treasury system
+         0.0);
     
     // Actual pool state PDA balance
     let current_pool_balance = pool_state_account.lamports();

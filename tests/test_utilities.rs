@@ -1520,12 +1520,12 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         // Verify fee collection state
         assert_eq!(pool_state.collected_fees_token_a, 0, "Initial collected fees Token A should be zero");
         assert_eq!(pool_state.collected_fees_token_b, 0, "Initial collected fees Token B should be zero");
-        assert_eq!(pool_state.collected_sol_fees, 1_150_000_000, "Initial collected SOL fees should include registration fee");
+        // Note: SOL fees moved to treasury system - registration fee goes to main treasury, not tracked per pool
         
         // Verify withdrawal tracking
         assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Initial withdrawn fees Token A should be zero");
         assert_eq!(pool_state.total_fees_withdrawn_token_b, 0, "Initial withdrawn fees Token B should be zero");
-        assert_eq!(pool_state.total_sol_fees_withdrawn, 0, "Initial withdrawn SOL fees should be zero");
+        // Note: SOL fees moved to treasury system - no longer tracked per pool
         
         // Verify rent requirements exist
         assert!(pool_state.rent_requirements.rent_exempt_minimum > 0, "Rent requirements should be calculated");
