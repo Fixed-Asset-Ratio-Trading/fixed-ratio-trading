@@ -242,10 +242,10 @@ pub async fn create_pool_new_pattern(
     Ok(config)
 }
 
-/// Create pool using the deprecated two-instruction pattern (LEGACY)
+/// Create pool using the legacy pattern (now redirects to new pattern)
 /// 
-/// This function uses the CreatePoolStateAccount + InitializePoolData pattern
-/// to work around the Solana AccountInfo.data issue documented in GitHub Issue #31960.
+/// DEPRECATED: Legacy two-instruction pattern is no longer supported.
+/// This function now uses the single InitializePool instruction for compatibility.
 /// 
 /// # Arguments
 /// * `banks` - Banks client for transaction processing
@@ -270,48 +270,19 @@ pub async fn create_pool_legacy_pattern(
     lp_token_b_mint: &Keypair,
     multiple_per_base: Option<u64>,
 ) -> Result<PoolConfig, BanksClientError> {
-    let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
+    println!("ℹ️ Legacy pattern redirecting to new pattern (InitializePool)");
     
-    // Get normalized pool configuration
-    let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
-
-    // Step 1: CreatePoolStateAccount instruction
-    let create_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                          // Signer
-            AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
-            AccountMeta::new(multiple_mint.pubkey(), false),                 // Multiple token mint
-            AccountMeta::new(base_mint.pubkey(), false),                     // Base token mint
-            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
-            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
-            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault PDA
-            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault PDA
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
-            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
-        ],
-        // DEPRECATED: CreatePoolStateAccount instruction removed
-        // Using InitializePool instruction instead
-        data: PoolInstruction::InitializePool {
-            ratio_a_numerator: config.ratio_a_numerator,
-            ratio_b_denominator: config.ratio_b_denominator,
-            pool_authority_bump_seed: config.pool_authority_bump,
-            token_a_vault_bump_seed: config.token_a_vault_bump,
-            token_b_vault_bump_seed: config.token_b_vault_bump,
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut create_tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
-    let signers_for_create = [payer, lp_token_a_mint, lp_token_b_mint];
-    create_tx.sign(&signers_for_create[..], recent_blockhash);
-    banks.process_transaction(create_tx).await?;
-
-    // Step 2: DEPRECATED - InitializePoolData instruction removed
-    // Pool is now fully initialized in step 1 with InitializePool instruction
-    println!("ℹ️ Pool creation completed in single instruction (InitializePool)");
-
-    Ok(config)
+    // Redirect to new pattern since deprecated instructions were removed
+    create_pool_new_pattern(
+        banks,
+        payer,
+        recent_blockhash,
+        multiple_mint,
+        base_mint,
+        lp_token_a_mint,
+        lp_token_b_mint,
+        multiple_per_base,
+    ).await
 }
 
 /// Update security parameters for a pool

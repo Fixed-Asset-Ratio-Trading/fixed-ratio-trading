@@ -485,6 +485,8 @@ pub fn process_swap(
         return Err(ProgramError::InsufficientFunds);
     }
     
+    // TODO: Re-enable treasury transfer when treasury system is fully deployed
+    /*
     // Derive specialized swap treasury PDA for regular swaps
     let (swap_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::SWAP_TREASURY_SEED_PREFIX],
@@ -498,6 +500,9 @@ pub fn process_swap(
     
     msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to treasury", 
          SWAP_FEE, SWAP_FEE as f64 / 1_000_000_000.0);
+    */
+    
+    msg!("ℹ️ Swap fee collection temporarily disabled during development");
 
     //=========================================================================
     // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
@@ -766,6 +771,8 @@ pub fn process_swap_hft_optimized(
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
 
+    // TODO: Re-enable treasury transfer when treasury system is fully deployed
+    /*
     // Execute SOL fee transfer (with HFT discount) to specialized HFT treasury
     let (hft_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::HFT_TREASURY_SEED_PREFIX],
@@ -776,6 +783,9 @@ pub fn process_swap_hft_optimized(
         &system_instruction::transfer(user_signer.key, &hft_treasury_pda, HFT_SWAP_FEE),
         &[user_signer.clone(), system_program_account.clone()], // HFT treasury for optimized swaps
     )?;
+    */
+    
+    msg!("ℹ️ HFT fee collection temporarily disabled during development");
     
     // 🚀 OPTIMIZATION 18: SOL fees now tracked in central TreasuryState (zero additional CU cost)
     // Note: Fee counting is handled mathematically in treasury for HFT efficiency
