@@ -20,6 +20,7 @@ default = []
 test-bpf = []
 custom-heap = []
 custom-panic = []
+hft-debug-logs = []  # Enable minimal debug logging for HFT optimized functions
 
 [dependencies]
 solana-program = "~1.18.26"

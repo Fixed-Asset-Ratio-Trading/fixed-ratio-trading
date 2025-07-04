@@ -127,6 +127,7 @@ use crate::processors::{
     },
     swap::{
         process_swap,
+        process_swap_hft_optimized,
     },
     security::process_update_security_params,
     system_pause::{
@@ -196,6 +197,12 @@ pub fn process_instruction(
             input_token_mint,
             amount_in,
         } => process_swap(program_id, accounts, input_token_mint, amount_in),
+
+        PoolInstruction::SwapHftOptimized {
+            input_token_mint,
+            amount_in,
+            skip_rent_checks,
+        } => process_swap_hft_optimized(program_id, accounts, input_token_mint, amount_in, skip_rent_checks),
 
         PoolInstruction::UpdateSecurityParams {
             paused,

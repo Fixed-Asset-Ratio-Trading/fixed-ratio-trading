@@ -61,6 +61,18 @@ pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 /// **Purpose**: Cover transaction processing costs for swap operations
 pub const SWAP_FEE: u64 = 27_150; // 0.00002715 SOL
 
+/// **HFT DISCOUNTED** fee charged for HFT optimized swap operations in lamports (0.0000163 SOL)
+/// 
+/// This discounted fee provides a 40% reduction for HFT optimized swaps to incentivize
+/// the use of compute-efficient swap functions and reward high-frequency traders.
+/// 
+/// **Type**: Contract Fee (Fixed SOL amount, 40% discount)
+/// **When Charged**: During `SwapHftOptimized` operations
+/// **Amount**: 0.0000163 SOL (16,290 lamports) - 40% discount from standard SWAP_FEE
+/// **Purpose**: Incentivize HFT optimized swaps and reward compute efficiency
+/// **Calculation**: SWAP_FEE * 0.6 = 27,150 * 0.6 = 16,290 lamports
+pub const HFT_SWAP_FEE: u64 = 16_290; // 0.0000163 SOL (40% discount)
+
 //-----------------------------------------------------------------------------
 // POOL FEES (Percentage-based on traded assets)
 //-----------------------------------------------------------------------------
