@@ -249,7 +249,13 @@ pub fn process_initialize_pool(
         &[token_a_vault_seeds],
     )?;
     
-    // Initialize Token A vault
+    // Initialize Token A vault - use correct token mint account that matches token_a_mint_key
+    let token_a_mint_account = if token_a_mint_key == multiple_token_mint_account.key {
+        multiple_token_mint_account
+    } else {
+        base_token_mint_account
+    };
+    
     invoke(
         &token_instruction::initialize_account(
             token_program_account.key,
@@ -259,7 +265,7 @@ pub fn process_initialize_pool(
         )?,
         &[
             token_a_vault_pda_account.clone(),
-            multiple_token_mint_account.clone(),
+            token_a_mint_account.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
@@ -283,7 +289,13 @@ pub fn process_initialize_pool(
         &[token_b_vault_seeds],
     )?;
     
-    // Initialize Token B vault
+    // Initialize Token B vault - use correct token mint account that matches token_b_mint_key  
+    let token_b_mint_account = if token_b_mint_key == base_token_mint_account.key {
+        base_token_mint_account
+    } else {
+        multiple_token_mint_account
+    };
+    
     invoke(
         &token_instruction::initialize_account(
             token_program_account.key,
@@ -293,7 +305,7 @@ pub fn process_initialize_pool(
         )?,
         &[
             token_b_vault_pda_account.clone(),
-            base_token_mint_account.clone(),
+            token_b_mint_account.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),

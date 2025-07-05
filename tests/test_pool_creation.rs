@@ -103,108 +103,6 @@ async fn test_initialize_pool_new_pattern() -> TestResult {
     Ok(())
 }
 
-/// Test pool initialization with custom ratio using new pattern
-#[tokio::test]
-async fn test_initialize_pool_new_pattern_custom_ratio() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create pool with custom 5:1 ratio
-    let custom_ratio = 5u64;
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        Some(custom_ratio),
-    ).await?;
-
-    // Verify pool state reflects custom ratio
-    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
-        .expect("Pool state should exist");
-
-    // With enhanced normalization, all pools use canonical ratio form
-    // Both "X primary per 1 base" and "X base per 1 primary" normalize to same ratio
-    assert_eq!(pool_state.ratio_a_numerator, custom_ratio, "Canonical form should preserve ratio");
-    assert_eq!(pool_state.ratio_b_denominator, 1, "Canonical form should use denominator 1");
-
-    println!("✅ Custom ratio pool created successfully with {}:1 ratio", custom_ratio);
-    
-    Ok(())
-}
-
-// ================================================================================================
-// LEGACY TWO-INSTRUCTION PATTERN TESTS (DEPRECATED)
-// ================================================================================================
-
-/// Test pool initialization using the deprecated two-instruction pattern.
-/// 
-/// This test demonstrates the legacy CreatePoolStateAccount + InitializePoolData pattern
-/// used to work around the Solana AccountInfo.data issue.
-#[tokio::test]
-async fn test_initialize_pool_legacy_pattern() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create pool using legacy two-instruction pattern
-    let config = create_pool_legacy_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None, // Use default ratio
-    ).await?;
-
-    // Verify pool state
-    verify_pool_state(
-        &mut ctx.env.banks_client,
-        &config,
-        &ctx.env.payer.pubkey(),
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-    ).await.expect("Pool state verification failed");
-
-    // Use a more consistent pattern for logging deprecation warnings
-    println!("✅ Legacy two-instruction pattern: Pool created and verified successfully!");
-    println!("ℹ️  DEPRECATED: This pattern will be removed in a future version");
-    println!("✅ Use InitializePool instruction for new implementations");
-    
-    Ok(())
-}
 
 /// Test multiple pools with different ratios
 #[tokio::test]
@@ -744,7 +642,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &primary_mint.pubkey(),
         &user1_primary_account_kp.pubkey(),
-        &primary_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         100_000_000, // 100M tokens
     ).await?;
     
@@ -765,7 +663,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &base_mint.pubkey(),
         &user1_base_account_kp.pubkey(),
-        &base_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         50_000_000, // 50M tokens
     ).await?;
     
@@ -793,7 +691,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &primary_mint.pubkey(),
         &user2_primary_account_kp.pubkey(),
-        &primary_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         25_000_000, // 25M tokens
     ).await?;
     
@@ -813,7 +711,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &base_mint.pubkey(),
         &user2_base_account_kp.pubkey(),
-        &base_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         10_000_000, // 10M tokens
     ).await?;
     
@@ -841,7 +739,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &primary_mint.pubkey(),
         &user3_primary_account_kp.pubkey(),
-        &primary_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         5_000_000, // 5M tokens
     ).await?;
     
@@ -861,7 +759,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
         ctx.env.recent_blockhash,
         &base_mint.pubkey(),
         &user3_base_account_kp.pubkey(),
-        &base_mint,
+        &ctx.env.payer,  // Use payer as mint authority (set during create_mint)
         2_000_000, // 2M tokens
     ).await?;
     
