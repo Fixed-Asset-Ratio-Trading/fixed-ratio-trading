@@ -150,7 +150,7 @@ pub fn process_deposit(
     let lp_token_b_mint_account = next_account_info(account_info_iter)?;
     let user_destination_lp_token_account = next_account_info(account_info_iter)?;
     
-    let system_program_account = next_account_info(account_info_iter)?;
+    let _system_program_account = next_account_info(account_info_iter)?;
     let token_program_account = next_account_info(account_info_iter)?;
     let rent_sysvar_account = next_account_info(account_info_iter)?;
     let _rent = &Rent::from_account_info(rent_sysvar_account)?;

@@ -156,37 +156,10 @@ pub enum PoolInstruction {
         skip_rent_checks: bool,
     },
     
-    /// Updates security parameters for the pool (owner only)
-    UpdateSecurityParams {
-        /// Whether to pause pool operations (pool-specific pause, not system-wide)
-        paused: Option<bool>,
-        /// Future feature: Single LP token mode
-        /// When implemented, this will allow only LP token A (the "multiple" token) to be issued
-        /// for liquidity provision, while still allowing withdrawals of either token A or B
-        /// at the fixed ratio. This simplifies LP token management for certain pool configurations.
-        /// NOTE: Currently not implemented - remains false regardless of input
-        only_lp_token_a_for_both: Option<bool>,
-    },
-    
-    /// Change swap fee rate (owner only)
-    ChangeFee {
-        /// New fee in basis points (0-50 = 0%-0.5%)
-        new_fee_basis_points: u64,
-    },
-    
-    /// Withdraw accumulated fees from pool (owner only)
-    WithdrawPoolFees {
-        /// Token mint to withdraw
-        token_mint: Pubkey,
-        /// Amount to withdraw
-        amount: u64,
-    },
-    
-    /// Pause swap operations for specific pool (owner only)
-    PausePoolSwaps,
-    
-    /// Unpause swap operations for specific pool (owner only)
-    UnpausePoolSwaps,
+    // Pool owner management instructions removed for governance control
+    // Fee management and security controls are now handled through:
+    // - System authority (treasury withdrawals, system pause/unpause)
+    // - Governance protocols (token fees, pool-specific controls)
     
     /// Get pool state PDA address for given tokens and ratio
     /// Useful for clients to derive addresses before calling other instructions

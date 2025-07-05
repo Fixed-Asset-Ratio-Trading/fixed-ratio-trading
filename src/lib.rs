@@ -106,17 +106,12 @@ use crate::processors::{
         process_deposit,
         process_withdraw,
     },
-    fees::{
-        process_change_fee,
-        process_withdraw_pool_fees,
-        process_pause_pool_swaps,
-        process_unpause_pool_swaps,
-    },
+    // fees module contains only governance-controlled fee architecture documentation
     swap::{
         process_swap,
         process_swap_hft_optimized,
     },
-    security::process_update_security_params,
+    // security module contains only governance-controlled security architecture documentation
     system_pause::{
         process_initialize_program,
         process_pause_system,
@@ -202,23 +197,7 @@ pub fn process_instruction(
             skip_rent_checks,
         } => process_swap_hft_optimized(program_id, accounts, input_token_mint, amount_in, skip_rent_checks),
 
-        PoolInstruction::UpdateSecurityParams {
-            paused,
-            only_lp_token_a_for_both,
-        } => process_update_security_params(program_id, accounts, paused, only_lp_token_a_for_both),
-
-        PoolInstruction::ChangeFee {
-            new_fee_basis_points,
-        } => process_change_fee(program_id, accounts, new_fee_basis_points),
-
-        PoolInstruction::WithdrawPoolFees {
-            token_mint,
-            amount,
-        } => process_withdraw_pool_fees(program_id, accounts, token_mint, amount),
-
-        PoolInstruction::PausePoolSwaps => process_pause_pool_swaps(program_id, accounts),
-
-        PoolInstruction::UnpausePoolSwaps => process_unpause_pool_swaps(program_id, accounts),
+        // Pool owner management instructions not implemented (governance-controlled architecture)
 
         PoolInstruction::GetPoolStatePDA {
             multiple_token_mint,

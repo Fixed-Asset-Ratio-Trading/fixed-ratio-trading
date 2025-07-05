@@ -20,11 +20,11 @@ pub use liquidity::*;
 // Re-export swap operations functions
 pub use swap::*;
 
-// Re-export fee management functions
-pub use fees::*;
+// Fee management functions removed for governance control
+// fees module contains only architecture documentation
 
-// Re-export security management functions
-pub use security::*;
+// Security management functions removed for governance control  
+// security module contains only architecture documentation
 
 // Re-export system pause functions
 pub use system_pause::*;

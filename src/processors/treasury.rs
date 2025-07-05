@@ -61,7 +61,7 @@ pub fn process_withdraw_treasury_fees(
     let authority_account = next_account_info(account_info_iter)?;
     let main_treasury_account = next_account_info(account_info_iter)?;
     let destination_account = next_account_info(account_info_iter)?;
-    let system_program = next_account_info(account_info_iter)?;
+    let _system_program = next_account_info(account_info_iter)?;
     let rent_sysvar = next_account_info(account_info_iter)?;
     let system_state_account = next_account_info(account_info_iter)?;
     
@@ -71,7 +71,7 @@ pub fn process_withdraw_treasury_fees(
     validate_writable(destination_account, "Destination account")?;
     
     // Verify main treasury PDA
-    let (expected_main_treasury, treasury_bump) = Pubkey::find_program_address(
+    let (expected_main_treasury, _treasury_bump) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
         program_id,
     );

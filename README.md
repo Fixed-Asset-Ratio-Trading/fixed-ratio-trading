@@ -187,6 +187,70 @@ These are **trading fees paid as a percentage of the tokens being traded**. They
 ✅ **Sustainable Operations**: Fee collection supports long-term pool maintenance  
 ✅ **Transparent Pricing**: Clear separation between operational costs and trading fees  
 
+## Governance-Controlled Architecture
+
+### ⚖️ **Governance-Controlled Architecture**
+
+This smart contract implements a **governance-controlled architecture** where fee management and security controls are centralized through system authority and prepared for **decentralized governance protocols**.
+
+### **Authority Structure:**
+- ✅ **System Authority Only**: All fee withdrawals controlled by system authority
+- ✅ **Treasury System**: SOL fees flow to central treasury PDAs
+- ✅ **Governance Ready**: Architecture prepared for governance protocol takeover
+- ✅ **System-Wide Controls**: Pool security managed centrally by system authority
+
+### **Fee Management Under Governance:**
+
+#### **SOL Fees (Contract Fees):**
+```bash
+# Only system authority can withdraw SOL fees
+WithdrawTreasuryFees {
+    amount: 1000000000  # 1 SOL (0 = withdraw all available)
+}
+```
+
+#### **Token Fees (Pool Fees):**
+- **Current**: Token fees remain in pool vaults 
+- **Future**: Will be managed by governance protocols
+- **Access**: No individual pool owner access
+
+#### **System-Wide Security:**
+```bash
+# Only system authority can pause/unpause entire system
+PauseSystem { reason: "Emergency maintenance" }
+UnpauseSystem
+```
+
+### **Benefits of Governance Architecture:**
+
+✅ **Decentralized Governance**: Prepares for community-controlled protocol governance  
+✅ **Fair Fee Distribution**: Prevents individual pool owners from extracting all value  
+✅ **Protocol Sustainability**: Ensures fees support overall protocol development  
+✅ **Security Centralization**: System-wide security controls prevent fragmented management  
+✅ **Governance Tokens**: Enables future governance token distribution mechanisms  
+✅ **Treasury Management**: Professional treasury management vs individual fee extraction  
+
+### **Integration Notes:**
+
+**For Pool Creators:**
+- Pools remain fully functional for all trading operations
+- Liquidity deposits and withdrawals work normally  
+- Swaps execute with fee collection flowing to treasury
+- Pool creation available to all users
+
+**For Protocol Integration:**
+- Implement system authority controls for emergency management
+- Plan for governance protocol integration for fee management
+- Use treasury system for SOL fee tracking and withdrawal
+- Design governance token distribution mechanisms
+
+**Future Governance Protocol:**
+A separate governance smart contract will take over ownership of this contract and manage:
+- Fee rate adjustments through community voting
+- Fee distribution to governance token holders  
+- Protocol parameter updates via governance proposals
+- Treasury fund allocation and protocol development funding
+
 ## Usage Examples
 
 ### Pool Creation (Recommended)
@@ -225,22 +289,23 @@ let withdraw_ix = PoolInstruction::Withdraw {
 };
 ```
 
-### Owner Operations
+### System Authority Operations
 ```rust
-// Owner changes swap fee rate (immediate effect)
-let change_fee_ix = PoolInstruction::ChangeFee {
-    new_fee_basis_points: 25 // 0.25% fee
+// System-wide pause/unpause controls (system authority only)
+let pause_system_ix = PoolInstruction::PauseSystem {
+    reason: "Emergency maintenance".to_string()
 };
 
-// Owner withdraws pool fees (immediate effect)
-let withdraw_fees_ix = PoolInstruction::WithdrawPoolFees {
-    token_mint: usdc_mint,
-    amount: 1000,
+let unpause_system_ix = PoolInstruction::UnpauseSystem;
+
+// Treasury fee withdrawal (system authority only)
+let withdraw_treasury_ix = PoolInstruction::WithdrawTreasuryFees {
+    amount: 0 // 0 = withdraw all available SOL fees
 };
 
-// Owner pauses/unpauses swap operations (immediate effect)
-let pause_swaps_ix = PoolInstruction::PausePoolSwaps;
-let unpause_swaps_ix = PoolInstruction::UnpausePoolSwaps;
+// Treasury management and analytics
+let treasury_info_ix = PoolInstruction::GetTreasuryInfo {};
+let consolidate_ix = PoolInstruction::ConsolidateTreasuries;
 ```
 
 ## Testing
