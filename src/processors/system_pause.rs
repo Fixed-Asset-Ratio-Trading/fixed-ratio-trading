@@ -6,7 +6,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo,
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
@@ -21,62 +21,78 @@ use crate::{
     error::PoolError,
     state::{SystemState, MainTreasuryState, SwapTreasuryState, HftTreasuryState},
     utils::{serialization::serialize_to_account, validation::{validate_signer, validate_writable}},
+    utils::account_builders::*,
 };
 
-/// **CRITICAL**: Initialize the entire program infrastructure
+/// Processes the InitializeProgram instruction with standardized account ordering.
 /// 
-/// This function creates all system-level PDAs that the program depends on.
-/// It MUST be called once before any other program operations.
+/// This function implements the standardized account ordering policy for program initialization.
+/// It creates all system-level PDAs and infrastructure using consistent account positioning.
 /// 
-/// # What it creates:
-/// 1. SystemState PDA with system authority and global pause controls
-/// 2. MainTreasury PDA for pool creation and liquidity fees
-/// 3. SwapTreasury PDA for regular swap fees (high frequency)
-/// 4. HftTreasury PDA for HFT swap fees (high frequency)
+/// # Standardized Account Order:
+/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// 1. **System Program** (readable) - Solana system program
+/// 2. **Rent Sysvar** (readable) - For rent calculations
+/// 3. **Clock Sysvar** (readable) - Not used in initialization (placeholder)
+/// 4. **Pool State PDA** (writable) - Not used in initialization (placeholder)
+/// 5. **Token A Mint** (readable) - Not used in initialization (placeholder)
+/// 6. **Token B Mint** (readable) - Not used in initialization (placeholder)
+/// 7. **Token A Vault PDA** (writable) - Not used in initialization (placeholder)
+/// 8. **Token B Vault PDA** (writable) - Not used in initialization (placeholder)
+/// 9. **SPL Token Program** (readable) - Not used in initialization (placeholder)
+/// 10. **User Input Token Account** (writable) - Not used in initialization (placeholder)
+/// 11. **User Output Token Account** (writable) - Not used in initialization (placeholder)
+/// 12. **Main Treasury PDA** (writable) - Main treasury account to create
+/// 13. **Swap Treasury PDA** (writable) - Swap treasury account to create
+/// 14. **HFT Treasury PDA** (writable) - HFT treasury account to create
+/// 15. **System State PDA** (writable) - System state account to create (function-specific)
 /// 
-/// # Account Order (9 accounts required):
-/// 0. **System Authority** (signer, writable) - Will control system operations
-/// 1. **SystemState PDA** (writable) - Global system state to be created
-/// 2. **MainTreasury PDA** (writable) - Main treasury to be created
-/// 3. **SwapTreasury PDA** (writable) - Swap treasury to be created  
-/// 4. **HftTreasury PDA** (writable) - HFT treasury to be created
-/// 5. **System Program** (readable) - For account creation
-/// 6. **Rent Sysvar** (readable) - For rent exemption calculations
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `accounts` - Array of accounts in standardized order (16 accounts minimum, system authority at index 0)
 /// 
-/// # Security:
-/// - Can only be called once (prevents re-initialization)
-/// - Creates all PDAs with proper derivation validation
-/// - Sets up rent exemption for all accounts
-/// - System authority gains control over pause/treasury operations
+/// # Returns
+/// * `ProgramResult` - Success or error
 pub fn process_initialize_program(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    system_authority: Pubkey,
 ) -> ProgramResult {
     msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure");
     
-    let account_info_iter = &mut accounts.iter();
-    let system_authority_account = next_account_info(account_info_iter)?;
-    let system_state_account = next_account_info(account_info_iter)?;
-    let main_treasury_account = next_account_info(account_info_iter)?;
-    let swap_treasury_account = next_account_info(account_info_iter)?;
-    let hft_treasury_account = next_account_info(account_info_iter)?;
-    let system_program_account = next_account_info(account_info_iter)?;
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
-
+    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
+    validate_standard_accounts(accounts)?;
+    // Note: Most pool/token accounts are placeholders for initialization
+    validate_treasury_accounts(accounts)?;
+    
+    // Validate we have enough accounts for initialization
+    if accounts.len() < 16 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let system_authority_account = &accounts[0];       // Index 0: Authority/User Signer
+    let system_program_account = &accounts[1];         // Index 1: System Program
+    let rent_sysvar_account = &accounts[2];            // Index 2: Rent Sysvar
+    // Index 3: Clock Sysvar (unused placeholder)
+    // Indices 4-11: Pool/token accounts (unused placeholders)
+    let main_treasury_account = &accounts[12];         // Index 12: Main Treasury PDA
+    let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
+    let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
+    
+    // ✅ FUNCTION-SPECIFIC ACCOUNTS: Initialization-specific accounts at standardized positions 15+
+    let system_state_account = &accounts[15];          // Index 15: System State PDA
+    
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
+    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     // Verify system authority is signer
     if !system_authority_account.is_signer {
         msg!("❌ System authority must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Verify system authority matches provided pubkey
-    if *system_authority_account.key != system_authority {
-        msg!("❌ System authority account mismatch");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    // System authority is validated by signer check above
+    // The account key itself is the authority
 
     // 1. CREATE SYSTEMSTATE PDA
     let system_state_seeds = &[SYSTEM_STATE_SEED_PREFIX];
@@ -113,7 +129,7 @@ pub fn process_initialize_program(
     )?;
 
     // Initialize SystemState data
-    let system_state_data = SystemState::new(system_authority);
+    let system_state_data = SystemState::new(*system_authority_account.key);
     serialize_to_account(&system_state_data, system_state_account)?;
     
     // 2. CREATE MAIN TREASURY PDA
@@ -145,7 +161,7 @@ pub fn process_initialize_program(
     )?;
 
     // Initialize MainTreasury data
-    let main_treasury_data = MainTreasuryState::new(system_authority);
+    let main_treasury_data = MainTreasuryState::new(*system_authority_account.key);
     serialize_to_account(&main_treasury_data, main_treasury_account)?;
 
     // 3. CREATE SWAP TREASURY PDA
@@ -217,13 +233,13 @@ pub fn process_initialize_program(
     msg!("   • MainTreasury PDA: {}", main_treasury_account.key);
     msg!("   • SwapTreasury PDA: {}", swap_treasury_account.key);
     msg!("   • HftTreasury PDA: {}", hft_treasury_account.key);
-    msg!("   • System Authority: {}", system_authority);
+    msg!("   • System Authority: {}", system_authority_account.key);
     msg!("🎯 Pool creation and treasury operations now available!");
 
     Ok(())
 }
 
-/// Processes the PauseSystem instruction.
+/// Processes the PauseSystem instruction with standardized account ordering.
 /// 
 /// Pauses the entire system, blocking all operations except unpause.
 /// Only the system authority can execute this instruction.
@@ -235,29 +251,55 @@ pub fn process_initialize_program(
 /// - Takes precedence over pool-specific pause states
 /// - Provides emergency control for security incidents
 /// 
-/// # Required Accounts
-/// 0. `[signer]` System authority account
-/// 1. `[writable]` System state account
+/// # Standardized Account Order:
+/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// 1. **System Program** (readable) - Not used in pause (placeholder)
+/// 2. **Rent Sysvar** (readable) - Not used in pause (placeholder)
+/// 3. **Clock Sysvar** (readable) - Not used in pause (placeholder)
+/// 4. **Pool State PDA** (writable) - Not used in pause (placeholder)
+/// 5. **Token A Mint** (readable) - Not used in pause (placeholder)
+/// 6. **Token B Mint** (readable) - Not used in pause (placeholder)
+/// 7. **Token A Vault PDA** (writable) - Not used in pause (placeholder)
+/// 8. **Token B Vault PDA** (writable) - Not used in pause (placeholder)
+/// 9. **SPL Token Program** (readable) - Not used in pause (placeholder)
+/// 10. **User Input Token Account** (writable) - Not used in pause (placeholder)
+/// 11. **User Output Token Account** (writable) - Not used in pause (placeholder)
+/// 12. **Main Treasury PDA** (writable) - Not used in pause (placeholder)
+/// 13. **Swap Treasury PDA** (writable) - Not used in pause (placeholder)
+/// 14. **HFT Treasury PDA** (writable) - Not used in pause (placeholder)
+/// 15. **System State PDA** (writable) - System state account for pause (function-specific)
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `accounts` - The accounts required for the instruction
 /// * `reason` - Human-readable reason for the system pause
+/// * `accounts` - Array of accounts in standardized order (16 accounts minimum)
 /// 
 /// # Returns
-/// * `ProgramResult` - Success or failure of the operation
+/// * `ProgramResult` - Success or error
 pub fn process_pause_system(
     _program_id: &Pubkey,
-    accounts: &[AccountInfo],
     reason: String,
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
+    msg!("🛑 Processing system pause: {}", reason);
     
-    // Parse accounts
-    let authority_account = next_account_info(account_info_iter)?;
-    let system_state_account = next_account_info(account_info_iter)?;
+    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
+    validate_standard_accounts(accounts)?;
+    // Note: Most pool/token/treasury accounts are placeholders for pause operations
     
-    // Validate account requirements
+    // Validate we have enough accounts for pause operation
+    if accounts.len() < 16 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let authority_account = &accounts[0];              // Index 0: Authority/User Signer
+    // Indices 1-14: System/pool/token/treasury accounts (unused placeholders)
+    
+    // ✅ FUNCTION-SPECIFIC ACCOUNTS: Pause-specific accounts at standardized positions 15+
+    let system_state_account = &accounts[15];          // Index 15: System State PDA
+    
+    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(authority_account, "System authority")?;
     validate_writable(system_state_account, "System state account")?;
     
@@ -298,7 +340,7 @@ pub fn process_pause_system(
     Ok(())
 }
 
-/// Processes the UnpauseSystem instruction.
+/// Processes the UnpauseSystem instruction with standardized account ordering.
 /// 
 /// Unpauses the entire system, allowing all operations to resume.
 /// Only the system authority can execute this instruction.
@@ -310,27 +352,53 @@ pub fn process_pause_system(
 /// - Clears the system pause state completely
 /// - Provides emergency recovery from system pause
 /// 
-/// # Required Accounts
-/// 0. `[signer]` System authority account
-/// 1. `[writable]` System state account
+/// # Standardized Account Order:
+/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// 1. **System Program** (readable) - Not used in unpause (placeholder)
+/// 2. **Rent Sysvar** (readable) - Not used in unpause (placeholder)
+/// 3. **Clock Sysvar** (readable) - Not used in unpause (placeholder)
+/// 4. **Pool State PDA** (writable) - Not used in unpause (placeholder)
+/// 5. **Token A Mint** (readable) - Not used in unpause (placeholder)
+/// 6. **Token B Mint** (readable) - Not used in unpause (placeholder)
+/// 7. **Token A Vault PDA** (writable) - Not used in unpause (placeholder)
+/// 8. **Token B Vault PDA** (writable) - Not used in unpause (placeholder)
+/// 9. **SPL Token Program** (readable) - Not used in unpause (placeholder)
+/// 10. **User Input Token Account** (writable) - Not used in unpause (placeholder)
+/// 11. **User Output Token Account** (writable) - Not used in unpause (placeholder)
+/// 12. **Main Treasury PDA** (writable) - Not used in unpause (placeholder)
+/// 13. **Swap Treasury PDA** (writable) - Not used in unpause (placeholder)
+/// 14. **HFT Treasury PDA** (writable) - Not used in unpause (placeholder)
+/// 15. **System State PDA** (writable) - System state account for unpause (function-specific)
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `accounts` - The accounts required for the instruction
+/// * `accounts` - Array of accounts in standardized order (16 accounts minimum)
 /// 
 /// # Returns
-/// * `ProgramResult` - Success or failure of the operation
+/// * `ProgramResult` - Success or error
 pub fn process_unpause_system(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    let account_info_iter = &mut accounts.iter();
+    msg!("✅ Processing system unpause");
     
-    // Parse accounts
-    let authority_account = next_account_info(account_info_iter)?;
-    let system_state_account = next_account_info(account_info_iter)?;
+    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
+    validate_standard_accounts(accounts)?;
+    // Note: Most pool/token/treasury accounts are placeholders for unpause operations
     
-    // Validate account requirements
+    // Validate we have enough accounts for unpause operation
+    if accounts.len() < 16 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let authority_account = &accounts[0];              // Index 0: Authority/User Signer
+    // Indices 1-14: System/pool/token/treasury accounts (unused placeholders)
+    
+    // ✅ FUNCTION-SPECIFIC ACCOUNTS: Unpause-specific accounts at standardized positions 15+
+    let system_state_account = &accounts[15];          // Index 15: System State PDA
+    
+    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(authority_account, "System authority")?;
     validate_writable(system_state_account, "System state account")?;
     

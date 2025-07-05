@@ -29,11 +29,29 @@ SOFTWARE.
 //! common test scaffolding.
 
 use solana_program_test::{BanksClient, ProgramTest, processor};
-use solana_sdk::{signature::Keypair, signer::Signer};
-use crate::common::{constants, PROGRAM_ID};
-use fixed_ratio_trading::process_instruction;
+use solana_sdk::{
+    signature::Keypair, 
+    signer::Signer,
+    instruction::{AccountMeta, Instruction},
+    transaction::Transaction,
+    pubkey::Pubkey,
+    system_instruction,
+};
+use crate::common::constants;
+use fixed_ratio_trading::{
+    process_instruction,
+    PoolInstruction,
+    ID as PROGRAM_ID,
+    constants::{
+        SYSTEM_STATE_SEED_PREFIX,
+        MAIN_TREASURY_SEED_PREFIX,
+        SWAP_TREASURY_SEED_PREFIX,
+        HFT_TREASURY_SEED_PREFIX,
+    },
+};
 use std::env;
 use env_logger;
+use borsh::BorshSerialize;
 
 /// Test environment context
 /// 
@@ -399,4 +417,79 @@ pub async fn transfer_sol(
     transfer_tx.sign(&[payer, from], recent_blockhash);
     
     banks.process_transaction(transfer_tx).await
+}
+
+/// Initialize the treasury system for tests
+/// 
+/// This creates all treasury PDAs (MainTreasury, SwapTreasury, HftTreasury) that are
+/// required for SOL fee collection in liquidity and swap operations.
+pub async fn initialize_treasury_system(
+    banks_client: &mut solana_program_test::BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    system_authority: &Keypair,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🏦 Initializing treasury system for tests...");
+    
+    // Fund the system authority account with SOL for account creation fees
+    let system_authority_balance = banks_client.get_balance(system_authority.pubkey()).await?;
+    if system_authority_balance < 10_000_000_000 {  // 10 SOL
+        println!("📦 Airdropping SOL to system authority for account creation...");
+        // Transfer SOL from payer to system authority
+        let transfer_ix = system_instruction::transfer(
+            &payer.pubkey(),
+            &system_authority.pubkey(),
+            10_000_000_000,  // 10 SOL
+        );
+        let mut transfer_tx = Transaction::new_with_payer(&[transfer_ix], Some(&payer.pubkey()));
+        transfer_tx.sign(&[payer], recent_blockhash);
+        banks_client.process_transaction(transfer_tx).await?;
+        println!("✅ System authority funded with 10 SOL");
+    }
+    
+    // Derive all required PDA addresses using the actual program constants
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX], 
+        &PROGRAM_ID
+    );
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX], 
+        &PROGRAM_ID
+    );
+    let (swap_treasury_pda, _) = Pubkey::find_program_address(
+        &[SWAP_TREASURY_SEED_PREFIX], 
+        &PROGRAM_ID
+    );
+    let (hft_treasury_pda, _) = Pubkey::find_program_address(
+        &[HFT_TREASURY_SEED_PREFIX], 
+        &PROGRAM_ID
+    );
+    
+    // Create InitializeProgram instruction with all required accounts
+    let initialize_program_ix = Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(system_authority.pubkey(), true),               // 0. System authority (signer)
+            AccountMeta::new(system_state_pda, false),                       // 1. SystemState PDA (writable)
+            AccountMeta::new(main_treasury_pda, false),                      // 2. MainTreasury PDA (writable)
+            AccountMeta::new(swap_treasury_pda, false),                      // 3. SwapTreasury PDA (writable)
+            AccountMeta::new(hft_treasury_pda, false),                       // 4. HftTreasury PDA (writable)
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // 5. System program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // 6. Rent sysvar
+        ],
+        data: PoolInstruction::InitializeProgram {
+            // No fields needed - system authority comes from accounts[0]
+        }.try_to_vec().unwrap(),
+    };
+
+    let mut transaction = Transaction::new_with_payer(&[initialize_program_ix], Some(&payer.pubkey()));
+    transaction.sign(&[payer, system_authority], recent_blockhash);
+    banks_client.process_transaction(transaction).await?;
+    
+    println!("✅ Treasury system initialized successfully");
+    println!("   • SystemState PDA: {}", system_state_pda);
+    println!("   • MainTreasury PDA: {}", main_treasury_pda);
+    println!("   • SwapTreasury PDA: {}", swap_treasury_pda);
+    println!("   • HftTreasury PDA: {}", hft_treasury_pda);
+    Ok(())
 }

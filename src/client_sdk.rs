@@ -288,10 +288,10 @@ impl PoolClient {
         }
     }
     
-    /// Creates a pool initialization instruction.
+    /// Creates a pool initialization instruction with standardized account ordering.
     /// 
     /// This function creates the instruction needed to initialize a new trading pool
-    /// with the specified configuration.
+    /// with the specified configuration. All PDA bump seeds are derived automatically.
     /// 
     /// # Arguments
     /// * `payer` - Account that will pay for pool creation and sign the transaction
@@ -305,6 +305,10 @@ impl PoolClient {
     /// # Errors
     /// * `InvalidRatio` - If the ratio in config is 0
     /// * `SerializationError` - If instruction data serialization fails
+    /// 
+    /// # Note
+    /// - Uses standardized account ordering for consistency across operations
+    /// - Bump seeds for all PDAs are derived internally
     pub fn create_pool_instruction(
         &self,
         payer: &Pubkey,
@@ -319,37 +323,51 @@ impl PoolClient {
             return Err(PoolClientError::InvalidRatio);
         }
         
-        // Use vault bump seeds directly (already in correct order)
-        let token_a_vault_bump = addresses.token_a_vault_bump;
-        let token_b_vault_bump = addresses.token_b_vault_bump;
-        
         // Create instruction
         let instruction_data = PoolInstruction::InitializePool {
             ratio_a_numerator: addresses.ratio_a_numerator,
             ratio_b_denominator: addresses.ratio_b_denominator,
-            pool_authority_bump_seed: addresses.pool_authority_bump,
-            token_a_vault_bump_seed: token_a_vault_bump,
-            token_b_vault_bump_seed: token_b_vault_bump,
         };
         
         let data = instruction_data
             .try_to_vec()
             .map_err(|_| PoolClientError::SerializationError)?;
         
+        // Derive treasury accounts
+        let (main_treasury_pda, _) = Pubkey::find_program_address(
+            &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
+            &self.program_id,
+        );
+        let (swap_treasury_pda, _) = Pubkey::find_program_address(
+            &[crate::constants::SWAP_TREASURY_SEED_PREFIX],
+            &self.program_id,
+        );
+        let (hft_treasury_pda, _) = Pubkey::find_program_address(
+            &[crate::constants::HFT_TREASURY_SEED_PREFIX],
+            &self.program_id,
+        );
+
         Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                AccountMeta::new(*payer, true),                         // Payer (signer)
-                AccountMeta::new(addresses.pool_state, false),          // Pool state PDA
-                AccountMeta::new_readonly(config.multiple_token_mint, false), // Multiple token mint
-                AccountMeta::new_readonly(config.base_token_mint, false),     // Base token mint
-                AccountMeta::new(*lp_token_a_mint, false),              // LP Token A mint (non-signer)
-                AccountMeta::new(*lp_token_b_mint, false),              // LP Token B mint (non-signer)
-                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault PDA
-                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault PDA
-                AccountMeta::new_readonly(system_program::id(), false), // System program
-                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
-                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
+                // Standardized account ordering (17 accounts minimum)
+                AccountMeta::new(*payer, true),                         // Index 0: Authority/User Signer
+                AccountMeta::new_readonly(system_program::id(), false), // Index 1: System Program
+                AccountMeta::new_readonly(rent::id(), false),           // Index 2: Rent Sysvar
+                AccountMeta::new_readonly(clock::id(), false),          // Index 3: Clock Sysvar
+                AccountMeta::new(addresses.pool_state, false),          // Index 4: Pool State PDA
+                AccountMeta::new_readonly(addresses.token_a_mint, false), // Index 5: Token A Mint
+                AccountMeta::new_readonly(addresses.token_b_mint, false), // Index 6: Token B Mint
+                AccountMeta::new(addresses.token_a_vault, false),       // Index 7: Token A Vault PDA
+                AccountMeta::new(addresses.token_b_vault, false),       // Index 8: Token B Vault PDA
+                AccountMeta::new_readonly(spl_token::id(), false),      // Index 9: SPL Token Program
+                AccountMeta::new(*payer, false),                        // Index 10: User Input Token Account (placeholder)
+                AccountMeta::new(*payer, false),                        // Index 11: User Output Token Account (placeholder)
+                AccountMeta::new(main_treasury_pda, false),             // Index 12: Main Treasury PDA
+                AccountMeta::new(swap_treasury_pda, false),             // Index 13: Swap Treasury PDA (placeholder)
+                AccountMeta::new(hft_treasury_pda, false),              // Index 14: HFT Treasury PDA (placeholder)
+                AccountMeta::new(*lp_token_a_mint, true),               // Index 15: LP Token A Mint (signer)
+                AccountMeta::new(*lp_token_b_mint, true),               // Index 16: LP Token B Mint (signer)
             ],
             data,
         })
@@ -512,6 +530,27 @@ impl PoolClient {
             accounts,
             data: instruction_data.try_to_vec()?,
         })
+    }
+
+    /// Derives the unique Pool ID for given pool parameters.
+    /// 
+    /// This method calculates the Pool ID (Pool State PDA) without creating the pool.
+    /// The Pool ID is deterministically derived from the normalized pool parameters.
+    /// 
+    /// # Arguments
+    /// * `config` - Pool configuration containing token mints and ratio
+    /// 
+    /// # Returns
+    /// * `Pubkey` - The unique Pool ID (Pool State PDA)
+    /// 
+    /// # Example
+    /// ```rust
+    /// let pool_id = pool_client.derive_pool_id(&config);
+    /// println!("Pool ID: {}", pool_id);
+    /// ```
+    pub fn derive_pool_id(&self, config: &PoolConfig) -> Pubkey {
+        let addresses = self.derive_pool_addresses(config);
+        addresses.pool_state  // The pool state PDA serves as the unique pool ID
     }
 
     /// Placeholder for additional pool operations.

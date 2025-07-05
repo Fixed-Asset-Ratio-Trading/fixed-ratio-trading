@@ -96,6 +96,7 @@ pub use state::*;
 pub use types::*;
 pub use utils::*;
 
+
 // Import specific processor functions for internal use only
 // Note: We only import processors, not types, to avoid shadowing public re-exports
 use crate::processors::{
@@ -164,38 +165,34 @@ pub fn process_instruction(
 
     match instruction {
         PoolInstruction::InitializeProgram {
-            system_authority,
-        } => process_initialize_program(program_id, accounts, system_authority),
+            // No fields to extract - system authority comes from accounts[0]
+        } => process_initialize_program(program_id, accounts),
 
         PoolInstruction::InitializePool {
             ratio_a_numerator,
             ratio_b_denominator,
-            pool_authority_bump_seed,
-            token_a_vault_bump_seed,
-            token_b_vault_bump_seed,
-        } => process_initialize_pool(program_id, accounts, ratio_a_numerator, ratio_b_denominator,
-            pool_authority_bump_seed, token_a_vault_bump_seed, token_b_vault_bump_seed),
+        } => process_initialize_pool(program_id, ratio_a_numerator, ratio_b_denominator, accounts),
 
         PoolInstruction::Deposit {
             deposit_token_mint,
             amount,
-        } => process_deposit(program_id, accounts, deposit_token_mint, amount),
+        } => process_deposit(program_id, amount, deposit_token_mint, accounts),
 
         PoolInstruction::Withdraw {
             withdraw_token_mint,
             lp_amount_to_burn,
-        } => process_withdraw(program_id, accounts, withdraw_token_mint, lp_amount_to_burn),
+        } => process_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts),
 
         PoolInstruction::Swap {
-            input_token_mint,
+            input_token_mint: _,
             amount_in,
-        } => process_swap(program_id, accounts, input_token_mint, amount_in),
+        } => process_swap(program_id, amount_in, accounts),
 
         PoolInstruction::SwapHftOptimized {
-            input_token_mint,
+            input_token_mint: _,
             amount_in,
             skip_rent_checks,
-        } => process_swap_hft_optimized(program_id, accounts, input_token_mint, amount_in, skip_rent_checks),
+        } => process_swap_hft_optimized(program_id, amount_in, skip_rent_checks, accounts),
 
         // Pool owner management instructions not implemented (governance-controlled architecture)
 
@@ -221,7 +218,7 @@ pub fn process_instruction(
         
         PoolInstruction::PauseSystem {
             reason,
-        } => process_pause_system(program_id, accounts, reason),
+        } => process_pause_system(program_id, reason, accounts),
 
         PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
 
@@ -230,7 +227,7 @@ pub fn process_instruction(
         // Treasury Management Instructions
         PoolInstruction::WithdrawTreasuryFees {
             amount,
-        } => process_withdraw_treasury_fees(program_id, accounts, amount),
+        } => process_withdraw_treasury_fees(program_id, amount, accounts),
 
         PoolInstruction::ConsolidateTreasuries => process_consolidate_treasuries(program_id, accounts),
 
@@ -241,3 +238,7 @@ pub fn process_instruction(
 }
 
 pub use crate::types::errors::PoolError;
+
+// Public utilities
+pub use crate::processors::utilities::derive_pool_id;
+

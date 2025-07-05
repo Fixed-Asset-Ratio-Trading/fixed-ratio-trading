@@ -36,7 +36,8 @@ pub enum PoolInstruction {
     /// - All subsequent operations will assume these PDAs exist
     /// 
     /// # Arguments:
-    /// - `system_authority`: The pubkey that will control system-wide operations
+    /// - System authority is provided via accounts[0] (must be signer)
+    /// - The signer's pubkey will control system-wide operations
     ///   (pause/unpause system, withdraw treasury funds, etc.)
     /// 
     /// # Security:
@@ -44,7 +45,7 @@ pub enum PoolInstruction {
     /// - Creates all accounts as PDAs owned by the program
     /// - Sets up proper rent exemption for all accounts
     InitializeProgram {
-        system_authority: Pubkey,
+        // No fields needed - system authority comes from accounts[0]
     },
 
     /// **RECOMMENDED**: Single-instruction pool initialization
@@ -67,19 +68,14 @@ pub enum PoolInstruction {
     /// # Arguments:
     /// - `ratio_a_numerator`: Token A base units (replaces multiple_per_base)
     /// - `ratio_b_denominator`: Token B base units (was hardcoded to 1, now configurable)
-    /// - `pool_authority_bump_seed`: Bump seed for pool authority PDA derivation
-    /// - `token_a_vault_bump_seed`: Bump seed for token A vault PDA (renamed from multiple_token_vault_bump_seed)
-    /// - `token_b_vault_bump_seed`: Bump seed for token B vault PDA (renamed from base_token_vault_bump_seed)
     /// 
     /// # Note:
     /// - `one_to_many_ratio` is automatically determined by the contract based on the ratio values
     /// - Display preferences are handled by individual applications, not the contract
+    /// - Bump seeds for all PDAs are derived internally using `find_program_address`
     InitializePool {
         ratio_a_numerator: u64,
         ratio_b_denominator: u64,
-        pool_authority_bump_seed: u8,
-        token_a_vault_bump_seed: u8,
-        token_b_vault_bump_seed: u8,
     },
 
     /// Standard deposit operation for adding liquidity to the pool

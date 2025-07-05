@@ -52,17 +52,17 @@
 //! Consider separating authority and data storage into different PDAs to eliminate
 //! this architectural complexity entirely.
 
-use crate::{constants::*, types::*, check_rent_exempt};
+use crate::{constants::*, types::*};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo,
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::Sysvar,
     program_pack::Pack,
     system_instruction,
 };
@@ -72,13 +72,19 @@ use spl_token::{
 };
 use crate::utils::validation::validate_non_zero_amount;
 
-
-
-/// Handles user deposits into the trading pool with strict 1:1 LP token enforcement.
+/// Handles user deposits into the trading pool using standardized account ordering.
 ///
-/// This function allows users to deposit tokens into the pool in exchange for LP (Liquidity Provider)
-/// tokens at a guaranteed 1:1 ratio. If the exact 1:1 ratio cannot be achieved, the entire
-/// transaction is rolled back. All fees go to the internal pool PDA for centralized management.
+/// This function implements the modernized deposit process with consistent account positioning
+/// across all trading functions. It allows users to deposit tokens in exchange for LP tokens
+/// at a guaranteed 1:1 ratio while maintaining strict standardization for ease of use.
+///
+/// **🏗️ STANDARDIZED ACCOUNT ORDERING**: This function uses the new standardized account
+/// ordering pattern implemented across all trading functions. Account positions are:
+/// - **Base System (0-3)**: Authority, system program, rent sysvar, clock sysvar
+/// - **Pool Core (4-8)**: Pool state, token A mint, token B mint, token A vault, token B vault
+/// - **Token Operations (9-11)**: SPL Token program, user input account, user output account
+/// - **Treasury (12-14)**: Main treasury, swap treasury, HFT treasury
+/// - **Function-Specific (15+)**: LP token mints, system state, etc.
 ///
 /// # System Pause Behavior
 /// This operation is **BLOCKED** when the system is paused. System pause
@@ -102,23 +108,26 @@ use crate::utils::validation::validate_non_zero_amount;
 ///
 /// # Arguments
 /// * `program_id` - The program ID of the contract
-/// * `accounts` - The accounts required for deposit in the following order:
-///   - `accounts[0]` - User account (must be signer)
-///   - `accounts[1]` - User's source token account
-///   - `accounts[2]` - Pool state PDA account
-///   - `accounts[3]` - Token A mint account (for PDA seed verification)
-///   - `accounts[4]` - Token B mint account (for PDA seed verification)
-///   - `accounts[5]` - Pool's Token A vault account
-///   - `accounts[6]` - Pool's Token B vault account
-///   - `accounts[7]` - LP Token A mint account
-///   - `accounts[8]` - LP Token B mint account
-///   - `accounts[9]` - User's destination LP token account
-///   - `accounts[10]` - System program
-///   - `accounts[11]` - SPL Token program
-///   - `accounts[12]` - Rent sysvar
-///   - `accounts[13]` - Clock sysvar
-/// * `deposit_token_mint_key` - The mint of the token being deposited
 /// * `amount` - The amount to deposit (will receive exactly this many LP tokens)
+/// * `deposit_token_mint_key` - The mint of the token being deposited (for validation)
+/// * `accounts` - The accounts required for deposit in standardized order:
+///   - `accounts[0]` - User authority (must be signer)
+///   - `accounts[1]` - System program
+///   - `accounts[2]` - Rent sysvar
+///   - `accounts[3]` - Clock sysvar
+///   - `accounts[4]` - Pool state PDA account
+///   - `accounts[5]` - Token A mint account
+///   - `accounts[6]` - Token B mint account
+///   - `accounts[7]` - Token A vault account
+///   - `accounts[8]` - Token B vault account
+///   - `accounts[9]` - SPL Token program
+///   - `accounts[10]` - User input token account
+///   - `accounts[11]` - User output LP token account
+///   - `accounts[12]` - Main Treasury PDA (for fee collection)
+///   - `accounts[13]` - Swap Treasury PDA (unused but standardized)
+///   - `accounts[14]` - HFT Treasury PDA (unused but standardized)
+///   - `accounts[15]` - LP Token A mint account
+///   - `accounts[16]` - LP Token B mint account
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error code
@@ -127,154 +136,135 @@ use crate::utils::validation::validate_non_zero_amount;
 /// - `ProgramError::Custom(3001)` - Strict 1:1 ratio violation
 /// - `ProgramError::Custom(3002)` - LP token mint operation integrity violation
 pub fn process_deposit(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    deposit_token_mint_key: Pubkey,
+    program_id: &Pubkey,
     amount: u64,
+    deposit_token_mint_key: Pubkey,
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Deposit v2");
+    msg!("Processing Deposit (Standardized Account Ordering)");
     
-    // ✅ SYSTEM PAUSE: Backward compatible validation
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
+    // ✅ SYSTEM PAUSE: Check system pause state before any operations
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 17)?; // Expected: 17 accounts
     
-    let account_info_iter = &mut accounts.iter();
-    let user_signer = next_account_info(account_info_iter)?;
-    let user_source_token_account = next_account_info(account_info_iter)?;
-    let pool_state_account = next_account_info(account_info_iter)?;
-    let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;
-    let token_b_mint_for_pda_seeds = next_account_info(account_info_iter)?;
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
+    let _system_program = &accounts[1];                   // Index 1: System Program
+    let _rent_sysvar = &accounts[2];                      // Index 2: Rent Sysvar
+    let _clock_sysvar = &accounts[3];                     // Index 3: Clock Sysvar
+    let pool_state_account = &accounts[4];                // Index 4: Pool State PDA
+    let _token_a_mint = &accounts[5];                     // Index 5: Token A Mint
+    let _token_b_mint = &accounts[6];                     // Index 6: Token B Mint
+    let token_a_vault = &accounts[7];                     // Index 7: Token A Vault PDA
+    let token_b_vault = &accounts[8];                     // Index 8: Token B Vault PDA
+    let spl_token_program = &accounts[9];                 // Index 9: SPL Token Program
+    let user_input_account = &accounts[10];               // Index 10: User Input Token Account
+    let user_output_account = &accounts[11];              // Index 11: User Output LP Token Account
+    let main_treasury = &accounts[12];                    // Index 12: Main Treasury PDA
+    let _swap_treasury = &accounts[13];                   // Index 13: Swap Treasury PDA (unused)
+    let _hft_treasury = &accounts[14];                    // Index 14: HFT Treasury PDA (unused)
+    let lp_token_a_mint = &accounts[15];                  // Index 15: LP Token A Mint
+    let lp_token_b_mint = &accounts[16];                  // Index 16: LP Token B Mint
     
-    let pool_token_a_vault_account = next_account_info(account_info_iter)?;
-    let pool_token_b_vault_account = next_account_info(account_info_iter)?;
-    let lp_token_a_mint_account = next_account_info(account_info_iter)?;
-    let lp_token_b_mint_account = next_account_info(account_info_iter)?;
-    let user_destination_lp_token_account = next_account_info(account_info_iter)?;
-    
-    let _system_program_account = next_account_info(account_info_iter)?;
-    let token_program_account = next_account_info(account_info_iter)?;
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
-    let _rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let _clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
-
-    // Validate amount is non-zero
+    // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
-
-    if !user_signer.is_signer {
+    
+    if !user_authority.is_signer {
         msg!("User must be a signer for deposit");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // Read pool state data
+    // Read and validate pool state
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
-    
-    // TODO: Re-enable rent checks after fixing the deposit test
-    // check_rent_exempt(pool_state_account, program_id, rent, _clock.slot)?;
-    // check_rent_exempt(pool_token_a_vault_account, program_id, rent, _clock.slot)?;
-    // check_rent_exempt(pool_token_b_vault_account, program_id, rent, _clock.slot)?;
-    // check_rent_exempt(lp_token_a_mint_account, program_id, rent, _clock.slot)?;
-    // check_rent_exempt(lp_token_b_mint_account, program_id, rent, _clock.slot)?;
     
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
 
-    // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
-    if *token_a_mint_for_pda_seeds.key != pool_state_data.token_a_mint {
-        msg!("Provided token_a_mint_for_pda_seeds does not match pool state");
-        return Err(ProgramError::InvalidAccountData);
+    // Determine deposit token mint from user's input account and validate against instruction parameter
+    let user_input_data = TokenAccount::unpack_from_slice(&user_input_account.data.borrow())?;
+    let actual_deposit_mint = user_input_data.mint;
+    
+    // Validate instruction parameter matches accounts-derived mint
+    if actual_deposit_mint != deposit_token_mint_key {
+        msg!("Instruction deposit_token_mint ({}) does not match user input account mint ({})", 
+             deposit_token_mint_key, actual_deposit_mint);
+        return Err(ProgramError::InvalidInstructionData);
     }
-    if *token_b_mint_for_pda_seeds.key != pool_state_data.token_b_mint {
-        msg!("Provided token_b_mint_for_pda_seeds does not match pool state");
-        return Err(ProgramError::InvalidAccountData);
-    }
+    
+    msg!("Deposit token mint validated: {}", deposit_token_mint_key);
 
-    // Determine which token (A or B) is being deposited and set target accounts
-    let (target_pool_vault_account, target_lp_mint_account, is_depositing_token_a) = 
+    // Determine deposit target (Token A or B)
+    let (target_vault, target_lp_mint, is_depositing_token_a) = 
         if deposit_token_mint_key == pool_state_data.token_a_mint {
-            // Depositing Token A
-            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
-                msg!("Invalid pool_token_a_vault_account provided for token A deposit.");
+            if *token_a_vault.key != pool_state_data.token_a_vault {
+                msg!("Invalid token A vault for deposit");
                 return Err(ProgramError::InvalidAccountData);
             }
-            if *lp_token_a_mint_account.key != pool_state_data.lp_token_a_mint {
-                msg!("Invalid lp_token_a_mint_account provided for token A deposit.");
+            if *lp_token_a_mint.key != pool_state_data.lp_token_a_mint {
+                msg!("Invalid LP token A mint for deposit");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_a_vault_account, lp_token_a_mint_account, true)
+            (token_a_vault, lp_token_a_mint, true)
         } else if deposit_token_mint_key == pool_state_data.token_b_mint {
-            // Depositing Token B
-            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
-                msg!("Invalid pool_token_b_vault_account provided for token B deposit.");
+            if *token_b_vault.key != pool_state_data.token_b_vault {
+                msg!("Invalid token B vault for deposit");
                 return Err(ProgramError::InvalidAccountData);
             }
-            if *lp_token_b_mint_account.key != pool_state_data.lp_token_b_mint {
-                msg!("Invalid lp_token_b_mint_account provided for token B deposit.");
+            if *lp_token_b_mint.key != pool_state_data.lp_token_b_mint {
+                msg!("Invalid LP token B mint for deposit");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_b_vault_account, lp_token_b_mint_account, false)
+            (token_b_vault, lp_token_b_mint, false)
         } else {
-            msg!("Deposit token mint does not match either of the pool's tokens");
+            msg!("Deposit token mint does not match pool tokens");
             return Err(ProgramError::InvalidArgument);
         };
 
-    // Validate user's source token account
-    let user_source_token_account_data = TokenAccount::unpack_from_slice(&user_source_token_account.data.borrow())?;
-    if user_source_token_account_data.mint != deposit_token_mint_key {
-        msg!("User source token account mint mismatch");
+    // Validate user accounts
+    if user_input_data.owner != *user_authority.key {
+        msg!("User input account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_source_token_account_data.owner != *user_signer.key {
-        msg!("User source token account owner mismatch");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_source_token_account_data.amount < amount {
-        msg!("Insufficient funds in user source token account");
+    if user_input_data.amount < amount {
+        msg!("Insufficient funds in user input account");
         return Err(ProgramError::InsufficientFunds);
     }
 
-    // Validate user's destination LP token account
-    let user_dest_lp_token_account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
-    if user_dest_lp_token_account_data.mint != *target_lp_mint_account.key {
-        msg!("User destination LP token account mint mismatch with target LP mint");
+    let user_output_data = TokenAccount::unpack_from_slice(&user_output_account.data.borrow())?;
+    if user_output_data.mint != *target_lp_mint.key {
+        msg!("User output account mint mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
-    if user_dest_lp_token_account_data.owner != *user_signer.key {
-        msg!("User destination LP token account owner mismatch");
+    if user_output_data.owner != *user_authority.key {
+        msg!("User output account owner mismatch");
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // STRICT 1:1 ENFORCEMENT: Record initial LP balance for verification
-    let initial_lp_balance = user_dest_lp_token_account_data.amount;
-    msg!("DEBUG: process_deposit: Initial LP balance: {}, expecting to mint exactly {} LP tokens", 
-         initial_lp_balance, amount);
-    
-    // Validate SPL Token Program ID
-    if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
-        msg!("Invalid SPL Token Program ID");
-        return Err(ProgramError::IncorrectProgramId);
-    }
+    // Record initial LP balance for strict 1:1 verification
+    let initial_lp_balance = user_output_data.amount;
+    msg!("Initial LP balance: {}, expecting to mint: {}", initial_lp_balance, amount);
 
     // Transfer tokens from user to pool vault
-    msg!("Transferring {} of token {} from user to pool", amount, deposit_token_mint_key);
+    msg!("Transferring {} tokens from user to pool vault", amount);
     invoke(
         &token_instruction::transfer(
-            token_program_account.key,
-            user_source_token_account.key,
-            target_pool_vault_account.key,
-            user_signer.key,
+            spl_token_program.key,
+            user_input_account.key,
+            target_vault.key,
+            user_authority.key,
             &[],
             amount,
         )?,
         &[
-            user_source_token_account.clone(),
-            target_pool_vault_account.clone(),
-            user_signer.clone(),
-            token_program_account.clone(),
+            user_input_account.clone(),
+            target_vault.clone(),
+            user_authority.clone(),
+            spl_token_program.clone(),
         ],
     )?;
 
-    // Update pool state liquidity
+    // Update pool liquidity
     if is_depositing_token_a {
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity.checked_add(amount)
             .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -282,56 +272,17 @@ pub fn process_deposit(
         pool_state_data.total_token_b_liquidity = pool_state_data.total_token_b_liquidity.checked_add(amount)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
-    
-    // ========================================================================
-    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
-    // ========================================================================
-    // 
-    // PROBLEM: 
-    // When using invoke_signed() with SPL Token operations (like mint_to), 
-    // the Solana runtime can corrupt PDA account data if the PDA is used as 
-    // both the authority AND contains structured data.
-    //
-    // SYMPTOMS:
-    // - Direct .serialize() appears to succeed but data gets wiped to 0 bytes
-    // - Pool state becomes unreadable after mint/burn operations
-    // - Results in "BorshIoError" when trying to read the account later
-    //
-    // ROOT CAUSE:
-    // SPL Token operations expect authority accounts to be simple signing accounts.
-    // When a PDA contains large amounts of data (like our 1866-byte PoolState),
-    // the runtime may overwrite or clear the account data during CPI calls.
-    //
-    // WORKAROUND:
-    // Use a two-step buffer serialization process that has proven reliable:
-    // 1. Serialize to a temporary Vec<u8> buffer first
-    // 2. Atomically copy the entire buffer to the account data
-    //
-    // This pattern prevents partial writes and ensures data integrity even
-    // when the account is subsequently used in invoke_signed() operations.
-    //
-    // REFERENCES:
-    // - Same pattern used successfully in process_initialize_pool_data()
-    // - Documented Solana issue affecting multiple DeFi protocols
-    // - Alternative: Use separate authority PDA (future architectural improvement)
-    // ========================================================================
-    
-    // Step 1: Serialize the pool state data to a temporary buffer
+
+    // Buffer serialization pattern to prevent PDA corruption
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
-    msg!("Buffer serialization completed. Buffer size: {} bytes", serialized_data.len());
-    
-    // Step 2: Atomic copy to account data BEFORE any invoke_signed calls
-    // This ensures data persistence even when the PDA is used as authority
     {
         let mut account_data = pool_state_account.data.borrow_mut();
         account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-        msg!("Pool state updated successfully. Token A liquidity: {}, Token B liquidity: {}", 
-             pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
     }
 
-    // Mint LP tokens to user AFTER saving pool state
-    let pool_state_pda_seeds = &[
+    // Mint LP tokens (1:1 ratio)
+    let pool_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
         pool_state_data.token_a_mint.as_ref(),
         pool_state_data.token_b_mint.as_ref(),
@@ -340,104 +291,86 @@ pub fn process_deposit(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    msg!("Minting exactly {} LP tokens for {} to user (strict 1:1 enforcement)", amount, target_lp_mint_account.key);
+    msg!("Minting {} LP tokens to user", amount);
     invoke_signed(
         &token_instruction::mint_to(
-            token_program_account.key,
-            target_lp_mint_account.key,
-            user_destination_lp_token_account.key,
+            spl_token_program.key,
+            target_lp_mint.key,
+            user_output_account.key,
             pool_state_account.key,
-            &[], 
-            amount,  // CRITICAL: Must mint exactly the deposited amount
+            &[],
+            amount,
         )?,
         &[
-            target_lp_mint_account.clone(),
-            user_destination_lp_token_account.clone(),
+            target_lp_mint.clone(),
+            user_output_account.clone(),
             pool_state_account.clone(),
-            token_program_account.clone(),
+            spl_token_program.clone(),
         ],
-        &[pool_state_pda_seeds],
+        &[pool_pda_seeds],
     )?;
 
-    // STRICT 1:1 ENFORCEMENT: Verify exact LP token amount was minted
+    // Verify strict 1:1 ratio
     let final_lp_balance = {
-        let account_data = TokenAccount::unpack_from_slice(&user_destination_lp_token_account.data.borrow())?;
+        let account_data = TokenAccount::unpack_from_slice(&user_output_account.data.borrow())?;
         account_data.amount
     };
-
+    
     let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
         .ok_or(ProgramError::ArithmeticOverflow)?;
-
-    // CRITICAL: Must be exactly 1:1 ratio - no tolerance for deviations
+    
     if lp_tokens_received != amount {
-        msg!("❌ STRICT 1:1 VIOLATION: Expected {} LP tokens, received {}. Rolling back transaction.", 
-             amount, lp_tokens_received);
-        return Err(ProgramError::Custom(3001)); // Strict ratio violation error
+        msg!("❌ Strict 1:1 violation: expected {}, received {}", amount, lp_tokens_received);
+        return Err(ProgramError::Custom(3001));
     }
 
-    msg!("✅ Strict 1:1 deposit verified: {} tokens deposited → {} LP tokens minted", 
-         amount, lp_tokens_received);
-
-    //=========================================================================
-    // CONTRACT FEE TRANSFER (Fixed SOL Amount)  
-    //=========================================================================
-    // Contract fees are paid in SOL to cover transaction processing costs.
-    // For liquidity operations, this covers token transfers, LP minting, and
-    // pool state updates.
-    //
-    // Amount: 0.0013 SOL (1,300,000 lamports)
-    // Purpose: Cover computational costs of liquidity operations
-    // Destination: Central treasury PDA for protocol sustainability
-    
-    if user_signer.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("❌ Insufficient SOL for contract fee. Required: {} lamports, Available: {} lamports", 
-             DEPOSIT_WITHDRAWAL_FEE, user_signer.lamports());
+    // Collect contract fee
+    if user_authority.lamports() < DEPOSIT_WITHDRAWAL_FEE {
+        msg!("❌ Insufficient SOL for contract fee");
         return Err(ProgramError::InsufficientFunds);
     }
-    
-    // Treasury system is now fully deployed via InitializeProgram
-    // Transfer contract fee to main treasury PDA for liquidity operations
-    let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
-        &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
-        _program_id,
+
+    // Verify treasury PDA
+    let (expected_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        program_id,
     );
     
+    if *main_treasury.key != expected_treasury_pda {
+        msg!("❌ Invalid main treasury PDA");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // Transfer fee to treasury
     invoke(
-        &system_instruction::transfer(user_signer.key, &main_treasury_pda, DEPOSIT_WITHDRAWAL_FEE),
-        &[user_signer.clone()],
+        &system_instruction::transfer(
+            user_authority.key,
+            main_treasury.key,
+            DEPOSIT_WITHDRAWAL_FEE,
+        ),
+        &[user_authority.clone(), main_treasury.clone()],
     )?;
-    
-    msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to treasury", 
-         DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
 
-    //=========================================================================
-    // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
-    //=========================================================================
-    // SOL fees are now tracked in central TreasuryState, not per-pool.
-    // This provides system-wide fee collection and simplified accounting.
-    // Real counters will be incremented for low-frequency operations like this.
-
+    msg!("✅ Deposit completed: {} tokens → {} LP tokens", amount, lp_tokens_received);
     Ok(())
 }
 
-/// Handles user withdrawals from the fixed-ratio trading pool.
+/// Handles user withdrawals from the trading pool using standardized account ordering.
 ///
-/// This function allows users to withdraw their underlying tokens from the pool by burning
-/// their LP (Liquidity Provider) tokens. The withdrawal is processed at a 1:1 ratio between
-/// LP tokens burned and underlying tokens received, maintaining the pool's fixed ratio structure.
-/// The function includes automatic MEV protection, fee collection, and comprehensive validation.
+/// This function implements the modernized withdrawal process with consistent account positioning
+/// across all trading functions. It allows users to withdraw underlying tokens by burning LP tokens
+/// at a guaranteed 1:1 ratio while maintaining strict standardization for ease of use.
+///
+/// **🏗️ STANDARDIZED ACCOUNT ORDERING**: This function uses the new standardized account
+/// ordering pattern implemented across all trading functions. Account positions are:
+/// - **Base System (0-3)**: Authority, system program, rent sysvar, clock sysvar
+/// - **Pool Core (4-8)**: Pool state, token A mint, token B mint, token A vault, token B vault
+/// - **Token Operations (9-11)**: SPL Token program, user input account, user output account
+/// - **Treasury (12-14)**: Main treasury, swap treasury, HFT treasury
+/// - **Function-Specific (15+)**: LP token mints, system state, etc.
 ///
 /// **🛡️ AUTOMATIC MEV PROTECTION**: Large withdrawals (≥5% of pool) automatically trigger
-/// temporary swap pause to prevent front-running and sandwich attacks. During this protection:
-/// - Pool status queries will show "swaps paused" 
-/// - This is **expected behavior** and provides real-time transparency
-/// - Protection automatically clears after withdrawal completion (success or failure)
-/// - Deposits and withdrawals continue to work normally
-///
-/// **⚠️ RACE CONDITION NOTICE**: Users querying pool status during large withdrawals
-/// may see temporary pause state. This is acceptable and provides accurate real-time
-/// visibility into pool security measures. The pause is distinguishable from owner
-/// actions via the withdrawal_protection_active flag.
+/// temporary swap pause to prevent front-running and sandwich attacks.
 ///
 /// # System Pause Behavior
 /// This operation is **BLOCKED** when the system is paused. System pause
@@ -451,254 +384,167 @@ pub fn process_deposit(
 /// - Automatic MEV protection for large withdrawals
 /// - Fail-safe protection cleanup regardless of outcome
 ///
-/// # Purpose
-/// - Enables users to exit their liquidity positions by burning LP tokens
-/// - Maintains pool's fixed ratio by reducing both LP supply and underlying token reserves
-/// - Provides automatic slippage protection for large withdrawals (≥5% threshold)
-/// - Collects withdrawal fees to fund pool operations and rent exemption
-/// - Provides audit trail and security checks for all withdrawal operations
-///
-/// # How it works
-/// 1. Validates the user is authorized (signed the transaction)
-/// 2. Verifies all provided accounts match expected pool structure
-/// 3. Confirms rent-exempt status for all pool accounts
-/// 4. Determines withdrawal direction (Token A or Token B) based on withdraw_token_mint_key
-/// 5. Validates user has sufficient LP tokens to burn
-/// 6. Checks pool has sufficient underlying token liquidity for withdrawal
-/// 7. Burns LP tokens from user's LP token account
-/// 8. Transfers underlying tokens from pool vault to user's destination account
-/// 9. Updates pool state liquidity counters
-/// 10. Collects withdrawal fee in SOL to maintain pool operations
-///
 /// # Arguments
-/// * `program_id` - The program ID for PDA validation and authority checks
-/// * `accounts` - Array of account infos in the following order:
-///   - `accounts[0]` - User account (must be signer)
-///   - `accounts[1]` - User's LP token account (source of tokens to burn)
-///   - `accounts[2]` - User's destination token account (receives underlying tokens)
-///   - `accounts[3]` - Pool state PDA account (writable)
-///   - `accounts[4]` - Token A mint account (for PDA seed verification)
-///   - `accounts[5]` - Token B mint account (for PDA seed verification)
-///   - `accounts[6]` - Pool's Token A vault account (writable)
-///   - `accounts[7]` - Pool's Token B vault account (writable)
-///   - `accounts[8]` - LP Token A mint account (writable if withdrawing Token A)
-///   - `accounts[9]` - LP Token B mint account (writable if withdrawing Token B)
-///   - `accounts[10]` - System program
-///   - `accounts[11]` - SPL Token program
-///   - `accounts[12]` - Rent sysvar (for rent calculations)
-///   - `accounts[13]` - Clock sysvar (for timestamp validation)
-/// * `withdraw_token_mint_key` - The mint address of the token to withdraw (must be either pool's Token A or Token B)
-/// * `lp_amount_to_burn` - The amount of LP tokens to burn (1:1 ratio with underlying tokens received)
+/// * `program_id` - The program ID of the contract
+/// * `lp_amount_to_burn` - The amount of LP tokens to burn
+/// * `withdraw_token_mint_key` - The mint of the token being withdrawn (for validation)
+/// * `accounts` - The accounts required for withdrawal in standardized order:
+///   - `accounts[0]` - User authority (must be signer)
+///   - `accounts[1]` - System program
+///   - `accounts[2]` - Rent sysvar
+///   - `accounts[3]` - Clock sysvar
+///   - `accounts[4]` - Pool state PDA account
+///   - `accounts[5]` - Token A mint account
+///   - `accounts[6]` - Token B mint account
+///   - `accounts[7]` - Token A vault account
+///   - `accounts[8]` - Token B vault account
+///   - `accounts[9]` - SPL Token program
+///   - `accounts[10]` - User input LP token account
+///   - `accounts[11]` - User output token account
+///   - `accounts[12]` - Main Treasury PDA (for fee collection)
+///   - `accounts[13]` - Swap Treasury PDA (unused but standardized)
+///   - `accounts[14]` - HFT Treasury PDA (unused but standardized)
+///   - `accounts[15]` - LP Token A mint account
+///   - `accounts[16]` - LP Token B mint account
 ///
-/// # Account Requirements
-/// - User: Must be signer and owner of LP token account
-/// - LP token account: Must contain sufficient tokens and be owned by user
-/// - Destination account: Must be owned by user and match withdraw token mint
-/// - Pool accounts: Must maintain rent-exempt status throughout operation
-///
-/// # Security Model
-/// - Direct withdrawal process with immediate execution
-/// - Pool owner can pause withdrawals if needed
-/// - Only authorized users can withdraw their own LP tokens
-///
-/// # Fees
-/// - Withdrawal fee: Fixed SOL amount (DEPOSIT_WITHDRAWAL_FEE) transferred to pool state PDA
-/// - Purpose: Maintains pool rent exemption and funds ongoing operations
-///
-/// # Errors
-/// - `ProgramError::MissingRequiredSignature` - User didn't sign transaction
-/// - `ProgramError::InvalidAccountData` - Account validation failures
-/// - `ProgramError::InsufficientFunds` - Insufficient LP tokens or pool liquidity
-/// - `PoolError::PoolPaused` - Pool operations are paused
-///
-/// # Example Usage
-/// ```ignore
-/// // Withdraw 1000 Token A by burning 1000 LP Token A
-/// let instruction = PoolInstruction::Withdraw {
-///     withdraw_token_mint: token_a_mint_pubkey,
-///     lp_amount_to_burn: 1000,
-/// };
-/// ```
+/// # Returns
+/// * `ProgramResult` - Success or error code
 pub fn process_withdraw(
     program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    withdraw_token_mint_key: Pubkey,
     lp_amount_to_burn: u64,
+    withdraw_token_mint_key: Pubkey,
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Withdraw v2");
+    msg!("Processing Withdrawal (Standardized Account Ordering)");
     
-    // ✅ SYSTEM PAUSE: Only check system-wide pause (existing)
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 14)?; // Expected: 14 accounts minimum
+    // ✅ SYSTEM PAUSE: Check system pause state before any operations
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 17)?; // Expected: 17 accounts
     
-    // ✅ NO POOL SWAP PAUSE CHECK: Withdrawals work regardless of owner pool swap pause
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
+    let _system_program = &accounts[1];                   // Index 1: System Program
+    let _rent_sysvar = &accounts[2];                      // Index 2: Rent Sysvar
+    let clock_sysvar = &accounts[3];                      // Index 3: Clock Sysvar
+    let pool_state_account = &accounts[4];                // Index 4: Pool State PDA
+    let _token_a_mint = &accounts[5];                     // Index 5: Token A Mint
+    let _token_b_mint = &accounts[6];                     // Index 6: Token B Mint
+    let token_a_vault = &accounts[7];                     // Index 7: Token A Vault PDA
+    let token_b_vault = &accounts[8];                     // Index 8: Token B Vault PDA
+    let spl_token_program = &accounts[9];                 // Index 9: SPL Token Program
+    let user_input_account = &accounts[10];               // Index 10: User Input LP Token Account
+    let user_output_account = &accounts[11];              // Index 11: User Output Token Account
+    let main_treasury = &accounts[12];                    // Index 12: Main Treasury PDA
+    let _swap_treasury = &accounts[13];                   // Index 13: Swap Treasury PDA (unused)
+    let _hft_treasury = &accounts[14];                    // Index 14: HFT Treasury PDA (unused)
+    let lp_token_a_mint = &accounts[15];                  // Index 15: LP Token A Mint
+    let lp_token_b_mint = &accounts[16];                  // Index 16: LP Token B Mint
     
-    let account_info_iter = &mut accounts.iter();
-    let user_signer = next_account_info(account_info_iter)?;                     // User making the withdrawal (signer)
-    let user_source_lp_token_account = next_account_info(account_info_iter)?;   // User's LP token account (source of burn)
-    let user_destination_token_account = next_account_info(account_info_iter)?; // User's account for receiving underlying tokens
-    let pool_state_account = next_account_info(account_info_iter)?;              // Pool state PDA
+    // Core validation
+    validate_non_zero_amount(lp_amount_to_burn, "Withdrawal")?;
     
-    // Accounts needed for Pool State PDA seeds derivation for signing
-    let token_a_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_a_mint (must match pool_state_data.token_a_mint)
-    let token_b_mint_for_pda_seeds = next_account_info(account_info_iter)?;    // Pool's token_b_mint (must match pool_state_data.token_b_mint)
-    
-    let pool_token_a_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token A
-    let pool_token_b_vault_account = next_account_info(account_info_iter)?;     // Pool's vault for token B
-    let lp_token_a_mint_account = next_account_info(account_info_iter)?;         // Pool's LP token A mint
-    let lp_token_b_mint_account = next_account_info(account_info_iter)?;         // Pool's LP token B mint
-    
-    let system_program_account = next_account_info(account_info_iter)?;         // System program
-    let token_program_account = next_account_info(account_info_iter)?;           // SPL Token program
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
-    let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let clock = &Clock::from_account_info(next_account_info(account_info_iter)?)?;
-
-    // Check rent-exempt status for pool accounts
-    check_rent_exempt(pool_state_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_a_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(pool_token_b_vault_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_a_mint_account, program_id, rent, clock.slot)?;
-    check_rent_exempt(lp_token_b_mint_account, program_id, rent, clock.slot)?;
-
-    if !user_signer.is_signer {
-        msg!("User must be a signer for withdraw");
+    if !user_authority.is_signer {
+        msg!("User must be a signer for withdrawal");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    // Read and validate pool state
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
 
-    // 🛡️ AUTOMATIC SLIPPAGE PROTECTION: Check if we should temporarily pause swaps
-    let needs_protection = should_protect_withdrawal_from_slippage(
-        lp_amount_to_burn,
-        &pool_state_data,
-    )?;
+    // Determine withdrawal token mint from user's output account and validate against instruction parameter
+    let user_output_data = TokenAccount::unpack_from_slice(&user_output_account.data.borrow())?;
+    let actual_withdraw_mint = user_output_data.mint;
     
-    if needs_protection {
-        // Temporarily pause swaps to protect this withdrawal
-        initiate_withdrawal_protection(&mut pool_state_data, user_signer.key, clock.unix_timestamp)?;
-        msg!("🛡️ Temporarily pausing swaps to protect large withdrawal from slippage");
+    // Validate instruction parameter matches accounts-derived mint
+    if actual_withdraw_mint != withdraw_token_mint_key {
+        msg!("Instruction withdraw_token_mint ({}) does not match user output account mint ({})", 
+             withdraw_token_mint_key, actual_withdraw_mint);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    
+    msg!("Withdrawal token mint validated: {}", withdraw_token_mint_key);
+
+    // MEV protection for large withdrawals
+    let protection_needed = should_protect_withdrawal_from_slippage(lp_amount_to_burn, &pool_state_data)?;
+    if protection_needed {
+        let clock = Clock::from_account_info(clock_sysvar)?;
+        initiate_withdrawal_protection(&mut pool_state_data, user_authority.key, clock.unix_timestamp)?;
     }
 
-    // Verify that the provided token_a_mint_for_pda_seeds and token_b_mint_for_pda_seeds match pool state
-    if *token_a_mint_for_pda_seeds.key != pool_state_data.token_a_mint {
-        msg!("Provided token_a_mint_for_pda_seeds does not match pool state");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if *token_b_mint_for_pda_seeds.key != pool_state_data.token_b_mint {
-        msg!("Provided token_b_mint_for_pda_seeds does not match pool state");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Determine which token (A or B) is being withdrawn and set relevant accounts
-    let (source_pool_vault_acc, source_lp_mint_account, is_withdrawing_token_a) = 
+    // Determine withdrawal target (Token A or B) and validate LP mint correspondence
+    let user_input_data = TokenAccount::unpack_from_slice(&user_input_account.data.borrow())?;
+    let (source_vault, source_lp_mint, is_withdrawing_token_a) = 
         if withdraw_token_mint_key == pool_state_data.token_a_mint {
-            // Withdrawing Token A, so burning LP Token A
-            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
-                msg!("Invalid pool_token_a_vault_account provided for token A withdrawal.");
+            // Withdrawing Token A - should be burning LP Token A
+            if user_input_data.mint != pool_state_data.lp_token_a_mint {
+                msg!("Cannot withdraw Token A without burning LP Token A");
                 return Err(ProgramError::InvalidAccountData);
             }
-            if *lp_token_a_mint_account.key != pool_state_data.lp_token_a_mint {
-                msg!("Invalid lp_token_a_mint_account provided for token A withdrawal.");
+            if *token_a_vault.key != pool_state_data.token_a_vault {
+                msg!("Invalid token A vault for withdrawal");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_a_vault_account, lp_token_a_mint_account, true)
+            if *lp_token_a_mint.key != pool_state_data.lp_token_a_mint {
+                msg!("Invalid LP token A mint for withdrawal");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (token_a_vault, lp_token_a_mint, true)
         } else if withdraw_token_mint_key == pool_state_data.token_b_mint {
-            // Withdrawing Token B, so burning LP Token B
-            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
-                msg!("Invalid pool_token_b_vault_account provided for token B withdrawal.");
+            // Withdrawing Token B - should be burning LP Token B
+            if user_input_data.mint != pool_state_data.lp_token_b_mint {
+                msg!("Cannot withdraw Token B without burning LP Token B");
                 return Err(ProgramError::InvalidAccountData);
             }
-            if *lp_token_b_mint_account.key != pool_state_data.lp_token_b_mint {
-                msg!("Invalid lp_token_b_mint_account provided for token B withdrawal.");
+            if *token_b_vault.key != pool_state_data.token_b_vault {
+                msg!("Invalid token B vault for withdrawal");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_b_vault_account, lp_token_b_mint_account, false)
+            if *lp_token_b_mint.key != pool_state_data.lp_token_b_mint {
+                msg!("Invalid LP token B mint for withdrawal");
+                return Err(ProgramError::InvalidAccountData);
+            }
+            (token_b_vault, lp_token_b_mint, false)
         } else {
-            msg!("Withdraw token mint does not match either of the pool's tokens");
+            msg!("Withdrawal token mint does not match pool tokens");
             return Err(ProgramError::InvalidArgument);
         };
 
-    // Validate user's source LP token account
-    let user_source_lp_token_account_data = TokenAccount::unpack_from_slice(&user_source_lp_token_account.data.borrow())?;
-    if user_source_lp_token_account_data.mint != *source_lp_mint_account.key {
-        msg!("User source LP token account mint mismatch with identified LP mint for withdrawal.");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_source_lp_token_account_data.owner != *user_signer.key {
-        msg!("User source LP token account owner mismatch");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_source_lp_token_account_data.amount < lp_amount_to_burn {
-        msg!("Insufficient LP tokens in user source account");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Validate user's destination token account (for underlying tokens)
-    let user_dest_token_account_data = TokenAccount::unpack_from_slice(&user_destination_token_account.data.borrow())?;
-    if user_dest_token_account_data.mint != withdraw_token_mint_key {
-        msg!("User destination token account mint mismatch with withdraw_token_mint_key");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if user_dest_token_account_data.owner != *user_signer.key {
-        msg!("User destination token account owner mismatch");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate SPL Token Program ID
-    if *token_program_account.key != Pubkey::new_from_array(spl_token::id().to_bytes()) {
-        msg!("Invalid SPL Token Program ID");
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    
-    // Check if pool has enough liquidity for the withdrawal
-    if is_withdrawing_token_a {
-        if pool_state_data.total_token_a_liquidity < lp_amount_to_burn {
-            msg!("Insufficient token A liquidity in the pool for withdrawal.");
-            return Err(ProgramError::InsufficientFunds);
-        }
-    } else {
-        if pool_state_data.total_token_b_liquidity < lp_amount_to_burn {
-            msg!("Insufficient token B liquidity in the pool for withdrawal.");
-            return Err(ProgramError::InsufficientFunds);
-        }
-    }
-
-    // Perform the withdrawal safely (no concurrent swaps can interfere if protection is active)
-    let withdrawal_result = execute_withdrawal_logic(
+    // Execute withdrawal logic
+    let result = execute_withdrawal_logic(
         &mut pool_state_data,
         lp_amount_to_burn,
         withdraw_token_mint_key,
         is_withdrawing_token_a,
-        user_signer,
-        user_source_lp_token_account,
-        user_destination_token_account,
-        source_pool_vault_acc,
-        source_lp_mint_account,
+        user_authority,
+        user_input_account,
+        user_output_account,
+        source_vault,
+        source_lp_mint,
         pool_state_account,
-        token_program_account,
-        system_program_account,
+        spl_token_program,
+        _system_program,
+        main_treasury,
         program_id,
     );
-    
-    // Always re-enable swaps after withdrawal (regardless of success/failure)
-    if needs_protection {
+
+    // Always clear protection regardless of outcome
+    if protection_needed {
         complete_withdrawal_protection(&mut pool_state_data)?;
-        msg!("🔓 Re-enabling swaps after withdrawal completion");
+        
+        // Save updated state
+        let mut serialized_data = Vec::new();
+        pool_state_data.serialize(&mut serialized_data)?;
+        {
+            let mut account_data = pool_state_account.data.borrow_mut();
+            account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+        }
     }
-    
-    // Save updated pool state (with protection cleanup applied)
-    let mut serialized_data = Vec::new();
-    pool_state_data.serialize(&mut serialized_data)?;
-    {
-        let mut account_data = pool_state_account.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    }
-    
-    withdrawal_result
+
+    result
 }
 
 /// Determines if a withdrawal needs protection from swap interference
@@ -836,6 +682,7 @@ fn execute_withdrawal_logic<'a>(
     pool_state_account: &AccountInfo<'a>,
     token_program_account: &AccountInfo<'a>,
     system_program_account: &AccountInfo<'a>,
+    main_treasury_account: &AccountInfo<'a>,
     program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::{program::{invoke, invoke_signed}, system_instruction};
@@ -903,15 +750,22 @@ fn execute_withdrawal_logic<'a>(
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
     // Treasury system is now fully deployed via InitializeProgram
-    // Transfer withdrawal fee to main treasury PDA for liquidity operations
-    let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
+    
+    // Verify the main treasury PDA is correct
+    let (expected_main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
         program_id,
     );
     
+    if *main_treasury_account.key != expected_main_treasury_pda {
+        msg!("❌ Invalid Main Treasury PDA provided for withdrawal");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Transfer withdrawal fee to main treasury PDA for liquidity operations
     invoke(
-        &system_instruction::transfer(user_signer.key, &main_treasury_pda, DEPOSIT_WITHDRAWAL_FEE),
-        &[user_signer.clone(), system_program_account.clone()], // Treasury will be added to accounts in future update
+        &system_instruction::transfer(user_signer.key, main_treasury_account.key, DEPOSIT_WITHDRAWAL_FEE),
+        &[user_signer.clone(), main_treasury_account.clone(), system_program_account.clone()],
     )?;
     
     msg!("Withdrawal fee {} transferred to central treasury PDA", DEPOSIT_WITHDRAWAL_FEE);

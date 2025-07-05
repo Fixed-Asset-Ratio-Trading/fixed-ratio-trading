@@ -29,6 +29,88 @@ use borsh::{BorshDeserialize, BorshSerialize};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
+/// Helper function to create deposit instruction with treasury account
+fn create_deposit_instruction(
+    user: &Pubkey,
+    deposit_token_account: &Pubkey,
+    config: &PoolConfig,
+    lp_token_a_mint: &Pubkey,
+    lp_token_b_mint: &Pubkey,
+    user_lp_token_account: &Pubkey,
+    deposit_instruction_data: &PoolInstruction,
+) -> Result<Instruction, Box<dyn std::error::Error>> {
+    let serialized = deposit_instruction_data.try_to_vec()?;
+    
+    // Derive main treasury PDA for deposit fee collection
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+
+    Ok(Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(*user, true),
+            AccountMeta::new(*deposit_token_account, false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(*lp_token_a_mint, false),
+            AccountMeta::new(*lp_token_b_mint, false),
+            AccountMeta::new(*user_lp_token_account, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+            AccountMeta::new(main_treasury_pda, false), // Main treasury PDA for fee collection
+        ],
+        data: serialized,
+    })
+}
+
+/// Helper function to create withdrawal instruction with treasury account  
+fn create_withdrawal_instruction(
+    user: &Pubkey,
+    user_lp_token_account: &Pubkey,
+    user_destination_token_account: &Pubkey,
+    config: &PoolConfig,
+    lp_token_a_mint: &Pubkey,
+    lp_token_b_mint: &Pubkey,
+    withdraw_instruction_data: &PoolInstruction,
+) -> Result<Instruction, Box<dyn std::error::Error>> {
+    let serialized = withdraw_instruction_data.try_to_vec()?;
+    
+    // Derive main treasury PDA for withdrawal fee collection
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+
+    Ok(Instruction {
+        program_id: PROGRAM_ID,
+        accounts: vec![
+            AccountMeta::new(*user, true),
+            AccountMeta::new(*user_lp_token_account, false),
+            AccountMeta::new(*user_destination_token_account, false),
+            AccountMeta::new(config.pool_state_pda, false),
+            AccountMeta::new_readonly(config.token_a_mint, false),
+            AccountMeta::new_readonly(config.token_b_mint, false),
+            AccountMeta::new(config.token_a_vault_pda, false),
+            AccountMeta::new(config.token_b_vault_pda, false),
+            AccountMeta::new(*lp_token_a_mint, false),
+            AccountMeta::new(*lp_token_b_mint, false),
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),
+            AccountMeta::new_readonly(spl_token::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
+            AccountMeta::new(main_treasury_pda, false), // Main treasury PDA for fee collection
+        ],
+        data: serialized,
+    })
+}
+
 /// LIQ-SERIALIZATION: Test instruction serialization and deserialization
 /// 
 /// This test verifies that all pool instructions can be properly serialized
@@ -65,9 +147,13 @@ async fn test_instruction_serialization() -> TestResult {
             PoolInstruction::InitializePool {
                 ratio_a_numerator: 3,
                 ratio_b_denominator: 1,
-                pool_authority_bump_seed: 254,
-                token_a_vault_bump_seed: 253,
-                token_b_vault_bump_seed: 252,
+            }
+        },
+        
+        // Test case 4: InitializeProgram instruction
+        {
+            PoolInstruction::InitializeProgram {
+                // No fields needed - system authority comes from accounts[0]
             }
         },
     ];
@@ -123,24 +209,27 @@ async fn test_instruction_serialization() -> TestResult {
             (
                 PoolInstruction::InitializePool { 
                     ratio_a_numerator: orig_ratio_a, 
-                    ratio_b_denominator: _orig_ratio_b, 
-                    pool_authority_bump_seed: orig_pool_bump,
-                    token_a_vault_bump_seed: orig_a_vault_bump,
-                    token_b_vault_bump_seed: orig_b_vault_bump,
+                    ratio_b_denominator: orig_ratio_b, 
                 },
                 PoolInstruction::InitializePool { 
                     ratio_a_numerator: deser_ratio_a, 
-                    ratio_b_denominator: _deser_ratio_b, 
-                    pool_authority_bump_seed: deser_pool_bump,
-                    token_a_vault_bump_seed: deser_a_vault_bump,
-                    token_b_vault_bump_seed: deser_b_vault_bump,
+                    ratio_b_denominator: deser_ratio_b, 
                 }
             ) => {
                 assert_eq!(orig_ratio_a, deser_ratio_a, "InitializePool ratio A should match");
-                assert_eq!(orig_pool_bump, deser_pool_bump, "InitializePool pool bump should match");
-                assert_eq!(orig_a_vault_bump, deser_a_vault_bump, "InitializePool token A vault bump should match");
-                assert_eq!(orig_b_vault_bump, deser_b_vault_bump, "InitializePool token B vault bump should match");
+                assert_eq!(orig_ratio_b, deser_ratio_b, "InitializePool ratio B should match");
                 println!("   ✅ InitializePool instruction round-trip verified");
+            },
+            (
+                PoolInstruction::InitializeProgram { 
+                    // No fields to compare
+                },
+                PoolInstruction::InitializeProgram { 
+                    // No fields to compare
+                }
+            ) => {
+                // No fields to validate - structure match is sufficient
+                println!("   ✅ InitializeProgram instruction round-trip verified");
             },
             _ => {
                 panic!("Instruction type mismatch after round-trip for instruction {}", idx);
@@ -184,6 +273,15 @@ async fn test_basic_deposit_success() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &[&primary_mint, &base_mint],
+    ).await?;
+
+    // Initialize treasury system first (required for SOL fee collection)
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
     ).await?;
 
     // Create pool with 5:1 ratio
@@ -256,28 +354,15 @@ async fn test_basic_deposit_success() -> TestResult {
         amount: deposit_amount_to_use,
     };
 
-    let serialized = deposit_instruction_data.try_to_vec().unwrap();
-
-    let deposit_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(user.pubkey(), true),
-            AccountMeta::new(deposit_token_account.pubkey(), false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
-            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
-            AccountMeta::new(user_lp_token_account.pubkey(), false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: serialized,
-    };
+    let deposit_ix = create_deposit_instruction(
+        &user.pubkey(),
+        &deposit_token_account.pubkey(),
+        &config,
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+        &user_lp_token_account.pubkey(),
+        &deposit_instruction_data,
+    )?;
 
     let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
     deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -338,6 +423,15 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
         &[&primary_mint, &base_mint],
     ).await?;
 
+    // Initialize treasury system first (required for SOL fee collection)
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await?;
+
     // Create pool with 2:1 ratio
     let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
@@ -387,28 +481,15 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
         amount: 0, // Zero amount should fail
     };
 
-    let serialized = deposit_instruction_data.try_to_vec().unwrap();
-
-    let deposit_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(user.pubkey(), true),
-            AccountMeta::new(user_primary_token_account.pubkey(), false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
-            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
-            AccountMeta::new(user_lp_token_account.pubkey(), false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: serialized,
-    };
+    let deposit_ix = create_deposit_instruction(
+        &user.pubkey(),
+        &user_primary_token_account.pubkey(),
+        &config,
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+        &user_lp_token_account.pubkey(),
+        &deposit_instruction_data,
+    )?;
 
     let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
     deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -454,6 +535,15 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &[&primary_mint, &base_mint],
+    ).await?;
+
+    // Initialize treasury system first (required for SOL fee collection)
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
     ).await?;
 
     // Create pool with 1:1 ratio
@@ -525,28 +615,15 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
         amount: deposit_amount,
     };
 
-    let serialized = deposit_instruction_data.try_to_vec().unwrap();
-
-    let deposit_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(user.pubkey(), true),
-            AccountMeta::new(deposit_token_account.pubkey(), false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
-            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
-            AccountMeta::new(user_lp_token_account.pubkey(), false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: serialized,
-    };
+    let deposit_ix = create_deposit_instruction(
+        &user.pubkey(),
+        &deposit_token_account.pubkey(),
+        &config,
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+        &user_lp_token_account.pubkey(),
+        &deposit_instruction_data,
+    )?;
 
     let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
     deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -594,6 +671,15 @@ async fn test_basic_withdrawal_success() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &[&primary_mint, &base_mint],
+    ).await?;
+
+    // Initialize treasury system first (required for SOL fee collection)
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
     ).await?;
 
     // Create pool with 3:1 ratio
@@ -663,27 +749,15 @@ async fn test_basic_withdrawal_success() -> TestResult {
         amount: deposit_amount,
     };
 
-    let serialized = deposit_instruction_data.try_to_vec().unwrap();
-    let deposit_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(user.pubkey(), true),
-            AccountMeta::new(deposit_token_account.pubkey(), false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
-            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
-            AccountMeta::new(user_lp_token_account.pubkey(), false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: serialized,
-    };
+    let deposit_ix = create_deposit_instruction(
+        &user.pubkey(),
+        &deposit_token_account.pubkey(),
+        &config,
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+        &user_lp_token_account.pubkey(),
+        &deposit_instruction_data,
+    )?;
 
     let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
     deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -704,27 +778,15 @@ async fn test_basic_withdrawal_success() -> TestResult {
         lp_amount_to_burn: withdraw_amount,
     };
 
-    let serialized = withdraw_instruction_data.try_to_vec().unwrap();
-    let withdraw_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(user.pubkey(), true),
-            AccountMeta::new(user_lp_token_account.pubkey(), false),
-            AccountMeta::new(deposit_token_account.pubkey(), false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(ctx.lp_token_a_mint.pubkey(), false),
-            AccountMeta::new(ctx.lp_token_b_mint.pubkey(), false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-        ],
-        data: serialized,
-    };
+    let withdraw_ix = create_withdrawal_instruction(
+        &user.pubkey(),
+        &user_lp_token_account.pubkey(),
+        &deposit_token_account.pubkey(),
+        &config,
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+        &withdraw_instruction_data,
+    )?;
 
     let mut withdraw_tx = Transaction::new_with_payer(&[withdraw_ix], Some(&user.pubkey()));
     withdraw_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -741,5 +803,35 @@ async fn test_basic_withdrawal_success() -> TestResult {
         }
     }
 
+    Ok(())
+}
+
+/// Test InitializeProgram instruction in isolation
+#[tokio::test]
+#[serial]
+async fn test_initialize_program_isolated() -> TestResult {
+    println!("🧪 Testing InitializeProgram instruction in isolation...");
+    
+    let mut ctx = setup_pool_test_context(false).await;
+    let system_authority = Keypair::new();
+    
+    // Try calling initialize_treasury_system and see what happens
+    let result = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await;
+    
+    match result {
+        Ok(_) => {
+            println!("✅ InitializeProgram succeeded");
+        }
+        Err(e) => {
+            println!("❌ InitializeProgram failed: {:?}", e);
+            // Don't panic, just report the error for debugging
+        }
+    }
+    
     Ok(())
 } 

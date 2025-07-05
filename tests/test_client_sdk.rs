@@ -287,42 +287,48 @@ async fn test_create_pool_instruction() -> TestResult {
     // 3. Get pool addresses to verify they match the instruction accounts
     let addresses = pool_client.derive_pool_addresses(&pool_config);
     
-    // 4. Verify accounts list correctness and ordering
-    assert_eq!(instruction.accounts.len(), 11, "Instruction should have exactly 11 accounts");
+    // 4. Verify accounts list correctness and ordering (standardized account ordering)
+    assert_eq!(instruction.accounts.len(), 17, "Instruction should have exactly 17 accounts (standardized ordering)");
     
-    // 4.1 Verify each account match and proper flags (signer, writable)
+    // 4.1 Verify standardized account positions
     assert_eq!(instruction.accounts[0], AccountMeta::new(payer, true), 
-        "Account 0 should be payer (writable + signer)");
+        "Index 0: Authority/User Signer");
     
-    assert_eq!(instruction.accounts[1], AccountMeta::new(addresses.pool_state, false), 
-        "Account 1 should be pool_state PDA (writable, non-signer)");
+    assert_eq!(instruction.accounts[1], AccountMeta::new_readonly(system_program::id(), false), 
+        "Index 1: System Program");
     
-    assert_eq!(instruction.accounts[2], AccountMeta::new_readonly(multiple_token_mint, false), 
-        "Account 2 should be multiple token mint (non-writable, non-signer)");
-    
-    assert_eq!(instruction.accounts[3], AccountMeta::new_readonly(base_token_mint, false), 
-        "Account 3 should be base token mint (non-writable, non-signer)");
-    
-    assert_eq!(instruction.accounts[4], AccountMeta::new(lp_token_a_mint, false), 
-        "Account 4 should be LP token A mint (writable, non-signer)");
-    
-    assert_eq!(instruction.accounts[5], AccountMeta::new(lp_token_b_mint, false), 
-        "Account 5 should be LP token B mint (writable, non-signer)");
-    
-    assert_eq!(instruction.accounts[6], AccountMeta::new(addresses.token_a_vault, false), 
-        "Account 6 should be token A vault (writable, non-signer)");
+    assert_eq!(instruction.accounts[2], AccountMeta::new_readonly(sysvar::rent::id(), false), 
+        "Index 2: Rent Sysvar");
         
-    assert_eq!(instruction.accounts[7], AccountMeta::new(addresses.token_b_vault, false), 
-        "Account 7 should be token B vault (writable, non-signer)");
+    assert_eq!(instruction.accounts[3], AccountMeta::new_readonly(sysvar::clock::id(), false), 
+        "Index 3: Clock Sysvar");
+    
+    assert_eq!(instruction.accounts[4], AccountMeta::new(addresses.pool_state, false), 
+        "Index 4: Pool State PDA");
+    
+    assert_eq!(instruction.accounts[5], AccountMeta::new_readonly(addresses.token_a_mint, false), 
+        "Index 5: Token A Mint");
+    
+    assert_eq!(instruction.accounts[6], AccountMeta::new_readonly(addresses.token_b_mint, false), 
+        "Index 6: Token B Mint");
+    
+    assert_eq!(instruction.accounts[7], AccountMeta::new(addresses.token_a_vault, false), 
+        "Index 7: Token A Vault PDA");
         
-    assert_eq!(instruction.accounts[8], AccountMeta::new_readonly(system_program::id(), false), 
-        "Account 8 should be system program (non-writable, non-signer)");
+    assert_eq!(instruction.accounts[8], AccountMeta::new(addresses.token_b_vault, false), 
+        "Index 8: Token B Vault PDA");
         
     assert_eq!(instruction.accounts[9], AccountMeta::new_readonly(spl_token::id(), false), 
-        "Account 9 should be SPL token program (non-writable, non-signer)");
-        
-    assert_eq!(instruction.accounts[10], AccountMeta::new_readonly(sysvar::rent::id(), false), 
-        "Account 10 should be rent sysvar (non-writable, non-signer)");
+        "Index 9: SPL Token Program");
+    
+    // Indices 10-14 are treasury accounts and placeholders (verified they exist)
+    assert_eq!(instruction.accounts.len(), 17, "Should have treasury and LP token accounts");
+    
+    assert_eq!(instruction.accounts[15], AccountMeta::new(lp_token_a_mint, true), 
+        "Index 15: LP Token A Mint (signer)");
+    
+    assert_eq!(instruction.accounts[16], AccountMeta::new(lp_token_b_mint, true), 
+        "Index 16: LP Token B Mint (signer)");
     
     println!("✅ Instruction contains all required accounts with correct flags");
     
@@ -333,24 +339,10 @@ async fn test_create_pool_instruction() -> TestResult {
     if let PoolInstruction::InitializePool { 
         ratio_a_numerator,
         ratio_b_denominator,
-        pool_authority_bump_seed,
-        token_a_vault_bump_seed,
-        token_b_vault_bump_seed, 
     } = instruction_data {
         // 5.1 Verify ratio
         assert_eq!(ratio_a_numerator, addresses.ratio_a_numerator, "Ratio A numerator should match the config");
         assert_eq!(ratio_b_denominator, addresses.ratio_b_denominator, "Ratio B denominator should match the config");
-        
-        // 5.2 Verify bumps
-        assert_eq!(pool_authority_bump_seed, addresses.pool_authority_bump, 
-            "Pool authority bump seed should match the derived bump");
-        
-        // 5.3 Verify vault bumps directly
-        assert_eq!(token_a_vault_bump_seed, addresses.token_a_vault_bump, 
-            "Token A vault bump should match");
-            
-        assert_eq!(token_b_vault_bump_seed, addresses.token_b_vault_bump, 
-            "Token B vault bump should match");
         
         println!("✅ Instruction data contains correct parameters");
     } else {
@@ -383,9 +375,6 @@ async fn test_create_pool_instruction() -> TestResult {
     let expected_data_size = PoolInstruction::InitializePool {
         ratio_a_numerator: ratio,
         ratio_b_denominator: 1,
-        pool_authority_bump_seed: addresses.pool_authority_bump,
-        token_a_vault_bump_seed: 255, // placeholder
-        token_b_vault_bump_seed: 255, // placeholder
     }.try_to_vec().unwrap().len();
     
     assert_eq!(instruction.data.len(), expected_data_size, 

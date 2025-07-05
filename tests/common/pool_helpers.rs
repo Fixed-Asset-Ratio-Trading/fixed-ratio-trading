@@ -32,6 +32,7 @@ use solana_program_test::BanksClient;
 use solana_sdk::{signature::Keypair, signer::Signer};
 use borsh::BorshSerialize;
 use crate::common::{constants, TestResult, *};
+use fixed_ratio_trading::constants as frt_constants;
 
 /// Normalized pool configuration data
 /// 
@@ -208,28 +209,48 @@ pub async fn create_pool_new_pattern(
     // Get normalized pool configuration
     let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
-    // Create InitializePool instruction
+    // Derive main treasury PDA for fee collection
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::MAIN_TREASURY_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+
+    // Derive treasury accounts for standardized ordering
+    let (swap_treasury_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::SWAP_TREASURY_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+    let (hft_treasury_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::HFT_TREASURY_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+
+    // Create InitializePool instruction with standardized account ordering
     let initialize_pool_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                          // Payer (signer)
-            AccountMeta::new(config.pool_state_pda, false),                  // Pool state PDA
-            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Multiple token mint
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Base token mint
-            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // LP Token A mint (signer)
-            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // LP Token B mint (signer)
-            AccountMeta::new(config.token_a_vault_pda, false),               // Token A vault PDA
-            AccountMeta::new(config.token_b_vault_pda, false),               // Token B vault PDA
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
-            AccountMeta::new_readonly(spl_token::id(), false),                      // SPL Token program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+            // Standardized account ordering (17 accounts minimum)
+            AccountMeta::new(payer.pubkey(), true),                          // Index 0: Authority/User Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 4: Pool State PDA
+            AccountMeta::new_readonly(config.token_a_mint, false),           // Index 5: Token A Mint
+            AccountMeta::new_readonly(config.token_b_mint, false),           // Index 6: Token B Mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 7: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 8: Token B Vault PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 9: SPL Token Program
+            AccountMeta::new(payer.pubkey(), false),                         // Index 10: User Input Token Account (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                         // Index 11: User Output Token Account (placeholder)
+            AccountMeta::new(main_treasury_pda, false),                      // Index 12: Main Treasury PDA
+            AccountMeta::new(swap_treasury_pda, false),                      // Index 13: Swap Treasury PDA (placeholder)
+            AccountMeta::new(hft_treasury_pda, false),                       // Index 14: HFT Treasury PDA (placeholder)
+            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // Index 15: LP Token A Mint (signer)
+            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // Index 16: LP Token B Mint (signer)
         ],
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,
             ratio_b_denominator: config.ratio_b_denominator,
-            pool_authority_bump_seed: config.pool_authority_bump,
-            token_a_vault_bump_seed: config.token_a_vault_bump,
-            token_b_vault_bump_seed: config.token_b_vault_bump,
         }.try_to_vec().unwrap(),
     };
 
@@ -285,39 +306,8 @@ pub async fn create_pool_legacy_pattern(
     ).await
 }
 
-/// Update security parameters for a pool
-/// 
-/// # Arguments
-/// * `banks` - Banks client for transaction processing
-/// * `payer` - Pool owner (pays for transaction)
-/// * `recent_blockhash` - Recent blockhash for transaction
-/// * `pool_state_pda` - Pool state account
-/// * `paused` - Whether pool is paused (optional)
-#[allow(dead_code)]
-pub async fn update_security_params(
-    banks: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: solana_sdk::hash::Hash,
-    pool_state_pda: &Pubkey,
-    paused: Option<bool>,
-) -> TestResult {
-    let update_ix = Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(payer.pubkey(), true),                          // Pool owner (signer)
-            AccountMeta::new(*pool_state_pda, false),                        // Pool state account
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Rent sysvar
-        ],
-        data: PoolInstruction::UpdateSecurityParams {
-            paused,
-            only_lp_token_a_for_both: None, // Not implemented yet
-        }.try_to_vec().unwrap(),
-    };
-
-    let mut transaction = Transaction::new_with_payer(&[update_ix], Some(&payer.pubkey()));
-    transaction.sign(&[payer], recent_blockhash);
-    banks.process_transaction(transaction).await
-}
+// Security parameter updates moved to governance control
+// Pool owners no longer have direct security management rights
 
 /// Get pool state data with debug information
 /// 

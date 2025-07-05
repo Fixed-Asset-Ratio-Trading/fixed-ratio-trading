@@ -7,7 +7,7 @@ use crate::constants::*;
 use crate::types::*;
 use crate::utils::serialization::serialize_to_account;
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
     program::{invoke, invoke_signed},
@@ -19,91 +19,105 @@ use solana_program::{
 };
 use spl_token::{
     instruction as token_instruction,
-    state::{Account as TokenAccount, Mint as MintAccount},
+    state::{Account as TokenAccount},
 };
+use crate::utils::account_builders::*;
 
-/// **RECOMMENDED**: Single-instruction pool initialization (FIXED)
+/// **POOL INITIALIZATION**: Pool creation with standardized account ordering.
 /// 
-/// This function creates and initializes a pool in a single atomic operation.
-/// It performs all necessary
-/// operations including account creation, PDA derivation, and data initialization.
+/// This function implements the standardized account ordering policy defined in
+/// ACCOUNT_ORDERING_POLICY.md for pool creation operations. It uses consistent account positioning
+/// across all pool operations for maximum compatibility and efficiency.
 /// 
-/// # What it does (All in one atomic transaction):
-/// 1. Creates Pool State PDA account with proper size allocation
-/// 2. Creates LP token mints and transfers authority to pool
-/// 3. Creates token vault PDAs and initializes them
-/// 4. Initializes pool state data with all configuration
-/// 5. Transfers registration fees to pool state account
-/// 6. Uses buffer serialization workaround for reliable data persistence
+/// # Pool Unique Identifier
 /// 
-/// # Key Improvements over Legacy Pattern:
-/// - **Atomic Operation**: All-or-nothing execution prevents partial state
-/// - **Simplified Client Integration**: Single instruction call
-/// - **Better Error Handling**: Clearer error messages and validation
-/// - **Enhanced Security**: Comprehensive validation and rent exemption checks
-/// - **Future-Proof**: Designed for extensibility and maintenance
+/// The **Pool State PDA** serves as the unique identifier for each pool. This PDA is deterministically
+/// derived from the pool parameters, making it both unique and discoverable:
+/// 
+/// ```text
+/// Pool ID = Pool State PDA = find_program_address([
+///     "pool_state",           // POOL_STATE_SEED_PREFIX
+///     token_a_mint,           // Lexicographically ordered
+///     token_b_mint,           // Lexicographically ordered  
+///     ratio_a_numerator,      // As little-endian bytes
+///     ratio_b_denominator,    // As little-endian bytes
+/// ], program_id)
+/// ```
+/// 
+/// This Pool ID is logged as `🎯 POOL_ID: <address>` for easy client parsing.
+/// 
+/// # Account Order:
+/// 0. **Authority/User Signer** (signer, writable) - Payer for account creation and fees
+/// 1. **System Program** (readable) - Solana system program
+/// 2. **Rent Sysvar** (readable) - For rent calculations
+/// 3. **Clock Sysvar** (readable) - For timestamps (new addition)
+/// 4. **Pool State PDA** (writable) - Main pool account to be created
+/// 5. **Token A Mint** (readable) - The first token mint (lexicographically ordered)
+/// 6. **Token B Mint** (readable) - The second token mint (lexicographically ordered)
+/// 7. **Token A Vault PDA** (writable) - Vault for Token A liquidity
+/// 8. **Token B Vault PDA** (writable) - Vault for Token B liquidity
+/// 9. **SPL Token Program** (readable) - For token operations
+/// 10. **User Input Token Account** (writable) - Not used in pool creation (placeholder)
+/// 11. **User Output Token Account** (writable) - Not used in pool creation (placeholder)
+/// 12. **Main Treasury PDA** (writable) - For registration fee collection
+/// 13. **Swap Treasury PDA** (writable) - Not used in pool creation (placeholder)
+/// 14. **HFT Treasury PDA** (writable) - Not used in pool creation (placeholder)
+/// 15. **LP Token A Mint** (signer, writable) - LP token for Token A liquidity providers
+/// 16. **LP Token B Mint** (signer, writable) - LP token for Token B liquidity providers
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and account creation
-/// * `accounts` - Array of account infos in the required order (see account list below)
-/// * `ratio_a_numerator` - Token A base units (replaces multiple_per_base)
-/// * `ratio_b_denominator` - Token B base units (was hardcoded to 1, now configurable)
-/// * `pool_authority_bump_seed` - Bump seed for pool authority PDA derivation
-/// * `token_a_vault_bump_seed` - Bump seed for token A vault PDA (renamed from multiple_token_vault_bump_seed)
-/// * `token_b_vault_bump_seed` - Bump seed for token B vault PDA (renamed from base_token_vault_bump_seed)
+/// * `ratio_a_numerator` - Token A base units (multiple token numerator)
+/// * `ratio_b_denominator` - Token B base units (base token denominator)
+/// * `accounts` - Array of accounts in standardized order (17 accounts minimum)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
 /// 
-/// # Account Order (11 accounts required):
-/// 0. **Payer** (signer, writable) - Pays for account creation and fees
-/// 1. **Pool State PDA** (writable) - Main pool account to be created
-/// 2. **Multiple Token Mint** (readable) - The abundant token mint
-/// 3. **Base Token Mint** (readable) - The valuable token mint  
-/// 4. **LP Token A Mint** (signer, writable) - LP token for Token A liquidity providers
-/// 5. **LP Token B Mint** (signer, writable) - LP token for Token B liquidity providers
-/// 6. **Token A Vault PDA** (writable) - Vault for Token A liquidity
-/// 7. **Token B Vault PDA** (writable) - Vault for Token B liquidity
-/// 8. **System Program** (readable) - For account creation
-/// 9. **SPL Token Program** (readable) - For token operations
-/// 10. **Rent Sysvar** (readable) - For rent exemption calculations
-/// 
-/// # Security Features
-/// - Enhanced normalization prevents economic duplicate pools
-/// - Comprehensive PDA validation ensures address correctness
-/// - Rent exemption validation prevents account closure
-/// - Buffer serialization prevents data corruption
-/// - System pause integration for emergency stops
+/// # Note
+/// Bump seeds for all PDAs are derived internally using `find_program_address`
 pub fn process_initialize_pool(
     program_id: &Pubkey,
-    accounts: &[AccountInfo],
     ratio_a_numerator: u64,
     ratio_b_denominator: u64,
-    pool_authority_bump_seed: u8,
-    token_a_vault_bump_seed: u8,
-    token_b_vault_bump_seed: u8,
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("DEBUG: process_initialize_pool: Starting FIXED single-instruction pool initialization");
+    msg!("Processing InitializePool with standardized account ordering");
     
-    // ✅ SYSTEM PAUSE: Backward compatible validation
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 11)?; // Expected: 11 accounts minimum
+    // ✅ SYSTEM PAUSE: Check system-wide pause
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 17)?;
     
-    // CRITICAL FIX: Instead of calling separate functions, we implement everything inline
-    // to avoid the GITHUB_ISSUE_31960_WORKAROUND issue where AccountInfo.data doesn't 
-    // get updated after CPI account creation within the same instruction.
+    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
+    validate_standard_accounts(accounts)?;
+    // Note: Pool accounts validation will be done after creation
+    // validate_token_accounts(accounts)?; // SPL token program validation only
+    validate_treasury_accounts(accounts)?;
     
-    let account_info_iter = &mut accounts.iter();
-    let payer = next_account_info(account_info_iter)?;
-    let pool_state_pda_account = next_account_info(account_info_iter)?;
-    let multiple_token_mint_account = next_account_info(account_info_iter)?;
-    let base_token_mint_account = next_account_info(account_info_iter)?;
-    let lp_token_a_mint_account = next_account_info(account_info_iter)?;
-    let lp_token_b_mint_account = next_account_info(account_info_iter)?;
-    let token_a_vault_pda_account = next_account_info(account_info_iter)?;
-    let token_b_vault_pda_account = next_account_info(account_info_iter)?;
-    let system_program_account = next_account_info(account_info_iter)?;
-    let token_program_account = next_account_info(account_info_iter)?;
-    let rent_sysvar_account = next_account_info(account_info_iter)?;
+    // Validate we have enough accounts for pool creation
+    if accounts.len() < 17 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    let payer = &accounts[0];                      // Index 0: Authority/User Signer
+    let system_program_account = &accounts[1];     // Index 1: System Program
+    let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar
+    let _clock_sysvar_account = &accounts[3];      // Index 3: Clock Sysvar
+    let pool_state_pda_account = &accounts[4];     // Index 4: Pool State PDA
+    let multiple_token_mint_account = &accounts[5]; // Index 5: Token A Mint (mapped from multiple)
+    let base_token_mint_account = &accounts[6];    // Index 6: Token B Mint (mapped from base)
+    let token_a_vault_pda_account = &accounts[7];  // Index 7: Token A Vault PDA
+    let token_b_vault_pda_account = &accounts[8];  // Index 8: Token B Vault PDA
+    let token_program_account = &accounts[9];      // Index 9: SPL Token Program
+    let _user_input_token_account = &accounts[10]; // Index 10: User Input Token Account (unused)
+    let _user_output_token_account = &accounts[11]; // Index 11: User Output Token Account (unused)
+    let main_treasury_account = &accounts[12];     // Index 12: Main Treasury PDA
+    let _swap_treasury_account = &accounts[13];    // Index 13: Swap Treasury PDA (unused)
+    let _hft_treasury_account = &accounts[14];     // Index 14: HFT Treasury PDA (unused)
+    
+    // ✅ FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at standardized positions 15+
+    let lp_token_a_mint_account = &accounts[15];   // Index 15: LP Token A Mint
+    let lp_token_b_mint_account = &accounts[16];   // Index 16: LP Token B Mint
 
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
@@ -123,10 +137,25 @@ pub fn process_initialize_pool(
             (base_token_mint_account.key, multiple_token_mint_account.key)
         };
 
-    msg!("DEBUG: process_initialize_pool: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
+    msg!("DEBUG: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
          token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
 
-    // Verify the pool state PDA
+    // Derive pool state PDA and verify it matches the provided account
+    let (expected_pool_state_pda, pool_authority_bump_seed) = Pubkey::find_program_address(
+        &[
+            POOL_STATE_SEED_PREFIX,
+            token_a_mint_key.as_ref(),
+            token_b_mint_key.as_ref(),
+            &ratio_a_numerator.to_le_bytes(),
+            &ratio_b_denominator.to_le_bytes(),
+        ],
+        program_id,
+    );
+    
+    if *pool_state_pda_account.key != expected_pool_state_pda {
+        return Err(ProgramError::InvalidArgument);
+    }
+
     let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
         token_a_mint_key.as_ref(),
@@ -135,45 +164,60 @@ pub fn process_initialize_pool(
         &ratio_b_denominator.to_le_bytes(),
         &[pool_authority_bump_seed],
     ];
-    let expected_pool_state_pda = Pubkey::create_program_address(pool_state_pda_seeds, program_id)?;
-    if *pool_state_pda_account.key != expected_pool_state_pda {
-        return Err(ProgramError::InvalidArgument);
-    }
 
     // Check if pool already exists
     if pool_state_pda_account.data_len() > 0 && !pool_state_pda_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // Use the provided vault bump seeds directly (already named correctly)
-    let token_a_vault_bump = token_a_vault_bump_seed;
-    let token_b_vault_bump = token_b_vault_bump_seed;
+    // Derive vault PDAs and verify they match the provided accounts
+    let (expected_token_a_vault, token_a_vault_bump_seed) = Pubkey::find_program_address(
+        &[
+            TOKEN_A_VAULT_SEED_PREFIX,
+            pool_state_pda_account.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    let (expected_token_b_vault, token_b_vault_bump_seed) = Pubkey::find_program_address(
+        &[
+            TOKEN_B_VAULT_SEED_PREFIX,
+            pool_state_pda_account.key.as_ref(),
+        ],
+        program_id,
+    );
 
-    // Derive vault PDAs for size calculation
+    if *token_a_vault_pda_account.key != expected_token_a_vault {
+        msg!("Invalid Token A vault PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+    if *token_b_vault_pda_account.key != expected_token_b_vault {
+        msg!("Invalid Token B vault PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Create seeds for signing
     let token_a_vault_seeds = &[
         TOKEN_A_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
-        &[token_a_vault_bump],
+        &[token_a_vault_bump_seed],
     ];
     let token_b_vault_seeds = &[
         TOKEN_B_VAULT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
-        &[token_b_vault_bump],
+        &[token_b_vault_bump_seed],
     ];
 
-    // CRITICAL FIX: Use get_packed_len() to ensure max size allocation
-    let pool_state_account_size = PoolState::get_packed_len();
-    
-    msg!("DEBUG: Using get_packed_len for allocation - size: {} bytes", 
-         pool_state_account_size);
-    let rent_for_pool_state = rent.minimum_balance(pool_state_account_size);
-    
+    // Create pool state account
+    let pool_state_space = PoolState::get_packed_len();
+    let pool_state_rent = rent.minimum_balance(pool_state_space);
+
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
             pool_state_pda_account.key,
-            rent_for_pool_state,
-            pool_state_account_size as u64,
+            pool_state_rent,
+            pool_state_space as u64,
             program_id,
         ),
         &[
@@ -184,259 +228,189 @@ pub fn process_initialize_pool(
         &[pool_state_pda_seeds],
     )?;
 
-    //=========================================================================
-    // CONTRACT FEE TRANSFER (Pool Creation Fee - Fixed SOL Amount)
-    //=========================================================================
-    // Pool creation requires a one-time contract fee to cover the computational
-    // costs of account creation, PDA derivation, and initial setup.
-    //
-    // Amount: 1.15 SOL (1,150,000,000 lamports)
-    // Purpose: Cover protocol operational costs and prevent spam pool creation
-    // Destination: Central treasury PDA for protocol sustainability
-    //
-    // Treasury system is now fully deployed via InitializeProgram
-    // Pool creation fee collection is active
-    
-    // Transfer registration fee to main treasury PDA for pool creation
-    let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
-        &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    invoke(
-        &system_instruction::transfer(payer.key, &main_treasury_pda, REGISTRATION_FEE),
-        &[
-            payer.clone(),
-            pool_state_pda_account.clone(), // Treasury will be added to accounts in future update
-            system_program_account.clone(),
-        ],
-    )?;
-    
-    msg!("✅ Pool creation contract fee transferred: {} lamports ({} SOL) from creator to treasury", 
-         REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
-
-    // Map token mint accounts to normalized token A/B based on lexicographic order
-    let token_a_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
-        multiple_token_mint_account
-    } else {
-        base_token_mint_account
-    };
-    let token_b_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {
-        base_token_mint_account
-    } else {
-        multiple_token_mint_account
-    };
-
-    // Get decimal precision from underlying token mints to ensure LP tokens match
-    let token_a_mint_data = token_a_mint_account_ref.try_borrow_data()?;
-    let token_a_mint_info = MintAccount::unpack(&token_a_mint_data)?;
-    let token_a_decimals = token_a_mint_info.decimals;
-    drop(token_a_mint_data); // Release borrow before next operation
-
-    let token_b_mint_data = token_b_mint_account_ref.try_borrow_data()?;
-    let token_b_mint_info = MintAccount::unpack(&token_b_mint_data)?;
-    let token_b_decimals = token_b_mint_info.decimals;
-    drop(token_b_mint_data); // Release borrow before next operation
-
-    msg!("DEBUG: process_initialize_pool: Token A decimals: {}, Token B decimals: {}", 
-         token_a_decimals, token_b_decimals);
-
-    // Create and initialize LP token mints with matching decimal precision
-    let rent_for_mint = rent.minimum_balance(MintAccount::LEN);
-    
-    // Create LP Token A Mint
-    invoke(
-        &system_instruction::create_account(
-            payer.key,
-            lp_token_a_mint_account.key,
-            rent_for_mint,
-            MintAccount::LEN as u64,
-            token_program_account.key,
-        ),
-        &[payer.clone(), lp_token_a_mint_account.clone(), system_program_account.clone()],
-    )?;
-    
-    invoke(
-        &token_instruction::initialize_mint(
-            token_program_account.key,
-            lp_token_a_mint_account.key,
-            payer.key,
-            None,                    // No freeze authority = unlimited supply
-            token_a_decimals,        // Match Token A decimal precision
-        )?,
-        &[lp_token_a_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
-    )?;
-
-    // Create LP Token B Mint
-    invoke(
-        &system_instruction::create_account(
-            payer.key,
-            lp_token_b_mint_account.key,
-            rent_for_mint,
-            MintAccount::LEN as u64,
-            token_program_account.key,
-        ),
-        &[payer.clone(), lp_token_b_mint_account.clone(), system_program_account.clone()],
-    )?;
-    
-    invoke(
-        &token_instruction::initialize_mint(
-            token_program_account.key,
-            lp_token_b_mint_account.key,
-            payer.key,
-            None,                    // No freeze authority = unlimited supply
-            token_b_decimals,        // Match Token B decimal precision
-        )?,
-        &[lp_token_b_mint_account.clone(), rent_sysvar_account.clone(), token_program_account.clone()],
-    )?;
-
-    // Transfer LP mint authorities to pool
-    invoke(
-        &token_instruction::set_authority(
-            token_program_account.key,
-            lp_token_a_mint_account.key,
-            Some(pool_state_pda_account.key),
-            token_instruction::AuthorityType::MintTokens,
-            payer.key,
-            &[],
-        )?,
-        &[lp_token_a_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
-    )?;
-
-    invoke(
-        &token_instruction::set_authority(
-            token_program_account.key,
-            lp_token_b_mint_account.key,
-            Some(pool_state_pda_account.key),
-            token_instruction::AuthorityType::MintTokens,
-            payer.key,
-            &[],
-        )?,
-        &[lp_token_b_mint_account.clone(), pool_state_pda_account.clone(), payer.clone(), token_program_account.clone()],
-    )?;
-
     // Create token vaults
-    let rent_for_vault = rent.minimum_balance(TokenAccount::LEN);
-    
-    // Create Token A Vault
+    let vault_space = TokenAccount::LEN;
+    let vault_rent = rent.minimum_balance(vault_space);
+
+    // Create Token A vault
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
             token_a_vault_pda_account.key,
-            rent_for_vault,
-            TokenAccount::LEN as u64,
-            token_program_account.key,
+            vault_rent,
+            vault_space as u64,
+            &spl_token::id(),
         ),
-        &[payer.clone(), token_a_vault_pda_account.clone(), system_program_account.clone()],
+        &[
+            payer.clone(),
+            token_a_vault_pda_account.clone(),
+            system_program_account.clone(),
+        ],
         &[token_a_vault_seeds],
     )?;
-    
-    invoke_signed(
+
+    // Initialize Token A vault
+    invoke(
         &token_instruction::initialize_account(
             token_program_account.key,
             token_a_vault_pda_account.key,
-            token_a_mint_account_ref.key,
+            token_a_mint_key,
             pool_state_pda_account.key,
         )?,
         &[
             token_a_vault_pda_account.clone(),
-            token_a_mint_account_ref.clone(),
+            multiple_token_mint_account.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
         ],
-        &[pool_state_pda_seeds],
     )?;
 
-    // Create Token B Vault
+    // Create Token B vault  
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
             token_b_vault_pda_account.key,
-            rent_for_vault,
-            TokenAccount::LEN as u64,
-            token_program_account.key,
+            vault_rent,
+            vault_space as u64,
+            &spl_token::id(),
         ),
-        &[payer.clone(), token_b_vault_pda_account.clone(), system_program_account.clone()],
+        &[
+            payer.clone(),
+            token_b_vault_pda_account.clone(),
+            system_program_account.clone(),
+        ],
         &[token_b_vault_seeds],
     )?;
-    
-    invoke_signed(
+
+    // Initialize Token B vault
+    invoke(
         &token_instruction::initialize_account(
             token_program_account.key,
             token_b_vault_pda_account.key,
-            token_b_mint_account_ref.key,
+            token_b_mint_key,
             pool_state_pda_account.key,
         )?,
         &[
             token_b_vault_pda_account.clone(),
-            token_b_mint_account_ref.clone(),
+            base_token_mint_account.clone(),
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
         ],
-        &[pool_state_pda_seeds],
     )?;
 
-    // **CRITICAL: GitHub Issue #31960 Workaround - Initialize pool state with standardized utility**
-    // Create the actual pool state data with all fields properly initialized
-    let mut pool_state_data = PoolState::default();
-    pool_state_data.owner = *payer.key;
-    pool_state_data.token_a_mint = *token_a_mint_key;
-    pool_state_data.token_b_mint = *token_b_mint_key;
-    pool_state_data.token_a_vault = *token_a_vault_pda_account.key;
-    pool_state_data.token_b_vault = *token_b_vault_pda_account.key;
-    pool_state_data.lp_token_a_mint = *lp_token_a_mint_account.key;
-    pool_state_data.lp_token_b_mint = *lp_token_b_mint_account.key;
-    pool_state_data.ratio_a_numerator = ratio_a_numerator;
-    pool_state_data.ratio_b_denominator = ratio_b_denominator;
-    
-    // Determine one-to-many ratio with token decimal information
-    let token_a_mint_data = token_a_mint_account_ref.try_borrow_data()?;
-    let token_b_mint_data = token_b_mint_account_ref.try_borrow_data()?;
-    
-    if token_a_mint_data.len() >= MintAccount::LEN && token_b_mint_data.len() >= MintAccount::LEN {
-        let token_a_mint_info = MintAccount::unpack(&token_a_mint_data)?;
-        let token_b_mint_info = MintAccount::unpack(&token_b_mint_data)?;
-        
-        pool_state_data.one_to_many_ratio = crate::utils::validation::check_one_to_many_ratio(
-            ratio_a_numerator,
-            ratio_b_denominator,
-            token_a_mint_info.decimals,
-            token_b_mint_info.decimals,
-        );
-        
-        msg!("DEBUG: process_initialize_pool: Token A decimals: {}, Token B decimals: {}", 
-             token_a_mint_info.decimals, token_b_mint_info.decimals);
-        msg!("DEBUG: process_initialize_pool: Determined one_to_many_ratio = {}", pool_state_data.one_to_many_ratio);
-    } else {
-        // Fallback: assume standard decimals (9 for both) and detect based on that
-        pool_state_data.one_to_many_ratio = crate::utils::validation::check_one_to_many_ratio(
-            ratio_a_numerator,
-            ratio_b_denominator,
-            9, // Default to 9 decimals
-            9, // Default to 9 decimals
-        );
-        msg!("DEBUG: process_initialize_pool: Using fallback decimals (9,9), one_to_many_ratio = {}", pool_state_data.one_to_many_ratio);
-    }
-    pool_state_data.total_token_a_liquidity = 0;
-    pool_state_data.total_token_b_liquidity = 0;
-    pool_state_data.pool_authority_bump_seed = pool_authority_bump_seed;
-    pool_state_data.token_a_vault_bump_seed = token_a_vault_bump;
-    pool_state_data.token_b_vault_bump_seed = token_b_vault_bump;
-    pool_state_data.is_initialized = true;
-    pool_state_data.paused = false;
-    pool_state_data.rent_requirements = RentRequirements::new(rent);
-    pool_state_data.collected_fees_token_a = 0;
-    pool_state_data.collected_fees_token_b = 0;
-    pool_state_data.total_fees_withdrawn_token_a = 0;
-    pool_state_data.total_fees_withdrawn_token_b = 0;
-    pool_state_data.swap_fee_basis_points = 0;
-    // Note: SOL fees are now tracked in central TreasuryState, not per-pool
+    // Initialize LP token mints with pool as mint authority
+    invoke(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_a_mint_account.key,
+            pool_state_pda_account.key,
+            None,
+            6, // Decimals
+        )?,
+        &[
+            lp_token_a_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
 
-    // **Use standardized GitHub Issue #31960 workaround**
+    invoke(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_b_mint_account.key,
+            pool_state_pda_account.key,
+            None,
+            6, // Decimals
+        )?,
+        &[
+            lp_token_b_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+    )?;
+
+    // Initialize pool state data
+    let pool_state_data = PoolState {
+        owner: *payer.key,
+        token_a_mint: *token_a_mint_key,
+        token_b_mint: *token_b_mint_key,
+        token_a_vault: *token_a_vault_pda_account.key,
+        token_b_vault: *token_b_vault_pda_account.key,
+        lp_token_a_mint: *lp_token_a_mint_account.key,
+        lp_token_b_mint: *lp_token_b_mint_account.key,
+        ratio_a_numerator,
+        ratio_b_denominator,
+        one_to_many_ratio: ratio_a_numerator > ratio_b_denominator,
+        total_token_a_liquidity: 0,
+        total_token_b_liquidity: 0,
+        pool_authority_bump_seed,
+        token_a_vault_bump_seed,
+        token_b_vault_bump_seed,
+        is_initialized: true,
+        rent_requirements: RentRequirements::new(rent),
+        paused: false,
+        swaps_paused: false,
+        withdrawal_protection_active: false,
+        only_lp_token_a_for_both: false,
+        collected_fees_token_a: 0,
+        collected_fees_token_b: 0,
+        total_fees_withdrawn_token_a: 0,
+        total_fees_withdrawn_token_b: 0,
+        swap_fee_basis_points: 0,
+    };
+
+    // ✅ NEW: Treasury fee collection using standardized accounts
+    // For pool creation, collect registration fees to main treasury (index 12)
+    let fee_amount = REGISTRATION_FEE;
+    
+    // Verify treasury account
+    let (expected_main_treasury, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
+    if *main_treasury_account.key != expected_main_treasury {
+        msg!("Invalid main treasury account");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Transfer registration fee from payer to treasury
+    let fee_transfer_instruction = system_instruction::transfer(
+        payer.key,
+        main_treasury_account.key,
+        fee_amount,
+    );
+
+    invoke(
+        &fee_transfer_instruction,
+        &[
+            payer.clone(),
+            main_treasury_account.clone(),
+            // system_program is at index 1 in standardized ordering
+            accounts[1].clone(),
+        ],
+    )?;
+
+    msg!("💰 Registration fee collected: {} lamports to main treasury", fee_amount);
+
+    // Serialize pool state to account
     serialize_to_account(&pool_state_data, pool_state_pda_account)?;
 
-    msg!("DEBUG: process_initialize_pool: Successfully used standardized workaround for pool initialization");
+    // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
+    msg!("🎯 POOL_ID: {}", pool_state_pda_account.key);
+    
+    msg!("✅ Pool initialized successfully");
+    msg!("Pool Details:");
+    msg!("  Token A: {}", token_a_mint_key);
+    msg!("  Token B: {}", token_b_mint_key);
+    msg!("  Ratio: {} : {}", ratio_a_numerator, ratio_b_denominator);
+    msg!("  Pool State PDA: {}", pool_state_pda_account.key);
+    msg!("  Token A Vault: {}", token_a_vault_pda_account.key);
+    msg!("  Token B Vault: {}", token_b_vault_pda_account.key);
+    msg!("  LP Token A Mint: {}", lp_token_a_mint_account.key);
+    msg!("  LP Token B Mint: {}", lp_token_b_mint_account.key);
+    
     Ok(())
 } 
