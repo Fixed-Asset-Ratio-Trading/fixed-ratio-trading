@@ -545,6 +545,18 @@ impl PoolClient {
     /// 
     /// # Example
     /// ```rust
+    /// use fixed_ratio_trading::client_sdk::{PoolClient, PoolConfig};
+    /// use solana_program::pubkey::Pubkey;
+    /// 
+    /// let program_id = Pubkey::new_unique();
+    /// let pool_client = PoolClient::new(program_id);
+    /// let config = PoolConfig::new(
+    ///     Pubkey::new_unique(), // multiple_token_mint
+    ///     Pubkey::new_unique(), // base_token_mint
+    ///     1000,                 // ratio_a_numerator
+    ///     1,                    // ratio_b_denominator
+    /// ).unwrap();
+    /// 
     /// let pool_id = pool_client.derive_pool_id(&config);
     /// println!("Pool ID: {}", pool_id);
     /// ```

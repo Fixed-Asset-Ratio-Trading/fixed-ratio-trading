@@ -78,10 +78,30 @@ pub struct StandardAccountConfig {
 /// 
 /// # Example
 /// ```rust
+/// use fixed_ratio_trading::utils::account_builders::{
+///     build_standard_accounts, StandardAccountConfig, PoolConfig, 
+///     TokenConfig, TreasuryConfig
+/// };
+/// use solana_program::pubkey::Pubkey;
+/// 
+/// let authority = Pubkey::new_unique();
 /// let config = StandardAccountConfig {
-///     pool_config: Some(PoolConfig { /* ... */ }),
-///     token_config: Some(TokenConfig { /* ... */ }),
-///     treasury_config: Some(TreasuryConfig { /* ... */ }),
+///     pool_config: Some(PoolConfig {
+///         pool_state_pda: Pubkey::new_unique(),
+///         token_a_mint: Pubkey::new_unique(),
+///         token_b_mint: Pubkey::new_unique(),
+///         token_a_vault_pda: Pubkey::new_unique(),
+///         token_b_vault_pda: Pubkey::new_unique(),
+///     }),
+///     token_config: Some(TokenConfig {
+///         user_input_token_account: Pubkey::new_unique(),
+///         user_output_token_account: Pubkey::new_unique(),
+///     }),
+///     treasury_config: Some(TreasuryConfig {
+///         main_treasury_pda: Pubkey::new_unique(),
+///         swap_treasury_pda: Pubkey::new_unique(),
+///         hft_treasury_pda: Pubkey::new_unique(),
+///     }),
 ///     lp_token_config: None,
 /// };
 /// 

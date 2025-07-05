@@ -119,6 +119,13 @@ pub fn get_pool_state_pda(
 /// 
 /// # Example
 /// ```rust
+/// use fixed_ratio_trading::processors::utilities::derive_pool_id;
+/// use solana_program::pubkey::Pubkey;
+/// 
+/// let program_id = Pubkey::new_unique();
+/// let token_mint_1 = Pubkey::new_unique();
+/// let token_mint_2 = Pubkey::new_unique();
+/// 
 /// let (pool_id, _bump) = derive_pool_id(
 ///     &program_id,
 ///     &token_mint_1,
