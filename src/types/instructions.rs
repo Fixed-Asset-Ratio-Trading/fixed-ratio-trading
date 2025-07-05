@@ -13,6 +13,39 @@ use solana_program::pubkey::Pubkey;
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub enum PoolInstruction {
 
+    /// **CRITICAL**: Program-level initialization (MUST BE CALLED FIRST)
+    /// 
+    /// This instruction must be called once when the program is first deployed.
+    /// It creates all the system-level infrastructure that individual pools depend on.
+    /// 
+    /// # What it creates:
+    /// 1. SystemState PDA - Global pause controls and system authority
+    /// 2. MainTreasury PDA - Pool creation and liquidity operation fees
+    /// 3. SwapTreasury PDA - Regular swap fees (high frequency)
+    /// 4. HftTreasury PDA - HFT swap fees (high frequency)
+    /// 
+    /// # When to call:
+    /// - ONCE during initial program deployment
+    /// - Before any pools can be created
+    /// - Before any other program operations
+    /// 
+    /// # After this initialization:
+    /// - Pool creation will have treasury PDAs to send fees to
+    /// - System pause functionality will be available
+    /// - Treasury management operations will work
+    /// - All subsequent operations will assume these PDAs exist
+    /// 
+    /// # Arguments:
+    /// - `system_authority`: The pubkey that will control system-wide operations
+    ///   (pause/unpause system, withdraw treasury funds, etc.)
+    /// 
+    /// # Security:
+    /// - Can only be called once (fails if SystemState already exists)
+    /// - Creates all accounts as PDAs owned by the program
+    /// - Sets up proper rent exemption for all accounts
+    InitializeProgram {
+        system_authority: Pubkey,
+    },
 
     /// **RECOMMENDED**: Single-instruction pool initialization
     /// 

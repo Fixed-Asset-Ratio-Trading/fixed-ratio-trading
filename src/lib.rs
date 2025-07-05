@@ -118,6 +118,7 @@ use crate::processors::{
     },
     security::process_update_security_params,
     system_pause::{
+        process_initialize_program,
         process_pause_system,
         process_unpause_system,
     },
@@ -167,6 +168,10 @@ pub fn process_instruction(
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;
 
     match instruction {
+        PoolInstruction::InitializeProgram {
+            system_authority,
+        } => process_initialize_program(program_id, accounts, system_authority),
+
         PoolInstruction::InitializePool {
             ratio_a_numerator,
             ratio_b_denominator,

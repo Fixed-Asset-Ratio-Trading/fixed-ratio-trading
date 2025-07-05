@@ -395,8 +395,7 @@ pub fn process_deposit(
         return Err(ProgramError::InsufficientFunds);
     }
     
-    // TODO: Re-enable treasury transfer when treasury system is fully deployed
-    /*
+    // Treasury system is now fully deployed via InitializeProgram
     // Transfer contract fee to main treasury PDA for liquidity operations
     let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
@@ -410,9 +409,6 @@ pub fn process_deposit(
     
     msg!("✅ Contract fee transferred: {} lamports ({} SOL) from user to treasury", 
          DEPOSIT_WITHDRAWAL_FEE, DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    */
-    
-    msg!("ℹ️ Liquidity fee collection temporarily disabled during development");
 
     //=========================================================================
     // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
@@ -906,8 +902,7 @@ fn execute_withdrawal_logic<'a>(
     
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
-    // TODO: Re-enable treasury transfer when treasury system is fully deployed
-    /*
+    // Treasury system is now fully deployed via InitializeProgram
     // Transfer withdrawal fee to main treasury PDA for liquidity operations
     let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
@@ -920,7 +915,6 @@ fn execute_withdrawal_logic<'a>(
     )?;
     
     msg!("Withdrawal fee {} transferred to central treasury PDA", DEPOSIT_WITHDRAWAL_FEE);
-    */
     
     //=========================================================================
     // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY
@@ -929,8 +923,7 @@ fn execute_withdrawal_logic<'a>(
     // This provides system-wide fee collection and simplified accounting.
     // Real counters will be incremented for low-frequency operations like this.
         
-    msg!("ℹ️ Withdrawal fee collection temporarily disabled during development");
-    msg!("✅ SOL fees now tracked centrally in TreasuryState (when treasury is deployed)");
+    msg!("✅ SOL fees now tracked centrally in TreasuryState");
 
     Ok(())
 } 

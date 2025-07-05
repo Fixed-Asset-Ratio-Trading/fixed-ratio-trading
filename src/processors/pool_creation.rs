@@ -194,10 +194,9 @@ pub fn process_initialize_pool(
     // Purpose: Cover protocol operational costs and prevent spam pool creation
     // Destination: Central treasury PDA for protocol sustainability
     //
-    // TODO: Re-enable when treasury system is fully deployed
-    // Currently disabled to allow basic pool creation during development
+    // Treasury system is now fully deployed via InitializeProgram
+    // Pool creation fee collection is active
     
-    /*
     // Transfer registration fee to main treasury PDA for pool creation
     let (main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
         &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
@@ -215,9 +214,6 @@ pub fn process_initialize_pool(
     
     msg!("✅ Pool creation contract fee transferred: {} lamports ({} SOL) from creator to treasury", 
          REGISTRATION_FEE, REGISTRATION_FEE as f64 / 1_000_000_000.0);
-    */
-    
-    msg!("ℹ️ Treasury fee collection temporarily disabled during development - will be re-enabled with full treasury deployment");
 
     // Map token mint accounts to normalized token A/B based on lexicographic order
     let token_a_mint_account_ref = if multiple_token_mint_account.key < base_token_mint_account.key {

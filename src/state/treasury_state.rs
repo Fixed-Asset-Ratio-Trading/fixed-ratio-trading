@@ -54,6 +54,10 @@ impl MainTreasuryState {
         8 +   // total_hft_swap_fees
         8;    // last_consolidation_timestamp
 
+    pub fn get_packed_len() -> usize {
+        Self::LEN
+    }
+
     pub fn new(authority: Pubkey) -> Self {
         Self {
             authority,
@@ -97,6 +101,10 @@ impl SwapTreasuryState {
         8 +   // swap_count
         8 +   // total_collected
         8;    // last_consolidation
+
+    pub fn get_packed_len() -> usize {
+        Self::LEN
+    }
 
     pub fn new() -> Self {
         Self {
@@ -153,6 +161,10 @@ impl HftTreasuryState {
         8 +   // hft_swap_count
         8 +   // total_collected
         8;    // last_consolidation
+
+    pub fn get_packed_len() -> usize {
+        Self::LEN
+    }
 
     pub fn new() -> Self {
         Self {

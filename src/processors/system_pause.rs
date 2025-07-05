@@ -10,15 +10,218 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
+    program::{invoke_signed},
+    program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::Sysvar,
+    system_instruction,
+    sysvar::{rent::Rent, Sysvar},
+};
+use crate::{
+    constants::*,
+    error::PoolError,
+    state::{SystemState, MainTreasuryState, SwapTreasuryState, HftTreasuryState},
+    utils::{serialization::serialize_to_account, validation::{validate_signer, validate_writable}},
 };
 
-use crate::{
-    error::PoolError,
-    state::SystemState,
-    utils::validation::{validate_signer, validate_writable},
-};
+/// **CRITICAL**: Initialize the entire program infrastructure
+/// 
+/// This function creates all system-level PDAs that the program depends on.
+/// It MUST be called once before any other program operations.
+/// 
+/// # What it creates:
+/// 1. SystemState PDA with system authority and global pause controls
+/// 2. MainTreasury PDA for pool creation and liquidity fees
+/// 3. SwapTreasury PDA for regular swap fees (high frequency)
+/// 4. HftTreasury PDA for HFT swap fees (high frequency)
+/// 
+/// # Account Order (9 accounts required):
+/// 0. **System Authority** (signer, writable) - Will control system operations
+/// 1. **SystemState PDA** (writable) - Global system state to be created
+/// 2. **MainTreasury PDA** (writable) - Main treasury to be created
+/// 3. **SwapTreasury PDA** (writable) - Swap treasury to be created  
+/// 4. **HftTreasury PDA** (writable) - HFT treasury to be created
+/// 5. **System Program** (readable) - For account creation
+/// 6. **Rent Sysvar** (readable) - For rent exemption calculations
+/// 
+/// # Security:
+/// - Can only be called once (prevents re-initialization)
+/// - Creates all PDAs with proper derivation validation
+/// - Sets up rent exemption for all accounts
+/// - System authority gains control over pause/treasury operations
+pub fn process_initialize_program(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    system_authority: Pubkey,
+) -> ProgramResult {
+    msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure");
+    
+    let account_info_iter = &mut accounts.iter();
+    let system_authority_account = next_account_info(account_info_iter)?;
+    let system_state_account = next_account_info(account_info_iter)?;
+    let main_treasury_account = next_account_info(account_info_iter)?;
+    let swap_treasury_account = next_account_info(account_info_iter)?;
+    let hft_treasury_account = next_account_info(account_info_iter)?;
+    let system_program_account = next_account_info(account_info_iter)?;
+    let rent_sysvar_account = next_account_info(account_info_iter)?;
+
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+
+    // Verify system authority is signer
+    if !system_authority_account.is_signer {
+        msg!("❌ System authority must be a signer");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    // Verify system authority matches provided pubkey
+    if *system_authority_account.key != system_authority {
+        msg!("❌ System authority account mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    // 1. CREATE SYSTEMSTATE PDA
+    let system_state_seeds = &[SYSTEM_STATE_SEED_PREFIX];
+    let (expected_system_state_pda, system_state_bump) = Pubkey::find_program_address(system_state_seeds, program_id);
+    
+    if *system_state_account.key != expected_system_state_pda {
+        msg!("❌ Invalid SystemState PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Check if already initialized
+    if system_state_account.data_len() > 0 && !system_state_account.data_is_empty() {
+        msg!("❌ Program already initialized (SystemState exists)");
+        return Err(ProgramError::AccountAlreadyInitialized);
+    }
+
+    let system_state_rent = rent.minimum_balance(SystemState::LEN);
+    let system_state_seeds_with_bump = &[SYSTEM_STATE_SEED_PREFIX, &[system_state_bump]];
+    
+    invoke_signed(
+        &system_instruction::create_account(
+            system_authority_account.key,
+            system_state_account.key,
+            system_state_rent,
+            SystemState::LEN as u64,
+            program_id,
+        ),
+        &[
+            system_authority_account.clone(),
+            system_state_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[system_state_seeds_with_bump],
+    )?;
+
+    // Initialize SystemState data
+    let system_state_data = SystemState::new(system_authority);
+    serialize_to_account(&system_state_data, system_state_account)?;
+    
+    // 2. CREATE MAIN TREASURY PDA
+    let main_treasury_seeds = &[MAIN_TREASURY_SEED_PREFIX];
+    let (expected_main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(main_treasury_seeds, program_id);
+    
+    if *main_treasury_account.key != expected_main_treasury_pda {
+        msg!("❌ Invalid MainTreasury PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let main_treasury_rent = rent.minimum_balance(MainTreasuryState::get_packed_len());
+    let main_treasury_seeds_with_bump = &[MAIN_TREASURY_SEED_PREFIX, &[main_treasury_bump]];
+    
+    invoke_signed(
+        &system_instruction::create_account(
+            system_authority_account.key,
+            main_treasury_account.key,
+            main_treasury_rent,
+            MainTreasuryState::get_packed_len() as u64,
+            program_id,
+        ),
+        &[
+            system_authority_account.clone(),
+            main_treasury_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[main_treasury_seeds_with_bump],
+    )?;
+
+    // Initialize MainTreasury data
+    let main_treasury_data = MainTreasuryState::new(system_authority);
+    serialize_to_account(&main_treasury_data, main_treasury_account)?;
+
+    // 3. CREATE SWAP TREASURY PDA
+    let swap_treasury_seeds = &[SWAP_TREASURY_SEED_PREFIX];
+    let (expected_swap_treasury_pda, swap_treasury_bump) = Pubkey::find_program_address(swap_treasury_seeds, program_id);
+    
+    if *swap_treasury_account.key != expected_swap_treasury_pda {
+        msg!("❌ Invalid SwapTreasury PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let swap_treasury_rent = rent.minimum_balance(SwapTreasuryState::get_packed_len());
+    let swap_treasury_seeds_with_bump = &[SWAP_TREASURY_SEED_PREFIX, &[swap_treasury_bump]];
+    
+    invoke_signed(
+        &system_instruction::create_account(
+            system_authority_account.key,
+            swap_treasury_account.key,
+            swap_treasury_rent,
+            SwapTreasuryState::get_packed_len() as u64,
+            program_id,
+        ),
+        &[
+            system_authority_account.clone(),
+            swap_treasury_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[swap_treasury_seeds_with_bump],
+    )?;
+
+    // Initialize SwapTreasury data
+    let swap_treasury_data = SwapTreasuryState::new();
+    serialize_to_account(&swap_treasury_data, swap_treasury_account)?;
+
+    // 4. CREATE HFT TREASURY PDA
+    let hft_treasury_seeds = &[HFT_TREASURY_SEED_PREFIX];
+    let (expected_hft_treasury_pda, hft_treasury_bump) = Pubkey::find_program_address(hft_treasury_seeds, program_id);
+    
+    if *hft_treasury_account.key != expected_hft_treasury_pda {
+        msg!("❌ Invalid HftTreasury PDA");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    let hft_treasury_rent = rent.minimum_balance(HftTreasuryState::get_packed_len());
+    let hft_treasury_seeds_with_bump = &[HFT_TREASURY_SEED_PREFIX, &[hft_treasury_bump]];
+    
+    invoke_signed(
+        &system_instruction::create_account(
+            system_authority_account.key,
+            hft_treasury_account.key,
+            hft_treasury_rent,
+            HftTreasuryState::get_packed_len() as u64,
+            program_id,
+        ),
+        &[
+            system_authority_account.clone(),
+            hft_treasury_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[hft_treasury_seeds_with_bump],
+    )?;
+
+    // Initialize HftTreasury data
+    let hft_treasury_data = HftTreasuryState::new();
+    serialize_to_account(&hft_treasury_data, hft_treasury_account)?;
+
+    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY:");
+    msg!("   • SystemState PDA: {}", system_state_account.key);
+    msg!("   • MainTreasury PDA: {}", main_treasury_account.key);
+    msg!("   • SwapTreasury PDA: {}", swap_treasury_account.key);
+    msg!("   • HftTreasury PDA: {}", hft_treasury_account.key);
+    msg!("   • System Authority: {}", system_authority);
+    msg!("🎯 Pool creation and treasury operations now available!");
+
+    Ok(())
+}
 
 /// Processes the PauseSystem instruction.
 /// 

@@ -148,7 +148,10 @@ pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
 /// PDA seed prefix for token B vault accounts  
 pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
-/// PDA seed prefix for main treasury account that consolidates all contract fees
+/// PDA seed for system state account
+pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
+
+/// PDA seed for main treasury account
 pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
 
 /// PDA seed prefix for specialized treasury that collects regular swap fees
