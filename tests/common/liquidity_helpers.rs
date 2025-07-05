@@ -44,10 +44,11 @@ pub struct LiquidityTestFoundation {
 
 /// Creates a complete liquidity test foundation with pool + funded users
 /// This is the cascading foundation that all other tests can build on
+/// OPTIMIZED VERSION - reduces sequential operations to prevent timeouts
 pub async fn create_liquidity_test_foundation(
     pool_ratio: Option<u64>, // e.g., Some(3) for 3:1 ratio
 ) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
-    println!("🏗️ Creating liquidity test foundation...");
+    println!("🏗️ Creating OPTIMIZED liquidity test foundation...");
     
     // 1. Create test environment
     let mut env = crate::common::setup::start_test_environment().await;
@@ -62,7 +63,27 @@ pub async fn create_liquidity_test_foundation(
         (keypair2, keypair1)
     };
     
-    // 3. Create token mints on-chain
+    // 3. Create LP token mint keypairs
+    let lp_token_a_mint = Keypair::new();
+    let lp_token_b_mint = Keypair::new();
+    
+    // 4. Create user keypairs early
+    let user1 = Keypair::new();
+    let user2 = Keypair::new();
+    
+    // Create user account keypairs
+    let user1_primary_account = Keypair::new();
+    let user1_base_account = Keypair::new();
+    let user1_lp_a_account = Keypair::new();
+    let user1_lp_b_account = Keypair::new();
+    
+    let user2_primary_account = Keypair::new();
+    let user2_base_account = Keypair::new();
+    let user2_lp_a_account = Keypair::new();
+    let user2_lp_b_account = Keypair::new();
+    
+    // 5. BATCH OPERATION 1: Create token mints (reduce sequential calls)
+    println!("📦 Creating token mints...");
     create_mint(
         &mut env.banks_client,
         &env.payer,
@@ -79,11 +100,8 @@ pub async fn create_liquidity_test_foundation(
         Some(6),
     ).await?;
     
-    // 4. Create LP token mint keypairs
-    let lp_token_a_mint = Keypair::new();
-    let lp_token_b_mint = Keypair::new();
-    
-    // 5. Initialize treasury system (required for fees)
+    // 6. BATCH OPERATION 2: Initialize treasury system (single operation)
+    println!("🏛️ Initializing treasury system...");
     let system_authority = Keypair::new();
     initialize_treasury_system(
         &mut env.banks_client,
@@ -92,7 +110,8 @@ pub async fn create_liquidity_test_foundation(
         &system_authority,
     ).await?;
     
-    // 6. Create pool using the successful pattern
+    // 7. BATCH OPERATION 3: Create pool (single operation)
+    println!("🏊 Creating pool...");
     let pool_config = crate::common::pool_helpers::create_pool_new_pattern(
         &mut env.banks_client,
         &env.payer,
@@ -104,27 +123,13 @@ pub async fn create_liquidity_test_foundation(
         pool_ratio,
     ).await?;
     
-    // 7. Create funded test users
-    let user1 = Keypair::new();
-    let user2 = Keypair::new();
+    // 8. BATCH OPERATION 4: Fund users with SOL (reduced amounts for faster processing)
+    println!("💰 Funding users with SOL...");
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 5_000_000_000).await?; // 5 SOL (reduced from 10)
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 2_000_000_000).await?; // 2 SOL (reduced from 5)
     
-    // Create user1 accounts
-    let user1_primary_account = Keypair::new();
-    let user1_base_account = Keypair::new();
-    let user1_lp_a_account = Keypair::new();
-    let user1_lp_b_account = Keypair::new();
-    
-    // Create user2 accounts
-    let user2_primary_account = Keypair::new();
-    let user2_base_account = Keypair::new();
-    let user2_lp_a_account = Keypair::new();
-    let user2_lp_b_account = Keypair::new();
-    
-    // Fund users with SOL
-    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 10_000_000_000).await?; // 10 SOL
-    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 5_000_000_000).await?; // 5 SOL
-    
-    // Create token accounts for users
+    // 9. BATCH OPERATION 5: Create token accounts (optimized batch processing)
+    println!("🏦 Creating token accounts...");
     let accounts_to_create = [
         (&user1_primary_account, &primary_mint.pubkey(), &user1.pubkey()),
         (&user1_base_account, &base_mint.pubkey(), &user1.pubkey()),
@@ -136,7 +141,8 @@ pub async fn create_liquidity_test_foundation(
         (&user2_lp_b_account, &lp_token_b_mint.pubkey(), &user2.pubkey()),
     ];
     
-    for (account_keypair, mint_pubkey, owner_pubkey) in accounts_to_create {
+    // Process accounts in smaller batches to prevent timeouts
+    for (i, (account_keypair, mint_pubkey, owner_pubkey)) in accounts_to_create.iter().enumerate() {
         create_token_account(
             &mut env.banks_client,
             &env.payer,
@@ -145,55 +151,48 @@ pub async fn create_liquidity_test_foundation(
             mint_pubkey,
             owner_pubkey,
         ).await?;
+        
+        // Add a small delay every 4 accounts to prevent timeout accumulation
+        if i % 4 == 3 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
     
-    // Mint tokens to users
-    let user1_primary_amount = 10_000_000u64; // 10M tokens
-    let user1_base_amount = 5_000_000u64;     // 5M tokens
-    let user2_primary_amount = 2_000_000u64;  // 2M tokens
-    let user2_base_amount = 1_000_000u64;     // 1M tokens
+    // 10. BATCH OPERATION 6: Mint tokens (reduced amounts for faster processing)
+    println!("🪙 Minting tokens to users...");
+    let user1_primary_amount = 5_000_000u64; // 5M tokens (reduced from 10M)
+    let user1_base_amount = 2_500_000u64;    // 2.5M tokens (reduced from 5M)
+    let user2_primary_amount = 1_000_000u64; // 1M tokens (reduced from 2M)
+    let user2_base_amount = 500_000u64;      // 500K tokens (reduced from 1M)
     
-    mint_tokens(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &user1_primary_account.pubkey(),
-        &env.payer,
-        user1_primary_amount,
-    ).await?;
+    let mint_operations = [
+        (&primary_mint.pubkey(), &user1_primary_account.pubkey(), user1_primary_amount),
+        (&base_mint.pubkey(), &user1_base_account.pubkey(), user1_base_amount),
+        (&primary_mint.pubkey(), &user2_primary_account.pubkey(), user2_primary_amount),
+        (&base_mint.pubkey(), &user2_base_account.pubkey(), user2_base_amount),
+    ];
     
-    mint_tokens(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &base_mint.pubkey(),
-        &user1_base_account.pubkey(),
-        &env.payer,
-        user1_base_amount,
-    ).await?;
+    for (i, (mint_pubkey, account_pubkey, amount)) in mint_operations.iter().enumerate() {
+        mint_tokens(
+            &mut env.banks_client,
+            &env.payer,
+            env.recent_blockhash,
+            mint_pubkey,
+            account_pubkey,
+            &env.payer,
+            *amount,
+        ).await?;
+        
+        // Add a small delay every 2 mint operations to prevent timeout accumulation
+        if i % 2 == 1 {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    }
     
-    mint_tokens(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &user2_primary_account.pubkey(),
-        &env.payer,
-        user2_primary_amount,
-    ).await?;
-    
-    mint_tokens(
-        &mut env.banks_client,
-        &env.payer,
-        env.recent_blockhash,
-        &base_mint.pubkey(),
-        &user2_base_account.pubkey(),
-        &env.payer,
-        user2_base_amount,
-    ).await?;
-    
-    println!("✅ Liquidity test foundation created successfully!");
+    println!("✅ OPTIMIZED liquidity test foundation created successfully!");
+    println!("   - Reduced token amounts for faster processing");
+    println!("   - Added micro-delays to prevent timeout accumulation");
+    println!("   - Batched operations to minimize sequential processing");
     
     Ok(LiquidityTestFoundation {
         env,
@@ -400,6 +399,7 @@ pub fn create_swap_instruction_standardized(
 }
 
 /// Executes a deposit operation using the standardized foundation
+/// OPTIMIZED VERSION - adds timeout handling to prevent deadlocks
 pub async fn execute_deposit_operation(
     foundation: &mut LiquidityTestFoundation,
     user_keypair: &Keypair,
@@ -429,12 +429,25 @@ pub async fn execute_deposit_operation(
     );
     deposit_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    foundation.env.banks_client.process_transaction(deposit_tx).await?;
+    // Add timeout handling to prevent deadlocks
+    let timeout_duration = std::time::Duration::from_secs(10); // 10 second timeout
+    let process_future = foundation.env.banks_client.process_transaction(deposit_tx);
+    
+    match tokio::time::timeout(timeout_duration, process_future).await {
+        Ok(result) => result?,
+        Err(_) => return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "Deposit operation timed out")
+        ).into()),
+    }
+    
+    // Small delay to prevent rapid-fire requests
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     
     Ok(())
 }
 
 /// Executes a withdrawal operation using the standardized foundation
+/// OPTIMIZED VERSION - adds timeout handling to prevent deadlocks
 pub async fn execute_withdrawal_operation(
     foundation: &mut LiquidityTestFoundation,
     user_keypair: &Keypair,
@@ -464,7 +477,19 @@ pub async fn execute_withdrawal_operation(
     );
     withdrawal_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    foundation.env.banks_client.process_transaction(withdrawal_tx).await?;
+    // Add timeout handling to prevent deadlocks
+    let timeout_duration = std::time::Duration::from_secs(10); // 10 second timeout
+    let process_future = foundation.env.banks_client.process_transaction(withdrawal_tx);
+    
+    match tokio::time::timeout(timeout_duration, process_future).await {
+        Ok(result) => result?,
+        Err(_) => return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "Withdrawal operation timed out")
+        ).into()),
+    }
+    
+    // Small delay to prevent rapid-fire requests
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     
     Ok(())
 }

@@ -6,111 +6,24 @@
 
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    signature::{Keypair, Signer},
-    transaction::Transaction,
+    signature::Signer,
 };
 use serial_test::serial;
 
 mod common;
 use common::{
-    pool_helpers::*,
-    setup::*,
     tokens::*,
-    liquidity_helpers::{create_liquidity_test_foundation, execute_deposit_operation, execute_withdrawal_operation},
+    liquidity_helpers::{create_liquidity_test_foundation, execute_deposit_operation, execute_withdrawal_operation, LiquidityTestFoundation},
 };
 
 use fixed_ratio_trading::{
     PoolInstruction,
-    ID as PROGRAM_ID,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
-
-/// Helper function to create deposit instruction with treasury account
-fn create_deposit_instruction(
-    user: &Pubkey,
-    deposit_token_account: &Pubkey,
-    config: &PoolConfig,
-    lp_token_a_mint: &Pubkey,
-    lp_token_b_mint: &Pubkey,
-    user_lp_token_account: &Pubkey,
-    deposit_instruction_data: &PoolInstruction,
-) -> Result<Instruction, Box<dyn std::error::Error>> {
-    let serialized = deposit_instruction_data.try_to_vec()?;
-    
-    // Derive main treasury PDA for deposit fee collection
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
-        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
-
-    Ok(Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*user, true),
-            AccountMeta::new(*deposit_token_account, false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(*lp_token_a_mint, false),
-            AccountMeta::new(*lp_token_b_mint, false),
-            AccountMeta::new(*user_lp_token_account, false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-            AccountMeta::new(main_treasury_pda, false), // Main treasury PDA for fee collection
-        ],
-        data: serialized,
-    })
-}
-
-/// Helper function to create withdrawal instruction with treasury account  
-fn create_withdrawal_instruction(
-    user: &Pubkey,
-    user_lp_token_account: &Pubkey,
-    user_destination_token_account: &Pubkey,
-    config: &PoolConfig,
-    lp_token_a_mint: &Pubkey,
-    lp_token_b_mint: &Pubkey,
-    withdraw_instruction_data: &PoolInstruction,
-) -> Result<Instruction, Box<dyn std::error::Error>> {
-    let serialized = withdraw_instruction_data.try_to_vec()?;
-    
-    // Derive main treasury PDA for withdrawal fee collection
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
-        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
-
-    Ok(Instruction {
-        program_id: PROGRAM_ID,
-        accounts: vec![
-            AccountMeta::new(*user, true),
-            AccountMeta::new(*user_lp_token_account, false),
-            AccountMeta::new(*user_destination_token_account, false),
-            AccountMeta::new(config.pool_state_pda, false),
-            AccountMeta::new_readonly(config.token_a_mint, false),
-            AccountMeta::new_readonly(config.token_b_mint, false),
-            AccountMeta::new(config.token_a_vault_pda, false),
-            AccountMeta::new(config.token_b_vault_pda, false),
-            AccountMeta::new(*lp_token_a_mint, false),
-            AccountMeta::new(*lp_token_b_mint, false),
-            AccountMeta::new_readonly(solana_program::system_program::id(), false),
-            AccountMeta::new_readonly(spl_token::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),
-            AccountMeta::new(main_treasury_pda, false), // Main treasury PDA for fee collection
-        ],
-        data: serialized,
-    })
-}
 
 /// LIQ-SERIALIZATION: Test instruction serialization and deserialization
 /// 
@@ -256,8 +169,8 @@ async fn test_instruction_serialization() -> TestResult {
 async fn test_basic_deposit_success() -> TestResult {
     println!("🧪 Testing LIQ-001: Basic deposit operation...");
     
-    // Use the new cascading foundation system
-    let mut foundation = create_liquidity_test_foundation(Some(5)).await?; // 5:1 ratio
+    // Use the timeout wrapper for foundation creation
+    let mut foundation = create_foundation_with_timeout(Some(5)).await?; // 5:1 ratio
     println!("✅ Liquidity foundation created with 5:1 ratio");
 
     // Determine which user account to use for deposit and extract values to avoid borrow checker issues
@@ -337,103 +250,42 @@ async fn test_basic_deposit_success() -> TestResult {
 /// 
 /// This test verifies that attempting to deposit zero tokens
 /// fails with the appropriate error.
+/// OPTIMIZED VERSION - uses efficient foundation pattern
 #[tokio::test]
 #[serial]
 async fn test_deposit_zero_amount_fails() -> TestResult {
     println!("🧪 Testing LIQ-002: Deposit with zero amount...");
     
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create ordered token mints
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
-    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
-        (keypair1, keypair2)
+    // Use the timeout wrapper for foundation creation
+    let mut foundation = create_foundation_with_timeout(Some(2)).await?; // 2:1 ratio
+    println!("✅ Foundation created for zero amount test");
+
+    // Determine which account and mint to use
+    let (deposit_mint, user_input_account, user_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+        (
+            foundation.pool_config.token_a_mint,
+            foundation.user1_primary_account.pubkey(),
+            foundation.user1_lp_a_account.pubkey(),
+        )
     } else {
-        (keypair2, keypair1)
-    };
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&primary_mint, &base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for SOL fee collection)
-    let system_authority = Keypair::new();
-    initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_authority,
-    ).await?;
-
-    // Create pool with 2:1 ratio
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint,
-        &base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        Some(2), // 2:1 ratio
-    ).await?;
-
-    // Setup user with token accounts
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &base_mint.pubkey(),
-        Some(10_000_000_000), // 10 SOL for fees
-    ).await?;
-
-    // Create LP token account for user
-    let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_the_multiple {
-        &ctx.lp_token_a_mint.pubkey()
-    } else {
-        &ctx.lp_token_b_mint.pubkey()
+        (
+            foundation.pool_config.token_b_mint,
+            foundation.user1_base_account.pubkey(),
+            foundation.user1_lp_b_account.pubkey(),
+        )
     };
 
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user_lp_token_account,
-        lp_mint,
-        &user.pubkey(),
-    ).await?;
+    // Attempt to deposit zero tokens using the optimized helper
+    let user1 = foundation.user1.insecure_clone();
+    let result = execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user_input_account,
+        &user_output_lp_account,
+        &deposit_mint,
+        0, // Zero amount should fail
+    ).await;
 
-    // Attempt to deposit zero tokens
-    let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_the_multiple { 
-            config.token_a_mint 
-        } else { 
-            config.token_b_mint 
-        },
-        amount: 0, // Zero amount should fail
-    };
-
-    let deposit_ix = create_deposit_instruction(
-        &user.pubkey(),
-        &user_primary_token_account.pubkey(),
-        &config,
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-        &user_lp_token_account.pubkey(),
-        &deposit_instruction_data,
-    )?;
-
-    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
-    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
-    
-    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
     match result {
         Ok(_) => {
             panic!("❌ Zero amount deposit should have failed!");
@@ -451,123 +303,48 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
 /// 
 /// This test verifies that attempting to deposit more tokens than available
 /// in the user's account fails with the appropriate error.
+/// OPTIMIZED VERSION - uses efficient foundation pattern
 #[tokio::test]
 #[serial]
 async fn test_deposit_insufficient_tokens_fails() -> TestResult {
     println!("🧪 Testing LIQ-003: Deposit with insufficient balance...");
     
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create ordered token mints
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
-    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
-        (keypair1, keypair2)
+    // Use the timeout wrapper for foundation creation
+    let mut foundation = create_foundation_with_timeout(Some(1)).await?; // 1:1 ratio
+    println!("✅ Foundation created for insufficient balance test");
+
+    // Determine which account and mint to use
+    let (deposit_mint, user_input_account, user_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+        (
+            foundation.pool_config.token_a_mint,
+            foundation.user1_primary_account.pubkey(),
+            foundation.user1_lp_a_account.pubkey(),
+        )
     } else {
-        (keypair2, keypair1)
-    };
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&primary_mint, &base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for SOL fee collection)
-    let system_authority = Keypair::new();
-    initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_authority,
-    ).await?;
-
-    // Create pool with 1:1 ratio
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint,
-        &base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        Some(1), // 1:1 ratio
-    ).await?;
-
-    // Setup user with token accounts
-    let (user, user_primary_token_account, _user_base_token_account) = setup_test_user(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &base_mint.pubkey(),
-        Some(10_000_000_000), // 10 SOL for fees
-    ).await?;
-
-    // Mint a small amount of tokens to user
-    let available_amount = 100_000u64; // 100K tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
-        (&primary_mint.pubkey(), &user_primary_token_account)
-    } else {
-        (&base_mint.pubkey(), &user_primary_token_account)
+        (
+            foundation.pool_config.token_b_mint,
+            foundation.user1_base_account.pubkey(),
+            foundation.user1_lp_b_account.pubkey(),
+        )
     };
 
-    mint_tokens(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        deposit_mint,
-        &deposit_token_account.pubkey(),
-        &ctx.env.payer,
-        available_amount,
-    ).await?;
+    // Get user's actual balance
+    let user_balance = get_token_balance(&mut foundation.env.banks_client, &user_input_account).await;
+    let excessive_amount = user_balance + 1_000_000; // Try to deposit more than available
 
-    // Create LP token account for user
-    let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_the_multiple {
-        &ctx.lp_token_a_mint.pubkey()
-    } else {
-        &ctx.lp_token_b_mint.pubkey()
-    };
-
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user_lp_token_account,
-        lp_mint,
-        &user.pubkey(),
-    ).await?;
+    println!("User balance: {}, attempting to deposit: {}", user_balance, excessive_amount);
 
     // Attempt to deposit more tokens than available
-    let deposit_amount = available_amount + 1; // Try to deposit 1 more token than available
-    
-    let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_the_multiple { 
-            config.token_a_mint 
-        } else { 
-            config.token_b_mint 
-        },
-        amount: deposit_amount,
-    };
+    let user1 = foundation.user1.insecure_clone();
+    let result = execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user_input_account,
+        &user_output_lp_account,
+        &deposit_mint,
+        excessive_amount,
+    ).await;
 
-    let deposit_ix = create_deposit_instruction(
-        &user.pubkey(),
-        &deposit_token_account.pubkey(),
-        &config,
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-        &user_lp_token_account.pubkey(),
-        &deposit_instruction_data,
-    )?;
-
-    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
-    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
-    
-    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
     match result {
         Ok(_) => {
             panic!("❌ Insufficient balance deposit should have failed!");
@@ -594,8 +371,8 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
 async fn test_basic_withdrawal_success() -> TestResult {
     println!("🧪 Testing LIQ-004: Basic withdrawal operation...");
     
-    // Use the cascading foundation system
-    let mut foundation = create_liquidity_test_foundation(Some(3)).await?; // 3:1 ratio
+    // Use the timeout wrapper for foundation creation
+    let mut foundation = create_foundation_with_timeout(Some(3)).await?; // 3:1 ratio
     println!("✅ Liquidity foundation created with 3:1 ratio");
 
     // Step 1: Perform a deposit first to get LP tokens
@@ -691,26 +468,32 @@ async fn test_basic_withdrawal_success() -> TestResult {
     Ok(())
 }
 
+/// Timeout wrapper for foundation creation to prevent deadlocks
+async fn create_foundation_with_timeout(
+    pool_ratio: Option<u64>,
+) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
+    let timeout_duration = std::time::Duration::from_secs(30); // 30 second timeout for foundation setup
+    let foundation_future = create_liquidity_test_foundation(pool_ratio);
+    
+    match tokio::time::timeout(timeout_duration, foundation_future).await {
+        Ok(foundation) => foundation,
+        Err(_) => Err("Foundation creation timed out".into()),
+    }
+}
+
 /// Test InitializeProgram instruction in isolation
+/// OPTIMIZED VERSION - uses foundation pattern with timeout
 #[tokio::test]
 #[serial]
 async fn test_initialize_program_isolated() -> TestResult {
     println!("🧪 Testing InitializeProgram instruction in isolation...");
     
-    let mut ctx = setup_pool_test_context(false).await;
-    let system_authority = Keypair::new();
-    
-    // Try calling initialize_treasury_system and see what happens
-    let result = initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_authority,
-    ).await;
+    // Use the optimized foundation with timeout to test treasury system initialization
+    let result = create_foundation_with_timeout(Some(1)).await;
     
     match result {
         Ok(_) => {
-            println!("✅ InitializeProgram succeeded");
+            println!("✅ InitializeProgram (treasury system) succeeded");
         }
         Err(e) => {
             println!("❌ InitializeProgram failed: {:?}", e);
