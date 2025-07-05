@@ -371,9 +371,8 @@ fn test_pool_state_get_packed_len() {
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
         8 +  // total_fees_withdrawn_token_b
-        8 +  // swap_fee_basis_points
-        8 +  // collected_sol_fees
-        8;   // total_sol_fees_withdrawn
+        8;   // swap_fee_basis_points
+        // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) moved to central TreasuryState
 
     assert_eq!(PoolState::get_packed_len(), expected_size);
 }
