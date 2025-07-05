@@ -18,6 +18,7 @@ use common::{
     pool_helpers::*,
     setup::*,
     tokens::*,
+    liquidity_helpers::{create_liquidity_test_foundation, execute_deposit_operation, execute_withdrawal_operation},
 };
 
 use fixed_ratio_trading::{
@@ -246,143 +247,81 @@ async fn test_instruction_serialization() -> TestResult {
 /// LIQ-001: Test basic deposit operation success
 /// 
 /// This test verifies the core deposit functionality works correctly:
-/// - Creates a pool with a specific ratio
+/// - Creates a pool with a specific ratio using the standardized foundation
 /// - Deposits tokens and receives LP tokens in strict 1:1 ratio
 /// - Validates all balance changes are correct
-/// - Ensures no fees are charged on deposits
+/// - Uses the reusable cascading foundation pattern
 #[tokio::test]
 #[serial]
 async fn test_basic_deposit_success() -> TestResult {
     println!("🧪 Testing LIQ-001: Basic deposit operation...");
     
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create ordered token mints to ensure consistent behavior
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
-    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
-        (keypair1, keypair2)
+    // Use the new cascading foundation system
+    let mut foundation = create_liquidity_test_foundation(Some(5)).await?; // 5:1 ratio
+    println!("✅ Liquidity foundation created with 5:1 ratio");
+
+    // Determine which user account to use for deposit and extract values to avoid borrow checker issues
+    let deposit_amount = 500_000u64; // 500K tokens
+    let (deposit_mint, user_input_account, user_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+        // Depositing Token A (multiple) - use primary token account, get LP A tokens
+        (
+            foundation.pool_config.token_a_mint,
+            foundation.user1_primary_account.pubkey(),
+            foundation.user1_lp_a_account.pubkey(),
+        )
     } else {
-        (keypair2, keypair1)
-    };
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&primary_mint, &base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for SOL fee collection)
-    let system_authority = Keypair::new();
-    initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_authority,
-    ).await?;
-
-    // Create pool with 5:1 ratio
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint,
-        &base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        Some(5), // 5:1 ratio
-    ).await?;
-    println!("✅ Pool created with 5:1 ratio");
-
-    // Setup user with token accounts
-    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &base_mint.pubkey(),
-        Some(10_000_000_000), // 10 SOL for fees
-    ).await?;
-
-    // Mint tokens to user for depositing
-    let deposit_amount = 1_000_000u64; // 1M tokens
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
-        (&primary_mint.pubkey(), &user_primary_token_account)
-    } else {
-        (&base_mint.pubkey(), &user_base_token_account)
+        // Depositing Token B (base) - use base token account, get LP B tokens
+        (
+            foundation.pool_config.token_b_mint,
+            foundation.user1_base_account.pubkey(),
+            foundation.user1_lp_b_account.pubkey(),
+        )
     };
 
-    mint_tokens(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        deposit_mint,
-        &deposit_token_account.pubkey(),
-        &ctx.env.payer,
+    // Get initial balances for verification
+    let initial_token_balance = get_token_balance(&mut foundation.env.banks_client, &user_input_account).await;
+    let initial_lp_balance = get_token_balance(&mut foundation.env.banks_client, &user_output_lp_account).await;
+    
+    println!("Initial balances - Tokens: {}, LP: {}", initial_token_balance, initial_lp_balance);
+
+    // Execute deposit using the standardized helper
+    // Extract values to avoid borrow checker issues
+    let user1 = foundation.user1.insecure_clone();
+    let result = execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user_input_account,
+        &user_output_lp_account,
+        &deposit_mint,
         deposit_amount,
-    ).await?;
+    ).await;
 
-    // Create LP token account for user
-    let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_the_multiple {
-        &ctx.lp_token_a_mint.pubkey()
-    } else {
-        &ctx.lp_token_b_mint.pubkey()
-    };
-
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user_lp_token_account,
-        lp_mint,
-        &user.pubkey(),
-    ).await?;
-
-    // Perform deposit
-    let deposit_amount_to_use = 500_000; // Deposit 500K tokens
-    
-    let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_the_multiple { 
-            config.token_a_mint 
-        } else { 
-            config.token_b_mint 
-        },
-        amount: deposit_amount_to_use,
-    };
-
-    let deposit_ix = create_deposit_instruction(
-        &user.pubkey(),
-        &deposit_token_account.pubkey(),
-        &config,
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-        &user_lp_token_account.pubkey(),
-        &deposit_instruction_data,
-    )?;
-
-    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
-    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
-    
-    let result = ctx.env.banks_client.process_transaction(deposit_tx).await;
     match result {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ Deposit transaction succeeded");
             
-            // Verify the LP tokens were received (strict 1:1 ratio)
-            let final_lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
+            // Verify the balances changed correctly
+            let final_token_balance = get_token_balance(&mut foundation.env.banks_client, &user_input_account).await;
+            let final_lp_balance = get_token_balance(&mut foundation.env.banks_client, &user_output_lp_account).await;
             
-            // Verify strict 1:1 LP token ratio
+            println!("Final balances - Tokens: {}, LP: {}", final_token_balance, final_lp_balance);
+            
+            // Verify token balance decreased by deposit amount
             assert_eq!(
-                final_lp_balance, deposit_amount_to_use,
-                "Should receive exactly {} LP tokens for {} token deposit (1:1 ratio)",
-                deposit_amount_to_use, deposit_amount_to_use
+                final_token_balance, initial_token_balance - deposit_amount,
+                "Token balance should decrease by deposit amount"
             );
             
-            println!("✅ All 1:1 ratio validations passed!");
+            // Verify LP tokens received in strict 1:1 ratio
+            let lp_tokens_received = final_lp_balance - initial_lp_balance;
+            assert_eq!(
+                lp_tokens_received, deposit_amount,
+                "Should receive exactly {} LP tokens for {} token deposit (1:1 ratio)",
+                deposit_amount, deposit_amount
+            );
+            
+            println!("✅ All balance validations passed!");
+            println!("✅ Strict 1:1 LP token ratio verified!");
             println!("✅ LIQ-001 test completed successfully!");
         }
         Err(e) => {
@@ -645,156 +584,102 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
 /// LIQ-004: Test basic withdrawal operation success
 /// 
 /// This test verifies the core withdrawal functionality works correctly:
-/// - Deposits tokens to get LP tokens first
-/// - Withdraws LP tokens and receives underlying tokens
+/// - Uses the cascading foundation system for setup
+/// - Deposits tokens to get LP tokens first  
+/// - Withdraws LP tokens and receives underlying tokens in 1:1 ratio
 /// - Validates all balance changes are correct
+/// - Demonstrates the reusable foundation pattern supporting multiple operations
 #[tokio::test]
 #[serial]
 async fn test_basic_withdrawal_success() -> TestResult {
     println!("🧪 Testing LIQ-004: Basic withdrawal operation...");
     
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create ordered token mints
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
-    let (primary_mint, base_mint) = if keypair1.pubkey() < keypair2.pubkey() {
-        (keypair1, keypair2)
+    // Use the cascading foundation system
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?; // 3:1 ratio
+    println!("✅ Liquidity foundation created with 3:1 ratio");
+
+    // Step 1: Perform a deposit first to get LP tokens
+    let deposit_amount = 1_000_000u64; // 1M tokens
+    let (deposit_mint, deposit_input_account, deposit_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+        // Depositing Token A (multiple) - use primary token account, get LP A tokens
+        (
+            foundation.pool_config.token_a_mint,
+            foundation.user1_primary_account.pubkey(),
+            foundation.user1_lp_a_account.pubkey(),
+        )
     } else {
-        (keypair2, keypair1)
-    };
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&primary_mint, &base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for SOL fee collection)
-    let system_authority = Keypair::new();
-    initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &system_authority,
-    ).await?;
-
-    // Create pool with 3:1 ratio
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint,
-        &base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        Some(3), // 3:1 ratio
-    ).await?;
-
-    // Setup user with token accounts
-    let (user, user_primary_token_account, user_base_token_account) = setup_test_user(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &primary_mint.pubkey(),
-        &base_mint.pubkey(),
-        Some(10_000_000_000), // 10 SOL for fees
-    ).await?;
-
-    // First, perform a deposit to get LP tokens
-    let deposit_amount = 1_000_000u64;
-    let (deposit_mint, deposit_token_account) = if config.token_a_is_the_multiple {
-        (&primary_mint.pubkey(), &user_primary_token_account)
-    } else {
-        (&base_mint.pubkey(), &user_base_token_account)
+        // Depositing Token B (base) - use base token account, get LP B tokens
+        (
+            foundation.pool_config.token_b_mint,
+            foundation.user1_base_account.pubkey(),
+            foundation.user1_lp_b_account.pubkey(),
+        )
     };
 
-    mint_tokens(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        deposit_mint,
-        &deposit_token_account.pubkey(),
-        &ctx.env.payer,
+    println!("🪙 Step 1: Depositing {} tokens to get LP tokens...", deposit_amount);
+    let user1 = foundation.user1.insecure_clone();
+    
+    // Execute deposit using the standardized helper
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &deposit_input_account,
+        &deposit_output_lp_account,
+        &deposit_mint,
         deposit_amount,
     ).await?;
 
-    // Create LP token account for user
-    let user_lp_token_account = Keypair::new();
-    let lp_mint = if config.token_a_is_the_multiple {
-        &ctx.lp_token_a_mint.pubkey()
-    } else {
-        &ctx.lp_token_b_mint.pubkey()
-    };
-
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user_lp_token_account,
-        lp_mint,
-        &user.pubkey(),
-    ).await?;
-
-    // Perform deposit first
-    let deposit_instruction_data = PoolInstruction::Deposit {
-        deposit_token_mint: if config.token_a_is_the_multiple { 
-            config.token_a_mint 
-        } else { 
-            config.token_b_mint 
-        },
-        amount: deposit_amount,
-    };
-
-    let deposit_ix = create_deposit_instruction(
-        &user.pubkey(),
-        &deposit_token_account.pubkey(),
-        &config,
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-        &user_lp_token_account.pubkey(),
-        &deposit_instruction_data,
-    )?;
-
-    let mut deposit_tx = Transaction::new_with_payer(&[deposit_ix], Some(&user.pubkey()));
-    deposit_tx.sign(&[&user], ctx.env.recent_blockhash);
+    let lp_balance_after_deposit = get_token_balance(&mut foundation.env.banks_client, &deposit_output_lp_account).await;
+    println!("✅ Deposit completed: {} LP tokens received", lp_balance_after_deposit);
     
-    ctx.env.banks_client.process_transaction(deposit_tx).await
-        .expect("Deposit should succeed");
+    // Verify 1:1 deposit ratio
+    assert_eq!(lp_balance_after_deposit, deposit_amount, "Should receive 1:1 LP tokens for deposit");
 
-    // Now test withdrawal
-    let lp_balance = get_token_balance(&mut ctx.env.banks_client, &user_lp_token_account.pubkey()).await;
-    let withdraw_amount = lp_balance / 2; // Withdraw half of LP tokens
+    // Step 2: Now test withdrawal of half the LP tokens
+    let withdraw_amount = lp_balance_after_deposit / 2; // Withdraw half
+    println!("🔄 Step 2: Withdrawing {} LP tokens (half of holdings)...", withdraw_amount);
+
+    // Get balances before withdrawal
+    let token_balance_before_withdrawal = get_token_balance(&mut foundation.env.banks_client, &deposit_input_account).await;
+    let lp_balance_before_withdrawal = get_token_balance(&mut foundation.env.banks_client, &deposit_output_lp_account).await;
     
-    let withdraw_instruction_data = PoolInstruction::Withdraw {
-        withdraw_token_mint: if config.token_a_is_the_multiple { 
-            config.token_a_mint 
-        } else { 
-            config.token_b_mint 
-        },
-        lp_amount_to_burn: withdraw_amount,
-    };
+    println!("Before withdrawal - Tokens: {}, LP: {}", token_balance_before_withdrawal, lp_balance_before_withdrawal);
 
-    let withdraw_ix = create_withdrawal_instruction(
-        &user.pubkey(),
-        &user_lp_token_account.pubkey(),
-        &deposit_token_account.pubkey(),
-        &config,
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-        &withdraw_instruction_data,
-    )?;
+    // Execute withdrawal using the standardized helper
+    let result = execute_withdrawal_operation(
+        &mut foundation,
+        &user1,
+        &deposit_output_lp_account,      // LP account being burned
+        &deposit_input_account,          // Token account receiving tokens
+        &deposit_mint,                   // Token mint being withdrawn
+        withdraw_amount,
+    ).await;
 
-    let mut withdraw_tx = Transaction::new_with_payer(&[withdraw_ix], Some(&user.pubkey()));
-    withdraw_tx.sign(&[&user], ctx.env.recent_blockhash);
-    
-    let result = ctx.env.banks_client.process_transaction(withdraw_tx).await;
     match result {
-        Ok(_) => {
+        Ok(()) => {
             println!("✅ Withdrawal transaction succeeded");
+
+            // Verify the balances changed correctly
+            let token_balance_after_withdrawal = get_token_balance(&mut foundation.env.banks_client, &deposit_input_account).await;
+            let lp_balance_after_withdrawal = get_token_balance(&mut foundation.env.banks_client, &deposit_output_lp_account).await;
+            
+            println!("After withdrawal - Tokens: {}, LP: {}", token_balance_after_withdrawal, lp_balance_after_withdrawal);
+
+            // Verify LP tokens were burned in 1:1 ratio
+            assert_eq!(
+                lp_balance_after_withdrawal, lp_balance_before_withdrawal - withdraw_amount,
+                "LP tokens should be burned 1:1"
+            );
+
+            // Verify underlying tokens were received in 1:1 ratio
+            assert_eq!(
+                token_balance_after_withdrawal, token_balance_before_withdrawal + withdraw_amount,
+                "Should receive 1:1 underlying tokens for LP tokens burned"
+            );
+
+            println!("✅ All balance validations passed!");
+            println!("✅ Strict 1:1 withdrawal ratio verified!");
+            println!("✅ Cascading foundation system supports both deposit and withdrawal!");
             println!("✅ LIQ-004 test completed successfully!");
         }
         Err(e) => {

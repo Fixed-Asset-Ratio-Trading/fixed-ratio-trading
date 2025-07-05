@@ -35,6 +35,7 @@ SOFTWARE.
 pub mod setup;
 pub mod tokens;
 pub mod pool_helpers;
+pub mod liquidity_helpers;
 pub mod client_test_utils;
 pub mod view_utils;
 pub mod utils_test_utils;
@@ -46,6 +47,8 @@ pub use setup::*;
 pub use tokens::*;  
 #[allow(unused_imports)]
 pub use pool_helpers::*;
+#[allow(unused_imports)]
+pub use liquidity_helpers::*;
 #[allow(unused_imports)]
 pub use client_test_utils::*;
 #[allow(unused_imports)]

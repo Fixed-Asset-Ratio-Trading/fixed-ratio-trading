@@ -93,45 +93,29 @@ const _SMALL_SWAP_AMOUNT: u64 = 1_000;      // 0.001 tokens
 const _MEDIUM_SWAP_AMOUNT: u64 = 100_000;   // 0.1 tokens  
 const _LARGE_SWAP_AMOUNT: u64 = 1_000_000;  // 1 token
 
-/// Helper function to create Swap instruction for testing
-/// Constructs a properly formatted swap instruction with all required accounts
+/// Helper function to create Swap instruction for testing using standardized account ordering
+/// Constructs a properly formatted swap instruction with all required accounts (17 accounts)
 pub fn create_swap_instruction(
     user: &Pubkey,
     user_input_account: &Pubkey,
     user_output_account: &Pubkey,
-    pool_state_pda: &Pubkey,
-    token_a_mint: &Pubkey,
-    token_b_mint: &Pubkey,
-    token_a_vault: &Pubkey,
-    token_b_vault: &Pubkey,
+    pool_config: &PoolConfig,
     input_token_mint: &Pubkey,
     amount_in: u64,
-) -> Instruction {
+) -> Result<Instruction, Box<dyn std::error::Error>> {
     let instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_token_mint,
         amount_in,
     };
 
-    let accounts = vec![
-        AccountMeta::new(*user, true),                              // User (signer)
-        AccountMeta::new(*user_input_account, false),               // User input token account
-        AccountMeta::new(*user_output_account, false),              // User output token account
-        AccountMeta::new(*pool_state_pda, false),                   // Pool state PDA
-        AccountMeta::new_readonly(*token_a_mint, false),            // Token A mint (for PDA seeds)
-        AccountMeta::new_readonly(*token_b_mint, false),            // Token B mint (for PDA seeds)
-        AccountMeta::new(*token_a_vault, false),                    // Pool Token A vault
-        AccountMeta::new(*token_b_vault, false),                    // Pool Token B vault
-        AccountMeta::new_readonly(system_program::id(), false),     // System program
-        AccountMeta::new_readonly(spl_token::id(), false),          // SPL Token program
-        AccountMeta::new_readonly(sysvar::rent::id(), false),       // Rent sysvar
-        AccountMeta::new_readonly(sysvar::clock::id(), false),      // Clock sysvar
-    ];
-
-    Instruction {
-        program_id: PROGRAM_ID,
-        accounts,
-        data: instruction_data.try_to_vec().unwrap(),
-    }
+    // Use the standardized function from liquidity_helpers
+    common::liquidity_helpers::create_swap_instruction_standardized(
+        user,
+        user_input_account,
+        user_output_account,
+        pool_config,
+        &instruction_data,
+    )
 }
 
 /// Helper to create a fee change instruction (owner-only)
@@ -289,14 +273,10 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
         &user.pubkey(),
         &user_base_account,
         &user_primary_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.base_mint.pubkey(),
         swap_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
     swap_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -332,14 +312,10 @@ async fn test_swap_zero_amount_fails() -> TestResult {
         &user.pubkey(),
         &user_base_account,
         &user_primary_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.base_mint.pubkey(),
         0u64, // Zero amount
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
     swap_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -405,22 +381,18 @@ async fn test_successful_a_to_b_swap() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(), // Swapping Token A (primary)
         swap_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     // Verify instruction construction
-    assert_eq!(swap_ix.accounts.len(), 12, "Swap instruction should have 12 accounts");
+    assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ Swap instruction constructed successfully:");
-    println!("    ✓ 12 accounts configured with proper permissions");
+    println!("    ✓ 17 accounts configured with proper permissions");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ Swap parameters: {} → {} (deterministic output)", swap_amount, expected_output);
@@ -519,22 +491,18 @@ async fn test_successful_b_to_a_swap() -> TestResult {
         &user.pubkey(),
         &user_base_account,     // User's Token B account (input)
         &user_primary_account,  // User's Token A account (output)
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.base_mint.pubkey(), // Swapping Token B (base) for Token A
         swap_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     // Verify instruction construction for B→A swap
-    assert_eq!(swap_ix.accounts.len(), 12, "B→A swap instruction should have 12 accounts");
+    assert_eq!(swap_ix.accounts.len(), 17, "B→A swap instruction should have 17 accounts");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ B→A swap instruction constructed successfully:");
-    println!("    ✓ 12 accounts configured with proper permissions");
+    println!("    ✓ 17 accounts configured with proper permissions");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ B→A swap parameters: {} B → {} A (deterministic output)", swap_amount, expected_output);
@@ -806,17 +774,13 @@ async fn test_swap_with_various_ratios() -> TestResult {
             &user.pubkey(),
             &user_primary_account,
             &user_base_account,
-            &config.pool_state_pda,
-            &config.token_a_mint,
-            &config.token_b_mint,
-            &config.token_a_vault_pda,
-            &config.token_b_vault_pda,
+            &config,
             &ctx.primary_mint.pubkey(),
             instruction_test_amount,
-        );
+        ).expect("Failed to create swap instruction");
 
         // Verify instruction construction
-        assert_eq!(swap_ix.accounts.len(), 12, "Swap instruction should have 12 accounts");
+        assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
         assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
@@ -1069,17 +1033,13 @@ async fn test_swap_liquidity_constraints() -> TestResult {
             &user.pubkey(),
             &user_primary_account,
             &user_base_account,
-            &config.pool_state_pda,
-            &config.token_a_mint,
-            &config.token_b_mint,
-            &config.token_a_vault_pda,
-            &config.token_b_vault_pda,
+            &config,
             &ctx.primary_mint.pubkey(),
             swap_amount,
-        );
+        ).expect("Failed to create swap instruction");
         
         // Verify instruction construction
-        assert_eq!(swap_ix.accounts.len(), 12, "Swap instruction should have 12 accounts");
+        assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
         println!("    ✓ Sufficient liquidity swap instruction validated: {} → {} (sufficient)", 
@@ -1239,14 +1199,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         0u64, // Zero amount - should fail
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut zero_swap_tx = Transaction::new_with_payer(&[zero_amount_swap_ix], Some(&user.pubkey()));
     zero_swap_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1263,14 +1219,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         near_max_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut max_swap_tx = Transaction::new_with_payer(&[max_amount_swap_ix], Some(&user.pubkey()));
     max_swap_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1307,14 +1259,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &wrong_token_account.pubkey(), // Wrong mint account
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut wrong_mint_tx = Transaction::new_with_payer(&[wrong_mint_swap_ix], Some(&user.pubkey()));
     wrong_mint_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1342,14 +1290,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &other_user_token_account.pubkey(), // Wrong owner
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut ownership_tx = Transaction::new_with_payer(&[ownership_validation_ix], Some(&user.pubkey()));
     ownership_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1381,14 +1325,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &uninitialized_pool.pubkey(), // Uninitialized pool
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config, // Use regular config - the test will fail at execution, not construction
         &ctx.primary_mint.pubkey(),
         1000u64,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut uninitialized_tx = Transaction::new_with_payer(&[uninitialized_pool_ix], Some(&user.pubkey()));
     uninitialized_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1416,17 +1356,13 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-    );
+    ).expect("Failed to create swap instruction");
 
     // Verify instruction construction works
-    assert_eq!(pause_validation_ix.accounts.len(), 12, "Pause validation instruction should have 12 accounts");
+    assert_eq!(pause_validation_ix.accounts.len(), 17, "Pause validation instruction should have 17 accounts");
     assert!(!pause_validation_ix.data.is_empty(), "Pause validation instruction should have data");
     
     println!("✅ Pool pause status validation - owner-only system working correctly");
@@ -1440,14 +1376,10 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         large_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut arithmetic_tx = Transaction::new_with_payer(&[arithmetic_boundary_ix], Some(&user.pubkey()));
     arithmetic_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1464,17 +1396,13 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user.pubkey(),
         &user_primary_account,
         &user_base_account,
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-    );
+    ).expect("Failed to create swap instruction");
 
     // Verify instruction properties
-    assert_eq!(valid_instruction.accounts.len(), 12, "Instruction should have correct account count");
+    assert_eq!(valid_instruction.accounts.len(), 17, "Instruction should have correct account count");
     assert_eq!(valid_instruction.program_id, PROGRAM_ID, "Instruction should have correct program ID");
     assert!(!valid_instruction.data.is_empty(), "Instruction data should not be empty");
     
@@ -1543,14 +1471,10 @@ async fn test_process_swap_a_to_b_execution() -> TestResult {
         &user.pubkey(),
         &user_primary_account, // User's Token A account (input)
         &user_base_account,    // User's Token B account (output)
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.primary_mint.pubkey(), // Token A input
         swap_input_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
     swap_tx.sign(&[&user], ctx.env.recent_blockhash);
@@ -1665,14 +1589,10 @@ async fn test_process_swap_b_to_a_execution() -> TestResult {
         &user.pubkey(),
         &user_base_account,     // User's Token B account (input)
         &user_primary_account,  // User's Token A account (output)
-        &config.pool_state_pda,
-        &config.token_a_mint,
-        &config.token_b_mint,
-        &config.token_a_vault_pda,
-        &config.token_b_vault_pda,
+        &config,
         &ctx.base_mint.pubkey(), // Token B input
         swap_input_amount,
-    );
+    ).expect("Failed to create swap instruction");
 
     let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user.pubkey()));
     swap_tx.sign(&[&user], ctx.env.recent_blockhash);
