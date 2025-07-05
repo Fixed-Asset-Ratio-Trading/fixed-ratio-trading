@@ -465,17 +465,27 @@ pub async fn initialize_treasury_system(
         &PROGRAM_ID
     );
     
-    // Create InitializeProgram instruction with all required accounts
+    // Create InitializeProgram instruction with standardized account ordering (16 accounts minimum)
     let initialize_program_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(system_authority.pubkey(), true),               // 0. System authority (signer)
-            AccountMeta::new(system_state_pda, false),                       // 1. SystemState PDA (writable)
-            AccountMeta::new(main_treasury_pda, false),                      // 2. MainTreasury PDA (writable)
-            AccountMeta::new(swap_treasury_pda, false),                      // 3. SwapTreasury PDA (writable)
-            AccountMeta::new(hft_treasury_pda, false),                       // 4. HftTreasury PDA (writable)
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // 5. System program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // 6. Rent sysvar
+            // Standardized account ordering (indices 0-14 + function-specific at 15+)
+            AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Authority/User Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 4: Pool State PDA (placeholder)
+            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 5: Token A Mint (placeholder)
+            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 6: Token B Mint (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 7: Token A Vault PDA (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 8: Token B Vault PDA (placeholder)
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 9: SPL Token Program (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 10: User Input Token Account (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 11: User Output Token Account (placeholder)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
+            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
+            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            AccountMeta::new(system_state_pda, false),                              // Index 15: System State PDA (function-specific)
         ],
         data: PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]

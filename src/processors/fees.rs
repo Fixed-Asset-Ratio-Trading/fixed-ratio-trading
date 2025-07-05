@@ -3,7 +3,7 @@
 //! This module handles fee-related operations under the governance-controlled architecture.
 //!
 //! ## Fee Architecture
-//! 
+//!
 //! ### 1. Contract Fees (Fixed SOL amounts)
 //! - **Pool Creation**: 1.15 SOL per pool creation
 //! - **Liquidity Operations**: 0.0013 SOL per deposit/withdrawal  

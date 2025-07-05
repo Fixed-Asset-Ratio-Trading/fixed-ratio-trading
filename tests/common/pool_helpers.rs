@@ -235,8 +235,8 @@ pub async fn create_pool_new_pattern(
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar
             AccountMeta::new(config.pool_state_pda, false),                  // Index 4: Pool State PDA
-            AccountMeta::new_readonly(config.token_a_mint, false),           // Index 5: Token A Mint
-            AccountMeta::new_readonly(config.token_b_mint, false),           // Index 6: Token B Mint
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 5: Multiple Token Mint (original)
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 6: Base Token Mint (original)
             AccountMeta::new(config.token_a_vault_pda, false),               // Index 7: Token A Vault PDA
             AccountMeta::new(config.token_b_vault_pda, false),               // Index 8: Token B Vault PDA
             AccountMeta::new_readonly(spl_token::id(), false),               // Index 9: SPL Token Program

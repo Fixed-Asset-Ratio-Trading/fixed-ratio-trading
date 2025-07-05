@@ -211,7 +211,7 @@ pub fn process_initialize_pool(
     // Create pool state account
     let pool_state_space = PoolState::get_packed_len();
     let pool_state_rent = rent.minimum_balance(pool_state_space);
-
+    
     invoke_signed(
         &system_instruction::create_account(
             payer.key,
@@ -231,7 +231,7 @@ pub fn process_initialize_pool(
     // Create token vaults
     let vault_space = TokenAccount::LEN;
     let vault_rent = rent.minimum_balance(vault_space);
-
+    
     // Create Token A vault
     invoke_signed(
         &system_instruction::create_account(
@@ -248,7 +248,7 @@ pub fn process_initialize_pool(
         ],
         &[token_a_vault_seeds],
     )?;
-
+    
     // Initialize Token A vault
     invoke(
         &token_instruction::initialize_account(
@@ -282,7 +282,7 @@ pub fn process_initialize_pool(
         ],
         &[token_b_vault_seeds],
     )?;
-
+    
     // Initialize Token B vault
     invoke(
         &token_instruction::initialize_account(
@@ -297,6 +297,42 @@ pub fn process_initialize_pool(
             pool_state_pda_account.clone(),
             rent_sysvar_account.clone(),
             token_program_account.clone(),
+        ],
+    )?;
+
+    // Create LP token mint accounts first
+    let mint_space = spl_token::state::Mint::LEN;
+    let mint_rent = rent.minimum_balance(mint_space);
+    
+    // Create LP Token A mint account
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_a_mint_account.key,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[
+            payer.clone(),
+            lp_token_a_mint_account.clone(),
+            system_program_account.clone(),
+        ],
+    )?;
+
+    // Create LP Token B mint account
+    invoke(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_b_mint_account.key,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[
+            payer.clone(),
+            lp_token_b_mint_account.clone(),
+            system_program_account.clone(),
         ],
     )?;
 
@@ -340,8 +376,8 @@ pub fn process_initialize_pool(
         token_b_vault: *token_b_vault_pda_account.key,
         lp_token_a_mint: *lp_token_a_mint_account.key,
         lp_token_b_mint: *lp_token_b_mint_account.key,
-        ratio_a_numerator,
-        ratio_b_denominator,
+            ratio_a_numerator,
+            ratio_b_denominator,
         one_to_many_ratio: ratio_a_numerator > ratio_b_denominator,
         total_token_a_liquidity: 0,
         total_token_b_liquidity: 0,

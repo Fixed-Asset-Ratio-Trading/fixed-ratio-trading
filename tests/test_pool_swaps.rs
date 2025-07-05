@@ -1806,11 +1806,11 @@ async fn test_governance_fee_architecture() -> TestResult {
     
     for &amount in &test_amounts {
         for &rate in &fee_rates {
-            let calculated_fee = (amount * rate) / 10_000;
+        let calculated_fee = (amount * rate) / 10_000;
             let percentage = rate as f64 / 100.0;
-            
+        
             // Verify mathematical accuracy
-            assert_eq!(calculated_fee, (amount * rate) / 10_000, "Fee calculation should be deterministic");
+        assert_eq!(calculated_fee, (amount * rate) / 10_000, "Fee calculation should be deterministic");
             assert!(calculated_fee <= amount, "Fee should never exceed input");
             
                     if rate > 0 {
