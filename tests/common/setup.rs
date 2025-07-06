@@ -419,10 +419,9 @@ pub async fn transfer_sol(
     banks.process_transaction(transfer_tx).await
 }
 
-/// Initialize the treasury system for tests
-/// 
-/// This creates all treasury PDAs (MainTreasury, SwapTreasury, HftTreasury) that are
-/// required for SOL fee collection in liquidity and swap operations.
+/// Initialize treasury system for tests (creates the SystemState and Treasury PDAs)
+/// This creates the foundation treasury infrastructure required for pool operations
+#[allow(dead_code)]
 pub async fn initialize_treasury_system(
     banks_client: &mut solana_program_test::BanksClient,
     payer: &Keypair,

@@ -59,35 +59,37 @@ ALL TESTS SUCCESSFULLY MIGRATED TO OWNER-ONLY SYSTEM!
 ==================================================================================
 */
 
-mod common;
+use solana_program_test::*;
+use solana_sdk::{
+    instruction::Instruction,
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+    transaction::Transaction,
+};
 
-use common::*;
+
+mod common;
+use common::{
+    constants,
+    handle_expected_test_error,
+    pool_helpers::*,
+    setup::*,
+    tokens::*,
+};
+
 use fixed_ratio_trading::{
     PoolInstruction,
     ID as PROGRAM_ID,
 };
-use solana_program::{
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    system_program,
-    sysvar,
-};
-use solana_sdk::{
-    signature::{Keypair, Signer},
-    transaction::Transaction,
-};
-use borsh::BorshSerialize;
+
+use borsh::{BorshDeserialize, BorshSerialize};
+
+type TestResult = Result<(), Box<dyn std::error::Error>>;
 
 // ================================================================================================
 // COMMON CONSTANTS AND HELPER FUNCTIONS
 // ================================================================================================
 
-/// Fee testing constants (in basis points)
-const VALID_FEE_ZERO: u64 = 0;          // 0% - zero fee (should be valid)
-const VALID_FEE_LOW: u64 = 10;          // 0.1% - low valid fee
-const VALID_FEE_MEDIUM: u64 = 40;       // 0.4% - medium valid fee
-const MAX_ALLOWED_FEE: u64 = 50;        // 0.5% - maximum allowed fee (boundary)
-const INVALID_FEE_JUST_OVER: u64 = 51;  // 0.51% - just over maximum
 /// Standard swap amounts for testing (currently unused but kept for future tests)
 const _SMALL_SWAP_AMOUNT: u64 = 1_000;      // 0.001 tokens
 const _MEDIUM_SWAP_AMOUNT: u64 = 100_000;   // 0.1 tokens  

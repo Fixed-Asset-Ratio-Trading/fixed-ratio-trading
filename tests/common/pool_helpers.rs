@@ -31,7 +31,7 @@ SOFTWARE.
 use solana_program_test::BanksClient;
 use solana_sdk::{signature::Keypair, signer::Signer};
 use borsh::BorshSerialize;
-use crate::common::{constants, TestResult, *};
+use crate::common::{constants, *};
 use fixed_ratio_trading::constants as frt_constants;
 
 /// Normalized pool configuration data

@@ -23,6 +23,7 @@ use crate::common::{
 
 /// Complete liquidity test foundation that builds on pool creation success
 /// This provides a ready-to-use environment for all liquidity operations
+#[allow(dead_code)]
 pub struct LiquidityTestFoundation {
     pub env: TestEnvironment,
     pub pool_config: PoolConfig,
@@ -45,6 +46,7 @@ pub struct LiquidityTestFoundation {
 /// Creates a complete liquidity test foundation with pool + funded users
 /// This is the cascading foundation that all other tests can build on
 /// OPTIMIZED VERSION - reduces sequential operations to prevent timeouts
+#[allow(dead_code)]
 pub async fn create_liquidity_test_foundation(
     pool_ratio: Option<u64>, // e.g., Some(3) for 3:1 ratio
 ) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
@@ -216,6 +218,7 @@ pub async fn create_liquidity_test_foundation(
 
 /// Creates a deposit instruction with proper standardized account ordering
 /// This matches the expected account ordering in process_deposit
+#[allow(dead_code)]
 pub fn create_deposit_instruction_standardized(
     user: &Pubkey,
     user_input_token_account: &Pubkey,    // Token account being deposited from
@@ -278,6 +281,7 @@ pub fn create_deposit_instruction_standardized(
 
 /// Creates a withdrawal instruction with proper standardized account ordering
 /// This matches the expected account ordering in process_withdraw
+#[allow(dead_code)]
 pub fn create_withdrawal_instruction_standardized(
     user: &Pubkey,
     user_input_lp_account: &Pubkey,        // LP token account being burned
@@ -340,6 +344,7 @@ pub fn create_withdrawal_instruction_standardized(
 
 /// Creates a swap instruction with proper standardized account ordering  
 /// This will be used for swap operations (to be implemented)
+#[allow(dead_code)]
 pub fn create_swap_instruction_standardized(
     user: &Pubkey,
     user_input_token_account: &Pubkey,     // Token account being swapped from
@@ -400,6 +405,7 @@ pub fn create_swap_instruction_standardized(
 
 /// Executes a deposit operation using the standardized foundation
 /// OPTIMIZED VERSION - adds timeout handling to prevent deadlocks
+#[allow(dead_code)]
 pub async fn execute_deposit_operation(
     foundation: &mut LiquidityTestFoundation,
     user_keypair: &Keypair,
@@ -448,6 +454,7 @@ pub async fn execute_deposit_operation(
 
 /// Executes a withdrawal operation using the standardized foundation
 /// OPTIMIZED VERSION - adds timeout handling to prevent deadlocks
+#[allow(dead_code)]
 pub async fn execute_withdrawal_operation(
     foundation: &mut LiquidityTestFoundation,
     user_keypair: &Keypair,
@@ -500,6 +507,7 @@ pub async fn execute_withdrawal_operation(
 
 /// Comprehensive balance verification helper
 /// Checks token account balances and provides detailed reporting
+#[allow(dead_code)]
 pub async fn verify_balances(
     banks_client: &mut crate::common::BanksClient,
     description: &str,
@@ -525,7 +533,9 @@ pub async fn verify_balances(
     Ok(())
 }
 
-/// Verifies 1:1 operation ratios (core invariant of the system)
+/// Specialized verification for 1:1 ratio operations
+/// Validates that token changes match LP token changes exactly
+#[allow(dead_code)]
 pub async fn verify_one_to_one_ratio(
     banks_client: &mut crate::common::BanksClient,
     operation_type: &str,
@@ -575,7 +585,9 @@ pub async fn verify_one_to_one_ratio(
     Ok(())
 }
 
-/// Comprehensive operation verification that can be used for any liquidity operation
+/// Comprehensive liquidity operation verification
+/// Validates balances, ratios, and operation success for deposits/withdrawals
+#[allow(dead_code)]
 pub async fn verify_liquidity_operation(
     banks_client: &mut crate::common::BanksClient,
     operation_type: &str, // "deposit" or "withdrawal"
@@ -625,7 +637,9 @@ pub async fn verify_liquidity_operation(
     Ok(())
 }
 
-/// Validates that the foundation has the expected structure and balances
+/// Validates the state of a foundation after operations
+/// Useful for debugging and ensuring test environment consistency
+#[allow(dead_code)]
 pub async fn validate_foundation_state(
     foundation: &mut LiquidityTestFoundation,
     expected_user1_primary_balance: Option<u64>,
@@ -686,7 +700,9 @@ pub async fn validate_foundation_state(
     Ok(())
 }
 
-/// Error verification helper - ensures operations fail as expected
+/// Verifies that an operation fails as expected
+/// Useful for testing error conditions and validation logic
+#[allow(dead_code)]
 pub async fn verify_operation_fails(
     result: Result<(), solana_program_test::BanksClientError>,
     operation_description: &str,
@@ -715,8 +731,9 @@ pub async fn verify_operation_fails(
     Ok(())
 }
 
-/// Complete test execution helper with full verification
-/// This can be used as a template for any liquidity test
+/// Executes and verifies a deposit operation in one call
+/// Combines execution with comprehensive validation
+#[allow(dead_code)]
 pub async fn execute_and_verify_deposit(
     foundation: &mut LiquidityTestFoundation,
     user_keypair: &Keypair,
