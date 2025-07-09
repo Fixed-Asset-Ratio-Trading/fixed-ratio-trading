@@ -97,6 +97,36 @@ pub enum PoolError {
     /// Pool swaps are not currently paused
     #[error("Pool swaps are not currently paused")]
     PoolSwapsNotPaused,
+    
+    /// Insufficient balance for fee payment
+    #[error("Insufficient balance for fee payment: Required {required} lamports, Available {available} lamports, Account {account}")]
+    InsufficientFeeBalance {
+        required: u64,
+        available: u64,
+        account: Pubkey,
+    },
+    
+    /// Fee collection failed during transfer
+    #[error("Fee collection failed: Expected {expected} lamports, Collected {collected} lamports, Fee type: {fee_type}")]
+    FeeCollectionFailed {
+        expected: u64,
+        collected: u64,
+        fee_type: String,
+    },
+    
+    /// Fee validation failed during pre-flight checks
+    #[error("Fee validation failed: {reason}")]
+    FeeValidationFailed {
+        reason: String,
+    },
+    
+    /// Treasury account validation failed
+    #[error("Treasury account validation failed: Expected {expected}, Provided {provided}, Treasury type: {treasury_type}")]
+    TreasuryValidationFailed {
+        expected: Pubkey,
+        provided: Pubkey,
+        treasury_type: String,
+    },
 }
 
 impl PoolError {
@@ -122,6 +152,10 @@ impl PoolError {
             PoolError::PoolSwapsPaused => 1027,
             PoolError::PoolSwapsAlreadyPaused => 1028,
             PoolError::PoolSwapsNotPaused => 1029,
+            PoolError::InsufficientFeeBalance { .. } => 1030,
+            PoolError::FeeCollectionFailed { .. } => 1031,
+            PoolError::FeeValidationFailed { .. } => 1032,
+            PoolError::TreasuryValidationFailed { .. } => 1033,
         }
     }
 }

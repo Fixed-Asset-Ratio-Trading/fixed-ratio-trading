@@ -173,6 +173,18 @@ pub fn process_deposit(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
+    // ✅ PHASE 1: FEES FIRST PATTERN - Collect fee BEFORE any state changes
+    use crate::utils::fee_validation::collect_liquidity_fee;
+    
+    collect_liquidity_fee(
+        user_authority,
+        main_treasury,
+        _system_program,
+        program_id,
+    )?;
+
+    msg!("✅ Deposit fee collected successfully - proceeding with deposit");
+
     // Read and validate pool state
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
@@ -324,32 +336,7 @@ pub fn process_deposit(
         return Err(ProgramError::Custom(3001));
     }
 
-    // Collect contract fee
-    if user_authority.lamports() < DEPOSIT_WITHDRAWAL_FEE {
-        msg!("❌ Insufficient SOL for contract fee");
-        return Err(ProgramError::InsufficientFunds);
-    }
-
-    // Verify treasury PDA
-    let (expected_treasury_pda, _) = Pubkey::find_program_address(
-        &[MAIN_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *main_treasury.key != expected_treasury_pda {
-        msg!("❌ Invalid main treasury PDA");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Transfer fee to treasury
-    invoke(
-        &system_instruction::transfer(
-            user_authority.key,
-            main_treasury.key,
-            DEPOSIT_WITHDRAWAL_FEE,
-        ),
-        &[user_authority.clone(), main_treasury.clone()],
-    )?;
+    // Fee collection moved to beginning of deposit function (FEES FIRST PATTERN)
 
     msg!("✅ Deposit completed: {} tokens → {} LP tokens", amount, lp_tokens_received);
     Ok(())
@@ -446,6 +433,18 @@ pub fn process_withdraw(
         msg!("User must be a signer for withdrawal");
         return Err(ProgramError::MissingRequiredSignature);
     }
+
+    // ✅ PHASE 1: FEES FIRST PATTERN - Collect fee BEFORE any state changes
+    use crate::utils::fee_validation::collect_liquidity_fee;
+    
+    collect_liquidity_fee(
+        user_authority,
+        main_treasury,
+        _system_program,
+        program_id,
+    )?;
+
+    msg!("✅ Withdrawal fee collected successfully - proceeding with withdrawal");
 
     // Read and validate pool state
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
@@ -749,26 +748,7 @@ fn execute_withdrawal_logic<'a>(
     
     msg!("Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
 
-    // Treasury system is now fully deployed via InitializeProgram
-    
-    // Verify the main treasury PDA is correct
-    let (expected_main_treasury_pda, _treasury_bump) = Pubkey::find_program_address(
-        &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *main_treasury_account.key != expected_main_treasury_pda {
-        msg!("❌ Invalid Main Treasury PDA provided for withdrawal");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Transfer withdrawal fee to main treasury PDA for liquidity operations
-    invoke(
-        &system_instruction::transfer(user_signer.key, main_treasury_account.key, DEPOSIT_WITHDRAWAL_FEE),
-        &[user_signer.clone(), main_treasury_account.clone(), system_program_account.clone()],
-    )?;
-    
-    msg!("Withdrawal fee {} transferred to central treasury PDA", DEPOSIT_WITHDRAWAL_FEE);
+    // Fee collection moved to beginning of withdrawal function (FEES FIRST PATTERN)
     
     //=========================================================================
     // NOTE: SOL FEE TRACKING MOVED TO CENTRAL TREASURY

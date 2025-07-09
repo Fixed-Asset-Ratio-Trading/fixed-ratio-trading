@@ -129,6 +129,19 @@ pub fn process_initialize_pool(
     // Validate ratio values
     crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
 
+    // ✅ PHASE 1: FEES FIRST PATTERN - Collect registration fee BEFORE any state changes
+    // This ensures the operation fails immediately if fee payment is not possible
+    use crate::utils::fee_validation::collect_pool_creation_fee;
+    
+    collect_pool_creation_fee(
+        payer,
+        main_treasury_account,
+        system_program_account,
+        program_id,
+    )?;
+
+    msg!("✅ Registration fee collected successfully - proceeding with pool creation");
+
     // Token normalization: Always store tokens in lexicographic order (Token A < Token B)
     let (token_a_mint_key, token_b_mint_key) = 
         if multiple_token_mint_account.key < base_token_mint_account.key {
@@ -409,39 +422,7 @@ pub fn process_initialize_pool(
         swap_fee_basis_points: 0,
     };
 
-    // ✅ NEW: Treasury fee collection using standardized accounts
-    // For pool creation, collect registration fees to main treasury (index 12)
-    let fee_amount = REGISTRATION_FEE;
-    
-    // Verify treasury account
-    let (expected_main_treasury, _) = Pubkey::find_program_address(
-        &[MAIN_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *main_treasury_account.key != expected_main_treasury {
-        msg!("Invalid main treasury account");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Transfer registration fee from payer to treasury
-    let fee_transfer_instruction = system_instruction::transfer(
-        payer.key,
-        main_treasury_account.key,
-        fee_amount,
-    );
-
-    invoke(
-        &fee_transfer_instruction,
-        &[
-            payer.clone(),
-            main_treasury_account.clone(),
-            // system_program is at index 1 in standardized ordering
-            accounts[1].clone(),
-        ],
-    )?;
-
-    msg!("💰 Registration fee collected: {} lamports to main treasury", fee_amount);
+    // Fee collection moved to beginning of function (FEES FIRST PATTERN)
 
     // Serialize pool state to account
     serialize_to_account(&pool_state_data, pool_state_pda_account)?;

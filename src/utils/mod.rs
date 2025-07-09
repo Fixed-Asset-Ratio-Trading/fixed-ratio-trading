@@ -10,6 +10,7 @@ pub mod rent;
 pub mod system_pause_compliance;
 pub mod compliance_examples;
 pub mod account_builders;
+pub mod fee_validation;
 
 // Re-export utility functions for easy access
 pub use validation::*;
@@ -17,4 +18,5 @@ pub use serialization::*;
 pub use rent::*;
 pub use system_pause_compliance::*;
 pub use compliance_examples::*;
-pub use account_builders::*; 
+pub use account_builders::*;
+pub use fee_validation::*; 

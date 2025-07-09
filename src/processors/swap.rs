@@ -6,7 +6,6 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
     sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
     clock::Clock,
@@ -128,6 +127,16 @@ pub fn process_swap(
         msg!("User must be a signer for swap");
         return Err(ProgramError::MissingRequiredSignature);
     }
+
+    // ✅ ULTRA-EFFICIENT FEE COLLECTION - Minimal CU overhead for swap fee
+    use crate::utils::fee_validation::collect_regular_swap_fee_ultra_efficient;
+    
+    collect_regular_swap_fee_ultra_efficient(
+        user_signer,
+        swap_treasury_account,
+        &accounts[1], // system_program is at index 1 in standardized ordering
+        program_id,
+    )?;
 
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     if !pool_state_data.is_initialized {
@@ -304,40 +313,6 @@ pub fn process_swap(
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
 
-    // ✅ NEW: Treasury fee collection using standardized accounts
-    // For regular swaps, collect fees to swap treasury (index 13)
-    let fee_amount = SWAP_FEE;
-    
-    // Verify treasury account
-    let (expected_swap_treasury, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *swap_treasury_account.key != expected_swap_treasury {
-        msg!("Invalid swap treasury account");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Transfer fee from user to treasury
-    let fee_transfer_instruction = system_instruction::transfer(
-        user_signer.key,
-        swap_treasury_account.key,
-        fee_amount,
-    );
-
-    invoke(
-        &fee_transfer_instruction,
-        &[
-            user_signer.clone(),
-            swap_treasury_account.clone(),
-            // system_program is at index 1 in standardized ordering
-            accounts[1].clone(),
-        ],
-    )?;
-
-    msg!("💰 Swap fee collected: {} lamports to swap treasury", fee_amount);
-
     // Serialize updated pool state
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
@@ -452,6 +427,16 @@ pub fn process_swap_hft_optimized(
     if !user_signer.is_signer {
         return Err(ProgramError::MissingRequiredSignature);
     }
+
+    // ✅ ULTRA-EFFICIENT HFT FEE COLLECTION - Minimal CU overhead for HFT swap fee
+    use crate::utils::fee_validation::collect_hft_swap_fee_ultra_efficient;
+    
+    collect_hft_swap_fee_ultra_efficient(
+        user_signer,
+        hft_treasury_account,
+        &accounts[1], // system_program is at index 1 in standardized ordering
+        program_id,
+    )?;
 
     // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
@@ -614,34 +599,6 @@ pub fn process_swap_hft_optimized(
             .checked_sub(amount_out)
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
-
-    // ✅ HFT Treasury fee collection using standardized accounts
-    let fee_amount = HFT_SWAP_FEE;
-    
-    // Verify HFT treasury account
-    let (expected_hft_treasury, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *hft_treasury_account.key != expected_hft_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Transfer HFT fee to treasury
-    invoke(
-        &system_instruction::transfer(
-            user_signer.key,
-            hft_treasury_account.key,
-            fee_amount,
-        ),
-        &[
-            user_signer.clone(),
-            hft_treasury_account.clone(),
-            // system_program is at index 1 in standardized ordering
-            accounts[1].clone(),
-        ],
-    )?;
 
     // 🚀 OPTIMIZATION 18: Single serialization at end (critical for CU savings)
     let mut serialized_data = Vec::new();
