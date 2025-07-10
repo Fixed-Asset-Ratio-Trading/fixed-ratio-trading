@@ -174,12 +174,21 @@ pub fn process_withdraw_treasury_fees(
 
 /// Processes treasury consolidation with standardized account ordering.
 /// 
+/// **🔒 PHASE 2 SECURITY**: This function now REQUIRES the system to be paused before
+/// consolidation can proceed. This prevents race conditions by ensuring all user
+/// operations (swaps, pool creation, liquidity) are blocked during consolidation.
+/// 
 /// This function consolidates specialized treasuries into the main treasury.
 /// It empties the specialized swap and HFT treasuries, transferring their
 /// balances and statistics to the main treasury.
 /// 
+/// # Security Requirements
+/// - **System MUST be paused** - consolidation will fail if system is not paused
+/// - **Authority validation** - only contract creator can consolidate (via system state)
+/// - **Race condition prevention** - paused system blocks all fee-generating operations
+/// 
 /// # Standardized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - Not required for consolidation (placeholder)
+/// 0. **Authority/User Signer** (signer, writable) - Contract creator authorizing consolidation
 /// 1. **System Program** (readable) - Not used in consolidation (placeholder)
 /// 2. **Rent Sysvar** (readable) - Not used in consolidation (placeholder)
 /// 3. **Clock Sysvar** (readable) - For timestamp operations
@@ -194,10 +203,11 @@ pub fn process_withdraw_treasury_fees(
 /// 12. **Main Treasury PDA** (writable) - Main treasury account for consolidation
 /// 13. **Swap Treasury PDA** (writable) - Swap treasury to consolidate from
 /// 14. **HFT Treasury PDA** (writable) - HFT treasury to consolidate from
+/// 15. **System State PDA** (readable) - For pause validation and authority control (function-specific)
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
-/// * `accounts` - Array of accounts in standardized order (15 accounts minimum)
+/// * `accounts` - Array of accounts in standardized order (16 accounts minimum)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -205,25 +215,58 @@ pub fn process_consolidate_treasuries(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🔄 Processing treasury consolidation");
+    msg!("🔄 Processing treasury consolidation with Phase 2 security");
     
     // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
     validate_standard_accounts(accounts)?;
     // Note: Most pool/token accounts are placeholders for treasury operations
     validate_treasury_accounts(accounts)?;
     
-    // Validate we have enough accounts for treasury consolidation
-    if accounts.len() < 15 {
+    // Validate we have enough accounts for treasury consolidation (now requires system state)
+    if accounts.len() < 16 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
-    // Indices 0-2: System accounts (unused placeholders for consolidation)
+    let authority_account = &accounts[0];              // Index 0: Authority/User Signer
+    // Indices 1-2: System accounts (unused placeholders for consolidation)
     let clock_sysvar = &accounts[3];                   // Index 3: Clock Sysvar
     // Indices 4-11: Pool/token accounts (unused placeholders)
     let main_treasury_account = &accounts[12];         // Index 12: Main Treasury PDA
     let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
     let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
+    
+    // ✅ FUNCTION-SPECIFIC ACCOUNTS: Phase 2 security accounts at standardized positions 15+
+    let system_state_account = &accounts[15];          // Index 15: System State PDA
+    
+    // ✅ PHASE 2 SECURITY VALIDATION: System pause and authority requirements
+    validate_signer(authority_account, "Contract creator")?;
+    
+    // 1. Load and validate system state
+    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
+    
+    // 2. Validate contract creator authority
+    if !system_state.validate_authority(authority_account.key) {
+        msg!("🚨 Unauthorized consolidation attempt");
+        msg!("Provided authority: {}", authority_account.key);
+        msg!("Expected authority: {}", system_state.authority);
+        return Err(PoolError::UnauthorizedAccess.into());
+    }
+    
+    // 3. CRITICAL: Require system to be paused before consolidation
+    if !system_state.is_paused {
+        msg!("🚨 CONSOLIDATION BLOCKED: System must be paused before consolidation");
+        msg!("Current state: is_paused = false");
+        msg!("Required: System must be paused to prevent race conditions");
+        msg!("💡 Solution: Use process_pause_system() first, then consolidate");
+        return Err(PoolError::SystemNotPaused.into());
+    }
+    
+    msg!("✅ Phase 2 Security Validation Passed:");
+    msg!("   • System is paused (race condition prevention active)");
+    msg!("   • Authority validated: {}", authority_account.key);
+    msg!("   • Pause reason: {}", system_state.pause_reason);
+    msg!("   • All user operations blocked during consolidation");
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_writable(main_treasury_account, "Main treasury")?;
@@ -316,15 +359,22 @@ pub fn process_consolidate_treasuries(
 
 /// Processes treasury information queries with standardized account ordering.
 /// 
-/// This function returns comprehensive treasury information with automatic consolidation.
-/// It consolidates treasuries before returning data to ensure the most accurate
-/// and up-to-date information.
+/// **⚠️ PHASE 2 CHANGE**: This function NO LONGER automatically consolidates treasuries.
+/// Due to Phase 2 security requirements, consolidation now requires system pause and
+/// authority validation. This function now returns current treasury information without
+/// automatic consolidation.
+/// 
+/// For consolidated data, use the dedicated consolidation workflow:
+/// 1. Pause system via `process_pause_system()`
+/// 2. Consolidate via `process_consolidate_treasuries()`
+/// 3. Query info via this function
+/// 4. Unpause system via `process_unpause_system()`
 /// 
 /// # Standardized Account Order:
 /// 0. **Authority/User Signer** (signer, writable) - Not required for info query (placeholder)
 /// 1. **System Program** (readable) - Not used in info query (placeholder)
 /// 2. **Rent Sysvar** (readable) - Not used in info query (placeholder)
-/// 3. **Clock Sysvar** (readable) - For timestamp operations
+/// 3. **Clock Sysvar** (readable) - Not used in info query (placeholder)
 /// 4. **Pool State PDA** (writable) - Not used in treasury ops (placeholder)
 /// 5. **Token A Mint** (readable) - Not used in treasury ops (placeholder)
 /// 6. **Token B Mint** (readable) - Not used in treasury ops (placeholder)
@@ -334,8 +384,8 @@ pub fn process_consolidate_treasuries(
 /// 10. **User Input Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Main treasury account for info query
-/// 13. **Swap Treasury PDA** (writable) - Swap treasury for consolidation
-/// 14. **HFT Treasury PDA** (writable) - HFT treasury for consolidation
+/// 13. **Swap Treasury PDA** (writable) - Not used in info query (placeholder)
+/// 14. **HFT Treasury PDA** (writable) - Not used in info query (placeholder)
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
@@ -344,17 +394,27 @@ pub fn process_consolidate_treasuries(
 /// # Returns
 /// * `ProgramResult` - Success or error
 pub fn process_get_treasury_info(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("📊 Getting treasury information with consolidation");
+    msg!("📊 Getting treasury information (Phase 2: no automatic consolidation)");
     
-    // First, consolidate treasuries to get accurate data using standardized function
-    process_consolidate_treasuries(program_id, accounts)?;
+    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
+    validate_standard_accounts(accounts)?;
+    // Note: Most pool/token accounts are placeholders for treasury operations
+    validate_treasury_accounts(accounts)?;
     
-    // Then load the consolidated main treasury data
+    // Validate we have enough accounts for treasury info query
+    if accounts.len() < 15 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // Load main treasury data (no automatic consolidation due to Phase 2 security)
     let main_treasury_account = &accounts[12]; // Index 12: Main Treasury PDA
     let main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
+    
+    msg!("⚠️ NOTE: This shows current main treasury data without automatic consolidation");
+    msg!("For consolidated data, use: pause → consolidate → query → unpause workflow");
     
     msg!("🏦 MAIN TREASURY INFORMATION:");
     msg!("   Authority: {}", main_treasury.authority);
