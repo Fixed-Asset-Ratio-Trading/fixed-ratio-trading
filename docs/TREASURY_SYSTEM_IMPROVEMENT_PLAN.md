@@ -282,222 +282,617 @@ Instead of complex multi-treasury architecture with consolidation, we implemente
 
 ---
 
-## **Phase 4: Fee Counter Improvements**
+## **Phase 4: Fee Counter Improvements & Advanced Analytics**
 *Priority: LOW - Analytics Enhancement*
 
 ### Goals
-- Add real-time counters for all fee types
-- Implement immediate counter updates
-- Provide comprehensive fee analytics
+- **Implement comprehensive real-time fee analytics**
+- **Add historical fee tracking and trend analysis**
+- **Provide detailed performance metrics and insights**
+- **Create advanced reporting capabilities for treasury management**
 
-### Changes
-1. **Real-time Counter Updates**
-   - Update pool creation counters immediately
-   - Update liquidity operation counters immediately
-   - Remove consolidation-dependent updates
+### **📊 COMPREHENSIVE ANALYTICS SOLUTION**
 
-2. **Enhanced Analytics**
-   - Add fee collection timestamps
-   - Implement fee rate calculations
-   - Add historical fee tracking
+Phase 4 transforms the treasury system from basic fee collection to a sophisticated analytics platform providing deep insights into system performance and fee patterns.
 
-3. **Reporting Improvements**
-   - Enhanced treasury info queries
-   - Real-time fee statistics
-   - Performance metrics
+#### **Current State Analysis**
+After Phase 3 centralization, we have:
+- ✅ **Real-time fee collection** - All fees go directly to MainTreasuryState
+- ✅ **Basic counters** - Simple counts for each operation type
+- ✅ **Immediate updates** - No consolidation delays
+- ❌ **Limited analytics** - No historical data or trends
+- ❌ **No performance metrics** - Missing fee rate calculations
+- ❌ **Basic reporting** - Simple balance queries only
 
-### Files to Modify
-- `src/state/treasury_state.rs`
-- `src/processors/treasury.rs`
-- `src/processors/utilities.rs`
+### **Phase 4 Implementation Plan**
 
-### Testing Requirements
-- Test counter accuracy
-- Verify real-time updates
-- Validate analytics queries
+#### **1. Enhanced Treasury State Structure**
 
----
-
-## **Phase 5: Code Cleanup & Account Optimization**
-*Priority: LOW - Technical Debt & Performance*
-
-### Goals
-- Remove unused code and structures
-- **Optimize account arrays in process functions**
-- **Remove unused account parameters**
-- Improve code maintainability and reduce compute unit usage
-
-### Changes
-
-#### **1. Account Array Optimization**
-After Phase 3 centralization, many process functions have unused account parameters that can be removed:
-
-**Current Issues:**
-- Specialized treasury accounts (indices 13-14) are unused in most functions
-- Some functions have placeholder accounts that serve no purpose
-- Account validation overhead for unused accounts
-- Increased transaction size due to unnecessary accounts
-
-**Optimization Targets:**
-
-##### **A. Treasury Functions**
-- `process_withdraw_treasury_fees()`: Remove unused swap/HFT treasury accounts (indices 13-14)
-- `process_get_treasury_info()`: Remove unused specialized treasury accounts
-- Account count reduction: 17 → 15 accounts
-
-##### **B. Swap Functions**
-- `process_swap()`: Remove unused HFT treasury account (index 14)
-- `process_swap_hft_optimized()`: Remove unused swap treasury account (index 13)
-- Both functions can use main treasury only (index 12)
-- Account count optimization: 15 → 14 accounts
-
-##### **C. Pool Creation Functions**
-- `process_initialize_pool()`: Remove unused specialized treasury placeholders
-- Account count reduction: 17 → 15 accounts
-
-##### **D. Liquidity Functions**
-- `process_deposit()`: Remove unused specialized treasury accounts (indices 13-14)
-- `process_withdraw()`: Remove unused specialized treasury accounts (indices 13-14)
-- Account count reduction: 17 → 15 accounts
-
-##### **E. System Pause Functions**
-- `process_initialize_program()`: Remove specialized treasury creation entirely
-- Account count reduction: 16 → 13 accounts (significant optimization)
-
-#### **2. Code Removal & Cleanup**
-- Remove specialized treasury structures (`SwapTreasuryState`, `HftTreasuryState`)
-- Clean up unused imports and constants
-- Remove obsolete consolidation functions
-- Remove unused account validation for specialized treasuries
-
-#### **3. Performance Optimization**
-- **Reduced account validation overhead**: Fewer accounts to validate per transaction
-- **Smaller transaction size**: Fewer accounts in transaction account list
-- **Lower compute unit usage**: Less account processing overhead
-- **Simplified account ordering**: Cleaner, more maintainable account structure
-
-#### **4. Updated Account Ordering Standards**
-After optimization, standardized account ordering becomes:
-
+**Current MainTreasuryState:**
 ```rust
-// Optimized Standard Account Order (Phase 5)
-0.  Authority/User Signer (signer, writable)
-1.  System Program (readable)
-2.  Rent Sysvar (readable) 
-3.  Clock Sysvar (readable)
-4.  Pool State PDA (writable)
-5.  Token A Mint (readable)
-6.  Token B Mint (readable)
-7.  Token A Vault PDA (writable)
-8.  Token B Vault PDA (writable)
-9.  SPL Token Program (readable)
-10. User Input Token Account (writable)
-11. User Output Token Account (writable)
-12. Main Treasury PDA (writable) - ONLY treasury needed
-// Indices 13-14: REMOVED - No specialized treasuries
-15+ Function-specific accounts (as needed)
+pub struct MainTreasuryState {
+    pub total_balance: u64,
+    pub pool_creation_fees: u64,
+    pub liquidity_fees: u64,
+    pub regular_swap_fees: u64,
+    pub hft_swap_fees: u64,
+    pub pool_creation_count: u64,
+    pub liquidity_operations_count: u64,
+    pub regular_swap_count: u64,
+    pub hft_swap_count: u64,
+    pub last_withdrawal_timestamp: i64,
+    pub total_withdrawn: u64,
+    pub bump: u8,
+}
 ```
 
-#### **5. Documentation Updates**
-- Update account ordering documentation
-- Update API documentation for reduced account requirements
-- Create migration guide for external applications
-- Update deployment guides with new account structures
+**Enhanced MainTreasuryState (Phase 4):**
+```rust
+pub struct MainTreasuryState {
+    // Existing fields (unchanged)
+    pub total_balance: u64,
+    pub pool_creation_fees: u64,
+    pub liquidity_fees: u64,
+    pub regular_swap_fees: u64,
+    pub hft_swap_fees: u64,
+    pub pool_creation_count: u64,
+    pub liquidity_operations_count: u64,
+    pub regular_swap_count: u64,
+    pub hft_swap_count: u64,
+    pub last_withdrawal_timestamp: i64,
+    pub total_withdrawn: u64,
+    pub bump: u8,
+    
+    // NEW: Historical Tracking
+    pub first_fee_timestamp: i64,           // When first fee was collected
+    pub last_fee_timestamp: i64,            // Most recent fee collection
+    pub peak_daily_volume: u64,             // Highest daily fee volume
+    pub peak_daily_volume_date: i64,        // Date of peak volume
+    
+    // NEW: Performance Metrics
+    pub total_operation_time: u64,          // Cumulative processing time (microseconds)
+    pub average_fee_per_operation: u64,     // Rolling average fee amount
+    pub fee_collection_efficiency: u32,     // Success rate percentage (basis points)
+    
+    // NEW: Advanced Analytics
+    pub hourly_fee_buckets: [u64; 24],      // Fee totals by hour of day
+    pub daily_operation_counts: [u32; 7],   // Operation counts by day of week
+    pub fee_trend_indicator: i32,           // Trend direction (-100 to +100)
+    
+    // NEW: System Health Metrics
+    pub consecutive_successful_operations: u64,
+    pub last_error_timestamp: i64,
+    pub error_count_last_24h: u32,
+    pub uptime_percentage: u32,             // System availability (basis points)
+    
+    // Reserved for future expansion
+    pub reserved: [u64; 8],
+}
+```
+
+#### **2. Real-time Analytics Methods**
+
+**A. Fee Rate Calculations**
+```rust
+impl MainTreasuryState {
+    /// Calculate current fee collection rate (fees per hour)
+    pub fn current_fee_rate(&self) -> u64 {
+        let now = Clock::get().unwrap().unix_timestamp;
+        let time_diff = now - self.first_fee_timestamp;
+        if time_diff > 0 {
+            (self.total_fees_collected() * 3600) / (time_diff as u64)
+        } else {
+            0
+        }
+    }
+    
+    /// Calculate average operation processing time
+    pub fn average_operation_time(&self) -> u64 {
+        let total_ops = self.total_operations_processed();
+        if total_ops > 0 {
+            self.total_operation_time / total_ops
+        } else {
+            0
+        }
+    }
+    
+    /// Get fee collection efficiency percentage
+    pub fn fee_efficiency_percentage(&self) -> f64 {
+        (self.fee_collection_efficiency as f64) / 100.0
+    }
+}
+```
+
+**B. Historical Analysis**
+```rust
+impl MainTreasuryState {
+    /// Analyze fee trends over time
+    pub fn calculate_fee_trend(&self) -> TrendAnalysis {
+        let current_rate = self.current_fee_rate();
+        let historical_average = self.calculate_historical_average();
+        
+        TrendAnalysis {
+            current_rate,
+            historical_average,
+            trend_direction: self.fee_trend_indicator,
+            confidence_level: self.calculate_trend_confidence(),
+        }
+    }
+    
+    /// Get peak performance metrics
+    pub fn get_peak_metrics(&self) -> PeakMetrics {
+        PeakMetrics {
+            peak_daily_volume: self.peak_daily_volume,
+            peak_date: self.peak_daily_volume_date,
+            best_hour: self.get_best_performing_hour(),
+            best_day: self.get_best_performing_day(),
+        }
+    }
+    
+    /// Calculate system health score
+    pub fn system_health_score(&self) -> u32 {
+        let uptime_score = self.uptime_percentage / 4;  // 0-2500
+        let efficiency_score = self.fee_collection_efficiency / 4;  // 0-2500
+        let error_penalty = (self.error_count_last_24h * 100).min(2500);
+        
+        (uptime_score + efficiency_score).saturating_sub(error_penalty)
+    }
+}
+```
+
+#### **3. Advanced Reporting Functions**
+
+**A. Comprehensive Treasury Report**
+```rust
+pub fn process_get_comprehensive_treasury_report(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    let treasury_info = next_account_info(accounts)?;
+    let treasury_state = MainTreasuryState::unpack(&treasury_info.data.borrow())?;
+    
+    let report = ComprehensiveTreasuryReport {
+        // Current State
+        current_balance: treasury_state.total_balance,
+        total_fees_collected: treasury_state.total_fees_collected(),
+        
+        // Performance Metrics
+        fee_rate: treasury_state.current_fee_rate(),
+        average_operation_time: treasury_state.average_operation_time(),
+        efficiency_percentage: treasury_state.fee_efficiency_percentage(),
+        
+        // Historical Analysis
+        trend_analysis: treasury_state.calculate_fee_trend(),
+        peak_metrics: treasury_state.get_peak_metrics(),
+        
+        // System Health
+        health_score: treasury_state.system_health_score(),
+        uptime_percentage: treasury_state.uptime_percentage as f64 / 100.0,
+        error_rate: treasury_state.calculate_error_rate(),
+        
+        // Detailed Breakdowns
+        fee_breakdown: FeeBreakdown {
+            pool_creation: FeeTypeMetrics {
+                total_amount: treasury_state.pool_creation_fees,
+                count: treasury_state.pool_creation_count,
+                average: treasury_state.pool_creation_fees / treasury_state.pool_creation_count.max(1),
+                percentage: calculate_percentage(treasury_state.pool_creation_fees, treasury_state.total_fees_collected()),
+            },
+            liquidity: FeeTypeMetrics {
+                total_amount: treasury_state.liquidity_fees,
+                count: treasury_state.liquidity_operations_count,
+                average: treasury_state.liquidity_fees / treasury_state.liquidity_operations_count.max(1),
+                percentage: calculate_percentage(treasury_state.liquidity_fees, treasury_state.total_fees_collected()),
+            },
+            regular_swap: FeeTypeMetrics {
+                total_amount: treasury_state.regular_swap_fees,
+                count: treasury_state.regular_swap_count,
+                average: treasury_state.regular_swap_fees / treasury_state.regular_swap_count.max(1),
+                percentage: calculate_percentage(treasury_state.regular_swap_fees, treasury_state.total_fees_collected()),
+            },
+            hft_swap: FeeTypeMetrics {
+                total_amount: treasury_state.hft_swap_fees,
+                count: treasury_state.hft_swap_count,
+                average: treasury_state.hft_swap_fees / treasury_state.hft_swap_count.max(1),
+                percentage: calculate_percentage(treasury_state.hft_swap_fees, treasury_state.total_fees_collected()),
+            },
+        },
+        
+        // Time-based Analytics
+        hourly_distribution: treasury_state.hourly_fee_buckets.to_vec(),
+        daily_distribution: treasury_state.daily_operation_counts.to_vec(),
+        
+        // Timestamps
+        first_fee_timestamp: treasury_state.first_fee_timestamp,
+        last_fee_timestamp: treasury_state.last_fee_timestamp,
+        report_generated_timestamp: Clock::get()?.unix_timestamp,
+    };
+    
+    // Serialize and return report
+    msg!("Comprehensive Treasury Report: {:?}", report);
+    Ok(())
+}
+```
+
+**B. Performance Analytics**
+```rust
+pub fn process_get_performance_analytics(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    let treasury_info = next_account_info(accounts)?;
+    let treasury_state = MainTreasuryState::unpack(&treasury_info.data.borrow())?;
+    
+    let analytics = PerformanceAnalytics {
+        // Throughput Metrics
+        operations_per_hour: treasury_state.calculate_operations_per_hour(),
+        fees_per_hour: treasury_state.current_fee_rate(),
+        peak_throughput: treasury_state.calculate_peak_throughput(),
+        
+        // Efficiency Metrics
+        fee_collection_success_rate: treasury_state.fee_efficiency_percentage(),
+        average_processing_time: treasury_state.average_operation_time(),
+        system_uptime: treasury_state.uptime_percentage as f64 / 100.0,
+        
+        // Trend Analysis
+        fee_trend: treasury_state.calculate_fee_trend(),
+        volume_trend: treasury_state.calculate_volume_trend(),
+        efficiency_trend: treasury_state.calculate_efficiency_trend(),
+        
+        // Comparative Analysis
+        current_vs_historical: treasury_state.compare_current_to_historical(),
+        best_vs_worst_periods: treasury_state.get_performance_extremes(),
+        
+        // Predictive Metrics
+        projected_daily_volume: treasury_state.project_daily_volume(),
+        estimated_monthly_fees: treasury_state.estimate_monthly_fees(),
+        capacity_utilization: treasury_state.calculate_capacity_utilization(),
+    };
+    
+    msg!("Performance Analytics: {:?}", analytics);
+    Ok(())
+}
+```
+
+#### **4. Real-time Counter Enhancement**
+
+**Enhanced Fee Collection with Analytics:**
+```rust
+impl MainTreasuryState {
+    /// Enhanced fee collection with comprehensive analytics
+    pub fn collect_fee_with_analytics(
+        &mut self,
+        fee_type: FeeType,
+        amount: u64,
+        processing_time_micros: u64,
+        success: bool,
+    ) -> Result<(), ProgramError> {
+        let now = Clock::get()?.unix_timestamp;
+        
+        // Update basic counters (existing functionality)
+        match fee_type {
+            FeeType::PoolCreation => {
+                self.pool_creation_fees += amount;
+                self.pool_creation_count += 1;
+            },
+            FeeType::Liquidity => {
+                self.liquidity_fees += amount;
+                self.liquidity_operations_count += 1;
+            },
+            FeeType::RegularSwap => {
+                self.regular_swap_fees += amount;
+                self.regular_swap_count += 1;
+            },
+            FeeType::HftSwap => {
+                self.hft_swap_fees += amount;
+                self.hft_swap_count += 1;
+            },
+        }
+        
+        // NEW: Enhanced analytics tracking
+        if success {
+            self.total_balance += amount;
+            self.consecutive_successful_operations += 1;
+            
+            // Update timestamps
+            if self.first_fee_timestamp == 0 {
+                self.first_fee_timestamp = now;
+            }
+            self.last_fee_timestamp = now;
+            
+            // Update hourly distribution
+            let hour = ((now % 86400) / 3600) as usize;
+            if hour < 24 {
+                self.hourly_fee_buckets[hour] += amount;
+            }
+            
+            // Update daily distribution
+            let day_of_week = self.calculate_day_of_week(now);
+            if day_of_week < 7 {
+                self.daily_operation_counts[day_of_week] += 1;
+            }
+            
+            // Update performance metrics
+            self.total_operation_time += processing_time_micros;
+            self.update_rolling_average(amount);
+            self.update_efficiency_score(true);
+            
+            // Check for new peak
+            let daily_volume = self.calculate_current_daily_volume();
+            if daily_volume > self.peak_daily_volume {
+                self.peak_daily_volume = daily_volume;
+                self.peak_daily_volume_date = now;
+            }
+            
+        } else {
+            // Handle failed fee collection
+            self.consecutive_successful_operations = 0;
+            self.last_error_timestamp = now;
+            self.error_count_last_24h += 1;
+            self.update_efficiency_score(false);
+        }
+        
+        // Update trend indicators
+        self.update_fee_trend();
+        self.update_uptime_percentage();
+        
+        Ok(())
+    }
+}
+```
+
+#### **5. New Data Structures**
+
+**Analytics Response Types:**
+```rust
+#[derive(Debug, Clone)]
+pub struct ComprehensiveTreasuryReport {
+    pub current_balance: u64,
+    pub total_fees_collected: u64,
+    pub fee_rate: u64,
+    pub average_operation_time: u64,
+    pub efficiency_percentage: f64,
+    pub trend_analysis: TrendAnalysis,
+    pub peak_metrics: PeakMetrics,
+    pub health_score: u32,
+    pub uptime_percentage: f64,
+    pub error_rate: f64,
+    pub fee_breakdown: FeeBreakdown,
+    pub hourly_distribution: Vec<u64>,
+    pub daily_distribution: Vec<u32>,
+    pub first_fee_timestamp: i64,
+    pub last_fee_timestamp: i64,
+    pub report_generated_timestamp: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrendAnalysis {
+    pub current_rate: u64,
+    pub historical_average: u64,
+    pub trend_direction: i32,
+    pub confidence_level: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct PeakMetrics {
+    pub peak_daily_volume: u64,
+    pub peak_date: i64,
+    pub best_hour: u8,
+    pub best_day: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct FeeBreakdown {
+    pub pool_creation: FeeTypeMetrics,
+    pub liquidity: FeeTypeMetrics,
+    pub regular_swap: FeeTypeMetrics,
+    pub hft_swap: FeeTypeMetrics,
+}
+
+#[derive(Debug, Clone)]
+pub struct FeeTypeMetrics {
+    pub total_amount: u64,
+    pub count: u64,
+    pub average: u64,
+    pub percentage: f64,
+}
+```
+
+#### **6. Performance Optimization**
+
+**A. Efficient Data Storage**
+- **Circular Buffers**: Use fixed-size arrays for time-based data
+- **Bit Packing**: Store multiple small values in single u64 fields
+- **Lazy Calculation**: Compute expensive metrics only when requested
+- **Caching**: Cache frequently accessed calculations
+
+**B. Compute Unit Optimization**
+- **Batch Updates**: Group multiple analytics updates
+- **Conditional Logic**: Skip expensive calculations when not needed
+- **Efficient Algorithms**: Use optimized math for trend calculations
+- **Memory Layout**: Optimize struct layout for cache efficiency
+
+**C. Storage Efficiency**
+```rust
+// Optimized storage using bit packing
+pub struct CompactAnalytics {
+    pub packed_hourly_data: [u32; 12],      // 24 hours packed into 12 u32s
+    pub packed_daily_data: u32,             // 7 days packed into single u32
+    pub packed_metrics: u64,                // Multiple small metrics packed
+}
+
+impl CompactAnalytics {
+    pub fn unpack_hourly_data(&self) -> [u64; 24] {
+        // Efficient unpacking logic
+    }
+    
+    pub fn pack_hourly_data(&mut self, data: &[u64; 24]) {
+        // Efficient packing logic
+    }
+}
+```
+
+### **Phase 4 Implementation Timeline**
+
+#### **Week 1: Core Analytics Infrastructure**
+- **Day 1-2**: Enhance MainTreasuryState structure
+- **Day 3-4**: Implement basic analytics methods
+- **Day 5-7**: Create data structures and response types
+
+#### **Week 2: Advanced Analytics Features**
+- **Day 1-3**: Implement trend analysis and historical tracking
+- **Day 4-5**: Add performance metrics and health scoring
+- **Day 6-7**: Create comprehensive reporting functions
+
+#### **Week 3: Integration and Optimization**
+- **Day 1-2**: Integrate analytics into existing fee collection
+- **Day 3-4**: Optimize performance and storage efficiency
+- **Day 5-7**: Add error handling and edge case management
+
+#### **Week 4: Testing and Validation**
+- **Day 1-3**: Comprehensive testing of all analytics features
+- **Day 4-5**: Performance benchmarking and optimization
+- **Day 6-7**: Documentation and code review
+
+### **Files to Modify**
+
+#### **Core Treasury System**
+- `src/state/treasury_state.rs` - Enhanced MainTreasuryState structure
+- `src/processors/treasury.rs` - New analytics functions and enhanced fee collection
+- `src/processors/utilities.rs` - Analytics utility functions
+
+#### **Integration Points**
+- `src/processors/pool_creation.rs` - Integrate analytics into pool creation fees
+- `src/processors/liquidity.rs` - Integrate analytics into liquidity fees
+- `src/processors/swap.rs` - Integrate analytics into swap fees
+
+#### **Support Files**
+- `src/types/instructions.rs` - New instruction types for analytics
+- `src/error.rs` - New error types for analytics failures
+- `src/utils/analytics.rs` - NEW: Analytics utility functions
+
+#### **Documentation**
+- `docs/ANALYTICS_API.md` - NEW: Comprehensive analytics API documentation
+- `docs/PERFORMANCE_METRICS.md` - NEW: Performance metrics guide
+- `README.md` - Update with Phase 4 analytics features
+
+### **Testing Requirements**
+
+#### **Unit Tests**
+- **Analytics Accuracy**: Verify all calculations are mathematically correct
+- **Performance Metrics**: Test fee rate, efficiency, and trend calculations
+- **Data Integrity**: Ensure analytics don't affect core functionality
+- **Edge Cases**: Test with zero values, overflow conditions, and extreme data
+
+#### **Integration Tests**
+- **Real-time Updates**: Verify analytics update correctly during operations
+- **Cross-function Consistency**: Ensure analytics work across all fee types
+- **Performance Impact**: Measure compute unit overhead of analytics
+- **Memory Usage**: Verify storage efficiency of enhanced state
+
+#### **Load Tests**
+- **High Frequency**: Test analytics with rapid fee collection
+- **Large Numbers**: Test with maximum values and large datasets
+- **Concurrent Access**: Verify thread safety of analytics updates
+- **Long Running**: Test analytics accuracy over extended periods
+
+#### **Benchmark Tests**
+- **Compute Unit Usage**: Measure CU overhead of analytics features
+- **Memory Footprint**: Compare storage requirements before/after
+- **Query Performance**: Benchmark analytics query response times
+- **Scalability**: Test performance with increasing data volumes
 
 ### **Performance Impact Analysis**
 
-#### **Before Phase 5:**
-- **Treasury operations**: 17 accounts (2 unused specialized treasuries)
-- **Swap operations**: 15 accounts (1 unused specialized treasury each)
-- **Pool creation**: 17 accounts (2 unused specialized treasuries)
-- **System initialization**: 16 accounts (2 specialized treasuries created)
+#### **Compute Unit Overhead**
+- **Basic Fee Collection**: +10-20 CUs for enhanced analytics
+- **Trend Calculations**: +50-100 CUs for complex analytics
+- **Comprehensive Reports**: +200-500 CUs for full analytics query
+- **Optimization Target**: Keep overhead under 5% of total operation cost
 
-#### **After Phase 5:**
-- **Treasury operations**: 15 accounts (13% reduction)
-- **Swap operations**: 14 accounts (7% reduction)
-- **Pool creation**: 15 accounts (12% reduction)
-- **System initialization**: 13 accounts (19% reduction)
+#### **Storage Requirements**
+- **Current MainTreasuryState**: ~200 bytes
+- **Enhanced MainTreasuryState**: ~400 bytes (100% increase)
+- **Justification**: Rich analytics data worth the storage cost
+- **Optimization**: Use bit packing and efficient data structures
 
-#### **Compute Unit Savings:**
-- **Account validation**: ~50-100 CUs saved per unused account
-- **Transaction overhead**: ~20-40 CUs saved per unused account
-- **Total estimated savings**: 70-140 CUs per transaction
-- **System initialization**: Significant savings from not creating specialized treasuries
-
-### Files to Modify
-- `src/processors/treasury.rs` - Remove unused treasury account parameters
-- `src/processors/swap.rs` - Optimize account arrays for both swap functions
-- `src/processors/pool_creation.rs` - Remove specialized treasury placeholders
-- `src/processors/liquidity.rs` - Remove unused treasury accounts
-- `src/processors/system_pause.rs` - Remove specialized treasury creation
-- `src/utils/account_builders.rs` - Update validation functions
-- `docs/ACCOUNT_ORDERING_POLICY.md` - Update account ordering documentation
-- Multiple test files - Update account arrays
-- Documentation files - Update API documentation
-
-### Testing Requirements
-- **Regression testing**: Ensure all functions work with reduced account arrays
-- **Performance benchmarking**: Measure compute unit savings
-- **Integration testing**: Verify external app compatibility
-- **Account validation testing**: Ensure proper validation with fewer accounts
-- **Migration testing**: Test upgrade path from Phase 3 to Phase 5
+#### **Network Overhead**
+- **Basic Queries**: No change in response size
+- **Analytics Queries**: +500-1000 bytes for comprehensive reports
+- **Optimization**: Provide different detail levels for different use cases
 
 ### **Migration Strategy**
-1. **Phase 5a**: Update account validation to make specialized treasury accounts optional
-2. **Phase 5b**: Update all process functions to use reduced account arrays
-3. **Phase 5c**: Remove specialized treasury account validation entirely
-4. **Phase 5d**: Update external app documentation and examples
 
-### **External App Migration**
-External applications will need to:
-- Remove specialized treasury accounts from transaction account lists
-- Update account indices for function-specific accounts (15+ range)
-- Reduce account array sizes in transaction builders
-- Update any hardcoded account counts
+#### **Phase 4a: Infrastructure (Week 1)**
+- Add new fields to MainTreasuryState (with default values)
+- Implement basic analytics methods
+- Maintain backward compatibility
 
-### **Backward Compatibility**
-- Phase 5a maintains compatibility by making specialized accounts optional
-- Gradual migration allows external apps to update incrementally
-- Clear migration timeline and documentation provided
+#### **Phase 4b: Integration (Week 2)**
+- Integrate analytics into fee collection processes
+- Add new analytics query functions
+- Test with existing functionality
 
----
+#### **Phase 4c: Advanced Features (Week 3)**
+- Implement trend analysis and historical tracking
+- Add performance metrics and health scoring
+- Optimize for production deployment
 
-## Implementation Strategy
+#### **Phase 4d: Production Ready (Week 4)**
+- Complete testing and validation
+- Performance optimization
+- Documentation and deployment
 
-### Phase 1 Implementation Plan
-1. **Week 1**: Fee validation framework
-2. **Week 2**: Implement "fees first" pattern
-3. **Week 3**: Error handling and testing
-4. **Week 4**: Code review and refinement
+### **Success Criteria**
 
-### Success Criteria
-- All fee collection operations are atomic
-- Users cannot bypass fees
-- Proper error handling for insufficient funds
-- Comprehensive test coverage
+#### **Functional Requirements**
+- ✅ **Real-time Analytics**: All fee operations update analytics immediately
+- ✅ **Historical Tracking**: System maintains historical data and trends
+- ✅ **Performance Metrics**: Accurate calculation of rates, efficiency, and health
+- ✅ **Comprehensive Reporting**: Detailed analytics available via queries
 
-### Risk Mitigation
-- Extensive testing on devnet
-- Gradual rollout approach
-- Rollback plan for critical issues
-- Monitoring and alerting system
+#### **Performance Requirements**
+- ✅ **Low Overhead**: Analytics add <5% to operation compute costs
+- ✅ **Fast Queries**: Analytics queries complete in <100ms
+- ✅ **Efficient Storage**: Enhanced state uses <2x original storage
+- ✅ **Scalable**: Performance maintained with high transaction volumes
 
----
+#### **Quality Requirements**
+- ✅ **Accuracy**: All analytics calculations mathematically correct
+- ✅ **Reliability**: Analytics don't affect core functionality
+- ✅ **Maintainability**: Code is well-documented and testable
+- ✅ **Extensibility**: Easy to add new analytics features
 
-## Next Steps
+### **Risk Mitigation**
 
-1. **Review and Approve Phase 1**
-2. **Implement Phase 1 Changes**
-3. **Test Phase 1 Thoroughly**
-4. **Review and Plan Phase 2**
-5. **Continue Iteratively**
+#### **Performance Risks**
+- **Risk**: Analytics overhead impacts transaction performance
+- **Mitigation**: Extensive benchmarking and optimization
+- **Fallback**: Ability to disable non-critical analytics
 
----
+#### **Complexity Risks**
+- **Risk**: Analytics complexity introduces bugs
+- **Mitigation**: Comprehensive testing and code review
+- **Fallback**: Gradual rollout with monitoring
 
-## Notes
+#### **Storage Risks**
+- **Risk**: Enhanced state exceeds account size limits
+- **Mitigation**: Efficient data structures and bit packing
+- **Fallback**: Separate analytics account if needed
 
-- Each phase should be thoroughly tested before proceeding
-- Consider backward compatibility during transitions
-- Monitor gas costs and performance impacts
-- Maintain security as highest priority
-- Document all changes for future reference 
+### **Future Enhancements**
+
+#### **Phase 4.1: Machine Learning Integration**
+- Predictive analytics for fee trends
+- Anomaly detection for unusual patterns
+- Automated optimization recommendations
+
+#### **Phase 4.2: External Analytics**
+- Export analytics to external systems
+- Integration with business intelligence tools
+- Real-time dashboards and monitoring
+
+#### **Phase 4.3: Advanced Reporting**
+- Custom report generation
+- Scheduled analytics exports
+- Multi-timeframe analysis 
