@@ -214,9 +214,10 @@ pub fn extend_for_system_operations(
 
 /// Validates that the standard account positions are correct.
 /// 
-/// This function performs validation on the standard account positions (0-14)
-/// to ensure they match the expected types and requirements. It's used as a
-/// common validation step across all process functions.
+/// **PHASE 5: OPTIMIZED ACCOUNT VALIDATION**
+/// After Phase 3 centralization, the minimum account count is reduced from 15 to 13.
+/// This function performs validation on the standard account positions (0-12)
+/// to ensure they match the expected types and requirements.
 /// 
 /// # Arguments
 /// * `accounts` - Array of account infos to validate
@@ -225,12 +226,12 @@ pub fn extend_for_system_operations(
 /// * `ProgramResult` - Success if all validations pass, error otherwise
 /// 
 /// # Errors
-/// * `ProgramError::NotEnoughAccountKeys` - If fewer than 15 accounts provided
+/// * `ProgramError::NotEnoughAccountKeys` - If fewer than 13 accounts provided
 /// * `ProgramError::MissingRequiredSignature` - If authority (index 0) is not a signer
 /// * `ProgramError::IncorrectProgramId` - If system program (index 1) is incorrect
 /// * `ProgramError::InvalidAccountData` - If sysvar accounts are incorrect
 pub fn validate_standard_accounts(accounts: &[AccountInfo]) -> ProgramResult {
-    if accounts.len() < 15 {
+    if accounts.len() < 13 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
@@ -242,7 +243,7 @@ pub fn validate_standard_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     
     // Note: Pool accounts (4-8) are validated by specific functions
     // Note: Token program (9) is validated by specific functions
-    // Note: Treasury accounts (12-14) are validated by specific functions
+    // Note: Treasury accounts (12) are validated by specific functions
     
     Ok(())
 }
@@ -294,8 +295,12 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 
 /// Validates that the treasury accounts are correct.
 /// 
-/// This function validates accounts at indices 12-14 (treasury system) and
-/// ensures they match the expected treasury structure.
+/// **PHASE 5: OPTIMIZED TREASURY VALIDATION**
+/// After Phase 3 centralization, only the main treasury account is validated.
+/// Specialized treasury accounts (swap and HFT) are no longer used.
+/// 
+/// This function validates accounts at index 12 (main treasury) and
+/// ensures it matches the expected treasury structure.
 /// 
 /// # Arguments
 /// * `accounts` - Array of account infos to validate
@@ -303,13 +308,12 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Success if all validations pass, error otherwise
 pub fn validate_treasury_accounts(accounts: &[AccountInfo]) -> ProgramResult {
-    if accounts.len() < 15 {
+    if accounts.len() < 13 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     crate::utils::validation::validate_writable(&accounts[12], "Main Treasury PDA")?;     // Index 12
-    crate::utils::validation::validate_writable(&accounts[13], "Swap Treasury PDA")?;     // Index 13
-    crate::utils::validation::validate_writable(&accounts[14], "HFT Treasury PDA")?;      // Index 14
+    // Phase 5: Specialized treasury accounts (indices 13-14) are no longer validated
     
     Ok(())
 }
@@ -385,6 +389,8 @@ pub fn validate_treasury_operation_accounts(accounts: &[AccountInfo]) -> Program
 
 /// Comprehensive validation for system operation accounts.
 /// 
+/// **PHASE 5: OPTIMIZED SYSTEM VALIDATION**
+/// After Phase 3 centralization, system state is now at index 13 instead of 15.
 /// This function validates all standard accounts needed for system operations
 /// including system accounts and system state.
 /// 
@@ -396,12 +402,12 @@ pub fn validate_treasury_operation_accounts(accounts: &[AccountInfo]) -> Program
 pub fn validate_system_operation_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     validate_standard_accounts(accounts)?;
     
-    // System state is at index 15 for system operations
-    if accounts.len() < 16 {
+    // Phase 5: System state is at index 13 for system operations (was 15)
+    if accounts.len() < 14 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    crate::utils::validation::validate_writable(&accounts[15], "System State")?;
+    crate::utils::validation::validate_writable(&accounts[13], "System State")?;
     
     Ok(())
 } 
