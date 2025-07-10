@@ -107,7 +107,7 @@ pub fn process_swap(
     let token_program_account = &accounts[9];          // Index 9: SPL Token Program
     let user_input_token_account = &accounts[10];      // Index 10: User Input Token Account
     let user_output_token_account = &accounts[11];     // Index 11: User Output Token Account
-    let _main_treasury_account = &accounts[12];        // Index 12: Main Treasury PDA (unused in regular swaps)
+    let main_treasury_account = &accounts[12];        // Index 12: Main Treasury PDA
     let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
     let _hft_treasury_account = &accounts[14];         // Index 14: HFT Treasury PDA (unused in regular swaps)
     
@@ -128,12 +128,12 @@ pub fn process_swap(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ ULTRA-EFFICIENT FEE COLLECTION - Minimal CU overhead for swap fee
+    // ✅ PHASE 3: ULTRA-EFFICIENT FEE COLLECTION - Direct to main treasury
     use crate::utils::fee_validation::collect_regular_swap_fee_ultra_efficient;
     
     collect_regular_swap_fee_ultra_efficient(
         user_signer,
-        swap_treasury_account,
+        main_treasury_account, // Phase 3: Use main treasury instead of specialized treasury
         &accounts[1], // system_program is at index 1 in standardized ordering
         program_id,
     )?;
@@ -416,7 +416,7 @@ pub fn process_swap_hft_optimized(
     let token_program_account = &accounts[9];          // Index 9: SPL Token Program
     let user_input_token_account = &accounts[10];      // Index 10: User Input Token Account
     let user_output_token_account = &accounts[11];     // Index 11: User Output Token Account
-    let _main_treasury_account = &accounts[12];        // Index 12: Main Treasury PDA (unused in HFT)
+    let main_treasury_account = &accounts[12];        // Index 12: Main Treasury PDA
     let _swap_treasury_account = &accounts[13];        // Index 13: Swap Treasury PDA (unused in HFT)
     let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
 
@@ -428,12 +428,12 @@ pub fn process_swap_hft_optimized(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ ULTRA-EFFICIENT HFT FEE COLLECTION - Minimal CU overhead for HFT swap fee
+    // ✅ PHASE 3: ULTRA-EFFICIENT HFT FEE COLLECTION - Direct to main treasury
     use crate::utils::fee_validation::collect_hft_swap_fee_ultra_efficient;
     
     collect_hft_swap_fee_ultra_efficient(
         user_signer,
-        hft_treasury_account,
+        main_treasury_account, // Phase 3: Use main treasury instead of specialized treasury
         &accounts[1], // system_program is at index 1 in standardized ordering
         program_id,
     )?;

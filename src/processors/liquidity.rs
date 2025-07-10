@@ -150,7 +150,7 @@ pub fn process_deposit(
     let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                   // Index 1: System Program
     let _rent_sysvar = &accounts[2];                      // Index 2: Rent Sysvar
-    let _clock_sysvar = &accounts[3];                     // Index 3: Clock Sysvar
+    let clock_sysvar = &accounts[3];                     // Index 3: Clock Sysvar
     let pool_state_account = &accounts[4];                // Index 4: Pool State PDA
     let _token_a_mint = &accounts[5];                     // Index 5: Token A Mint
     let _token_b_mint = &accounts[6];                     // Index 6: Token B Mint
@@ -173,13 +173,14 @@ pub fn process_deposit(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ PHASE 1: FEES FIRST PATTERN - Collect fee BEFORE any state changes
+    // ✅ PHASE 3: CENTRALIZED FEE COLLECTION - Collect fee with real-time tracking
     use crate::utils::fee_validation::collect_liquidity_fee;
     
     collect_liquidity_fee(
         user_authority,
         main_treasury,
         _system_program,
+        clock_sysvar,
         program_id,
     )?;
 
@@ -434,13 +435,14 @@ pub fn process_withdraw(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ PHASE 1: FEES FIRST PATTERN - Collect fee BEFORE any state changes
+    // ✅ PHASE 3: CENTRALIZED FEE COLLECTION - Collect fee with real-time tracking
     use crate::utils::fee_validation::collect_liquidity_fee;
     
     collect_liquidity_fee(
         user_authority,
         main_treasury,
         _system_program,
+        clock_sysvar,
         program_id,
     )?;
 

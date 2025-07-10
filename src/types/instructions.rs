@@ -232,51 +232,22 @@ pub enum PoolInstruction {
         amount: u64,
     },
     
-    /// **TREASURY MANAGEMENT**: Consolidate specialized treasuries into main treasury
+    /// **PHASE 3: REAL-TIME TREASURY INFORMATION**
     /// 
-    /// Empties the specialized swap and HFT treasuries, transferring their balances and
-    /// counters to the main treasury. This is triggered when fee counts are requested
-    /// to provide accurate analytics while maintaining performance during operations.
-    /// 
-    /// # What it does:
-    /// - Transfers all SOL from swap treasury to main treasury
-    /// - Transfers all SOL from HFT treasury to main treasury  
-    /// - Updates main treasury counters with consolidated data
-    /// - Resets specialized treasury balances to zero
-    /// - Updates consolidation timestamps
-    /// 
-    /// # Requirements:
-    /// - Can be called by anyone (no authorization required)
-    /// - Improves system efficiency by consolidating fragmented balances
-    /// - Provides accurate fee reporting through consolidation
-    ConsolidateTreasuries,
-    
-    /// **VIEW INSTRUCTION**: Get main treasury information and statistics
-    /// 
-    /// Returns comprehensive information about the main treasury including:
+    /// Returns comprehensive real-time information about the centralized treasury including:
     /// - Current balance and total withdrawn
-    /// - Fee counts by category (after consolidation)
+    /// - Real-time fee counts by category (no consolidation needed)
     /// - Total fees collected by type
-    /// - Last consolidation timestamp
+    /// - Last update timestamp
+    /// - Analytics methods (total operations, average fee, etc.)
     /// 
-    /// # Triggers Consolidation:
-    /// This instruction automatically triggers treasury consolidation before
-    /// returning data to ensure the most accurate and up-to-date information.
+    /// # Phase 3 Benefits:
+    /// - No consolidation needed (real-time data)
+    /// - Single source of truth
+    /// - No race conditions
+    /// - Simplified architecture
     GetTreasuryInfo {
-        // No parameters needed - reads treasury states and consolidates
-    },
-    
-    /// **VIEW INSTRUCTION**: Get specialized treasury balances (pre-consolidation)
-    /// 
-    /// Returns current balances in the specialized treasuries without triggering
-    /// consolidation. Useful for monitoring fee flow in real-time.
-    /// 
-    /// # Returns:
-    /// - Swap treasury: balance, count, total collected
-    /// - HFT treasury: balance, count, total collected  
-    /// - Last update timestamps for each treasury
-    GetSpecializedTreasuryBalances {
-        // No parameters needed - reads specialized treasury states
+        // No parameters needed - reads main treasury state directly
     },
     
 } 

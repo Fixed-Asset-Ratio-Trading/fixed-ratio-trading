@@ -338,14 +338,9 @@ impl PoolClient {
             &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
             &self.program_id,
         );
-        let (swap_treasury_pda, _) = Pubkey::find_program_address(
-            &[crate::constants::SWAP_TREASURY_SEED_PREFIX],
-            &self.program_id,
-        );
-        let (hft_treasury_pda, _) = Pubkey::find_program_address(
-            &[crate::constants::HFT_TREASURY_SEED_PREFIX],
-            &self.program_id,
-        );
+        // Phase 3: Specialized treasuries removed - all fees go to main treasury
+        let swap_treasury_pda = main_treasury_pda; // Placeholder for compatibility
+        let hft_treasury_pda = main_treasury_pda;  // Placeholder for compatibility
 
         Ok(Instruction {
             program_id: self.program_id,

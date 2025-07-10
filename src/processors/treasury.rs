@@ -1,14 +1,20 @@
 //! Treasury Management Processors
 //!
-//! This module handles all treasury-related operations including:
+//! **PHASE 3: CENTRALIZED TREASURY MANAGEMENT**
+//!
+//! This module handles centralized treasury operations with real-time tracking:
 //! - Contract fee withdrawals by system authority
-//! - Consolidation of specialized treasuries into main treasury
-//! - Treasury information queries and analytics
+//! - Real-time treasury information queries
+//! - Simplified architecture with single treasury
+//!
+//! **Removed in Phase 3:**
+//! - Specialized treasury consolidation (no longer needed)
+//! - Specialized treasury balance queries (no longer needed)
+//! - Complex consolidation race condition handling (eliminated by design)
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
-    clock::Clock,
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
@@ -19,7 +25,7 @@ use solana_program::{
 use crate::{
     constants::*,
     error::PoolError,
-    state::{MainTreasuryState, SwapTreasuryState, HftTreasuryState, SystemState},
+    state::{MainTreasuryState, SystemState},
     utils::validation::{validate_signer, validate_writable},
     utils::account_builders::*,
 };
@@ -44,8 +50,8 @@ use crate::{
 /// 10. **User Input Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Main treasury account for withdrawal
-/// 13. **Swap Treasury PDA** (writable) - Not used in main treasury withdrawal (placeholder)
-/// 14. **HFT Treasury PDA** (writable) - Not used in main treasury withdrawal (placeholder)
+/// 13. **Unused** (placeholder) - Phase 3: No specialized treasuries
+/// 14. **Unused** (placeholder) - Phase 3: No specialized treasuries
 /// 15. **Destination Account** (writable) - Account receiving the withdrawn SOL (function-specific)
 /// 16. **System State Account** (readable) - For authority validation (function-specific)
 /// 
@@ -80,8 +86,7 @@ pub fn process_withdraw_treasury_fees(
     let _clock_sysvar = &accounts[3];                  // Index 3: Clock Sysvar (unused)
     // Indices 4-11: Pool/token accounts (unused placeholders)
     let main_treasury_account = &accounts[12];         // Index 12: Main Treasury PDA
-    let _swap_treasury_account = &accounts[13];        // Index 13: Swap Treasury PDA (unused)
-    let _hft_treasury_account = &accounts[14];         // Index 14: HFT Treasury PDA (unused)
+    // Indices 13-14: Phase 3: No specialized treasuries (unused placeholders)
     
     // ✅ FUNCTION-SPECIFIC ACCOUNTS: Treasury-specific accounts at standardized positions 15+
     let destination_account = &accounts[15];           // Index 15: Destination Account
@@ -172,203 +177,11 @@ pub fn process_withdraw_treasury_fees(
     Ok(())
 }
 
-/// Processes treasury consolidation with standardized account ordering.
+/// **PHASE 3: REAL-TIME TREASURY INFORMATION**
 /// 
-/// **🔒 PHASE 2 SECURITY**: This function now REQUIRES the system to be paused before
-/// consolidation can proceed. This prevents race conditions by ensuring all user
-/// operations (swaps, pool creation, liquidity) are blocked during consolidation.
-/// 
-/// This function consolidates specialized treasuries into the main treasury.
-/// It empties the specialized swap and HFT treasuries, transferring their
-/// balances and statistics to the main treasury.
-/// 
-/// # Security Requirements
-/// - **System MUST be paused** - consolidation will fail if system is not paused
-/// - **Authority validation** - only contract creator can consolidate (via system state)
-/// - **Race condition prevention** - paused system blocks all fee-generating operations
-/// 
-/// # Standardized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - Contract creator authorizing consolidation
-/// 1. **System Program** (readable) - Not used in consolidation (placeholder)
-/// 2. **Rent Sysvar** (readable) - Not used in consolidation (placeholder)
-/// 3. **Clock Sysvar** (readable) - For timestamp operations
-/// 4. **Pool State PDA** (writable) - Not used in treasury ops (placeholder)
-/// 5. **Token A Mint** (readable) - Not used in treasury ops (placeholder)
-/// 6. **Token B Mint** (readable) - Not used in treasury ops (placeholder)
-/// 7. **Token A Vault PDA** (writable) - Not used in treasury ops (placeholder)
-/// 8. **Token B Vault PDA** (writable) - Not used in treasury ops (placeholder)
-/// 9. **SPL Token Program** (readable) - Not used in treasury ops (placeholder)
-/// 10. **User Input Token Account** (writable) - Not used in treasury ops (placeholder)
-/// 11. **User Output Token Account** (writable) - Not used in treasury ops (placeholder)
-/// 12. **Main Treasury PDA** (writable) - Main treasury account for consolidation
-/// 13. **Swap Treasury PDA** (writable) - Swap treasury to consolidate from
-/// 14. **HFT Treasury PDA** (writable) - HFT treasury to consolidate from
-/// 15. **System State PDA** (readable) - For pause validation and authority control (function-specific)
-/// 
-/// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `accounts` - Array of accounts in standardized order (16 accounts minimum)
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-pub fn process_consolidate_treasuries(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-) -> ProgramResult {
-    msg!("🔄 Processing treasury consolidation with Phase 2 security");
-    
-    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
-    validate_standard_accounts(accounts)?;
-    // Note: Most pool/token accounts are placeholders for treasury operations
-    validate_treasury_accounts(accounts)?;
-    
-    // Validate we have enough accounts for treasury consolidation (now requires system state)
-    if accounts.len() < 16 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
-    let authority_account = &accounts[0];              // Index 0: Authority/User Signer
-    // Indices 1-2: System accounts (unused placeholders for consolidation)
-    let clock_sysvar = &accounts[3];                   // Index 3: Clock Sysvar
-    // Indices 4-11: Pool/token accounts (unused placeholders)
-    let main_treasury_account = &accounts[12];         // Index 12: Main Treasury PDA
-    let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
-    let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
-    
-    // ✅ FUNCTION-SPECIFIC ACCOUNTS: Phase 2 security accounts at standardized positions 15+
-    let system_state_account = &accounts[15];          // Index 15: System State PDA
-    
-    // ✅ PHASE 2 SECURITY VALIDATION: System pause and authority requirements
-    validate_signer(authority_account, "Contract creator")?;
-    
-    // 1. Load and validate system state
-    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
-    
-    // 2. Validate contract creator authority
-    if !system_state.validate_authority(authority_account.key) {
-        msg!("🚨 Unauthorized consolidation attempt");
-        msg!("Provided authority: {}", authority_account.key);
-        msg!("Expected authority: {}", system_state.authority);
-        return Err(PoolError::UnauthorizedAccess.into());
-    }
-    
-    // 3. CRITICAL: Require system to be paused before consolidation
-    if !system_state.is_paused {
-        msg!("🚨 CONSOLIDATION BLOCKED: System must be paused before consolidation");
-        msg!("Current state: is_paused = false");
-        msg!("Required: System must be paused to prevent race conditions");
-        msg!("💡 Solution: Use process_pause_system() first, then consolidate");
-        return Err(PoolError::SystemNotPaused.into());
-    }
-    
-    msg!("✅ Phase 2 Security Validation Passed:");
-    msg!("   • System is paused (race condition prevention active)");
-    msg!("   • Authority validated: {}", authority_account.key);
-    msg!("   • Pause reason: {}", system_state.pause_reason);
-    msg!("   • All user operations blocked during consolidation");
-    
-    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    validate_writable(main_treasury_account, "Main treasury")?;
-    validate_writable(swap_treasury_account, "Swap treasury")?;
-    validate_writable(hft_treasury_account, "HFT treasury")?;
-    
-    // Verify PDA addresses
-    let (expected_main_treasury, _) = Pubkey::find_program_address(
-        &[MAIN_TREASURY_SEED_PREFIX], program_id);
-    let (expected_swap_treasury, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX], program_id);
-    let (expected_hft_treasury, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX], program_id);
-    
-    if *main_treasury_account.key != expected_main_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if *swap_treasury_account.key != expected_swap_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if *hft_treasury_account.key != expected_hft_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Load treasury states
-    let mut main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
-    let mut swap_treasury = SwapTreasuryState::try_from_slice(&swap_treasury_account.data.borrow())?;
-    let mut hft_treasury = HftTreasuryState::try_from_slice(&hft_treasury_account.data.borrow())?;
-    
-    // Get current timestamp
-    let clock = Clock::from_account_info(clock_sysvar)?;
-    let current_timestamp = clock.unix_timestamp;
-    
-    // Calculate total SOL to transfer
-    let swap_balance = swap_treasury_account.lamports();
-    let hft_balance = hft_treasury_account.lamports();
-    let total_to_transfer = swap_balance + hft_balance;
-    
-    msg!("💰 Consolidation Details:");
-    msg!("   Swap treasury balance: {} lamports ({} SOL)", 
-         swap_balance, swap_balance as f64 / 1_000_000_000.0);
-    msg!("   HFT treasury balance: {} lamports ({} SOL)", 
-         hft_balance, hft_balance as f64 / 1_000_000_000.0);
-    msg!("   Total to consolidate: {} lamports ({} SOL)", 
-         total_to_transfer, total_to_transfer as f64 / 1_000_000_000.0);
-    
-    if total_to_transfer > 0 {
-        // Transfer SOL from specialized treasuries to main treasury
-        **swap_treasury_account.try_borrow_mut_lamports()? = 0;
-        **hft_treasury_account.try_borrow_mut_lamports()? = 0;
-        **main_treasury_account.try_borrow_mut_lamports()? += total_to_transfer;
-        
-        // Update main treasury statistics
-        main_treasury.total_balance = main_treasury_account.lamports();
-        main_treasury.regular_swap_count += swap_treasury.swap_count;
-        main_treasury.hft_swap_count += hft_treasury.hft_swap_count;
-        main_treasury.total_regular_swap_fees += swap_treasury.total_collected;
-        main_treasury.total_hft_swap_fees += hft_treasury.total_collected;
-        main_treasury.last_consolidation_timestamp = current_timestamp;
-        
-        msg!("✅ Consolidated {} lamports from specialized treasuries", total_to_transfer);
-        
-        // Reset specialized treasury statistics
-        swap_treasury.swap_count = 0;
-        swap_treasury.total_collected = 0;
-        swap_treasury.last_consolidation = current_timestamp;
-        
-        hft_treasury.hft_swap_count = 0;
-        hft_treasury.total_collected = 0;
-        hft_treasury.last_consolidation = current_timestamp;
-    } else {
-        msg!("⚠️ No funds to consolidate");
-    }
-    
-    // Serialize updated treasury states
-    let main_serialized = main_treasury.try_to_vec()?;
-    main_treasury_account.data.borrow_mut()[..main_serialized.len()].copy_from_slice(&main_serialized);
-    
-    let swap_serialized = swap_treasury.try_to_vec()?;
-    swap_treasury_account.data.borrow_mut()[..swap_serialized.len()].copy_from_slice(&swap_serialized);
-    
-    let hft_serialized = hft_treasury.try_to_vec()?;
-    hft_treasury_account.data.borrow_mut()[..hft_serialized.len()].copy_from_slice(&hft_serialized);
-    
-    msg!("✅ Treasury consolidation completed successfully");
-    msg!("   Main treasury balance: {} lamports", main_treasury.total_balance);
-    
-    Ok(())
-}
-
-/// Processes treasury information queries with standardized account ordering.
-/// 
-/// **⚠️ PHASE 2 CHANGE**: This function NO LONGER automatically consolidates treasuries.
-/// Due to Phase 2 security requirements, consolidation now requires system pause and
-/// authority validation. This function now returns current treasury information without
-/// automatic consolidation.
-/// 
-/// For consolidated data, use the dedicated consolidation workflow:
-/// 1. Pause system via `process_pause_system()`
-/// 2. Consolidate via `process_consolidate_treasuries()`
-/// 3. Query info via this function
-/// 4. Unpause system via `process_unpause_system()`
+/// Processes treasury information queries with real-time data from the centralized treasury.
+/// No consolidation needed since all fees are collected directly into the main treasury
+/// with immediate counter updates.
 /// 
 /// # Standardized Account Order:
 /// 0. **Authority/User Signer** (signer, writable) - Not required for info query (placeholder)
@@ -384,8 +197,8 @@ pub fn process_consolidate_treasuries(
 /// 10. **User Input Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in treasury ops (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Main treasury account for info query
-/// 13. **Swap Treasury PDA** (writable) - Not used in info query (placeholder)
-/// 14. **HFT Treasury PDA** (writable) - Not used in info query (placeholder)
+/// 13. **Unused** (placeholder) - Phase 3: No specialized treasuries
+/// 14. **Unused** (placeholder) - Phase 3: No specialized treasuries
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
@@ -397,7 +210,7 @@ pub fn process_get_treasury_info(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("📊 Getting treasury information (Phase 2: no automatic consolidation)");
+    msg!("📊 Getting real-time treasury information (Phase 3: centralized architecture)");
     
     // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
     validate_standard_accounts(accounts)?;
@@ -409,14 +222,11 @@ pub fn process_get_treasury_info(
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // Load main treasury data (no automatic consolidation due to Phase 2 security)
+    // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury_account = &accounts[12]; // Index 12: Main Treasury PDA
     let main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
     
-    msg!("⚠️ NOTE: This shows current main treasury data without automatic consolidation");
-    msg!("For consolidated data, use: pause → consolidate → query → unpause workflow");
-    
-    msg!("🏦 MAIN TREASURY INFORMATION:");
+    msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
     msg!("   Authority: {}", main_treasury.authority);
     msg!("   Current Balance: {} lamports ({} SOL)", 
          main_treasury.total_balance, 
@@ -425,7 +235,7 @@ pub fn process_get_treasury_info(
          main_treasury.total_withdrawn,
          main_treasury.total_withdrawn as f64 / 1_000_000_000.0);
     msg!("");
-    msg!("📈 FEE STATISTICS:");
+    msg!("📈 REAL-TIME FEE STATISTICS:");
     msg!("   Pool Creations: {} (Total fees: {} lamports)", 
          main_treasury.pool_creation_count, main_treasury.total_pool_creation_fees);
     msg!("   Liquidity Operations: {} (Total fees: {} lamports)", 
@@ -435,102 +245,41 @@ pub fn process_get_treasury_info(
     msg!("   HFT Swaps: {} (Total fees: {} lamports)", 
          main_treasury.hft_swap_count, main_treasury.total_hft_swap_fees);
     msg!("");
+    msg!("📊 ANALYTICS:");
+    msg!("   Total Operations: {}", main_treasury.total_operations_processed());
+    msg!("   Total Fees Collected: {} lamports", main_treasury.total_fees_collected());
+    msg!("   Average Fee per Operation: {:.2} lamports", main_treasury.average_fee_per_operation());
+    msg!("");
     msg!("⏰ TIMING INFORMATION:");
-    msg!("   Last Consolidation: {}", main_treasury.last_consolidation_timestamp);
+    msg!("   Last Update: {}", main_treasury.last_update_timestamp);
+    msg!("");
+    msg!("✅ PHASE 3 BENEFITS:");
+    msg!("   • Real-time data (no consolidation needed)");
+    msg!("   • Single source of truth");
+    msg!("   • No race conditions");
+    msg!("   • Simplified architecture");
     
     Ok(())
 }
 
-/// Processes specialized treasury balance queries with standardized account ordering.
-/// 
-/// This function returns current specialized treasury balances without consolidation.
-/// It provides a pre-consolidation view of the specialized treasury accounts,
-/// useful for monitoring fee flow.
-/// 
-/// # Standardized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - Not required for balance query (placeholder)
-/// 1. **System Program** (readable) - Not used in balance query (placeholder)
-/// 2. **Rent Sysvar** (readable) - Not used in balance query (placeholder)
-/// 3. **Clock Sysvar** (readable) - Not used in balance query (placeholder)
-/// 4. **Pool State PDA** (writable) - Not used in treasury ops (placeholder)
-/// 5. **Token A Mint** (readable) - Not used in treasury ops (placeholder)
-/// 6. **Token B Mint** (readable) - Not used in treasury ops (placeholder)
-/// 7. **Token A Vault PDA** (writable) - Not used in treasury ops (placeholder)
-/// 8. **Token B Vault PDA** (writable) - Not used in treasury ops (placeholder)
-/// 9. **SPL Token Program** (readable) - Not used in treasury ops (placeholder)
-/// 10. **User Input Token Account** (writable) - Not used in treasury ops (placeholder)
-/// 11. **User Output Token Account** (writable) - Not used in treasury ops (placeholder)
-/// 12. **Main Treasury PDA** (writable) - Not used in specialized balance query (placeholder)
-/// 13. **Swap Treasury PDA** (writable) - Swap treasury for balance query
-/// 14. **HFT Treasury PDA** (writable) - HFT treasury for balance query
-/// 
-/// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `accounts` - Array of accounts in standardized order (15 accounts minimum)
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-pub fn process_get_specialized_treasury_balances(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-) -> ProgramResult {
-    msg!("📊 Getting specialized treasury balances (pre-consolidation)");
-    
-    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
-    validate_standard_accounts(accounts)?;
-    // Note: Most pool/token accounts are placeholders for treasury operations
-    validate_treasury_accounts(accounts)?;
-    
-    // Validate we have enough accounts for treasury balance query
-    if accounts.len() < 15 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
-    // Indices 0-12: System/pool/main treasury accounts (unused placeholders)
-    let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
-    let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
-    
-    // Verify PDA addresses
-    let (expected_swap_treasury, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX], program_id);
-    let (expected_hft_treasury, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX], program_id);
-    
-    if *swap_treasury_account.key != expected_swap_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    if *hft_treasury_account.key != expected_hft_treasury {
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Load treasury states
-    let swap_treasury = SwapTreasuryState::try_from_slice(&swap_treasury_account.data.borrow())?;
-    let hft_treasury = HftTreasuryState::try_from_slice(&hft_treasury_account.data.borrow())?;
-    
-    // Get current balances
-    let swap_balance = swap_treasury_account.lamports();
-    let hft_balance = hft_treasury_account.lamports();
-    
-    msg!("💰 SPECIALIZED TREASURY BALANCES:");
-    msg!("");
-    msg!("🔄 SWAP TREASURY:");
-    msg!("   Current Balance: {} lamports ({} SOL)", 
-         swap_balance, swap_balance as f64 / 1_000_000_000.0);
-    msg!("   Regular Swaps Processed: {}", swap_treasury.swap_count);
-    msg!("   Total Collected: {} lamports", swap_treasury.total_collected);
-    msg!("   Last Consolidation: {}", swap_treasury.last_consolidation);
-    msg!("");
-    msg!("⚡ HFT TREASURY:");
-    msg!("   Current Balance: {} lamports ({} SOL)", 
-         hft_balance, hft_balance as f64 / 1_000_000_000.0);
-    msg!("   HFT Swaps Processed: {}", hft_treasury.hft_swap_count);
-    msg!("   Total Collected: {} lamports", hft_treasury.total_collected);
-    msg!("   Last Consolidation: {}", hft_treasury.last_consolidation);
-    msg!("");
-    msg!("📊 TOTAL UNCONSOLIDATED: {} lamports ({} SOL)", 
-         swap_balance + hft_balance, 
-         (swap_balance + hft_balance) as f64 / 1_000_000_000.0);
-    
-    Ok(())
-} 
+// ============================================================================
+// PHASE 3: REMOVED FUNCTIONS
+// ============================================================================
+// 
+// The following functions have been removed in Phase 3:
+// 
+// - process_consolidate_treasuries(): No longer needed, fees go directly to main treasury
+// - process_get_specialized_treasury_balances(): No specialized treasuries exist
+// 
+// Benefits of removal:
+// - Eliminates consolidation race conditions completely
+// - Reduces code complexity by ~200 lines
+// - Improves performance (no consolidation overhead)
+// - Provides real-time data without delays
+// - Single source of truth for all treasury operations
+// 
+// Migration impact:
+// - External apps no longer need to call consolidation
+// - Treasury info is always up-to-date and real-time
+// - Specialized treasury accounts can be closed and SOL reclaimed
+// ============================================================================ 

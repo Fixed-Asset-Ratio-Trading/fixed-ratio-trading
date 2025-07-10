@@ -151,18 +151,28 @@ pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 /// PDA seed for system state account
 pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
 
-/// PDA seed for main treasury account
+/// **PHASE 3: CENTRALIZED TREASURY**
+/// PDA seed for the single main treasury account that collects ALL fees
 pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
-
-/// PDA seed prefix for specialized treasury that collects regular swap fees
-pub const SWAP_TREASURY_SEED_PREFIX: &[u8] = b"swap_treasury";
-
-/// PDA seed prefix for specialized treasury that collects HFT swap fees
-pub const HFT_TREASURY_SEED_PREFIX: &[u8] = b"hft_treasury";
 
 /// Legacy treasury seed prefix (kept for backward compatibility)
 /// This points to the main treasury for any existing references
 pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
+
+// ============================================================================
+// PHASE 3: REMOVED SPECIALIZED TREASURY CONSTANTS
+// ============================================================================
+// 
+// The following constants have been removed in Phase 3:
+// - SWAP_TREASURY_SEED_PREFIX: No longer needed, fees go to main treasury
+// - HFT_TREASURY_SEED_PREFIX: No longer needed, fees go to main treasury
+// 
+// Benefits:
+// - Simplified architecture with single treasury
+// - Eliminates consolidation race conditions
+// - Reduces complexity and potential for errors
+// - All fees collected in real-time to main treasury
+// ============================================================================
 
 /// Additional buffer for rent calculations to account for potential rent increases
 pub const MINIMUM_RENT_BUFFER: u64 = 1000; 

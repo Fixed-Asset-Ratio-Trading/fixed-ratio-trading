@@ -1,14 +1,19 @@
 //! Fee Validation Framework
 //!
-//! This module implements comprehensive fee validation and collection mechanisms
-//! to ensure all fees are properly collected before operations proceed.
+//! **PHASE 3: CENTRALIZED FEE COLLECTION**
+//!
+//! This module implements centralized fee collection where all fees go directly
+//! to the main treasury with real-time counter updates. This eliminates the need
+//! for specialized treasuries and consolidation operations.
 //!
 //! Key Features:
-//! - Pre-flight fee validation
-//! - Atomic fee collection pattern
-//! - Post-transfer validation
+//! - All fees collected directly into main treasury
+//! - Real-time counter and total updates
+//! - Simplified architecture with single treasury
+//! - Atomic fee collection with state updates
 //! - Proper error handling with rollback capabilities
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -17,11 +22,13 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
+    sysvar::{clock::Clock, Sysvar},
 };
 
 use crate::{
     constants::*,
     error::PoolError,
+    state::MainTreasuryState,
 };
 
 /// Fee collection context for tracking and validation
@@ -121,33 +128,36 @@ pub fn validate_treasury_account(
     Ok(())
 }
 
-/// Atomic fee collection with pre and post validation
+/// **PHASE 3: CENTRALIZED FEE COLLECTION WITH REAL-TIME STATE UPDATES**
 ///
-/// This function implements the "fees first" pattern by:
+/// This function implements centralized fee collection by:
 /// 1. Pre-flight validation of fee payment capability
 /// 2. Treasury account validation
-/// 3. Atomic fee transfer
-/// 4. Post-transfer validation
+/// 3. Atomic fee transfer to main treasury
+/// 4. Real-time treasury state update
+/// 5. Post-transfer validation
 ///
 /// # Arguments
 /// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The treasury account receiving the fee
+/// * `treasury_account` - The main treasury account receiving the fee
 /// * `system_program` - The system program account
+/// * `clock_sysvar` - Clock sysvar for timestamp
 /// * `fee_amount` - The fee amount in lamports
-/// * `fee_type` - Description of the fee type
+/// * `fee_type` - Type of fee for state tracking
 /// * `expected_treasury_pda` - Expected treasury PDA for validation
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error with detailed context
-pub fn collect_fee_atomic<'a>(
+pub fn collect_fee_with_real_time_tracking<'a>(
     payer_account: &AccountInfo<'a>,
     treasury_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
+    clock_sysvar: &AccountInfo<'a>,
     fee_amount: u64,
     fee_type: &str,
     expected_treasury_pda: &Pubkey,
 ) -> ProgramResult {
-    msg!("💰 Starting atomic fee collection: {}", fee_type);
+    msg!("💰 Starting centralized fee collection: {}", fee_type);
     
     // 1. Pre-flight validation
     let validation_result = validate_fee_payment(payer_account, fee_amount, fee_type);
@@ -160,13 +170,17 @@ pub fn collect_fee_atomic<'a>(
     }
     
     // 2. Treasury account validation
-    validate_treasury_account(treasury_account, expected_treasury_pda, fee_type)?;
+    validate_treasury_account(treasury_account, expected_treasury_pda, "Main Treasury")?;
     
-    // 3. Record pre-transfer balances
+    // 3. Get current timestamp
+    let clock = Clock::from_account_info(clock_sysvar)?;
+    let current_timestamp = clock.unix_timestamp;
+    
+    // 4. Record pre-transfer balances
     let payer_balance_before = payer_account.lamports();
     let treasury_balance_before = treasury_account.lamports();
     
-    // 4. Atomic fee transfer
+    // 5. Atomic fee transfer
     let transfer_instruction = system_instruction::transfer(
         payer_account.key,
         treasury_account.key,
@@ -182,7 +196,7 @@ pub fn collect_fee_atomic<'a>(
         ],
     )?;
     
-    // 5. Post-transfer validation
+    // 6. Post-transfer validation
     let payer_balance_after = payer_account.lamports();
     let treasury_balance_after = treasury_account.lamports();
     
@@ -208,29 +222,52 @@ pub fn collect_fee_atomic<'a>(
         }.into());
     }
     
-    msg!("✅ Atomic fee collection completed successfully");
+    // 7. **PHASE 3: REAL-TIME STATE UPDATE**
+    let mut treasury_state = MainTreasuryState::try_from_slice(&treasury_account.data.borrow())?;
+    
+    // Update state based on fee type
+    match fee_type {
+        "Pool Creation" => {
+            treasury_state.add_pool_creation_fee(fee_amount, current_timestamp);
+        }
+        "Liquidity Operation" => {
+            treasury_state.add_liquidity_fee(fee_amount, current_timestamp);
+        }
+        "Regular Swap" => {
+            treasury_state.add_regular_swap_fee(fee_amount, current_timestamp);
+        }
+        "HFT Swap" => {
+            treasury_state.add_hft_swap_fee(fee_amount, current_timestamp);
+        }
+        _ => {
+            msg!("⚠️ Unknown fee type: {}", fee_type);
+        }
+    }
+    
+    // Sync balance with actual account balance
+    treasury_state.sync_balance_with_account(treasury_balance_after);
+    
+    // Save updated state
+    let serialized_data = treasury_state.try_to_vec()?;
+    treasury_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    
+    msg!("✅ Centralized fee collection completed successfully");
     msg!("   Fee type: {}", fee_type);
     msg!("   Amount: {} lamports", fee_amount);
     msg!("   Payer: {}", payer_account.key);
     msg!("   Treasury: {}", treasury_account.key);
+    msg!("   Real-time counter updated");
     
     Ok(())
 }
 
-/// Validates pool creation fee payment
-///
-/// # Arguments
-/// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The main treasury account
-/// * `system_program` - The system program account
-/// * `program_id` - The program ID for PDA derivation
-///
-/// # Returns
-/// * `ProgramResult` - Success or error
+/// **PHASE 3: POOL CREATION FEE COLLECTION**
+/// Collects pool creation fee directly to main treasury with real-time tracking
 pub fn collect_pool_creation_fee<'a>(
     payer_account: &AccountInfo<'a>,
     treasury_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
+    clock_sysvar: &AccountInfo<'a>,
     program_id: &Pubkey,
 ) -> ProgramResult {
     let (expected_treasury_pda, _) = Pubkey::find_program_address(
@@ -238,30 +275,24 @@ pub fn collect_pool_creation_fee<'a>(
         program_id,
     );
     
-    collect_fee_atomic(
+    collect_fee_with_real_time_tracking(
         payer_account,
         treasury_account,
         system_program,
+        clock_sysvar,
         REGISTRATION_FEE,
         "Pool Creation",
         &expected_treasury_pda,
     )
 }
 
-/// Validates liquidity operation fee payment
-///
-/// # Arguments
-/// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The main treasury account
-/// * `system_program` - The system program account
-/// * `program_id` - The program ID for PDA derivation
-///
-/// # Returns
-/// * `ProgramResult` - Success or error
+/// **PHASE 3: LIQUIDITY OPERATION FEE COLLECTION**
+/// Collects liquidity operation fee directly to main treasury with real-time tracking
 pub fn collect_liquidity_fee<'a>(
     payer_account: &AccountInfo<'a>,
     treasury_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
+    clock_sysvar: &AccountInfo<'a>,
     program_id: &Pubkey,
 ) -> ProgramResult {
     let (expected_treasury_pda, _) = Pubkey::find_program_address(
@@ -269,19 +300,66 @@ pub fn collect_liquidity_fee<'a>(
         program_id,
     );
     
-    collect_fee_atomic(
+    collect_fee_with_real_time_tracking(
         payer_account,
         treasury_account,
         system_program,
+        clock_sysvar,
         DEPOSIT_WITHDRAWAL_FEE,
         "Liquidity Operation",
         &expected_treasury_pda,
     )
 }
 
-// Regular swap fee collection removed - use collect_regular_swap_fee_ultra_efficient() instead
+/// **PHASE 3: REGULAR SWAP FEE COLLECTION**
+/// Collects regular swap fee directly to main treasury with real-time tracking
+pub fn collect_regular_swap_fee<'a>(
+    payer_account: &AccountInfo<'a>,
+    treasury_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    clock_sysvar: &AccountInfo<'a>,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    let (expected_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
+    collect_fee_with_real_time_tracking(
+        payer_account,
+        treasury_account,
+        system_program,
+        clock_sysvar,
+        SWAP_FEE,
+        "Regular Swap",
+        &expected_treasury_pda,
+    )
+}
 
-// HFT swap fee collection removed - use collect_hft_swap_fee_ultra_efficient() instead
+/// **PHASE 3: HFT SWAP FEE COLLECTION**
+/// Collects HFT swap fee directly to main treasury with real-time tracking
+pub fn collect_hft_swap_fee<'a>(
+    payer_account: &AccountInfo<'a>,
+    treasury_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    clock_sysvar: &AccountInfo<'a>,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    let (expected_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    
+    collect_fee_with_real_time_tracking(
+        payer_account,
+        treasury_account,
+        system_program,
+        clock_sysvar,
+        HFT_SWAP_FEE,
+        "HFT Swap",
+        &expected_treasury_pda,
+    )
+}
 
 /// Emergency rollback mechanism for failed operations
 ///
@@ -315,29 +393,32 @@ pub fn rollback_fee_collection(
 }
 
 //=============================================================================
-// ULTRA-EFFICIENT FEE COLLECTION FOR SWAP OPERATIONS
+// ULTRA-EFFICIENT FEE COLLECTION FOR SWAP OPERATIONS (PHASE 3 COMPATIBLE)
 //=============================================================================
 // These functions prioritize maximum CU efficiency over detailed validation
-// and error messages. They should only be used for swap operations where
-// performance is critical and generic errors are acceptable.
+// and error messages. They collect fees directly to main treasury but skip
+// real-time state updates for maximum performance.
 
 /// Ultra-efficient fee collection for swap operations
 /// 
+/// **PHASE 3: MAIN TREASURY ONLY**
 /// This function minimizes CU usage by:
+/// - Collecting fees directly to main treasury (no specialized treasuries)
 /// - Skipping pre-flight validation
 /// - Skipping post-transfer validation  
 /// - Minimal PDA validation
 /// - No logging
+/// - No real-time state updates (for performance)
 /// - Generic error handling
 /// 
-/// Estimated CU usage: ~50-100 CUs (vs 400-600 for atomic version)
+/// Estimated CU usage: ~50-100 CUs (vs 400-600 for full tracking version)
 /// 
 /// # Arguments
 /// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The treasury account receiving the fee
+/// * `treasury_account` - The main treasury account receiving the fee
 /// * `system_program` - The system program account
 /// * `fee_amount` - The fee amount in lamports
-/// * `expected_treasury_pda` - Expected treasury PDA for validation
+/// * `expected_treasury_pda` - Expected main treasury PDA for validation
 ///
 /// # Returns
 /// * `ProgramResult` - Success or generic error
@@ -368,14 +449,15 @@ pub fn collect_fee_ultra_efficient<'a>(
     )
 }
 
-/// Ultra-efficient regular swap fee collection
+/// **PHASE 3: ULTRA-EFFICIENT REGULAR SWAP FEE COLLECTION**
 /// 
 /// Optimized for maximum CU efficiency with minimal validation.
+/// Collects fees directly to main treasury (no specialized treasuries).
 /// Uses generic errors and no logging for best performance.
 /// 
 /// # Arguments
 /// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The swap treasury account
+/// * `treasury_account` - The main treasury account (not specialized treasury)
 /// * `system_program` - The system program account
 /// * `program_id` - The program ID for PDA derivation
 ///
@@ -388,7 +470,7 @@ pub fn collect_regular_swap_fee_ultra_efficient<'a>(
     program_id: &Pubkey,
 ) -> ProgramResult {
     let (expected_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
+        &[MAIN_TREASURY_SEED_PREFIX], // Phase 3: Use main treasury instead of swap treasury
         program_id,
     );
     
@@ -401,14 +483,15 @@ pub fn collect_regular_swap_fee_ultra_efficient<'a>(
     )
 }
 
-/// Ultra-efficient HFT swap fee collection
+/// **PHASE 3: ULTRA-EFFICIENT HFT SWAP FEE COLLECTION**
 /// 
 /// Optimized for maximum CU efficiency with minimal validation.
+/// Collects fees directly to main treasury (no specialized treasuries).
 /// Uses generic errors and no logging for best performance.
 /// 
 /// # Arguments
 /// * `payer_account` - The account paying the fee
-/// * `treasury_account` - The HFT treasury account
+/// * `treasury_account` - The main treasury account (not specialized treasury)
 /// * `system_program` - The system program account
 /// * `program_id` - The program ID for PDA derivation
 ///
@@ -421,7 +504,7 @@ pub fn collect_hft_swap_fee_ultra_efficient<'a>(
     program_id: &Pubkey,
 ) -> ProgramResult {
     let (expected_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
+        &[MAIN_TREASURY_SEED_PREFIX], // Phase 3: Use main treasury instead of HFT treasury
         program_id,
     );
     

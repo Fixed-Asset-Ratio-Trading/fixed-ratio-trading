@@ -130,9 +130,7 @@ use crate::processors::{
     },
     treasury::{
         process_withdraw_treasury_fees,
-        process_consolidate_treasuries,
         process_get_treasury_info,
-        process_get_specialized_treasury_balances,
     },
 };
 
@@ -229,11 +227,7 @@ pub fn process_instruction(
             amount,
         } => process_withdraw_treasury_fees(program_id, amount, accounts),
 
-        PoolInstruction::ConsolidateTreasuries => process_consolidate_treasuries(program_id, accounts),
-
         PoolInstruction::GetTreasuryInfo {} => process_get_treasury_info(program_id, accounts),
-
-        PoolInstruction::GetSpecializedTreasuryBalances {} => process_get_specialized_treasury_balances(program_id, accounts),
     }
 }
 

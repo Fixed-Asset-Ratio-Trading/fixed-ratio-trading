@@ -19,7 +19,7 @@ use solana_program::{
 use crate::{
     constants::*,
     error::PoolError,
-    state::{SystemState, MainTreasuryState, SwapTreasuryState, HftTreasuryState},
+    state::{SystemState, MainTreasuryState},
     utils::{serialization::serialize_to_account, validation::{validate_signer, validate_writable}},
     utils::account_builders::*,
 };
@@ -43,8 +43,8 @@ use crate::{
 /// 10. **User Input Token Account** (writable) - Not used in initialization (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in initialization (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Main treasury account to create
-/// 13. **Swap Treasury PDA** (writable) - Swap treasury account to create
-/// 14. **HFT Treasury PDA** (writable) - HFT treasury account to create
+/// 13. **Unused** (placeholder) - Phase 3: No specialized treasuries
+/// 14. **Unused** (placeholder) - Phase 3: No specialized treasuries
 /// 15. **System State PDA** (writable) - System state account to create (function-specific)
 /// 
 /// # Arguments
@@ -64,7 +64,7 @@ pub fn process_initialize_program(
     // Note: Most pool/token accounts are placeholders for initialization
     validate_treasury_accounts(accounts)?;
     
-    // Validate we have enough accounts for initialization
+    // Validate we have enough accounts for initialization (Phase 3: reduced account requirement)
     if accounts.len() < 16 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
@@ -76,8 +76,7 @@ pub fn process_initialize_program(
     // Index 3: Clock Sysvar (unused placeholder)
     // Indices 4-11: Pool/token accounts (unused placeholders)
     let main_treasury_account = &accounts[12];         // Index 12: Main Treasury PDA
-    let swap_treasury_account = &accounts[13];         // Index 13: Swap Treasury PDA
-    let hft_treasury_account = &accounts[14];          // Index 14: HFT Treasury PDA
+    // Indices 13-14: Phase 3: No specialized treasuries (unused placeholders)
     
     // ✅ FUNCTION-SPECIFIC ACCOUNTS: Initialization-specific accounts at standardized positions 15+
     let system_state_account = &accounts[15];          // Index 15: System State PDA
@@ -164,77 +163,19 @@ pub fn process_initialize_program(
     let main_treasury_data = MainTreasuryState::new(*system_authority_account.key);
     serialize_to_account(&main_treasury_data, main_treasury_account)?;
 
-    // 3. CREATE SWAP TREASURY PDA
-    let swap_treasury_seeds = &[SWAP_TREASURY_SEED_PREFIX];
-    let (expected_swap_treasury_pda, swap_treasury_bump) = Pubkey::find_program_address(swap_treasury_seeds, program_id);
-    
-    if *swap_treasury_account.key != expected_swap_treasury_pda {
-        msg!("❌ Invalid SwapTreasury PDA");
-        return Err(ProgramError::InvalidArgument);
-    }
+    // ✅ PHASE 3: SPECIALIZED TREASURIES REMOVED
+    // No longer creating specialized treasuries - all fees go directly to main treasury
+    // This eliminates consolidation race conditions and simplifies the architecture
 
-    let swap_treasury_rent = rent.minimum_balance(SwapTreasuryState::get_packed_len());
-    let swap_treasury_seeds_with_bump = &[SWAP_TREASURY_SEED_PREFIX, &[swap_treasury_bump]];
-    
-    invoke_signed(
-        &system_instruction::create_account(
-            system_authority_account.key,
-            swap_treasury_account.key,
-            swap_treasury_rent,
-            SwapTreasuryState::get_packed_len() as u64,
-            program_id,
-        ),
-        &[
-            system_authority_account.clone(),
-            swap_treasury_account.clone(),
-            system_program_account.clone(),
-        ],
-        &[swap_treasury_seeds_with_bump],
-    )?;
-
-    // Initialize SwapTreasury data
-    let swap_treasury_data = SwapTreasuryState::new();
-    serialize_to_account(&swap_treasury_data, swap_treasury_account)?;
-
-    // 4. CREATE HFT TREASURY PDA
-    let hft_treasury_seeds = &[HFT_TREASURY_SEED_PREFIX];
-    let (expected_hft_treasury_pda, hft_treasury_bump) = Pubkey::find_program_address(hft_treasury_seeds, program_id);
-    
-    if *hft_treasury_account.key != expected_hft_treasury_pda {
-        msg!("❌ Invalid HftTreasury PDA");
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    let hft_treasury_rent = rent.minimum_balance(HftTreasuryState::get_packed_len());
-    let hft_treasury_seeds_with_bump = &[HFT_TREASURY_SEED_PREFIX, &[hft_treasury_bump]];
-    
-    invoke_signed(
-        &system_instruction::create_account(
-            system_authority_account.key,
-            hft_treasury_account.key,
-            hft_treasury_rent,
-            HftTreasuryState::get_packed_len() as u64,
-            program_id,
-        ),
-        &[
-            system_authority_account.clone(),
-            hft_treasury_account.clone(),
-            system_program_account.clone(),
-        ],
-        &[hft_treasury_seeds_with_bump],
-    )?;
-
-    // Initialize HftTreasury data
-    let hft_treasury_data = HftTreasuryState::new();
-    serialize_to_account(&hft_treasury_data, hft_treasury_account)?;
-
-    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY:");
+    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY (PHASE 3: CENTRALIZED ARCHITECTURE):");
     msg!("   • SystemState PDA: {}", system_state_account.key);
     msg!("   • MainTreasury PDA: {}", main_treasury_account.key);
-    msg!("   • SwapTreasury PDA: {}", swap_treasury_account.key);
-    msg!("   • HftTreasury PDA: {}", hft_treasury_account.key);
     msg!("   • System Authority: {}", system_authority_account.key);
-    msg!("🎯 Pool creation and treasury operations now available!");
+    msg!("🎯 Phase 3 Benefits:");
+    msg!("   • Single centralized treasury for all fees");
+    msg!("   • Real-time fee tracking (no consolidation needed)");
+    msg!("   • Simplified architecture with no race conditions");
+    msg!("   • Pool creation and treasury operations now available!");
 
     Ok(())
 }
@@ -265,8 +206,8 @@ pub fn process_initialize_program(
 /// 10. **User Input Token Account** (writable) - Not used in pause (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in pause (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Not used in pause (placeholder)
-/// 13. **Swap Treasury PDA** (writable) - Not used in pause (placeholder)
-/// 14. **HFT Treasury PDA** (writable) - Not used in pause (placeholder)
+/// 13. **Unused** (placeholder) - Phase 3: No specialized treasuries
+/// 14. **Unused** (placeholder) - Phase 3: No specialized treasuries
 /// 15. **System State PDA** (writable) - System state account for pause (function-specific)
 /// 
 /// # Arguments
@@ -366,8 +307,8 @@ pub fn process_pause_system(
 /// 10. **User Input Token Account** (writable) - Not used in unpause (placeholder)
 /// 11. **User Output Token Account** (writable) - Not used in unpause (placeholder)
 /// 12. **Main Treasury PDA** (writable) - Not used in unpause (placeholder)
-/// 13. **Swap Treasury PDA** (writable) - Not used in unpause (placeholder)
-/// 14. **HFT Treasury PDA** (writable) - Not used in unpause (placeholder)
+/// 13. **Unused** (placeholder) - Phase 3: No specialized treasuries
+/// 14. **Unused** (placeholder) - Phase 3: No specialized treasuries
 /// 15. **System State PDA** (writable) - System state account for unpause (function-specific)
 /// 
 /// # Arguments

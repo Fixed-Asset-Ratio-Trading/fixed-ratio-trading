@@ -102,7 +102,7 @@ pub fn process_initialize_pool(
     let payer = &accounts[0];                      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program
     let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar
-    let _clock_sysvar_account = &accounts[3];      // Index 3: Clock Sysvar
+    let clock_sysvar_account = &accounts[3];      // Index 3: Clock Sysvar
     let pool_state_pda_account = &accounts[4];     // Index 4: Pool State PDA
     let multiple_token_mint_account = &accounts[5]; // Index 5: Token A Mint (mapped from multiple)
     let base_token_mint_account = &accounts[6];    // Index 6: Token B Mint (mapped from base)
@@ -129,14 +129,16 @@ pub fn process_initialize_pool(
     // Validate ratio values
     crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
 
-    // ✅ PHASE 1: FEES FIRST PATTERN - Collect registration fee BEFORE any state changes
+    // ✅ PHASE 3: CENTRALIZED FEE COLLECTION - Collect registration fee with real-time tracking
     // This ensures the operation fails immediately if fee payment is not possible
+    // and updates treasury state in real-time
     use crate::utils::fee_validation::collect_pool_creation_fee;
     
     collect_pool_creation_fee(
         payer,
         main_treasury_account,
         system_program_account,
+        clock_sysvar_account,
         program_id,
     )?;
 
