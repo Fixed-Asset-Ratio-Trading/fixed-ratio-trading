@@ -189,8 +189,7 @@ pub fn process_instruction(
         PoolInstruction::SwapHftOptimized {
             input_token_mint: _,
             amount_in,
-            skip_rent_checks,
-        } => process_swap_hft_optimized(program_id, amount_in, skip_rent_checks, accounts),
+        } => process_swap_hft_optimized(program_id, amount_in, accounts),
 
         // Pool owner management instructions not implemented (governance-controlled architecture)
 
