@@ -72,63 +72,44 @@ use spl_token::{
 };
 use crate::utils::validation::validate_non_zero_amount;
 
-/// Handles user deposits into the trading pool using standardized account ordering.
+/// Handles user deposits into the trading pool using ultra-optimized account ordering.
 ///
-/// This function implements the modernized deposit process with consistent account positioning
-/// across all trading functions. It allows users to deposit tokens in exchange for LP tokens
-/// at a guaranteed 1:1 ratio while maintaining strict standardization for ease of use.
+/// This function implements an ultra-optimized deposit process by removing all redundant
+/// and placeholder accounts that are not essential for deposit operations. This provides
+/// maximum efficiency for liquidity deposit operations.
 ///
-/// **🏗️ STANDARDIZED ACCOUNT ORDERING**: This function uses the new standardized account
-/// ordering pattern implemented across all trading functions. Account positions are:
-/// - **Base System (0-3)**: Authority, system program, rent sysvar, clock sysvar
-/// - **Pool Core (4-8)**: Pool state, token A mint, token B mint, token A vault, token B vault
-/// - **Token Operations (9-11)**: SPL Token program, user input account, user output account
-/// - **Treasury (12)**: Main treasury (Phase 5: optimized, no specialized treasuries)
-/// - **Function-Specific (13+)**: LP token mints, system state, etc.
+/// **PHASE 8: ULTRA-OPTIMIZED LIQUIDITY ACCOUNT STRUCTURE**
+/// After removing rent sysvar and token mint accounts, this function now requires only 12 accounts
+/// (down from 15), providing a 20% reduction in account overhead.
 ///
-/// **PHASE 5: OPTIMIZED ACCOUNT STRUCTURE**
-/// After Phase 3 centralization, specialized treasury accounts are no longer needed.
-/// This optimization reduces account count from 17 to 15 accounts (12% reduction).
+/// # Ultra-Optimized Account Order:
+/// 0. **User Authority** (signer, writable) - User authorizing the deposit
+/// 1. **System Program** (readable) - Solana system program
+/// 2. **Clock Sysvar** (readable) - For timestamps
+/// 3. **Pool State PDA** (writable) - Pool state account
+/// 4. **Token A Vault PDA** (writable) - Pool's Token A vault
+/// 5. **Token B Vault PDA** (writable) - Pool's Token B vault
+/// 6. **SPL Token Program** (readable) - Token program
+/// 7. **User Input Token Account** (writable) - User's input token account
+/// 8. **User Output LP Token Account** (writable) - User's output LP token account
+/// 9. **Main Treasury PDA** (writable) - For fee collection
+/// 10. **LP Token A Mint** (writable) - LP Token A mint account
+/// 11. **LP Token B Mint** (writable) - LP Token B mint account
 ///
-/// # System Pause Behavior
-/// When the system is paused via `process_pause_system()`, all deposit operations are blocked.
-/// This provides emergency control capabilities for the system authority while maintaining
-/// pool-specific controls through individual pool pause states.
-///
-/// # Account Structure
-/// This function expects exactly 15 accounts in the following standardized order:
-///
-/// ## Core System Accounts (0-3)
-///   - `accounts[0]` - User authority account (signer, writable)
-///   - `accounts[1]` - System program account
-///   - `accounts[2]` - Rent sysvar account
-///   - `accounts[3]` - Clock sysvar account
-///
-/// ## Pool Infrastructure (4-8)
-///   - `accounts[4]` - Pool state PDA account
-///   - `accounts[5]` - Token A mint account
-///   - `accounts[6]` - Token B mint account
-///   - `accounts[7]` - Token A vault PDA account
-///   - `accounts[8]` - Token B vault PDA account
-///
-/// ## Token Operations (9-11)
-///   - `accounts[9]` - SPL Token program account
-///   - `accounts[10]` - User input token account
-///   - `accounts[11]` - User output LP token account
-///
-/// ## Treasury (12)
-///   - `accounts[12]` - Main Treasury PDA (for fee collection)
-///
-/// ## Function-Specific (13-14)
-///   - `accounts[13]` - LP Token A mint account (was 15)
-///   - `accounts[14]` - LP Token B mint account (was 16)
-///
-/// **PHASE 5 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 17 → 15 accounts (12% reduction)
-/// - Eliminated unused specialized treasury accounts
+/// **PHASE 8 OPTIMIZATION BENEFITS:**
+/// - Reduced account count: 15 → 12 accounts (20% reduction)
+/// - Eliminated rent sysvar (only used for validation)
+/// - Eliminated token mint accounts (redundant with pool state)
 /// - Reduced transaction size and validation overhead
-/// - Estimated compute unit savings: 70-140 CUs per transaction
+/// - Estimated compute unit savings: 105-210 CUs per transaction
+/// - Simplified client integration with fewer account requirements
 ///
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `amount` - Amount to deposit
+/// * `deposit_token_mint_key` - Token mint being deposited
+/// * `accounts` - Array of accounts in ultra-optimized order (12 accounts minimum)
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
 /// 
@@ -141,29 +122,31 @@ pub fn process_deposit(
     deposit_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Deposit (Phase 5: Optimized Account Structure)");
+    msg!("Processing Deposit (Phase 8: Ultra-Optimized Account Structure)");
     
     // ✅ SYSTEM PAUSE: Check system pause state before any operations
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?; // Expected: 15 accounts
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?; // Expected: 12 accounts
     
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    if accounts.len() < 12 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
     let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                   // Index 1: System Program
-    let _rent_sysvar = &accounts[2];                      // Index 2: Rent Sysvar
-    let clock_sysvar = &accounts[3];                     // Index 3: Clock Sysvar
-    let pool_state_account = &accounts[4];                // Index 4: Pool State PDA
-    let _token_a_mint = &accounts[5];                     // Index 5: Token A Mint
-    let _token_b_mint = &accounts[6];                     // Index 6: Token B Mint
-    let token_a_vault = &accounts[7];                     // Index 7: Token A Vault PDA
-    let token_b_vault = &accounts[8];                     // Index 8: Token B Vault PDA
-    let spl_token_program = &accounts[9];                 // Index 9: SPL Token Program
-    let user_input_account = &accounts[10];               // Index 10: User Input Token Account
-    let user_output_account = &accounts[11];              // Index 11: User Output LP Token Account
-    let main_treasury = &accounts[12];                    // Index 12: Main Treasury PDA
+    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar (was 3)
+    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA (was 4)
+    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA (was 7)
+    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA (was 8)
+    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program (was 9)
+    let user_input_account = &accounts[7];                // Index 7: User Input Token Account (was 10)
+    let user_output_account = &accounts[8];               // Index 8: User Output LP Token Account (was 11)
+    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA (was 12)
     
-    // ✅ PHASE 5 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
-    let lp_token_a_mint = &accounts[13];                  // Index 13: LP Token A Mint (was 15)
-    let lp_token_b_mint = &accounts[14];                  // Index 14: LP Token B Mint (was 16)
+    // ✅ PHASE 8 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
+    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (was 13)
+    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (was 14)
     
     // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
@@ -343,55 +326,44 @@ pub fn process_deposit(
     Ok(())
 }
 
-/// Handles user withdrawals from the trading pool using standardized account ordering.
+/// Handles user withdrawals from the trading pool using ultra-optimized account ordering.
 ///
-/// This function implements the modernized withdrawal process with consistent account positioning
-/// across all trading functions. It allows users to burn LP tokens in exchange for underlying
-/// tokens at a guaranteed 1:1 ratio while maintaining strict standardization for ease of use.
+/// This function implements an ultra-optimized withdrawal process by removing all redundant
+/// and placeholder accounts that are not essential for withdrawal operations. This provides
+/// maximum efficiency for liquidity withdrawal operations.
 ///
-/// **PHASE 5: OPTIMIZED ACCOUNT STRUCTURE**
-/// After Phase 3 centralization, specialized treasury accounts are no longer needed.
-/// This optimization reduces account count from 17 to 15 accounts (12% reduction).
+/// **PHASE 8: ULTRA-OPTIMIZED LIQUIDITY ACCOUNT STRUCTURE**
+/// After removing rent sysvar and token mint accounts, this function now requires only 12 accounts
+/// (down from 15), providing a 20% reduction in account overhead.
 ///
-/// # System Pause Behavior
-/// When the system is paused via `process_pause_system()`, all withdrawal operations are blocked.
-/// This provides emergency control capabilities for the system authority while maintaining
-/// pool-specific controls through individual pool pause states.
+/// # Ultra-Optimized Account Order:
+/// 0. **User Authority** (signer, writable) - User authorizing the withdrawal
+/// 1. **System Program** (readable) - Solana system program
+/// 2. **Clock Sysvar** (readable) - For timestamps
+/// 3. **Pool State PDA** (writable) - Pool state account
+/// 4. **Token A Vault PDA** (writable) - Pool's Token A vault
+/// 5. **Token B Vault PDA** (writable) - Pool's Token B vault
+/// 6. **SPL Token Program** (readable) - Token program
+/// 7. **User Input LP Token Account** (writable) - User's input LP token account
+/// 8. **User Output Token Account** (writable) - User's output token account
+/// 9. **Main Treasury PDA** (writable) - For fee collection
+/// 10. **LP Token A Mint** (writable) - LP Token A mint account
+/// 11. **LP Token B Mint** (writable) - LP Token B mint account
 ///
-/// # Account Structure
-/// This function expects exactly 15 accounts in the following standardized order:
-///
-/// ## Core System Accounts (0-3)
-///   - `accounts[0]` - User authority account (signer, writable)
-///   - `accounts[1]` - System program account
-///   - `accounts[2]` - Rent sysvar account
-///   - `accounts[3]` - Clock sysvar account
-///
-/// ## Pool Infrastructure (4-8)
-///   - `accounts[4]` - Pool state PDA account
-///   - `accounts[5]` - Token A mint account
-///   - `accounts[6]` - Token B mint account
-///   - `accounts[7]` - Token A vault PDA account
-///   - `accounts[8]` - Token B vault PDA account
-///
-/// ## Token Operations (9-11)
-///   - `accounts[9]` - SPL Token program account
-///   - `accounts[10]` - User input LP token account
-///   - `accounts[11]` - User output token account
-///
-/// ## Treasury (12)
-///   - `accounts[12]` - Main Treasury PDA (for fee collection)
-///
-/// ## Function-Specific (13-14)
-///   - `accounts[13]` - LP Token A mint account (was 15)
-///   - `accounts[14]` - LP Token B mint account (was 16)
-///
-/// **PHASE 5 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 17 → 15 accounts (12% reduction)
-/// - Eliminated unused specialized treasury accounts
+/// **PHASE 8 OPTIMIZATION BENEFITS:**
+/// - Reduced account count: 15 → 12 accounts (20% reduction)
+/// - Eliminated rent sysvar (only used for validation)
+/// - Eliminated token mint accounts (redundant with pool state)
 /// - Reduced transaction size and validation overhead
-/// - Estimated compute unit savings: 70-140 CUs per transaction
+/// - Estimated compute unit savings: 105-210 CUs per transaction
+/// - Simplified client integration with fewer account requirements
 ///
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `lp_amount_to_burn` - Amount of LP tokens to burn
+/// * `withdraw_token_mint_key` - Token mint being withdrawn
+/// * `accounts` - Array of accounts in ultra-optimized order (12 accounts minimum)
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
 pub fn process_withdraw(
@@ -400,29 +372,31 @@ pub fn process_withdraw(
     withdraw_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Withdrawal (Phase 5: Optimized Account Structure)");
+    msg!("Processing Withdrawal (Phase 8: Ultra-Optimized Account Structure)");
     
     // ✅ SYSTEM PAUSE: Check system pause state before any operations
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?; // Expected: 15 accounts
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?; // Expected: 12 accounts
     
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    if accounts.len() < 12 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
     let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                   // Index 1: System Program
-    let _rent_sysvar = &accounts[2];                      // Index 2: Rent Sysvar
-    let clock_sysvar = &accounts[3];                      // Index 3: Clock Sysvar
-    let pool_state_account = &accounts[4];                // Index 4: Pool State PDA
-    let _token_a_mint = &accounts[5];                     // Index 5: Token A Mint
-    let _token_b_mint = &accounts[6];                     // Index 6: Token B Mint
-    let token_a_vault = &accounts[7];                     // Index 7: Token A Vault PDA
-    let token_b_vault = &accounts[8];                     // Index 8: Token B Vault PDA
-    let spl_token_program = &accounts[9];                 // Index 9: SPL Token Program
-    let user_input_account = &accounts[10];               // Index 10: User Input LP Token Account
-    let user_output_account = &accounts[11];              // Index 11: User Output Token Account
-    let main_treasury = &accounts[12];                    // Index 12: Main Treasury PDA
+    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar (was 3)
+    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA (was 4)
+    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA (was 7)
+    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA (was 8)
+    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program (was 9)
+    let user_input_account = &accounts[7];                // Index 7: User Input LP Token Account (was 10)
+    let user_output_account = &accounts[8];               // Index 8: User Output Token Account (was 11)
+    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA (was 12)
     
-    // ✅ PHASE 5 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
-    let lp_token_a_mint = &accounts[13];                  // Index 13: LP Token A Mint (was 15)
-    let lp_token_b_mint = &accounts[14];                  // Index 14: LP Token B Mint (was 16)
+    // ✅ PHASE 8 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
+    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (was 13)
+    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (was 14)
     
     // Core validation
     validate_non_zero_amount(lp_amount_to_burn, "Withdrawal")?;

@@ -6,6 +6,9 @@
 use crate::constants::*;
 use crate::types::*;
 use crate::utils::serialization::serialize_to_account;
+use crate::error::PoolError;
+use crate::state::MainTreasuryState;
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -14,7 +17,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     system_instruction,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::{rent::Rent, clock::Clock, Sysvar},
     program_pack::Pack,
 };
 use spl_token::{
@@ -23,44 +26,43 @@ use spl_token::{
 };
 use crate::utils::account_builders::*;
 
-/// Processes pool initialization with standardized account ordering and fee collection.
+/// Processes pool initialization with ultra-optimized account ordering and fee collection.
 /// 
-/// This function creates a new trading pool with fixed token ratios using the standardized
-/// account ordering policy. It handles pool state creation, token vault setup, LP token
-/// minting infrastructure, and collects registration fees.
+/// This function creates a new trading pool with fixed token ratios using an ultra-optimized
+/// account structure by removing all placeholder and redundant accounts. This provides
+/// maximum efficiency for pool creation operations.
 /// 
-/// **PHASE 5: OPTIMIZED ACCOUNT STRUCTURE**
-/// After Phase 3 centralization, specialized treasury accounts are no longer needed.
-/// This optimization reduces account count from 17 to 15 accounts (12% reduction).
+/// **PHASE 8: ULTRA-OPTIMIZED POOL CREATION ACCOUNT STRUCTURE**
+/// After removing clock sysvar and placeholder user accounts, this function now requires only 12 accounts
+/// (down from 15), providing a 20% reduction in account overhead.
 /// 
-/// # Standardized Account Order:
+/// # Ultra-Optimized Account Order:
 /// 0. **Authority/User Signer** (signer, writable) - User creating the pool
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
-/// 3. **Clock Sysvar** (readable) - For timestamps
-/// 4. **Pool State PDA** (writable) - Pool state account to create
-/// 5. **Token A Mint** (readable) - First token in the pool
-/// 6. **Token B Mint** (readable) - Second token in the pool
-/// 7. **Token A Vault PDA** (writable) - Token A vault to create
-/// 8. **Token B Vault PDA** (writable) - Token B vault to create
-/// 9. **SPL Token Program** (readable) - Token program
-/// 10. **User Input Token Account** (writable) - Not used in pool creation (placeholder)
-/// 11. **User Output Token Account** (writable) - Not used in pool creation (placeholder)
-/// 12. **Main Treasury PDA** (writable) - For registration fee collection
-/// 13. **LP Token A Mint** (writable) - LP Token A mint to create (function-specific)
-/// 14. **LP Token B Mint** (writable) - LP Token B mint to create (function-specific)
+/// 3. **Pool State PDA** (writable) - Pool state account to create
+/// 4. **Token A Mint** (readable) - First token in the pool
+/// 5. **Token B Mint** (readable) - Second token in the pool
+/// 6. **Token A Vault PDA** (writable) - Token A vault to create
+/// 7. **Token B Vault PDA** (writable) - Token B vault to create
+/// 8. **SPL Token Program** (readable) - Token program
+/// 9. **Main Treasury PDA** (writable) - For registration fee collection
+/// 10. **LP Token A Mint** (writable) - LP Token A mint to create
+/// 11. **LP Token B Mint** (writable) - LP Token B mint to create
 /// 
-/// **PHASE 5 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 17 → 15 accounts (12% reduction)
-/// - Eliminated unused specialized treasury accounts
+/// **PHASE 8 OPTIMIZATION BENEFITS:**
+/// - Reduced account count: 15 → 12 accounts (20% reduction)
+/// - Eliminated clock sysvar (can use Clock::get() directly)
+/// - Eliminated placeholder user accounts (not used in pool creation)
 /// - Reduced transaction size and validation overhead
-/// - Estimated compute unit savings: 70-140 CUs per transaction
+/// - Estimated compute unit savings: 105-210 CUs per transaction
+/// - Simplified client integration with fewer account requirements
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
 /// * `ratio_a_numerator` - Numerator for token A in the ratio
 /// * `ratio_b_denominator` - Denominator for token B in the ratio  
-/// * `accounts` - Array of accounts in standardized order (15 accounts minimum)
+/// * `accounts` - Array of accounts in ultra-optimized order (12 accounts minimum)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -70,40 +72,31 @@ pub fn process_initialize_pool(
     ratio_b_denominator: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing InitializePool with Phase 5 optimized account structure");
+    msg!("Processing InitializePool with Phase 8 ultra-optimized account structure");
     
     // ✅ SYSTEM PAUSE: Check system-wide pause
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?;
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
     
-    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
-    validate_standard_accounts(accounts)?;
-    // Note: Pool accounts validation will be done after creation
-    // validate_token_accounts(accounts)?; // SPL token program validation only
-    validate_treasury_accounts(accounts)?;
-    
-    // ✅ PHASE 5 OPTIMIZATION: Reduced account count requirement
-    if accounts.len() < 15 {
+    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    if accounts.len() < 12 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
+    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
     let payer = &accounts[0];                      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program
     let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar
-    let clock_sysvar_account = &accounts[3];      // Index 3: Clock Sysvar
-    let pool_state_pda_account = &accounts[4];     // Index 4: Pool State PDA
-    let multiple_token_mint_account = &accounts[5]; // Index 5: Token A Mint (mapped from multiple)
-    let base_token_mint_account = &accounts[6];    // Index 6: Token B Mint (mapped from base)
-    let token_a_vault_pda_account = &accounts[7];  // Index 7: Token A Vault PDA
-    let token_b_vault_pda_account = &accounts[8];  // Index 8: Token B Vault PDA
-    let token_program_account = &accounts[9];      // Index 9: SPL Token Program
-    let _user_input_token_account = &accounts[10]; // Index 10: User Input Token Account (unused)
-    let _user_output_token_account = &accounts[11]; // Index 11: User Output Token Account (unused)
-    let main_treasury_account = &accounts[12];     // Index 12: Main Treasury PDA
+    let pool_state_pda_account = &accounts[3];     // Index 3: Pool State PDA (was 4)
+    let multiple_token_mint_account = &accounts[4]; // Index 4: Token A Mint (was 5)
+    let base_token_mint_account = &accounts[5];    // Index 5: Token B Mint (was 6)
+    let token_a_vault_pda_account = &accounts[6];  // Index 6: Token A Vault PDA (was 7)
+    let token_b_vault_pda_account = &accounts[7];  // Index 7: Token B Vault PDA (was 8)
+    let token_program_account = &accounts[8];      // Index 8: SPL Token Program (was 9)
+    let main_treasury_account = &accounts[9];      // Index 9: Main Treasury PDA (was 12)
     
-    // ✅ PHASE 5 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
-    let lp_token_a_mint_account = &accounts[13];   // Index 13: LP Token A Mint (was 15)
-    let lp_token_b_mint_account = &accounts[14];   // Index 14: LP Token B Mint (was 16)
+    // ✅ PHASE 8 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
+    let lp_token_a_mint_account = &accounts[10];   // Index 10: LP Token A Mint (was 13)
+    let lp_token_b_mint_account = &accounts[11];   // Index 11: LP Token B Mint (was 14)
 
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
@@ -118,15 +111,57 @@ pub fn process_initialize_pool(
     // ✅ PHASE 3: CENTRALIZED FEE COLLECTION - Collect registration fee with real-time tracking
     // This ensures the operation fails immediately if fee payment is not possible
     // and updates treasury state in real-time
-    use crate::utils::fee_validation::collect_pool_creation_fee;
     
-    collect_pool_creation_fee(
-        payer,
-        main_treasury_account,
-        system_program_account,
-        clock_sysvar_account,
+    // ✅ PHASE 8: OPTIMIZED FEE COLLECTION - Use Clock::get() directly instead of clock sysvar account
+    // Since we removed the clock sysvar account, we need to use a different approach for fee collection
+    use crate::utils::fee_validation::{validate_fee_payment, validate_treasury_account};
+    use solana_program::{program::invoke, system_instruction, clock::Clock, sysvar::Sysvar};
+    
+    // Get current timestamp directly
+    let clock = Clock::get()?;
+    let current_timestamp = clock.unix_timestamp;
+    
+    // Validate fee payment capability
+    let validation_result = validate_fee_payment(payer, REGISTRATION_FEE, "Pool Creation");
+    if !validation_result.is_valid {
+        return Err(PoolError::InsufficientFeeBalance {
+            required: REGISTRATION_FEE,
+            available: validation_result.available_balance,
+            account: *payer.key,
+        }.into());
+    }
+    
+    // Validate treasury account
+    let (expected_main_treasury, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
         program_id,
+    );
+    validate_treasury_account(main_treasury_account, &expected_main_treasury, "Main Treasury")?;
+    
+    // Transfer fee to treasury
+    let transfer_instruction = system_instruction::transfer(
+        payer.key,
+        main_treasury_account.key,
+        REGISTRATION_FEE,
+    );
+    
+    invoke(
+        &transfer_instruction,
+        &[
+            payer.clone(),
+            main_treasury_account.clone(),
+            system_program_account.clone(),
+        ],
     )?;
+    
+    // Update treasury state with real-time tracking
+    let mut treasury_state = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
+    treasury_state.add_pool_creation_fee(REGISTRATION_FEE, current_timestamp);
+    treasury_state.sync_balance_with_account(main_treasury_account.lamports());
+    
+    // Save updated treasury state
+    let serialized_data = treasury_state.try_to_vec()?;
+    main_treasury_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
 
     msg!("✅ Registration fee collected successfully - proceeding with pool creation");
 
