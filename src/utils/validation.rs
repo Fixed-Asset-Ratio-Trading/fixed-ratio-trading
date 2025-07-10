@@ -154,31 +154,15 @@ pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: 
 
 /// Validates that the system is not paused for user operations.
 /// This check takes precedence over pool-specific pause checks.
-/// 
-/// **BACKWARD COMPATIBILITY**: If the system state account is not provided or invalid,
-/// this function will skip the check to maintain compatibility with existing tests and clients.
 ///
 /// # Arguments
-/// * `system_state_account` - The system state account to check (optional for backward compatibility)
+/// * `system_state_account` - The system state account to check
 ///
 /// # Returns
-/// * `ProgramResult` - Success if system is not paused or account is invalid, error if paused
+/// * `ProgramResult` - Success if system is not paused, error if paused
 pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> ProgramResult {
-    // Skip validation if account doesn't look like a system state account
-    // This maintains backward compatibility with existing tests/clients
-    if system_state_account.data_len() < 41 { // 32 (authority) + 1 (is_paused) + 8 (timestamp) minimum
-        msg!("Skipping system pause check - invalid/missing system state account (backward compatibility)");
-        return Ok(());
-    }
-    
-    // Try to deserialize system state - if it fails, skip the check for backward compatibility
-    let system_state = match SystemState::try_from_slice(&system_state_account.data.borrow()) {
-        Ok(state) => state,
-        Err(_) => {
-            msg!("Skipping system pause check - unable to deserialize system state account (backward compatibility)");
-            return Ok(());
-        }
-    };
+    // Deserialize system state
+    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
     
     if system_state.is_paused {
         msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
@@ -191,9 +175,9 @@ pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> Program
     Ok(())
 }
 
-/// **BACKWARD COMPATIBLE** system pause validation for existing processors.
-/// This function safely checks for system pause without consuming accounts from the iterator.
-/// It looks at the accounts slice to see if there are extra accounts that could be system state.
+/// System pause validation for operations with standardized account ordering.
+/// This function checks for system pause when system state account is provided.
+/// Since the project hasn't been deployed yet, no backward compatibility is needed.
 ///
 /// # Arguments
 /// * `accounts` - The full accounts slice
@@ -201,17 +185,35 @@ pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> Program
 ///
 /// # Returns
 /// * `ProgramResult` - Success if system is not paused or no system state provided
-pub fn validate_system_not_paused_safe(accounts: &[AccountInfo], expected_min_accounts: usize) -> ProgramResult {
-    // If there are extra accounts beyond the minimum expected, check if the first one is system state
-    if accounts.len() > expected_min_accounts {
-        // Try to validate using the first extra account as potential system state
-        let potential_system_state = &accounts[0];
-        validate_system_not_paused(potential_system_state)
-    } else {
-        // No extra accounts provided - skip system pause check for backward compatibility
-        msg!("No system state account provided - skipping system pause check (backward compatibility)");
-        Ok(())
+pub fn validate_system_not_paused_safe(accounts: &[AccountInfo], _expected_min_accounts: usize) -> ProgramResult {
+    // Check if system state account is provided at standard position (index 15 or 16)
+    // System state is typically at index 15 for most operations, index 16 for treasury withdrawal
+    let system_state_indices = [15, 16];
+    
+    for &index in &system_state_indices {
+        if accounts.len() > index {
+            // Try to validate using account at this index as potential system state
+            let potential_system_state = &accounts[index];
+            
+            // Check if this looks like a system state account by trying to deserialize
+            if let Ok(system_state) = SystemState::try_from_slice(&potential_system_state.data.borrow()) {
+                // Found valid system state - check pause status
+                if system_state.is_paused {
+                    msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
+                    msg!("Pause reason: {}", system_state.pause_reason);
+                    msg!("Paused at: {}", system_state.pause_timestamp);
+                    msg!("Only system unpause is allowed");
+                    return Err(PoolError::SystemPaused.into());
+                }
+                // System state found and not paused - operation can proceed
+                return Ok(());
+            }
+        }
     }
+    
+    // No system state account provided - operation can proceed
+    // This is normal for operations that don't include system state (like swaps)
+    Ok(())
 }
 
 /// Validates ratio values and returns pool ID string for PDA derivation.

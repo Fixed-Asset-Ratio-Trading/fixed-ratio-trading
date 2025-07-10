@@ -45,13 +45,15 @@ async fn test_fee_validation_sufficient_funds() {
         rent_epoch: 0,
     };
     
+    let payer_pubkey = payer_keypair.pubkey();
+    let system_program_id = system_program::id();
     let payer_info = AccountInfo::new(
-        &payer_keypair.pubkey(),
+        &payer_pubkey,
         true,
         true,
         &mut payer_lamports,
         &mut payer_account.data,
-        &system_program::id(),
+        &system_program_id,
         false,
         0,
     );
@@ -92,13 +94,15 @@ async fn test_fee_validation_insufficient_funds() {
         rent_epoch: 0,
     };
     
+    let payer_pubkey = payer_keypair.pubkey();
+    let system_program_id = system_program::id();
     let payer_info = AccountInfo::new(
-        &payer_keypair.pubkey(),
+        &payer_pubkey,
         true,
         true,
         &mut payer_lamports,
         &mut payer_account.data,
-        &system_program::id(),
+        &system_program_id,
         false,
         0,
     );
@@ -134,8 +138,9 @@ async fn test_treasury_account_validation_success() {
         rent_epoch: 0,
     };
     
+    let treasury_pubkey = treasury_keypair.pubkey();
     let treasury_info = AccountInfo::new(
-        &treasury_keypair.pubkey(),
+        &treasury_pubkey,
         false,
         true, // writable
         &mut treasury_lamports,
@@ -148,7 +153,7 @@ async fn test_treasury_account_validation_success() {
     // Test validation with matching PDA
     let result = validate_treasury_account(
         &treasury_info,
-        &treasury_keypair.pubkey(),
+        &treasury_pubkey,
         "Main Treasury",
     );
     
@@ -174,8 +179,9 @@ async fn test_treasury_account_validation_failure() {
         rent_epoch: 0,
     };
     
+    let treasury_pubkey = treasury_keypair.pubkey();
     let treasury_info = AccountInfo::new(
-        &treasury_keypair.pubkey(),
+        &treasury_pubkey,
         false,
         true, // writable
         &mut treasury_lamports,
@@ -186,9 +192,10 @@ async fn test_treasury_account_validation_failure() {
     );
     
     // Test validation with non-matching PDA
+    let different_pubkey = different_keypair.pubkey();
     let result = validate_treasury_account(
         &treasury_info,
-        &different_keypair.pubkey(), // Different pubkey
+        &different_pubkey, // Different pubkey
         "Main Treasury",
     );
     
@@ -264,13 +271,15 @@ async fn test_fee_collection_workflow() {
             rent_epoch: 0,
         };
         
+        let payer_pubkey = payer_keypair.pubkey();
+        let system_program_id = system_program::id();
         let payer_info = AccountInfo::new(
-            &payer_keypair.pubkey(),
+            &payer_pubkey,
             true,
             true,
             &mut payer_lamports,
             &mut payer_account.data,
-            &system_program::id(),
+            &system_program_id,
             false,
             0,
         );
@@ -404,6 +413,7 @@ fn create_mock_account_info() -> AccountInfo<'static> {
     static mut LAMPORTS: u64 = 500; // Insufficient for most fees
     static mut DATA: Vec<u8> = Vec::new();
     static PUBKEY: Pubkey = Pubkey::new_from_array([0; 32]);
+    static SYSTEM_PROGRAM_ID: Pubkey = system_program::ID;
     
     unsafe {
         AccountInfo::new(
@@ -412,7 +422,7 @@ fn create_mock_account_info() -> AccountInfo<'static> {
             false,
             &mut LAMPORTS,
             &mut DATA,
-            &system_program::id(),
+            &SYSTEM_PROGRAM_ID,
             false,
             0,
         )
