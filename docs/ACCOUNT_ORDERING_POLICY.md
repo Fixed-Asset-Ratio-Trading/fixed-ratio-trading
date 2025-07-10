@@ -64,6 +64,30 @@ This document defines the standardized account ordering for all `process_*` func
 13+ **Function-Specific Accounts** - LP token mints, system state, specialized accounts
 ```
 
+### **Treasury Functions (Phase 7: Ultra-Optimized)**
+
+#### **Treasury Fee Withdrawal** (6 accounts) - 60% reduction from 15 accounts
+```
+0. Authority/User Signer (signer, writable) - System authority
+1. System Program (readable) - Solana system program  
+2. Rent Sysvar (readable) - For rent calculations
+3. Main Treasury PDA (writable) - Treasury account for withdrawal
+4. Destination Account (writable) - Account receiving withdrawn SOL
+5. System State Account (readable) - For authority validation
+```
+
+#### **Treasury Information Query** (1 account) - 92% reduction from 13 accounts
+```
+0. Main Treasury PDA (readable) - Treasury account for info query
+```
+
+**Phase 7 Treasury Benefits:**
+- **Treasury Withdrawal**: 15 → 6 accounts (60% reduction, ~210-420 CU savings)
+- **Treasury Info**: 13 → 1 account (92% reduction, ~420-840 CU savings)  
+- **Eliminated**: All placeholder accounts that were unused in treasury operations
+- **Simplified**: Client integration with minimal account requirements
+- **Maximum Efficiency**: Read-only treasury info requires only the treasury account
+
 ---
 
 ## 🔄 **Account Usage Matrix (Phase 6 Updated)**

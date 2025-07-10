@@ -295,12 +295,13 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 
 /// Validates that the treasury accounts are correct.
 /// 
-/// **PHASE 5: OPTIMIZED TREASURY VALIDATION**
-/// After Phase 3 centralization, only the main treasury account is validated.
-/// Specialized treasury accounts (swap and HFT) are no longer used.
+/// **PHASE 7: ULTRA-OPTIMIZED TREASURY VALIDATION**
+/// After removing all placeholder accounts, treasury functions now use minimal account structures.
+/// This function validates the minimal treasury account requirements based on the operation type.
 /// 
-/// This function validates accounts at index 12 (main treasury) and
-/// ensures it matches the expected treasury structure.
+/// This function validates treasury accounts based on the actual account structure used:
+/// - For treasury withdrawal: 6 accounts (main treasury at index 3)
+/// - For treasury info: 1 account (main treasury at index 0)
 /// 
 /// # Arguments
 /// * `accounts` - Array of account infos to validate
@@ -308,14 +309,25 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Success if all validations pass, error otherwise
 pub fn validate_treasury_accounts(accounts: &[AccountInfo]) -> ProgramResult {
-    if accounts.len() < 13 {
-        return Err(ProgramError::NotEnoughAccountKeys);
+    // Determine operation type based on account count
+    match accounts.len() {
+        1 => {
+            // Treasury info operation: 1 account (main treasury only)
+            // Index 0: Main Treasury PDA
+            // No validation needed - just read-only access
+            Ok(())
+        },
+        6..=usize::MAX => {
+            // Treasury withdrawal operation: 6+ accounts
+            // Index 3: Main Treasury PDA
+            crate::utils::validation::validate_writable(&accounts[3], "Main Treasury PDA")?;
+            Ok(())
+        },
+        _ => {
+            // Invalid account count for treasury operations
+            Err(ProgramError::NotEnoughAccountKeys)
+        }
     }
-    
-    crate::utils::validation::validate_writable(&accounts[12], "Main Treasury PDA")?;     // Index 12
-    // Phase 5: Specialized treasury accounts (indices 13-14) are no longer validated
-    
-    Ok(())
 }
 
 // Note: validate_signer and validate_writable are defined in utils::validation
