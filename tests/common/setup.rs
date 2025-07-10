@@ -39,16 +39,15 @@ use solana_sdk::{
 };
 use crate::common::constants;
 use fixed_ratio_trading::{
-    process_instruction,
-    PoolInstruction,
-    ID as PROGRAM_ID,
     constants::{
         SYSTEM_STATE_SEED_PREFIX,
         MAIN_TREASURY_SEED_PREFIX,
-        SWAP_TREASURY_SEED_PREFIX,
-        HFT_TREASURY_SEED_PREFIX,
     },
+    state::{SystemState, MainTreasuryState},
+    process_instruction,
 };
+
+
 use std::env;
 use env_logger;
 use borsh::BorshSerialize;
@@ -85,7 +84,7 @@ pub struct PoolTestContext {
 pub fn create_program_test() -> ProgramTest {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
-        PROGRAM_ID,
+        fixed_ratio_trading::id(),
         processor!(process_instruction),
     );
     
@@ -449,24 +448,16 @@ pub async fn initialize_treasury_system(
     // Derive all required PDA addresses using the actual program constants
     let (system_state_pda, _) = Pubkey::find_program_address(
         &[SYSTEM_STATE_SEED_PREFIX], 
-        &PROGRAM_ID
+        &fixed_ratio_trading::id()
     );
     let (main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
-    );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
+        &fixed_ratio_trading::id()
     );
     
     // Create InitializeProgram instruction with standardized account ordering (16 accounts minimum)
     let initialize_program_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: fixed_ratio_trading::id(),
         accounts: vec![
             // Standardized account ordering (indices 0-14 + function-specific at 15+)
             AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Authority/User Signer
@@ -482,11 +473,11 @@ pub async fn initialize_treasury_system(
             AccountMeta::new(payer.pubkey(), false),                                // Index 10: User Input Token Account (placeholder)
             AccountMeta::new(payer.pubkey(), false),                                // Index 11: User Output Token Account (placeholder)
             AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            AccountMeta::new(payer.pubkey(), false),                                // Index 13: Placeholder (was Swap Treasury PDA)
+            AccountMeta::new(payer.pubkey(), false),                                // Index 14: Placeholder (was HFT Treasury PDA)
             AccountMeta::new(system_state_pda, false),                              // Index 15: System State PDA (function-specific)
         ],
-        data: PoolInstruction::InitializeProgram {
+        data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]
         }.try_to_vec().unwrap(),
     };
@@ -498,7 +489,5 @@ pub async fn initialize_treasury_system(
     println!("✅ Treasury system initialized successfully");
     println!("   • SystemState PDA: {}", system_state_pda);
     println!("   • MainTreasury PDA: {}", main_treasury_pda);
-    println!("   • SwapTreasury PDA: {}", swap_treasury_pda);
-    println!("   • HftTreasury PDA: {}", hft_treasury_pda);
     Ok(())
 }

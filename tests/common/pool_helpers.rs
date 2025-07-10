@@ -215,15 +215,8 @@ pub async fn create_pool_new_pattern(
         &PROGRAM_ID,
     );
 
-    // Derive treasury accounts for standardized ordering
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::SWAP_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::HFT_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
+    // Use main treasury for all operations (Phase 3: Centralized Treasury)
+    // Old specialized treasuries have been consolidated into main treasury
 
     // Create InitializePool instruction with standardized account ordering
     let initialize_pool_ix = Instruction {
@@ -243,8 +236,8 @@ pub async fn create_pool_new_pattern(
             AccountMeta::new(payer.pubkey(), false),                         // Index 10: User Input Token Account (placeholder)
             AccountMeta::new(payer.pubkey(), false),                         // Index 11: User Output Token Account (placeholder)
             AccountMeta::new(main_treasury_pda, false),                      // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                      // Index 13: Swap Treasury PDA (placeholder)
-            AccountMeta::new(hft_treasury_pda, false),                       // Index 14: HFT Treasury PDA (placeholder)
+            AccountMeta::new(payer.pubkey(), false),                         // Index 13: Placeholder (was Swap Treasury PDA)
+            AccountMeta::new(payer.pubkey(), false),                         // Index 14: Placeholder (was HFT Treasury PDA)
             AccountMeta::new(lp_token_a_mint.pubkey(), true),                // Index 15: LP Token A Mint (signer)
             AccountMeta::new(lp_token_b_mint.pubkey(), true),                // Index 16: LP Token B Mint (signer)
         ],

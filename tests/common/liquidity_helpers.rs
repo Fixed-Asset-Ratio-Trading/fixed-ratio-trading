@@ -235,14 +235,7 @@ pub fn create_deposit_instruction_standardized(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
-        &id(),
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
-        &id(),
-    );
+    // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
     // Create instruction with standardized account ordering (17 accounts total)
     Ok(Instruction {
@@ -268,8 +261,8 @@ pub fn create_deposit_instruction_standardized(
             
             // Treasury System (12-14)
             AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            AccountMeta::new(main_treasury_pda, false),                             // Index 13: Placeholder (was Swap Treasury PDA)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 14: Placeholder (was HFT Treasury PDA)
             
             // Function-Specific Accounts (15-16)
             AccountMeta::new(*lp_token_a_mint, false),                              // Index 15: LP Token A Mint
@@ -298,14 +291,7 @@ pub fn create_withdrawal_instruction_standardized(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
-        &id(),
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
-        &id(),
-    );
+    // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
     // Create instruction with standardized account ordering (17 accounts total)
     Ok(Instruction {
@@ -331,8 +317,8 @@ pub fn create_withdrawal_instruction_standardized(
             
             // Treasury System (12-14)
             AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            AccountMeta::new(main_treasury_pda, false),                             // Index 13: Placeholder (was Swap Treasury PDA)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 14: Placeholder (was HFT Treasury PDA)
             
             // Function-Specific Accounts (15-16)
             AccountMeta::new(*lp_token_a_mint, false),                              // Index 15: LP Token A Mint
@@ -359,14 +345,7 @@ pub fn create_swap_instruction_standardized(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
-        &id(),
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
-        &id(),
-    );
+    // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
     // Create instruction with standardized account ordering (17 accounts for swaps)
     Ok(Instruction {
@@ -392,8 +371,8 @@ pub fn create_swap_instruction_standardized(
             
             // Treasury System (12-14)
             AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            AccountMeta::new(main_treasury_pda, false),                             // Index 13: Placeholder (was Swap Treasury PDA)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 14: Placeholder (was HFT Treasury PDA)
             
             // Function-Specific Accounts (15-16) - For swap operations, we need dummy accounts
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 15: Placeholder Account 1

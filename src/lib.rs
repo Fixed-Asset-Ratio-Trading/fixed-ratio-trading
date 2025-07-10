@@ -154,9 +154,9 @@ use crate::processors::{
 /// - Pause enforcement: User operations blocked when pool is paused
 /// - Owner operations (fees, security, pool creation) remain accessible during pause
 /// - All instructions validated before dispatch to handlers
-pub fn process_instruction<'a>(
+pub fn process_instruction(
     program_id: &Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+    accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;

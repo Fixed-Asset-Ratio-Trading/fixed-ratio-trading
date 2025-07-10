@@ -148,11 +148,11 @@ use crate::utils::validation::validate_non_zero_amount;
 /// # Errors
 /// - `ProgramError::Custom(3001)` - Strict 1:1 ratio violation
 /// - `ProgramError::Custom(3002)` - LP token mint operation integrity violation
-pub fn process_deposit<'a>(
+pub fn process_deposit(
     program_id: &Pubkey,
     amount: u64,
     deposit_token_mint_key: Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing Deposit (Phase 9: Advanced Compute Unit Optimization)");
     
@@ -228,18 +228,25 @@ pub fn process_deposit<'a>(
 
     // ✅ PHASE 9 OPTIMIZATION 2: USE CONSOLIDATED VALIDATION FUNCTIONS
     // Determine deposit target using consolidated vault validation
-    let (is_depositing_token_a, target_vault, target_lp_mint) = validate_vault_and_mint_accounts(
+    let is_depositing_token_a = validate_vault_and_mint_accounts(
         &deposit_token_mint_key,
         &pool_state_data,
-        token_a_vault,
-        token_b_vault,
-        lp_token_a_mint,
-        lp_token_b_mint,
+        token_a_vault.key,
+        token_b_vault.key,
+        lp_token_a_mint.key,
+        lp_token_b_mint.key,
     )?;
+    
+    // Determine target accounts based on deposit token
+    let (target_vault, target_lp_mint) = if is_depositing_token_a {
+        (token_a_vault, lp_token_a_mint)
+    } else {
+        (token_b_vault, lp_token_b_mint)
+    };
 
     // Validate user accounts using consolidated validation
     validate_user_accounts(
-        user_authority,
+        user_authority.key,
         &user_input_data,
         &user_output_data,
         target_lp_mint.key,
@@ -382,11 +389,11 @@ pub fn process_deposit<'a>(
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
-pub fn process_withdraw<'a>(
+pub fn process_withdraw(
     program_id: &Pubkey,
     lp_amount_to_burn: u64,
     withdraw_token_mint_key: Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+    accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing Withdrawal (Phase 9: Advanced Compute Unit Optimization)");
     
@@ -476,18 +483,25 @@ pub fn process_withdraw<'a>(
     )?;
 
     // Determine withdrawal target using consolidated vault validation
-    let (_, _source_vault, source_lp_mint) = validate_vault_and_mint_accounts(
+    let _ = validate_vault_and_mint_accounts(
         &withdraw_token_mint_key,
         &pool_state_data,
-        token_a_vault,
-        token_b_vault,
-        lp_token_a_mint,
-        lp_token_b_mint,
+        token_a_vault.key,
+        token_b_vault.key,
+        lp_token_a_mint.key,
+        lp_token_b_mint.key,
     )?;
 
     // Validate user accounts using consolidated validation
+    // Use the LP mint from the withdrawal correspondence validation
+    let source_lp_mint = if is_withdrawing_token_a {
+        lp_token_a_mint
+    } else {
+        lp_token_b_mint
+    };
+    
     validate_user_accounts(
-        user_authority,
+        user_authority.key,
         &user_input_data,
         &user_output_data,
         source_lp_mint.key,
@@ -777,38 +791,38 @@ fn execute_withdrawal_logic<'a>(
 /// 
 /// # Returns
 /// * `Result<(bool, &AccountInfo, &AccountInfo), ProgramError>` - (is_token_a, target_vault, target_lp_mint)
-fn validate_vault_and_mint_accounts<'a>(
+fn validate_vault_and_mint_accounts(
     deposit_token_mint: &Pubkey,
     pool_state: &PoolState,
-    token_a_vault: &'a AccountInfo<'a>,
-    token_b_vault: &'a AccountInfo<'a>,
-    lp_token_a_mint: &'a AccountInfo<'a>,
-    lp_token_b_mint: &'a AccountInfo<'a>,
-) -> Result<(bool, &'a AccountInfo<'a>, &'a AccountInfo<'a>), ProgramError> {
+    token_a_vault_key: &Pubkey,
+    token_b_vault_key: &Pubkey,
+    lp_token_a_mint_key: &Pubkey,
+    lp_token_b_mint_key: &Pubkey,
+) -> Result<bool, ProgramError> {
     if *deposit_token_mint == pool_state.token_a_mint {
         // Validate Token A vault
-        if *token_a_vault.key != pool_state.token_a_vault {
-            msg!("Invalid token A vault: expected {}, got {}", pool_state.token_a_vault, token_a_vault.key);
+        if *token_a_vault_key != pool_state.token_a_vault {
+            msg!("Invalid token A vault: expected {}, got {}", pool_state.token_a_vault, token_a_vault_key);
             return Err(ProgramError::InvalidAccountData);
         }
         // Validate LP Token A mint
-        if *lp_token_a_mint.key != pool_state.lp_token_a_mint {
-            msg!("Invalid LP token A mint: expected {}, got {}", pool_state.lp_token_a_mint, lp_token_a_mint.key);
+        if *lp_token_a_mint_key != pool_state.lp_token_a_mint {
+            msg!("Invalid LP token A mint: expected {}, got {}", pool_state.lp_token_a_mint, lp_token_a_mint_key);
             return Err(ProgramError::InvalidAccountData);
         }
-        Ok((true, token_a_vault, lp_token_a_mint))
+        Ok(true)
     } else if *deposit_token_mint == pool_state.token_b_mint {
         // Validate Token B vault
-        if *token_b_vault.key != pool_state.token_b_vault {
-            msg!("Invalid token B vault: expected {}, got {}", pool_state.token_b_vault, token_b_vault.key);
+        if *token_b_vault_key != pool_state.token_b_vault {
+            msg!("Invalid token B vault: expected {}, got {}", pool_state.token_b_vault, token_b_vault_key);
             return Err(ProgramError::InvalidAccountData);
         }
         // Validate LP Token B mint
-        if *lp_token_b_mint.key != pool_state.lp_token_b_mint {
-            msg!("Invalid LP token B mint: expected {}, got {}", pool_state.lp_token_b_mint, lp_token_b_mint.key);
+        if *lp_token_b_mint_key != pool_state.lp_token_b_mint {
+            msg!("Invalid LP token B mint: expected {}, got {}", pool_state.lp_token_b_mint, lp_token_b_mint_key);
             return Err(ProgramError::InvalidAccountData);
         }
-        Ok((false, token_b_vault, lp_token_b_mint))
+        Ok(false)
     } else {
         msg!("Token mint {} does not match pool tokens (A: {}, B: {})", 
              deposit_token_mint, pool_state.token_a_mint, pool_state.token_b_mint);
@@ -837,8 +851,8 @@ fn validate_vault_and_mint_accounts<'a>(
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or validation error
-fn validate_user_accounts<'a>(
-    user_authority: &'a AccountInfo<'a>,
+fn validate_user_accounts(
+    user_authority_key: &Pubkey,
     user_input_data: &TokenAccount,
     user_output_data: &TokenAccount,
     target_lp_mint_key: &Pubkey,
@@ -846,13 +860,13 @@ fn validate_user_accounts<'a>(
     operation_type: &str,
 ) -> ProgramResult {
     // Validate user input account ownership
-    if user_input_data.owner != *user_authority.key {
+    if user_input_data.owner != *user_authority_key {
         msg!("{} failed: User input account owner mismatch", operation_type);
         return Err(ProgramError::InvalidAccountData);
     }
     
     // Validate user output account ownership
-    if user_output_data.owner != *user_authority.key {
+    if user_output_data.owner != *user_authority_key {
         msg!("{} failed: User output account owner mismatch", operation_type);
         return Err(ProgramError::InvalidAccountData);
     }

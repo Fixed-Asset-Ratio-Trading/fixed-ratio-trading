@@ -37,8 +37,6 @@ use fixed_ratio_trading::{
     PoolInstruction,
     ID as PROGRAM_ID,
     MAIN_TREASURY_SEED_PREFIX,
-    SWAP_TREASURY_SEED_PREFIX,
-    HFT_TREASURY_SEED_PREFIX,
 };
 use solana_program::{
     instruction::Instruction,
@@ -119,12 +117,11 @@ pub fn create_hft_optimized_swap_instruction(
     pool_config: &PoolConfig,
     input_token_mint: &Pubkey,
     amount_in: u64,
-    skip_rent_checks: bool,
 ) -> Result<Instruction, Box<dyn std::error::Error>> {
     let instruction_data = PoolInstruction::SwapHftOptimized {
         input_token_mint: *input_token_mint,
         amount_in,
-        skip_rent_checks,
+
     };
 
     // Use the standardized function from liquidity_helpers, but create a custom version for HFT
@@ -135,14 +132,7 @@ pub fn create_hft_optimized_swap_instruction(
         &[MAIN_TREASURY_SEED_PREFIX],
         &PROGRAM_ID,
     );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
-    );
+    // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
     // Create instruction with standardized account ordering (17 accounts for HFT swaps)
     Ok(Instruction {
@@ -168,8 +158,8 @@ pub fn create_hft_optimized_swap_instruction(
             
             // Treasury System (12-14)
             solana_program::instruction::AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            solana_program::instruction::AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            solana_program::instruction::AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
+            solana_program::instruction::AccountMeta::new(main_treasury_pda, false),                             // Index 13: Placeholder (was Swap Treasury PDA)
+            solana_program::instruction::AccountMeta::new(main_treasury_pda, false),                             // Index 14: Placeholder (was HFT Treasury PDA)
             
             // Function-Specific Accounts (15-16) - For HFT swaps, we need dummy accounts
             solana_program::instruction::AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 15: Placeholder Account 1
@@ -213,7 +203,7 @@ async fn test_hft_optimized_swap_instruction_creation() -> TestResult {
     let hft_swap_instruction = PoolInstruction::SwapHftOptimized {
         input_token_mint: test_mint,
         amount_in: 1_000_000u64,
-        skip_rent_checks: false,
+
     };
     
     // Test serialization
@@ -229,10 +219,9 @@ async fn test_hft_optimized_swap_instruction_creation() -> TestResult {
     assert!(deserialized.is_ok(), "HFT optimized swap instruction deserialization should succeed");
     
     // Verify the data matches
-    if let Ok(PoolInstruction::SwapHftOptimized { input_token_mint, amount_in, skip_rent_checks }) = deserialized {
+    if let Ok(PoolInstruction::SwapHftOptimized { input_token_mint, amount_in }) = deserialized {
         assert_eq!(input_token_mint, test_mint);
         assert_eq!(amount_in, 1_000_000u64);
-        assert_eq!(skip_rent_checks, false);
         println!("✅ HFT optimized serialization roundtrip successful");
     } else {
         panic!("Unexpected instruction variant after deserialization");
@@ -242,7 +231,7 @@ async fn test_hft_optimized_swap_instruction_creation() -> TestResult {
     let hft_ultra_instruction = PoolInstruction::SwapHftOptimized {
         input_token_mint: test_mint,
         amount_in: 2_000_000u64,
-        skip_rent_checks: true,
+
     };
     
     let ultra_serialized = hft_ultra_instruction.try_to_vec();
@@ -293,8 +282,8 @@ async fn test_hft_optimized_swap_insufficient_liquidity() -> TestResult {
     assert!(standard_result.is_err(), "Standard swap should fail with insufficient liquidity");
     println!("✅ Standard swap correctly failed with insufficient liquidity");
 
-    // Test 2: HFT optimized swap should also fail (conservative mode)
-    println!("\n--- HFT Optimized Swap Conservative Mode (should fail) ---");
+    // Test 2: HFT optimized swap should also fail
+    println!("\n--- HFT Optimized Swap (should fail) ---");
     let hft_conservative_ix = create_hft_optimized_swap_instruction(
         &user.pubkey(),
         &user_primary_account,
@@ -302,18 +291,14 @@ async fn test_hft_optimized_swap_insufficient_liquidity() -> TestResult {
         &config,
         &ctx.primary_mint.pubkey(),
         swap_amount,
-        false, // Conservative mode
     ).expect("Failed to create HFT conservative swap instruction");
 
     let mut hft_conservative_tx = Transaction::new_with_payer(&[hft_conservative_ix], Some(&user.pubkey()));
     hft_conservative_tx.sign(&[&user], ctx.env.recent_blockhash);
     
     let hft_conservative_result = ctx.env.banks_client.process_transaction(hft_conservative_tx).await;
-    assert!(hft_conservative_result.is_err(), "HFT conservative swap should fail with insufficient liquidity");
-    println!("✅ HFT optimized conservative swap correctly failed with insufficient liquidity");
-
-    // Test 3: HFT optimized swap should also fail (ultra-HFT mode)
-    println!("\n--- HFT Optimized Swap Ultra-HFT Mode (should fail) ---");
+    assert!(hft_conservative_result.is_err(), "HFT optimized swap should fail with insufficient liquidity");
+    println!("✅ HFT optimized swap correctly failed with insufficient liquidity");
     let hft_ultra_ix = create_hft_optimized_swap_instruction(
         &user.pubkey(),
         &user_primary_account,
@@ -321,15 +306,12 @@ async fn test_hft_optimized_swap_insufficient_liquidity() -> TestResult {
         &config,
         &ctx.primary_mint.pubkey(),
         swap_amount,
-        true, // Ultra-HFT mode (skip rent checks)
     ).expect("Failed to create HFT ultra swap instruction");
 
     let mut hft_ultra_tx = Transaction::new_with_payer(&[hft_ultra_ix], Some(&user.pubkey()));
     hft_ultra_tx.sign(&[&user], ctx.env.recent_blockhash);
     
-    let hft_ultra_result = ctx.env.banks_client.process_transaction(hft_ultra_tx).await;
-    assert!(hft_ultra_result.is_err(), "HFT ultra swap should fail with insufficient liquidity");
-    println!("✅ HFT optimized ultra-HFT swap correctly failed with insufficient liquidity");
+
 
     println!("✅ HFT-OPT-002 Error Handling Consistency Testing Complete!");
     Ok(())
@@ -346,8 +328,8 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
 
     println!("=== Testing HFT Optimized Instruction Construction ===");
 
-    // Test 1: Conservative mode instruction
-    println!("\n--- Conservative Mode Instruction ---");
+    // Test 1: HFT optimized instruction
+    println!("\n--- HFT Optimized Instruction ---");
     let conservative_ix = create_hft_optimized_swap_instruction(
         &user.pubkey(),
         &user_primary_account,
@@ -355,47 +337,20 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
         &config,
         &ctx.primary_mint.pubkey(),
         swap_amount,
-        false, // Conservative mode
     ).expect("Failed to create HFT conservative swap instruction");
 
     // Verify instruction construction
-    assert_eq!(conservative_ix.accounts.len(), 17, "HFT conservative instruction should have 17 accounts");
+    assert_eq!(conservative_ix.accounts.len(), 17, "HFT optimized instruction should have 17 accounts");
     assert_eq!(conservative_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!conservative_ix.data.is_empty(), "Instruction data should not be empty");
     
-    println!("✅ Conservative mode instruction constructed successfully:");
+    println!("✅ HFT optimized instruction constructed successfully:");
     println!("    ✓ 17 accounts configured");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data: {} bytes", conservative_ix.data.len());
 
-    // Test 2: Ultra-HFT mode instruction
-    println!("\n--- Ultra-HFT Mode Instruction ---");
-    let ultra_hft_ix = create_hft_optimized_swap_instruction(
-        &user.pubkey(),
-        &user_primary_account,
-        &user_base_account,
-        &config,
-        &ctx.primary_mint.pubkey(),
-        swap_amount,
-        true, // Ultra-HFT mode
-    ).expect("Failed to create HFT ultra swap instruction");
 
-    // Verify instruction construction
-    assert_eq!(ultra_hft_ix.accounts.len(), 17, "HFT ultra instruction should have 17 accounts");
-    assert_eq!(ultra_hft_ix.program_id, PROGRAM_ID, "Program ID should match");
-    assert!(!ultra_hft_ix.data.is_empty(), "Instruction data should not be empty");
-    
-    println!("✅ Ultra-HFT mode instruction constructed successfully:");
-    println!("    ✓ 17 accounts configured");
-    println!("    ✓ Program ID matches: {}", PROGRAM_ID);
-    println!("    ✓ Instruction data: {} bytes", ultra_hft_ix.data.len());
-
-    // Test 3: Compare instruction data between modes
-    println!("\n--- Instruction Data Comparison ---");
-    assert_ne!(conservative_ix.data, ultra_hft_ix.data, "Conservative and Ultra-HFT modes should have different instruction data");
-    println!("✅ Conservative and Ultra-HFT modes produce different instruction data (as expected)");
-
-    // Test 4: B→A swap instruction
+    // Test 2: B→A swap instruction
     println!("\n--- B→A Swap Instruction ---");
     let b_to_a_ix = create_hft_optimized_swap_instruction(
         &user.pubkey(),
@@ -404,7 +359,6 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
         &config,
         &ctx.base_mint.pubkey(), // Input mint: Token B
         swap_amount,
-        false,
     ).expect("Failed to create HFT B→A swap instruction");
 
     assert_eq!(b_to_a_ix.accounts.len(), 17, "B→A HFT instruction should have 17 accounts");
@@ -469,7 +423,6 @@ async fn test_github_issue_31960_workaround_preservation() -> TestResult {
         &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        false,
     ).expect("Failed to create HFT swap instruction");
 
     // Verify both instructions reference the same accounts (standardized positions)
@@ -529,13 +482,12 @@ async fn test_hft_optimized_fee_discount() -> TestResult {
         &config,
         &ctx.primary_mint.pubkey(),
         1000u64,
-        false, // conservative mode
     ).expect("Failed to create HFT swap instruction");
     
     // Verify HFT treasury account is included at index 14
     let hft_treasury_account = &hft_swap_ix.accounts[14];
     let (expected_hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX],
+        &[MAIN_TREASURY_SEED_PREFIX],
         &PROGRAM_ID,
     );
     
