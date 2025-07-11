@@ -70,56 +70,51 @@ use borsh::BorshSerialize;
 /// **NEVER use this authority in production deployments!**
 pub const TEST_PROGRAM_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn";
 
-/// Path to the program authority keypair file for testing
+/// **HARDCODED TEST PROGRAM AUTHORITY KEYPAIR**
 /// 
-/// This file contains the actual program authority keypair used for testing.
-/// During development, this is the same as the program ID, but in production
-/// deployment, these should be different keypairs.
-pub const TEST_PROGRAM_AUTHORITY_KEYPAIR_PATH: &str = "target/deploy/PROGRAM_AUTHORITY-keypair.json";
-
-/// Helper function to create a test program authority keypair
+/// This keypair is hardcoded for testing purposes to avoid any risk of accidental
+/// key releases or confusion about which key is being used. The private key is
+/// intentionally visible in the source code as it's ONLY for testing.
 /// 
-/// This function loads the actual program authority keypair from the deployment
-/// files. This ensures tests use the same authority pattern as production.
-/// 
-/// **SECURITY WARNING:** This keypair is stored in the repository for testing
+/// **SECURITY WARNING:** This keypair is hardcoded in the repository for testing
 /// purposes only. It should NEVER be used in production deployments.
+/// 
+/// **Public Key:** 6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn
 /// 
 /// # Returns
 /// * `Result<Keypair, Box<dyn std::error::Error>>` - The test authority keypair or error
 pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::Keypair, Box<dyn std::error::Error>> {
-    use solana_sdk::signature::read_keypair_file;
-    use std::path::Path;
+    use solana_sdk::signature::Keypair;
+    use std::str::FromStr;
     
-    // Try to load from the deployment keypair file
-    let keypair_path = Path::new(TEST_PROGRAM_AUTHORITY_KEYPAIR_PATH);
+    // HARDCODED test keypair bytes - NEVER use in production!
+    // This ensures consistent testing without file dependencies or accidental key releases
+    let keypair_bytes = [
+        163, 234,  36, 177,  75, 126, 161, 135,
+        163, 241, 103,  15,  75,  15, 167,  73,
+        233,  11, 113, 216, 162, 207,  50,  60,
+         60, 172,  13, 230,  60,  27,  56, 134,
+         80, 189, 151,  77,  71, 242, 203, 226,
+         23, 157,  38,  50, 145, 212, 227, 241,
+         10, 174,   8,  87, 229,  18, 141,  49,
+        234,  58,  87,  52, 160,   2, 239, 207,
+    ];
     
-    if keypair_path.exists() {
-        // Load the actual program authority keypair
-        let keypair = read_keypair_file(keypair_path)
-            .map_err(|e| format!("Failed to read program authority keypair: {}", e))?;
-        
-        Ok(keypair)
-    } else {
-        // Fallback: create from hardcoded bytes for CI/testing environments
-        // where the deploy directory might not exist
-        let keypair_bytes = [
-            163, 234,  36, 177,  75, 126, 161, 135,
-            163, 241, 103,  15,  75,  15, 167,  73,
-            233,  11, 113, 216, 162, 207,  50,  60,
-             60, 172,  13, 230,  60,  27,  56, 134,
-             80, 189, 151,  77,  71, 242, 203, 226,
-             23, 157,  38,  50, 145, 212, 227, 241,
-             10, 174,   8,  87, 229,  18, 141,  49,
-            234,  58,  87,  52, 160,   2, 239, 207,
-        ];
-        
-        use solana_sdk::signature::Keypair;
-        let keypair = Keypair::from_bytes(&keypair_bytes)
-            .map_err(|e| format!("Failed to create fallback keypair: {}", e))?;
-        
-        Ok(keypair)
+    let keypair = Keypair::from_bytes(&keypair_bytes)
+        .map_err(|e| format!("Failed to create hardcoded test keypair: {}", e))?;
+    
+    // Verify the keypair matches our expected public key
+    let expected_pubkey = solana_program::pubkey::Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
+        .map_err(|e| format!("Invalid TEST_PROGRAM_AUTHORITY constant: {}", e))?;
+    
+    if keypair.pubkey() != expected_pubkey {
+        return Err(format!(
+            "Hardcoded keypair mismatch! Expected: {}, Got: {}",
+            expected_pubkey, keypair.pubkey()
+        ).into());
     }
+    
+    Ok(keypair)
 }
 
 /// Helper function to get program data account address for testing
@@ -162,13 +157,13 @@ pub fn create_program_authority_account_metas(
     ]
 }
 
-/// Verify that the test program authority matches the loaded keypair
+/// Verify that the test program authority matches the hardcoded keypair
 /// 
 /// This function ensures that the TEST_PROGRAM_AUTHORITY constant matches
-/// the actual keypair loaded from the file system.
+/// the hardcoded keypair. This is a safety check to prevent mismatches.
 /// 
 /// # Arguments
-/// * `keypair` - The loaded keypair
+/// * `keypair` - The hardcoded keypair
 /// 
 /// # Returns
 /// * `Result<(), String>` - Ok if they match, error message if they don't
@@ -180,7 +175,7 @@ pub fn verify_test_program_authority_consistency(keypair: &Keypair) -> Result<()
     
     if keypair.pubkey() != expected_pubkey {
         return Err(format!(
-            "TEST_PROGRAM_AUTHORITY constant ({}) does not match loaded keypair ({})",
+            "TEST_PROGRAM_AUTHORITY constant ({}) does not match hardcoded keypair ({})",
             expected_pubkey,
             keypair.pubkey()
         ));
