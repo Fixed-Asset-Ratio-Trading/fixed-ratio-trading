@@ -187,8 +187,6 @@ pub async fn setup_swap_test_environment(
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
         ratio,
     ).await?;
 

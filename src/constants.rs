@@ -159,6 +159,12 @@ pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
 /// This points to the main treasury for any existing references
 pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
 
+/// PDA seed prefix for LP token A mint accounts
+pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";
+
+/// PDA seed prefix for LP token B mint accounts
+pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
+
 // ============================================================================
 // PHASE 3: REMOVED SPECIALIZED TREASURY CONSTANTS
 // ============================================================================

@@ -29,8 +29,8 @@ pub struct LiquidityTestFoundation {
     pub pool_config: PoolConfig,
     pub primary_mint: Keypair,
     pub base_mint: Keypair,
-    pub lp_token_a_mint: Keypair,
-    pub lp_token_b_mint: Keypair,
+    pub lp_token_a_mint_pda: Pubkey,
+    pub lp_token_b_mint_pda: Pubkey,
     pub user1: Keypair,
     pub user1_primary_account: Keypair,
     pub user1_base_account: Keypair,
@@ -65,9 +65,7 @@ pub async fn create_liquidity_test_foundation(
         (keypair2, keypair1)
     };
     
-    // 3. Create LP token mint keypairs
-    let lp_token_a_mint = Keypair::new();
-    let lp_token_b_mint = Keypair::new();
+    // 3. LP token mints will be created on-demand during first deposit (Phase 10 security)
     
     // 4. Create user keypairs early
     let user1 = Keypair::new();
@@ -120,8 +118,6 @@ pub async fn create_liquidity_test_foundation(
         env.recent_blockhash,
         &primary_mint,
         &base_mint,
-        &lp_token_a_mint,
-        &lp_token_b_mint,
         pool_ratio,
     ).await?;
     
@@ -132,15 +128,26 @@ pub async fn create_liquidity_test_foundation(
     
     // 9. BATCH OPERATION 5: Create token accounts (optimized batch processing)
     println!("🏦 Creating token accounts...");
+    
+    // ✅ PHASE 10 SECURITY: Derive LP token mint PDAs (controlled by smart contract)
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_A_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_B_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    
     let accounts_to_create = [
         (&user1_primary_account, &primary_mint.pubkey(), &user1.pubkey()),
         (&user1_base_account, &base_mint.pubkey(), &user1.pubkey()),
-        (&user1_lp_a_account, &lp_token_a_mint.pubkey(), &user1.pubkey()),
-        (&user1_lp_b_account, &lp_token_b_mint.pubkey(), &user1.pubkey()),
+        (&user1_lp_a_account, &lp_token_a_mint_pda, &user1.pubkey()),
+        (&user1_lp_b_account, &lp_token_b_mint_pda, &user1.pubkey()),
         (&user2_primary_account, &primary_mint.pubkey(), &user2.pubkey()),
         (&user2_base_account, &base_mint.pubkey(), &user2.pubkey()),
-        (&user2_lp_a_account, &lp_token_a_mint.pubkey(), &user2.pubkey()),
-        (&user2_lp_b_account, &lp_token_b_mint.pubkey(), &user2.pubkey()),
+        (&user2_lp_a_account, &lp_token_a_mint_pda, &user2.pubkey()),
+        (&user2_lp_b_account, &lp_token_b_mint_pda, &user2.pubkey()),
     ];
     
     // Process accounts in smaller batches to prevent timeouts
@@ -201,8 +208,8 @@ pub async fn create_liquidity_test_foundation(
         pool_config,
         primary_mint,
         base_mint,
-        lp_token_a_mint,
-        lp_token_b_mint,
+        lp_token_a_mint_pda,
+        lp_token_b_mint_pda,
         user1,
         user1_primary_account,
         user1_base_account,
@@ -362,8 +369,8 @@ pub async fn execute_deposit_operation(
         user_input_token_account,
         user_output_lp_account,
         &foundation.pool_config,
-        &foundation.lp_token_a_mint.pubkey(),
-        &foundation.lp_token_b_mint.pubkey(),
+        &foundation.lp_token_a_mint_pda,
+        &foundation.lp_token_b_mint_pda,
         &deposit_instruction_data,
     ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
     
@@ -411,8 +418,8 @@ pub async fn execute_withdrawal_operation(
         user_input_lp_account,
         user_output_token_account,
         &foundation.pool_config,
-        &foundation.lp_token_a_mint.pubkey(),
-        &foundation.lp_token_b_mint.pubkey(),
+        &foundation.lp_token_a_mint_pda,
+        &foundation.lp_token_b_mint_pda,
         &withdrawal_instruction_data,
     ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
     

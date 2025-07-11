@@ -1060,16 +1060,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         
         // Create a real pool for testing
-        let pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            &ctx.lp_token_a_mint,
-            &ctx.lp_token_b_mint,
-            None,
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test GetPoolInfo instruction
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1126,16 +1124,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         
         let specific_ratio = 5u64; // 5:1 ratio
-        let specific_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &specific_primary_mint,
-            &specific_base_mint,
-            &specific_lp_a_mint,
-            &specific_lp_b_mint,
-            Some(specific_ratio),
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test GetPoolInfo instruction for specific configuration
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1201,16 +1197,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&operational_primary_mint, &operational_base_mint],
         ).await?;
         
-        let operational_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &operational_primary_mint,
-            &operational_base_mint,
-            &operational_lp_a_mint,
-            &operational_lp_b_mint,
-            None,
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test pool info retrieval
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1277,16 +1271,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&owner_primary_mint, &owner_base_mint],
         ).await?;
         
-        let owner_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &owner_primary_mint,
-            &owner_base_mint,
-            &owner_lp_a_mint,
-            &owner_lp_b_mint,
-            None,
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test pool info retrieval for owner information
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1342,16 +1334,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         
         let test_ratio = 5u64; // 5:1 ratio
-        let test_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &test_primary_mint,
-            &test_base_mint,
-            &test_lp_a_mint,
-            &test_lp_b_mint,
-            Some(test_ratio),
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test GetPoolInfo instruction for the configuration
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1419,16 +1409,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&liquidity_primary_mint, &liquidity_base_mint],
         ).await?;
         
-        let liquidity_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &liquidity_primary_mint,
-            &liquidity_base_mint,
-            &liquidity_lp_a_mint,
-            &liquidity_lp_b_mint,
-            None,
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Test pool info retrieval for liquidity information
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1519,16 +1507,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&perf_primary_mint, &perf_base_mint],
         ).await?;
         
-        let perf_pool_config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &perf_primary_mint,
-            &perf_base_mint,
-            &perf_lp_a_mint,
-            &perf_lp_b_mint,
-            None,
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
         
         // Performance test: Multiple rapid calls (simplified for speed)
         let start = std::time::Instant::now();

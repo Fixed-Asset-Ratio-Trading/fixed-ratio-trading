@@ -88,6 +88,8 @@ pub struct PoolState {
     pub pool_authority_bump_seed: u8,
     pub token_a_vault_bump_seed: u8,
     pub token_b_vault_bump_seed: u8,
+    pub lp_token_a_mint_bump_seed: u8,
+    pub lp_token_b_mint_bump_seed: u8,
     pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
     pub paused: bool, // Pool-specific pause (separate from system pause)
@@ -130,6 +132,8 @@ impl Default for PoolState {
             pool_authority_bump_seed: 0,
             token_a_vault_bump_seed: 0,
             token_b_vault_bump_seed: 0,
+            lp_token_a_mint_bump_seed: 0,
+            lp_token_b_mint_bump_seed: 0,
             is_initialized: false,
             rent_requirements: RentRequirements::default(),
             paused: false,
@@ -162,6 +166,8 @@ impl PoolState {
         1 +  // pool_authority_bump_seed
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
+        1 +  // lp_token_a_mint_bump_seed
+        1 +  // lp_token_b_mint_bump_seed
         1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // paused

@@ -62,7 +62,7 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::Sysvar,
+    sysvar::{rent::Rent, Sysvar},
     program_pack::Pack,
 };
 use spl_token::{
@@ -70,6 +70,125 @@ use spl_token::{
     state::{Account as TokenAccount},
 };
 use crate::utils::validation::validate_non_zero_amount;
+
+/// **PHASE 10: ON-DEMAND LP TOKEN MINT CREATION**
+/// 
+/// Creates LP token mints as PDAs on-demand during the first deposit operation.
+/// This ensures LP token mints are controlled entirely by the smart contract
+/// and prevents users from providing fake LP token mints to drain pools.
+/// 
+/// # Arguments
+/// * `program_id` - Program ID for PDA derivation
+/// * `pool_state_pda` - Pool state PDA
+/// * `payer` - Account paying for LP token mint creation
+/// * `system_program` - System program account
+/// * `spl_token_program` - SPL token program account
+/// * `rent_sysvar` - Rent sysvar account
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error
+fn create_lp_token_mints_on_demand<'a>(
+    program_id: &Pubkey,
+    pool_state_pda: &AccountInfo<'a>,
+    payer: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    spl_token_program: &AccountInfo<'a>,
+    rent_sysvar: &AccountInfo<'a>,
+) -> ProgramResult {
+    use solana_program::{program::invoke_signed, system_instruction};
+    use spl_token::instruction as token_instruction;
+    
+    let rent = &Rent::from_account_info(rent_sysvar)?;
+    let mint_space = spl_token::state::Mint::LEN;
+    let mint_rent = rent.minimum_balance(mint_space);
+    
+    // Derive LP token mint PDAs
+    let (lp_token_a_mint_pda, lp_token_a_mint_bump) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_A_MINT_SEED_PREFIX,
+            pool_state_pda.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    let (lp_token_b_mint_pda, lp_token_b_mint_bump) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_B_MINT_SEED_PREFIX,
+            pool_state_pda.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    // Create LP token mint seeds for signing
+    let lp_token_a_mint_seeds = &[
+        LP_TOKEN_A_MINT_SEED_PREFIX,
+        pool_state_pda.key.as_ref(),
+        &[lp_token_a_mint_bump],
+    ];
+    
+    let lp_token_b_mint_seeds = &[
+        LP_TOKEN_B_MINT_SEED_PREFIX,
+        pool_state_pda.key.as_ref(),
+        &[lp_token_b_mint_bump],
+    ];
+    
+    // Create LP Token A mint account
+    msg!("Creating LP Token A mint on-demand: {}", lp_token_a_mint_pda);
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            &lp_token_a_mint_pda,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[payer.clone(), system_program.clone()],
+        &[lp_token_a_mint_seeds],
+    )?;
+    
+    // Initialize LP Token A mint
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            spl_token_program.key,
+            &lp_token_a_mint_pda,
+            pool_state_pda.key,
+            None,
+            6, // Decimals
+        )?,
+        &[spl_token_program.clone(), rent_sysvar.clone()],
+        &[lp_token_a_mint_seeds],
+    )?;
+    
+    // Create LP Token B mint account
+    msg!("Creating LP Token B mint on-demand: {}", lp_token_b_mint_pda);
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            &lp_token_b_mint_pda,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[payer.clone(), system_program.clone()],
+        &[lp_token_b_mint_seeds],
+    )?;
+    
+    // Initialize LP Token B mint
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            spl_token_program.key,
+            &lp_token_b_mint_pda,
+            pool_state_pda.key,
+            None,
+            6, // Decimals
+        )?,
+        &[spl_token_program.clone(), rent_sysvar.clone()],
+        &[lp_token_b_mint_seeds],
+    )?;
+    
+    msg!("✅ LP token mints created: A={}, B={}", lp_token_a_mint_pda, lp_token_b_mint_pda);
+    Ok(())
+}
 
 /// Handles user deposits into the trading pool using ultra-optimized account ordering.
 ///
@@ -154,31 +273,31 @@ pub fn process_deposit(
     deposit_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Deposit (Phase 9: Advanced Compute Unit Optimization)");
+    msg!("Processing Deposit (Phase 10: On-Demand LP Token Mint Creation)");
     
-    // ✅ SYSTEM PAUSE: Check system pause state before any operations
+    // ✅ SYSTEM PAUSE: Check system pause state before any operations  
     crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?; // Expected: 12 accounts
     
-    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    // ✅ PHASE 10 SECURITY: Ultra-secure account count requirement
     if accounts.len() < 12 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
+    // ✅ ULTRA-SECURE ACCOUNT EXTRACTION: Extract accounts using new ultra-secure indices
     let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program = &accounts[1];                   // Index 1: System Program
-    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar (was 3)
-    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA (was 4)
-    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA (was 7)
-    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA (was 8)
-    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program (was 9)
-    let user_input_account = &accounts[7];                // Index 7: User Input Token Account (was 10)
-    let user_output_account = &accounts[8];               // Index 8: User Output LP Token Account (was 11)
-    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA (was 12)
+    let system_program = &accounts[1];                    // Index 1: System Program
+    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar
+    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA
+    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA
+    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA
+    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program
+    let user_input_account = &accounts[7];                // Index 7: User Input Token Account
+    let user_output_account = &accounts[8];               // Index 8: User Output LP Token Account
+    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA
     
-    // ✅ PHASE 8 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
-    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (was 13)
-    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (was 14)
+    // ✅ PHASE 10 SECURITY: LP token mint accounts (validated against derived PDAs)
+    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (must match PDA)
+    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (must match PDA)
     
     // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
@@ -194,7 +313,7 @@ pub fn process_deposit(
     collect_liquidity_fee(
         user_authority,
         main_treasury,
-        _system_program,
+        system_program,
         clock_sysvar,
         program_id,
     )?;
@@ -208,6 +327,50 @@ pub fn process_deposit(
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
+
+    // ✅ PHASE 10 SECURITY: Create LP token mints on-demand if this is the first deposit
+    create_lp_token_mints_on_demand(
+        program_id,
+        pool_state_account,
+        user_authority,
+        system_program,
+        spl_token_program,
+        clock_sysvar,
+    )?;
+
+    // ✅ PHASE 10 SECURITY: Derive LP token mint PDAs and validate provided accounts match
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_A_MINT_SEED_PREFIX,
+            pool_state_account.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_B_MINT_SEED_PREFIX,
+            pool_state_account.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    // ✅ PHASE 10 SECURITY: Validate provided LP token mint accounts match expected PDAs
+    if *lp_token_a_mint.key != lp_token_a_mint_pda {
+        msg!("❌ SECURITY: LP Token A mint account does not match expected PDA");
+        msg!("   Expected: {}", lp_token_a_mint_pda);
+        msg!("   Provided: {}", lp_token_a_mint.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if *lp_token_b_mint.key != lp_token_b_mint_pda {
+        msg!("❌ SECURITY: LP Token B mint account does not match expected PDA");
+        msg!("   Expected: {}", lp_token_b_mint_pda);
+        msg!("   Provided: {}", lp_token_b_mint.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    msg!("✅ SECURITY: LP token mint accounts validated as correct PDAs");
 
     // ✅ PHASE 9 OPTIMIZATION 1: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user input token account data (eliminates redundant deserialization)
@@ -226,7 +389,7 @@ pub fn process_deposit(
     
     msg!("Deposit token mint validated: {}", deposit_token_mint_key);
 
-    // ✅ PHASE 9 OPTIMIZATION 2: USE CONSOLIDATED VALIDATION FUNCTIONS
+    // ✅ PHASE 10 SECURITY: USE CONSOLIDATED VALIDATION FUNCTIONS with validated LP token mint accounts
     // Determine deposit target using consolidated vault validation
     let is_depositing_token_a = validate_vault_and_mint_accounts(
         &deposit_token_mint_key,
@@ -395,31 +558,31 @@ pub fn process_withdraw(
     withdraw_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Withdrawal (Phase 9: Advanced Compute Unit Optimization)");
+    msg!("Processing Withdrawal (Phase 10: On-Demand LP Token Mint Creation)");
     
     // ✅ SYSTEM PAUSE: Check system pause state before any operations
     crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?; // Expected: 12 accounts
     
-    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    // ✅ PHASE 10 SECURITY: Ultra-secure account count requirement
     if accounts.len() < 12 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
+    // ✅ ULTRA-SECURE ACCOUNT EXTRACTION: Extract accounts using new ultra-secure indices
     let user_authority = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program = &accounts[1];                   // Index 1: System Program
-    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar (was 3)
-    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA (was 4)
-    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA (was 7)
-    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA (was 8)
-    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program (was 9)
-    let user_input_account = &accounts[7];                // Index 7: User Input LP Token Account (was 10)
-    let user_output_account = &accounts[8];               // Index 8: User Output Token Account (was 11)
-    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA (was 12)
+    let system_program = &accounts[1];                    // Index 1: System Program
+    let clock_sysvar = &accounts[2];                      // Index 2: Clock Sysvar
+    let pool_state_account = &accounts[3];                // Index 3: Pool State PDA
+    let token_a_vault = &accounts[4];                     // Index 4: Token A Vault PDA
+    let token_b_vault = &accounts[5];                     // Index 5: Token B Vault PDA
+    let spl_token_program = &accounts[6];                 // Index 6: SPL Token Program
+    let user_input_account = &accounts[7];                // Index 7: User Input LP Token Account
+    let user_output_account = &accounts[8];               // Index 8: User Output Token Account
+    let main_treasury = &accounts[9];                     // Index 9: Main Treasury PDA
     
-    // ✅ PHASE 8 OPTIMIZED FUNCTION-SPECIFIC ACCOUNTS: LP token accounts at reduced positions
-    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (was 13)
-    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (was 14)
+    // ✅ PHASE 10 SECURITY: LP token mint accounts (validated against derived PDAs)
+    let lp_token_a_mint = &accounts[10];                  // Index 10: LP Token A Mint (must match PDA)
+    let lp_token_b_mint = &accounts[11];                  // Index 11: LP Token B Mint (must match PDA)
     
     // Core validation
     validate_non_zero_amount(lp_amount_to_burn, "Withdrawal")?;
@@ -435,7 +598,7 @@ pub fn process_withdraw(
     collect_liquidity_fee(
         user_authority,
         main_treasury,
-        _system_program,
+        system_program,
         clock_sysvar,
         program_id,
     )?;
@@ -448,6 +611,34 @@ pub fn process_withdraw(
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
+    }
+
+    // ✅ PHASE 10 SECURITY: Validate LP token mint accounts match expected PDAs
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_A_MINT_SEED_PREFIX,
+            pool_state_account.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[
+            LP_TOKEN_B_MINT_SEED_PREFIX,
+            pool_state_account.key.as_ref(),
+        ],
+        program_id,
+    );
+    
+    // ✅ PHASE 10 SECURITY: Validate provided LP token mint accounts match expected PDAs
+    if *lp_token_a_mint.key != lp_token_a_mint_pda {
+        msg!("❌ SECURITY: LP Token A mint account does not match expected PDA");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if *lp_token_b_mint.key != lp_token_b_mint_pda {
+        msg!("❌ SECURITY: LP Token B mint account does not match expected PDA");
+        return Err(ProgramError::InvalidAccountData);
     }
 
     // ✅ PHASE 9 OPTIMIZATION 1: CACHED TOKEN ACCOUNT DESERIALIZATIONS
@@ -529,7 +720,7 @@ pub fn process_withdraw(
         source_lp_mint,
         pool_state_account,
         spl_token_program,
-        _system_program,
+        system_program,
         main_treasury,
         program_id,
     );
