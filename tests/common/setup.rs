@@ -61,14 +61,14 @@ use borsh::BorshSerialize;
 
 /// Test program authority public key for testing
 /// 
-/// This is the same as the production PROGRAM_AUTHORITY but used in test contexts.
-/// For testing, we load the actual program authority keypair from the deployment files.
+/// This is the program authority used specifically for testing. The corresponding
+/// keypair is loaded from target/deploy/PROGRAM_AUTHORITY-keypair.json.
 /// 
-/// **IMPORTANT:** This matches the PROGRAM_AUTHORITY constant during testing.
-/// The keypair is loaded from target/deploy/PROGRAM_AUTHORITY-keypair.json.
+/// **IMPORTANT:** This is a test-only keypair generated specifically for testing.
+/// The private key is stored in the repository for testing purposes only.
 /// 
 /// **NEVER use this authority in production deployments!**
-pub const TEST_PROGRAM_AUTHORITY: &str = "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn";
+pub const TEST_PROGRAM_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn";
 
 /// Path to the program authority keypair file for testing
 /// 
@@ -104,8 +104,14 @@ pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::
         // Fallback: create from hardcoded bytes for CI/testing environments
         // where the deploy directory might not exist
         let keypair_bytes = [
-            24, 3, 42, 38, 103, 180, 70, 78, 136, 168, 248, 6, 91, 75, 238, 107, 174, 66, 122, 45, 52, 78, 218, 217, 32, 211, 78, 213, 139, 132, 98, 210,
-            53, 49, 160, 52, 127, 74, 57, 222, 210, 191, 248, 106, 79, 210, 204, 32, 14, 20, 127, 96, 223, 206, 175, 99, 225, 237, 230, 74, 226, 42, 15, 83
+            163, 234,  36, 177,  75, 126, 161, 135,
+            163, 241, 103,  15,  75,  15, 167,  73,
+            233,  11, 113, 216, 162, 207,  50,  60,
+             60, 172,  13, 230,  60,  27,  56, 134,
+             80, 189, 151,  77,  71, 242, 203, 226,
+             23, 157,  38,  50, 145, 212, 227, 241,
+             10, 174,   8,  87, 229,  18, 141,  49,
+            234,  58,  87,  52, 160,   2, 239, 207,
         ];
         
         use solana_sdk::signature::Keypair;
@@ -114,6 +120,73 @@ pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::
         
         Ok(keypair)
     }
+}
+
+/// Helper function to get program data account address for testing
+/// 
+/// This function derives the program data account address for the test program,
+/// which is needed for program upgrade authority validation.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID
+/// 
+/// # Returns
+/// * `Pubkey` - The program data account address
+pub fn get_test_program_data_address(program_id: &Pubkey) -> Pubkey {
+    use solana_program::bpf_loader_upgradeable;
+    Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0
+}
+
+/// Helper function to create program upgrade authority account meta for testing
+/// 
+/// This creates the AccountMeta needed for program upgrade authority validation
+/// in test transactions.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID
+/// * `authority_keypair` - The authority keypair
+/// 
+/// # Returns
+/// * `Vec<AccountMeta>` - Account metas for authority validation
+pub fn create_program_authority_account_metas(
+    program_id: &Pubkey,
+    authority_keypair: &Keypair,
+) -> Vec<AccountMeta> {
+    let program_data_address = get_test_program_data_address(program_id);
+    
+    vec![
+        AccountMeta::new(authority_keypair.pubkey(), true),  // Program authority (signer)
+        AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+        AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+        AccountMeta::new_readonly(program_data_address, false),  // Program data account
+    ]
+}
+
+/// Verify that the test program authority matches the loaded keypair
+/// 
+/// This function ensures that the TEST_PROGRAM_AUTHORITY constant matches
+/// the actual keypair loaded from the file system.
+/// 
+/// # Arguments
+/// * `keypair` - The loaded keypair
+/// 
+/// # Returns
+/// * `Result<(), String>` - Ok if they match, error message if they don't
+pub fn verify_test_program_authority_consistency(keypair: &Keypair) -> Result<(), String> {
+    use std::str::FromStr;
+    
+    let expected_pubkey = Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
+        .map_err(|e| format!("Invalid TEST_PROGRAM_AUTHORITY constant: {}", e))?;
+    
+    if keypair.pubkey() != expected_pubkey {
+        return Err(format!(
+            "TEST_PROGRAM_AUTHORITY constant ({}) does not match loaded keypair ({})",
+            expected_pubkey,
+            keypair.pubkey()
+        ));
+    }
+    
+    Ok(())
 }
 
 // =============================================================================
@@ -522,17 +595,19 @@ pub async fn initialize_treasury_system(
         &[MAIN_TREASURY_SEED_PREFIX], 
         &fixed_ratio_trading::id()
     );
+    let program_data_address = get_test_program_data_address(&fixed_ratio_trading::id());
     
-    // Create InitializeProgram instruction with Phase 11 maximum security account ordering (5 accounts)
+    // Create InitializeProgram instruction with Phase 12 program upgrade authority account ordering (6 accounts)
     let initialize_program_ix = Instruction {
         program_id: fixed_ratio_trading::id(),
         accounts: vec![
-            // Phase 11 maximum security account ordering (5 accounts total)
+            // Phase 12 program upgrade authority account ordering (6 accounts total)
             AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Program Authority (signer, writable)
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program (readable)
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar (readable)
             AccountMeta::new(system_state_pda, false),                              // Index 3: System State PDA (writable)
             AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA (writable)
+            AccountMeta::new_readonly(program_data_address, false),                 // Index 5: Program Data Account (readable)
         ],
         data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]

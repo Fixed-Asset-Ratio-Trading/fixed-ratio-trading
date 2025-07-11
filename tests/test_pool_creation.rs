@@ -40,31 +40,19 @@ async fn init_treasury_for_test(
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<(), BanksClientError> {
     // ✅ PHASE 11 SECURITY: Use test program authority for treasury initialization
-    use crate::common::setup::create_test_program_authority_keypair;
-    use fixed_ratio_trading::constants::TEST_PROGRAM_AUTHORITY;
-    use std::str::FromStr;
+    use crate::common::setup::{create_test_program_authority_keypair, verify_test_program_authority_consistency};
     
     // Create keypair that matches the test program authority
     let system_authority = create_test_program_authority_keypair()
         .map_err(|e| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, 
             format!("Failed to create program authority keypair: {}", e))))?;
     
-    // Get the test program authority for verification
-    let test_program_authority_pubkey = solana_program::pubkey::Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
-        .map_err(|e| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, 
-            format!("Invalid test program authority: {}", e))))?;
+    // Verify the loaded keypair matches the expected authority
+    verify_test_program_authority_consistency(&system_authority)
+        .map_err(|e| BanksClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData, e)))?;
     
-    // Verify the keypair matches the test program authority
-    if system_authority.pubkey() != test_program_authority_pubkey {
-        return Err(BanksClientError::Io(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Keypair mismatch: expected {}, got {}", 
-                test_program_authority_pubkey, system_authority.pubkey())
-        )));
-    }
-    
-    println!("🔐 Using test program authority for testing: {}", test_program_authority_pubkey);
-    println!("🔐 Authority verified: {}", system_authority.pubkey());
+    println!("🔐 Using test program authority for testing: {}", system_authority.pubkey());
     
     initialize_treasury_system(banks_client, payer, recent_blockhash, &system_authority)
         .await
