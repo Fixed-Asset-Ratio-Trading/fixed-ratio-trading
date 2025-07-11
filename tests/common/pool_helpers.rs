@@ -218,28 +218,23 @@ pub async fn create_pool_new_pattern(
     // Use main treasury for all operations (Phase 3: Centralized Treasury)
     // Old specialized treasuries have been consolidated into main treasury
 
-    // Create InitializePool instruction with standardized account ordering
+    // Create InitializePool instruction with Phase 8 ultra-optimized account ordering (12 accounts)
     let initialize_pool_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            // Standardized account ordering (17 accounts minimum)
+            // Phase 8 ultra-optimized account ordering (12 accounts total)
             AccountMeta::new(payer.pubkey(), true),                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar
-            AccountMeta::new(config.pool_state_pda, false),                  // Index 4: Pool State PDA
-            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 5: Multiple Token Mint (original)
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 6: Base Token Mint (original)
-            AccountMeta::new(config.token_a_vault_pda, false),               // Index 7: Token A Vault PDA
-            AccountMeta::new(config.token_b_vault_pda, false),               // Index 8: Token B Vault PDA
-            AccountMeta::new_readonly(spl_token::id(), false),               // Index 9: SPL Token Program
-            AccountMeta::new(payer.pubkey(), false),                         // Index 10: User Input Token Account (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                         // Index 11: User Output Token Account (placeholder)
-            AccountMeta::new(main_treasury_pda, false),                      // Index 12: Main Treasury PDA
-            AccountMeta::new(payer.pubkey(), false),                         // Index 13: Placeholder (was Swap Treasury PDA)
-            AccountMeta::new(payer.pubkey(), false),                         // Index 14: Placeholder (was HFT Treasury PDA)
-            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // Index 15: LP Token A Mint (signer)
-            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // Index 16: LP Token B Mint (signer)
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 4: Token A Mint (original)
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 5: Token B Mint (original)
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 6: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 7: Token B Vault PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 8: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                      // Index 9: Main Treasury PDA
+            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // Index 10: LP Token A Mint (signer)
+            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // Index 11: LP Token B Mint (signer)
         ],
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,

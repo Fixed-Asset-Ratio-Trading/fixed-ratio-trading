@@ -433,6 +433,17 @@ async fn test_all_swaps_blocked_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
+
     let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -483,6 +494,17 @@ async fn test_all_liquidity_operations_blocked_when_system_paused() -> TestResul
         ctx.env.recent_blockhash,
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
+
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
 
     let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
@@ -543,6 +565,17 @@ async fn test_all_fee_operations_blocked_when_system_paused() -> TestResult {
         ctx.env.recent_blockhash,
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
+
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
 
     let _pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,

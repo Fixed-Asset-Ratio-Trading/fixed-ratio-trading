@@ -1049,6 +1049,15 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             ctx.env.recent_blockhash,
             &[&ctx.primary_mint, &ctx.base_mint],
         ).await?;
+
+        // Initialize treasury system (required before pool creation)
+        let system_authority = Keypair::new();
+        initialize_treasury_system(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &system_authority,
+        ).await?;
         
         // Create a real pool for testing
         let pool_config = create_pool_new_pattern(

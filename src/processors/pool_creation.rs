@@ -41,8 +41,8 @@ use crate::utils::account_builders::*;
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
 /// 3. **Pool State PDA** (writable) - Pool state account to create
-/// 4. **Token A Mint** (readable) - First token in the pool
-/// 5. **Token B Mint** (readable) - Second token in the pool
+/// 4. **First Token Mint** (readable) - First token mint (will be normalized to A or B)
+/// 5. **Second Token Mint** (readable) - Second token mint (will be normalized to A or B)
 /// 6. **Token A Vault PDA** (writable) - Token A vault to create
 /// 7. **Token B Vault PDA** (writable) - Token B vault to create
 /// 8. **SPL Token Program** (readable) - Token program
@@ -87,8 +87,8 @@ pub fn process_initialize_pool(
     let system_program_account = &accounts[1];     // Index 1: System Program
     let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar
     let pool_state_pda_account = &accounts[3];     // Index 3: Pool State PDA (was 4)
-    let multiple_token_mint_account = &accounts[4]; // Index 4: Token A Mint (was 5)
-    let base_token_mint_account = &accounts[5];    // Index 5: Token B Mint (was 6)
+    let token_mint_account_1 = &accounts[4]; // Index 4: First Token Mint (will be normalized to A or B)
+    let token_mint_account_2 = &accounts[5]; // Index 5: Second Token Mint (will be normalized to A or B)
     let token_a_vault_pda_account = &accounts[6];  // Index 6: Token A Vault PDA (was 7)
     let token_b_vault_pda_account = &accounts[7];  // Index 7: Token B Vault PDA (was 8)
     let token_program_account = &accounts[8];      // Index 8: SPL Token Program (was 9)
@@ -167,10 +167,10 @@ pub fn process_initialize_pool(
 
     // Token normalization: Always store tokens in lexicographic order (Token A < Token B)
     let (token_a_mint_key, token_b_mint_key) = 
-        if multiple_token_mint_account.key < base_token_mint_account.key {
-            (multiple_token_mint_account.key, base_token_mint_account.key)
+        if token_mint_account_1.key < token_mint_account_2.key {
+            (token_mint_account_1.key, token_mint_account_2.key)
         } else {
-            (base_token_mint_account.key, multiple_token_mint_account.key)
+            (token_mint_account_2.key, token_mint_account_1.key)
         };
 
     msg!("DEBUG: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
@@ -286,10 +286,10 @@ pub fn process_initialize_pool(
     )?;
     
     // Initialize Token A vault - use correct token mint account that matches token_a_mint_key
-    let token_a_mint_account = if token_a_mint_key == multiple_token_mint_account.key {
-        multiple_token_mint_account
+    let token_a_mint_account = if token_a_mint_key == token_mint_account_1.key {
+        token_mint_account_1
     } else {
-        base_token_mint_account
+        token_mint_account_2
     };
     
     invoke(
@@ -326,10 +326,10 @@ pub fn process_initialize_pool(
     )?;
     
     // Initialize Token B vault - use correct token mint account that matches token_b_mint_key  
-    let token_b_mint_account = if token_b_mint_key == base_token_mint_account.key {
-        base_token_mint_account
+    let token_b_mint_account = if token_b_mint_key == token_mint_account_2.key {
+        token_mint_account_2
     } else {
-        multiple_token_mint_account
+        token_mint_account_1
     };
     
     invoke(

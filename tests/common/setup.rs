@@ -455,27 +455,16 @@ pub async fn initialize_treasury_system(
         &fixed_ratio_trading::id()
     );
     
-    // Create InitializeProgram instruction with standardized account ordering (16 accounts minimum)
+    // Create InitializeProgram instruction with Phase 8 ultra-optimized account ordering (5 accounts)
     let initialize_program_ix = Instruction {
         program_id: fixed_ratio_trading::id(),
         accounts: vec![
-            // Standardized account ordering (indices 0-14 + function-specific at 15+)
+            // Phase 8 ultra-optimized account ordering (5 accounts total)
             AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 4: Pool State PDA (placeholder)
-            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 5: Token A Mint (placeholder)
-            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 6: Token B Mint (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 7: Token A Vault PDA (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 8: Token B Vault PDA (placeholder)
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 9: SPL Token Program (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 10: User Input Token Account (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 11: User Output Token Account (placeholder)
-            AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(payer.pubkey(), false),                                // Index 13: Placeholder (was Swap Treasury PDA)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 14: Placeholder (was HFT Treasury PDA)
-            AccountMeta::new(system_state_pda, false),                              // Index 15: System State PDA (function-specific)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 3: Main Treasury PDA
+            AccountMeta::new(system_state_pda, false),                              // Index 4: System State PDA
         ],
         data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]
