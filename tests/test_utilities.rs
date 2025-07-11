@@ -1075,7 +1075,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(pool_config.pool_state_pda, false), // Pool state PDA (read-only)
+                AccountMeta::new_readonly(config.pool_state_pda, false), // Pool state PDA (read-only)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1091,15 +1091,15 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         assert!(result.is_ok(), "get_pool_info instruction should succeed");
         
         // Verify the pool exists and has valid data
-        let pool_state = get_pool_state(&mut ctx.env.banks_client, &pool_config.pool_state_pda).await
+        let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
             .expect("Pool state should exist after creation");
         
         assert!(pool_state.is_initialized, "Pool should be initialized");
         assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
-        assert_eq!(pool_state.token_a_mint, pool_config.token_a_mint, "Token A mint should match");
-        assert_eq!(pool_state.token_b_mint, pool_config.token_b_mint, "Token B mint should match");
-        assert_eq!(pool_state.ratio_a_numerator, pool_config.ratio_a_numerator, "Ratio A numerator should match");
-        assert_eq!(pool_state.ratio_b_denominator, pool_config.ratio_b_denominator, "Ratio B denominator should match");
+        assert_eq!(pool_state.token_a_mint, config.token_a_mint, "Token A mint should match");
+        assert_eq!(pool_state.token_b_mint, config.token_b_mint, "Token B mint should match");
+        assert_eq!(pool_state.ratio_a_numerator, config.ratio_a_numerator, "Ratio A numerator should match");
+        assert_eq!(pool_state.ratio_b_denominator, config.ratio_b_denominator, "Ratio B denominator should match");
         
         println!("✅ Basic pool information retrieval validation passed");
     }
@@ -1124,14 +1124,14 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         
         let specific_ratio = 5u64; // 5:1 ratio
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),
-    ).await?;
+        let specific_pool_config = create_pool_new_pattern(
+            &mut ctx.env.banks_client,
+            &ctx.env.payer,
+            ctx.env.recent_blockhash,
+            &specific_primary_mint,
+            &specific_base_mint,
+            Some(specific_ratio),
+        ).await?;
         
         // Test GetPoolInfo instruction for specific configuration
         let instruction_data = PoolInstruction::GetPoolInfo {};
@@ -1167,8 +1167,17 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(pool_state.token_b_vault, specific_pool_config.token_b_vault_pda, "Token B vault should match");
         
         // Verify LP token mints
-        assert_eq!(pool_state.lp_token_a_mint, specific_lp_a_mint.pubkey(), "LP Token A mint should match");
-        assert_eq!(pool_state.lp_token_b_mint, specific_lp_b_mint.pubkey(), "LP Token B mint should match");
+        let (expected_lp_token_a_mint, _) = Pubkey::find_program_address(
+            &[fixed_ratio_trading::constants::LP_TOKEN_A_MINT_SEED_PREFIX, specific_pool_config.pool_state_pda.as_ref()],
+            &PROGRAM_ID,
+        );
+        let (expected_lp_token_b_mint, _) = Pubkey::find_program_address(
+            &[fixed_ratio_trading::constants::LP_TOKEN_B_MINT_SEED_PREFIX, specific_pool_config.pool_state_pda.as_ref()],
+            &PROGRAM_ID,
+        );
+        
+        assert_eq!(pool_state.lp_token_a_mint, expected_lp_token_a_mint, "LP Token A mint should match");
+        assert_eq!(pool_state.lp_token_b_mint, expected_lp_token_b_mint, "LP Token B mint should match");
         
         // Verify bump seeds
         assert_eq!(pool_state.pool_authority_bump_seed, specific_pool_config.pool_authority_bump, "Pool authority bump should match");
@@ -1197,12 +1206,12 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&operational_primary_mint, &operational_base_mint],
         ).await?;
         
-    let config = create_pool_new_pattern(
+    let operational_pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
+        &operational_primary_mint,
+        &operational_base_mint,
         Some(3),
     ).await?;
         
@@ -1271,12 +1280,12 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&owner_primary_mint, &owner_base_mint],
         ).await?;
         
-    let config = create_pool_new_pattern(
+    let owner_pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
+        &owner_primary_mint,
+        &owner_base_mint,
         Some(3),
     ).await?;
         
@@ -1334,13 +1343,13 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         ).await?;
         
         let test_ratio = 5u64; // 5:1 ratio
-    let config = create_pool_new_pattern(
+    let test_pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),
+        &test_primary_mint,
+        &test_base_mint,
+        Some(test_ratio),
     ).await?;
         
         // Test GetPoolInfo instruction for the configuration
@@ -1409,12 +1418,12 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&liquidity_primary_mint, &liquidity_base_mint],
         ).await?;
         
-    let config = create_pool_new_pattern(
+    let liquidity_pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
+        &liquidity_primary_mint,
+        &liquidity_base_mint,
         Some(3),
     ).await?;
         
@@ -1507,12 +1516,12 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             &[&perf_primary_mint, &perf_base_mint],
         ).await?;
         
-    let config = create_pool_new_pattern(
+    let perf_pool_config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
+        &perf_primary_mint,
+        &perf_base_mint,
         Some(3),
     ).await?;
         

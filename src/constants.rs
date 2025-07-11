@@ -186,26 +186,35 @@ pub const MINIMUM_RENT_BUFFER: u64 = 1000;
 //=============================================================================
 // PROGRAM AUTHORITY CONFIGURATION
 //=============================================================================
-
-/// **CRITICAL SECURITY: HARDCODED PROGRAM AUTHORITY**
-/// 
-/// This is the ONLY public key authorized to initialize the program and perform
-/// system-level operations. This prevents unauthorized program initialization
-/// and ensures only the legitimate contract owner can control the system.
-/// 
-/// **IMPORTANT:** This MUST match the program ID declared in lib.rs!
-/// When changing the program ID, update BOTH locations:
-/// 1. lib.rs: declare_id!("YOUR_PROGRAM_ID_HERE");
-/// 2. constants.rs: pub const PROGRAM_AUTHORITY: &str = "YOUR_PROGRAM_ID_HERE";
-/// 
-/// **SECURITY FEATURES:**
-/// - Only the program deployer can initialize the program
-/// - Only the program deployer can pause/unpause the entire system
-/// - Only the program deployer can withdraw treasury fees
-/// - Prevents malicious actors from initializing fake program instances
-/// 
-/// **DEPLOYMENT SECURITY:**
-/// - This key MUST be controlled by the legitimate contract deployment authority
-/// - Private key should be stored securely (hardware wallet recommended)
-/// - Consider multi-signature setup for production deployments
-pub const PROGRAM_AUTHORITY: &str = "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"; 
+//
+// **CRITICAL SECURITY: PROGRAM UPGRADE AUTHORITY PATTERN**
+// 
+// This program now uses Solana's built-in program upgrade authority mechanism
+// instead of hardcoded authority constants. This provides maximum flexibility:
+// 
+// - Authority can be transferred to PDAs, multisigs, or governance systems
+// - No hardcoded limitations on authority management
+// - Follows Solana best practices for program authority
+// - Enables decentralized governance patterns
+// 
+// **DEPLOYMENT SECURITY:**
+// - Program upgrade authority is set during deployment
+// - Authority can be transferred after deployment
+// - Private key should be stored securely (hardware wallet recommended)
+// - Consider multi-signature setup for production deployments
+// 
+// **AUTHORITY TRANSFER:**
+// Use `solana program set-upgrade-authority` to transfer authority to:
+// - A multisig PDA for enhanced security
+// - A governance program for decentralized control
+// - Another keypair for operational changes
+// - `None` to make the program immutable (irreversible)
+//
+// **SECURITY FEATURES:**
+// - Only the program upgrade authority can initialize the program
+// - Only the program upgrade authority can pause/unpause the entire system
+// - Only the program upgrade authority can withdraw treasury fees
+// - Prevents malicious actors from initializing fake program instances
+// - Authority can be handed over to governance systems for decentralization
+//
+//=============================================================================

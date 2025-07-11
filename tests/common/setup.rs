@@ -52,6 +52,74 @@ use std::env;
 use env_logger;
 use borsh::BorshSerialize;
 
+// =============================================================================
+// TEST-ONLY CONSTANTS
+// =============================================================================
+// WARNING: These constants are for testing purposes ONLY and should NEVER be
+// used in production deployments. The private keys are publicly visible and
+// provide no security.
+
+/// Test program authority public key for testing
+/// 
+/// This is the same as the production PROGRAM_AUTHORITY but used in test contexts.
+/// For testing, we load the actual program authority keypair from the deployment files.
+/// 
+/// **IMPORTANT:** This matches the PROGRAM_AUTHORITY constant during testing.
+/// The keypair is loaded from target/deploy/PROGRAM_AUTHORITY-keypair.json.
+/// 
+/// **NEVER use this authority in production deployments!**
+pub const TEST_PROGRAM_AUTHORITY: &str = "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn";
+
+/// Path to the program authority keypair file for testing
+/// 
+/// This file contains the actual program authority keypair used for testing.
+/// During development, this is the same as the program ID, but in production
+/// deployment, these should be different keypairs.
+pub const TEST_PROGRAM_AUTHORITY_KEYPAIR_PATH: &str = "target/deploy/PROGRAM_AUTHORITY-keypair.json";
+
+/// Helper function to create a test program authority keypair
+/// 
+/// This function loads the actual program authority keypair from the deployment
+/// files. This ensures tests use the same authority pattern as production.
+/// 
+/// **SECURITY WARNING:** This keypair is stored in the repository for testing
+/// purposes only. It should NEVER be used in production deployments.
+/// 
+/// # Returns
+/// * `Result<Keypair, Box<dyn std::error::Error>>` - The test authority keypair or error
+pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::Keypair, Box<dyn std::error::Error>> {
+    use solana_sdk::signature::read_keypair_file;
+    use std::path::Path;
+    
+    // Try to load from the deployment keypair file
+    let keypair_path = Path::new(TEST_PROGRAM_AUTHORITY_KEYPAIR_PATH);
+    
+    if keypair_path.exists() {
+        // Load the actual program authority keypair
+        let keypair = read_keypair_file(keypair_path)
+            .map_err(|e| format!("Failed to read program authority keypair: {}", e))?;
+        
+        Ok(keypair)
+    } else {
+        // Fallback: create from hardcoded bytes for CI/testing environments
+        // where the deploy directory might not exist
+        let keypair_bytes = [
+            24, 3, 42, 38, 103, 180, 70, 78, 136, 168, 248, 6, 91, 75, 238, 107, 174, 66, 122, 45, 52, 78, 218, 217, 32, 211, 78, 213, 139, 132, 98, 210,
+            53, 49, 160, 52, 127, 74, 57, 222, 210, 191, 248, 106, 79, 210, 204, 32, 14, 20, 127, 96, 223, 206, 175, 99, 225, 237, 230, 74, 226, 42, 15, 83
+        ];
+        
+        use solana_sdk::signature::Keypair;
+        let keypair = Keypair::from_bytes(&keypair_bytes)
+            .map_err(|e| format!("Failed to create fallback keypair: {}", e))?;
+        
+        Ok(keypair)
+    }
+}
+
+// =============================================================================
+// TEST ENVIRONMENT STRUCTURES
+// =============================================================================
+
 /// Test environment context
 /// 
 /// Contains all the basic components needed for a test environment
@@ -455,16 +523,16 @@ pub async fn initialize_treasury_system(
         &fixed_ratio_trading::id()
     );
     
-    // Create InitializeProgram instruction with Phase 8 ultra-optimized account ordering (5 accounts)
+    // Create InitializeProgram instruction with Phase 11 maximum security account ordering (5 accounts)
     let initialize_program_ix = Instruction {
         program_id: fixed_ratio_trading::id(),
         accounts: vec![
-            // Phase 8 ultra-optimized account ordering (5 accounts total)
-            AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Authority/User Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
-            AccountMeta::new(main_treasury_pda, false),                             // Index 3: Main Treasury PDA
-            AccountMeta::new(system_state_pda, false),                              // Index 4: System State PDA
+            // Phase 11 maximum security account ordering (5 accounts total)
+            AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Program Authority (signer, writable)
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program (readable)
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar (readable)
+            AccountMeta::new(system_state_pda, false),                              // Index 3: System State PDA (writable)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA (writable)
         ],
         data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]

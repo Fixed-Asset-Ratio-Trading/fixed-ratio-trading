@@ -39,7 +39,33 @@ async fn init_treasury_for_test(
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
 ) -> Result<(), BanksClientError> {
-    let system_authority = Keypair::new();
+    // ✅ PHASE 11 SECURITY: Use test program authority for treasury initialization
+    use crate::common::setup::create_test_program_authority_keypair;
+    use fixed_ratio_trading::constants::TEST_PROGRAM_AUTHORITY;
+    use std::str::FromStr;
+    
+    // Create keypair that matches the test program authority
+    let system_authority = create_test_program_authority_keypair()
+        .map_err(|e| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, 
+            format!("Failed to create program authority keypair: {}", e))))?;
+    
+    // Get the test program authority for verification
+    let test_program_authority_pubkey = solana_program::pubkey::Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
+        .map_err(|e| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::InvalidData, 
+            format!("Invalid test program authority: {}", e))))?;
+    
+    // Verify the keypair matches the test program authority
+    if system_authority.pubkey() != test_program_authority_pubkey {
+        return Err(BanksClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Keypair mismatch: expected {}, got {}", 
+                test_program_authority_pubkey, system_authority.pubkey())
+        )));
+    }
+    
+    println!("🔐 Using test program authority for testing: {}", test_program_authority_pubkey);
+    println!("🔐 Authority verified: {}", system_authority.pubkey());
+    
     initialize_treasury_system(banks_client, payer, recent_blockhash, &system_authority)
         .await
         .map_err(|e| {
@@ -77,14 +103,14 @@ async fn test_initialize_pool_new_pattern() -> TestResult {
     ).await?;
 
     // Create pool using new single-instruction pattern
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
 
     // Verify pool state
     verify_pool_state(
@@ -123,30 +149,24 @@ async fn test_initialize_multiple_pools_different_ratios() -> TestResult {
     ).await?;
 
     // Create first pool with 2:1 ratio
-    let lp_token_a_mint_1 = Keypair::new();
-    let lp_token_b_mint_1 = Keypair::new();
-    
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let config1 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(2),
+    ).await?;
 
     // Create second pool with 10:1 ratio (different LP tokens)
-    let lp_token_a_mint_2 = Keypair::new();
-    let lp_token_b_mint_2 = Keypair::new();
-    
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let config2 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(10),
+    ).await?;
 
     // Verify both pools exist and have different PDAs
     assert_ne!(config1.pool_state_pda, config2.pool_state_pda, 
@@ -203,29 +223,26 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
     ).await?;
 
     // Create first pool: 2 primary per 1 base (exchange rate: 2:1)
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let _config1 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(2),
+    ).await?;
 
     println!("✅ Created first pool: 2 primary per 1 base");
 
     // Try to create economically equivalent pool: 1 base per 2 primary (same exchange rate: 2:1)
-    let lp_token_a_mint_2 = Keypair::new();
-    let lp_token_b_mint_2 = Keypair::new();
-
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let _config2 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(2),
+    ).await?;
 
     // Initialize treasury system first (required for pool creation fees)
     init_treasury_for_test(
@@ -235,14 +252,14 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
     ).await?;
 
     // Try to create pool with zero ratio (should fail)
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let _config3 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(0),
+    ).await?;
 
     // Initialize treasury system first (required for pool creation fees)
     init_treasury_for_test(
@@ -252,27 +269,24 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
     ).await?;
 
     // Create first pool successfully
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let _config4 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
 
     // Try to create the exact same pool again (should fail)
-    let lp_token_a_mint_2 = Keypair::new();
-    let lp_token_b_mint_2 = Keypair::new();
-
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let _config5 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
 
     // Try to create pool with same token as both primary and base (should fail)
     // This should panic in normalize_pool_config or fail during instruction processing
@@ -319,14 +333,14 @@ async fn test_pool_creation_with_utilities() -> TestResult {
     // Test both patterns to ensure utilities work with both
     
     // Pattern 1: New single-instruction (recommended)
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let config_new = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),
+    ).await?;
 
     // Verify using utility
     verify_pool_state(
@@ -338,17 +352,12 @@ async fn test_pool_creation_with_utilities() -> TestResult {
     ).await.expect("New pattern pool verification failed");
 
     // Pattern 2: Legacy two-instruction (for compatibility)
-    let lp_token_a_mint_legacy = Keypair::new();
-    let lp_token_b_mint_legacy = Keypair::new();
-    
     let config_legacy = create_pool_legacy_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &lp_token_a_mint_legacy,
-        &lp_token_b_mint_legacy,
         Some(4), // Different ratio to avoid conflict
     ).await?;
 
@@ -357,8 +366,8 @@ async fn test_pool_creation_with_utilities() -> TestResult {
         &mut ctx.env.banks_client,
         &config_legacy,
         &ctx.env.payer.pubkey(),
-        &lp_token_a_mint_legacy.pubkey(),
-        &lp_token_b_mint_legacy.pubkey(),
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
     ).await.expect("Legacy pattern pool verification failed");
 
     // Verify pools are different
@@ -487,14 +496,14 @@ async fn test_process_initialize_pool_success() -> TestResult {
     // STEP 4: Create Pool with Standard 3:1 Ratio
     // =============================================
     println!("\n🏊 Creating trading pool...");
-        let config = create_pool_new_pattern(
-            &mut ctx.env.banks_client,
-            &ctx.env.payer,
-            ctx.env.recent_blockhash,
-            &ctx.primary_mint,
-            &ctx.base_mint,
-            Some(3),
-        ).await?;
+    let pool_config = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint,
+        &base_mint,
+        Some(3),
+    ).await?;
     
     println!("✅ Pool created successfully:");
     println!("   Pool State PDA: {}", pool_config.pool_state_pda);
