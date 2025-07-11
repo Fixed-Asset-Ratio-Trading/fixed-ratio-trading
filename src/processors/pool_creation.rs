@@ -51,13 +51,16 @@ use crate::utils::account_builders::*;
 /// 8. **SPL Token Program** (readable) - Token program
 /// 9. **Main Treasury PDA** (writable) - For registration fee collection
 /// 
-/// **PHASE 9 SECURITY BENEFITS:**
+/// **PHASE 11 SECURITY BENEFITS:**
 /// - SECURITY FIX: LP token mints are now derived as PDAs, preventing user manipulation
+/// - SECURITY FIX: All PDAs strictly validated against derived addresses (no fake PDAs possible)
+/// - SECURITY FIX: Enhanced error messages for security violations
 /// - Reduced account count: 12 → 10 accounts (17% reduction)
 /// - Eliminated risk of fake LP tokens being used to drain pools
 /// - Pool has complete control over LP token minting and burning
 /// - Simplified client integration with fewer account requirements
 /// - Additional compute unit savings: 140-280 CUs per transaction
+/// - Complete smart contract control over pool infrastructure creation
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
@@ -193,7 +196,7 @@ pub fn process_initialize_pool(
     msg!("DEBUG: LP Token A Mint PDA: {}", lp_token_a_mint_pda);
     msg!("DEBUG: LP Token B Mint PDA: {}", lp_token_b_mint_pda);
 
-    // Derive pool state PDA and verify it matches the provided account
+    // ✅ PHASE 11 SECURITY: Derive pool state PDA and validate provided account matches
     let (expected_pool_state_pda, pool_authority_bump_seed) = Pubkey::find_program_address(
         &[
             POOL_STATE_SEED_PREFIX,
@@ -206,7 +209,10 @@ pub fn process_initialize_pool(
     );
     
     if *pool_state_pda_account.key != expected_pool_state_pda {
-        return Err(ProgramError::InvalidArgument);
+        msg!("❌ SECURITY VIOLATION: Pool State PDA does not match expected derived PDA");
+        msg!("   Expected: {}", expected_pool_state_pda);
+        msg!("   Provided: {}", pool_state_pda_account.key);
+        return Err(ProgramError::InvalidAccountData);
     }
 
     let pool_state_pda_seeds = &[
@@ -223,7 +229,7 @@ pub fn process_initialize_pool(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // Derive vault PDAs and verify they match the provided accounts
+    // ✅ PHASE 11 SECURITY: Derive vault PDAs and validate provided accounts match
     let (expected_token_a_vault, token_a_vault_bump_seed) = Pubkey::find_program_address(
         &[
             TOKEN_A_VAULT_SEED_PREFIX,
@@ -241,13 +247,19 @@ pub fn process_initialize_pool(
     );
 
     if *token_a_vault_pda_account.key != expected_token_a_vault {
-        msg!("Invalid Token A vault PDA");
-        return Err(ProgramError::InvalidArgument);
+        msg!("❌ SECURITY VIOLATION: Token A vault PDA does not match expected derived PDA");
+        msg!("   Expected: {}", expected_token_a_vault);
+        msg!("   Provided: {}", token_a_vault_pda_account.key);
+        return Err(ProgramError::InvalidAccountData);
     }
     if *token_b_vault_pda_account.key != expected_token_b_vault {
-        msg!("Invalid Token B vault PDA");
-        return Err(ProgramError::InvalidArgument);
+        msg!("❌ SECURITY VIOLATION: Token B vault PDA does not match expected derived PDA");
+        msg!("   Expected: {}", expected_token_b_vault);
+        msg!("   Provided: {}", token_b_vault_pda_account.key);
+        return Err(ProgramError::InvalidAccountData);
     }
+
+    msg!("✅ All PDAs validated against derived addresses");
 
     // Create seeds for signing
     let token_a_vault_seeds = &[
