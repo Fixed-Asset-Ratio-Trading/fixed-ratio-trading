@@ -26,20 +26,21 @@ use spl_token::{
 };
 use crate::utils::account_builders::*;
 
-/// Processes pool initialization with ultra-optimized account ordering and fee collection.
+/// Processes pool initialization with optimized account ordering and fee collection.
 /// 
-/// This function creates a new trading pool with fixed token ratios using an ultra-optimized
+/// This function creates a new trading pool with fixed token ratios using an optimized
 /// account structure by removing all placeholder and redundant accounts. This provides
-/// maximum efficiency for pool creation operations.
+/// maximum efficiency for pool creation operations including LP token mint creation,
+/// token vault setup, and pool state initialization.
 /// 
-/// **PHASE 9: SECURE LP TOKEN MANAGEMENT**
-/// CRITICAL SECURITY FIX: LP token mints are now derived as PDAs and created by the smart contract
-/// instead of being provided by users. This prevents users from creating fake LP tokens to drain pools.
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `ratio_a_numerator` - Numerator for token A in the ratio
+/// * `ratio_b_denominator` - Denominator for token B in the ratio  
+/// * `accounts` - Array of accounts in secure order (12 accounts minimum)
 /// 
-/// With secure LP token mint creation, this function now requires 12 accounts, 
-/// creating LP token mints as PDAs during pool creation for maximum security.
-/// 
-/// # Ultra-Secure Account Order:
+/// # Account Info
+/// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - User creating the pool
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
@@ -53,42 +54,39 @@ use crate::utils::account_builders::*;
 /// 10. **LP Token A Mint PDA** (writable) - LP Token A mint to create
 /// 11. **LP Token B Mint PDA** (writable) - LP Token B mint to create
 /// 
-/// **PHASE 11 SECURITY BENEFITS:**
-/// - SECURITY FIX: LP token mints are now created as PDAs during pool creation, preventing user manipulation  
-/// - SECURITY FIX: All PDAs strictly validated against derived addresses (no fake PDAs possible)
-/// - SECURITY FIX: Enhanced error messages for security violations
-/// - SECURITY FIX: LP token mints immediately available for user token account creation
-/// - Eliminated risk of fake LP tokens being used to drain pools
-/// - Pool has complete control over LP token minting and burning
-/// - Simplified client integration - LP mints exist from pool creation
-/// - No on-demand account creation delays during deposits
-/// - Complete smart contract control over pool infrastructure creation
-/// 
-/// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `ratio_a_numerator` - Numerator for token A in the ratio
-/// * `ratio_b_denominator` - Denominator for token B in the ratio  
-/// * `accounts` - Array of accounts in ultra-secure order (12 accounts minimum)
-/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Performance CUs
+/// [45,000 - 50,000 CUs    2025/1/15 11:30 pm]
+/// 
+/// # Critical Notes
+/// - **LP TOKEN SECURITY**: LP token mints are created as PDAs during pool creation, preventing user manipulation
+/// - **PDA VALIDATION**: All PDAs strictly validated against derived addresses (no fake PDAs possible)
+/// - **ENHANCED SECURITY**: Enhanced error messages for security violations
+/// - **IMMEDIATE AVAILABILITY**: LP token mints immediately available for user token account creation
+/// - **DRAINAGE PROTECTION**: Eliminated risk of fake LP tokens being used to drain pools
+/// - **COMPLETE CONTROL**: Pool has complete control over LP token minting and burning
+/// - **CLIENT INTEGRATION**: Simplified client integration - LP mints exist from pool creation
+/// - **NO DELAYS**: No on-demand account creation delays during deposits
+/// - **SMART CONTRACT CONTROL**: Complete smart contract control over pool infrastructure creation
 pub fn process_initialize_pool(
     program_id: &Pubkey,
     ratio_a_numerator: u64,
     ratio_b_denominator: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing InitializePool with Phase 9 ultra-secure account structure");
+    msg!("Processing InitializePool with secure account structure");
     
     // ✅ SYSTEM PAUSE: Check system-wide pause
     crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
     
-    // ✅ PHASE 11 SECURITY: Ultra-secure account count requirement  
+    // ✅ SECURITY: Account count requirement  
     if accounts.len() < 12 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-SECURE ACCOUNT EXTRACTION: Extract accounts using new ultra-secure indices
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using secure indices
     let payer = &accounts[0];                      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program
     let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar
@@ -112,11 +110,11 @@ pub fn process_initialize_pool(
     // Validate ratio values
     crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
 
-    // ✅ PHASE 3: CENTRALIZED FEE COLLECTION - Collect registration fee with real-time tracking
+    // ✅ CENTRALIZED FEE COLLECTION - Collect registration fee with real-time tracking
     // This ensures the operation fails immediately if fee payment is not possible
     // and updates treasury state in real-time
     
-    // ✅ PHASE 8: OPTIMIZED FEE COLLECTION - Use Clock::get() directly instead of clock sysvar account
+    // ✅ OPTIMIZED FEE COLLECTION - Use Clock::get() directly instead of clock sysvar account
     // Since we removed the clock sysvar account, we need to use a different approach for fee collection
     use crate::utils::fee_validation::{validate_fee_payment, validate_treasury_account};
     use solana_program::{program::invoke, system_instruction, clock::Clock, sysvar::Sysvar};
@@ -180,7 +178,7 @@ pub fn process_initialize_pool(
     msg!("DEBUG: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
          token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
 
-    // ✅ PHASE 9 SECURITY: Derive LP token mint PDAs to prevent user manipulation
+    // ✅ SECURITY: Derive LP token mint PDAs to prevent user manipulation
     let (lp_token_a_mint_pda, lp_token_a_mint_bump_seed) = Pubkey::find_program_address(
         &[
             LP_TOKEN_A_MINT_SEED_PREFIX,
@@ -200,7 +198,7 @@ pub fn process_initialize_pool(
     msg!("DEBUG: LP Token A Mint PDA: {}", lp_token_a_mint_pda);
     msg!("DEBUG: LP Token B Mint PDA: {}", lp_token_b_mint_pda);
 
-    // ✅ PHASE 11 SECURITY: Derive pool state PDA and validate provided account matches
+    // ✅ SECURITY: Derive pool state PDA and validate provided account matches
     let (expected_pool_state_pda, pool_authority_bump_seed) = Pubkey::find_program_address(
         &[
             POOL_STATE_SEED_PREFIX,
@@ -233,7 +231,7 @@ pub fn process_initialize_pool(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // ✅ PHASE 11 SECURITY: Derive vault PDAs and validate provided accounts match
+    // ✅ SECURITY: Derive vault PDAs and validate provided accounts match
     let (expected_token_a_vault, token_a_vault_bump_seed) = Pubkey::find_program_address(
         &[
             TOKEN_A_VAULT_SEED_PREFIX,
@@ -263,7 +261,7 @@ pub fn process_initialize_pool(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // ✅ PHASE 11 SECURITY: Validate LP token mint PDAs match expected derived addresses
+    // ✅ SECURITY: Validate LP token mint PDAs match expected derived addresses
     if *lp_token_a_mint_account.key != lp_token_a_mint_pda {
         msg!("❌ SECURITY VIOLATION: LP Token A mint PDA does not match expected derived PDA");
         msg!("   Expected: {}", lp_token_a_mint_pda);
@@ -291,7 +289,7 @@ pub fn process_initialize_pool(
         &[token_b_vault_bump_seed],
     ];
     
-    // ✅ PHASE 9 SECURITY: Create seeds for LP token mint signing
+    // ✅ SECURITY: Create seeds for LP token mint signing
     let lp_token_a_mint_seeds = &[
         LP_TOKEN_A_MINT_SEED_PREFIX,
         pool_state_pda_account.key.as_ref(),
@@ -407,7 +405,7 @@ pub fn process_initialize_pool(
         ],
     )?;
 
-    // ✅ PHASE 11 SECURITY: Create LP token mint accounts as PDAs during pool creation
+    // ✅ SECURITY: Create LP token mint accounts as PDAs during pool creation
     // This ensures LP token mints exist immediately and are controlled by the smart contract
     let mint_space = spl_token::state::Mint::LEN;
     let mint_rent = rent.minimum_balance(mint_space);

@@ -45,17 +45,19 @@ use crate::{
 /// - Batched validation operations
 /// - Efficient PDA seed construction
 
-/// Handles token swaps within the trading pool using standardized account ordering.
+/// Handles token swaps within the trading pool using optimized account ordering.
 /// 
 /// This function implements the core token swap functionality for the fixed-ratio trading pool.
 /// It enables users to exchange tokens at predetermined ratios with configurable trading fees
 /// and deterministic outputs using consistent account positioning across all functions.
 /// 
-/// **PHASE 6: ULTRA-OPTIMIZED ACCOUNT STRUCTURE**
-/// After removing rent checks and redundant token mint accounts, this function now requires
-/// only 10 accounts (down from 14), providing a 29% reduction in account overhead.
+/// # Arguments
+/// * `program_id` - The program ID
+/// * `amount_in` - The amount of input tokens to swap
+/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
 /// 
-/// # Optimized Account Order:
+/// # Account Info
+/// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - User authorizing the swap
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Pool State PDA** (writable) - Pool state account
@@ -67,36 +69,38 @@ use crate::{
 /// 8. **Main Treasury PDA** (writable) - For fee collection
 /// 9. **[Function-specific accounts]** - Additional accounts as needed
 /// 
-/// **PHASE 6 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 14 → 10 accounts (29% reduction)
-/// - Eliminated rent checks: ~500-850 CU savings per swap
-/// - Removed redundant token mint accounts
-/// - Removed rent and clock sysvar accounts
-/// - Total estimated savings: ~570-990 CUs per swap (additional 5-8% improvement)
-/// 
-/// # Arguments
-/// * `program_id` - The program ID
-/// * `amount_in` - The amount of input tokens to swap
-/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
-/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Performance CUs
+/// 20,000 - 25,000 CUs    2025/7/11 11:11 pm
+/// 
+/// # Critical Notes
+/// - **OPTIMIZED STRUCTURE**: Optimized account structure with 29% reduction in account overhead
+/// - **RENT ELIMINATION**: Eliminated rent checks with 500-850 CU savings per swap
+/// - **ACCOUNT REDUCTION**: Reduced account count from 14 to 10 accounts
+/// - **VALIDATION OPTIMIZATION**: Reduced validation overhead for better performance
+/// - **DETERMINISTIC OUTPUTS**: Deterministic outputs based on fixed exchange rates
+/// - **CONFIGURABLE FEES**: Configurable trading fees with user expectation validation
+/// - **MINT REMOVAL**: Removed redundant token mint accounts
+/// - **SYSVAR REMOVAL**: Removed rent and clock sysvar accounts
+/// - **TOTAL SAVINGS**: Total estimated savings: 570-990 CUs per swap (5-8% improvement)
 pub fn process_swap(
     program_id: &Pubkey,
     amount_in: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Swap (Phase 6: Ultra-Optimized Account Structure)");
+    msg!("Processing Swap with optimized account structure");
     
     // ✅ SYSTEM PAUSE: Check system-wide pause
     crate::utils::validation::validate_system_not_paused_safe(accounts, 10)?;
     
-    // ✅ PHASE 6: OPTIMIZED ACCOUNT VALIDATION - Reduced validation overhead
+    // ✅ OPTIMIZED ACCOUNT VALIDATION: Reduced validation overhead
     if accounts.len() < 10 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new optimized indices
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                // Index 1: System Program
     let pool_state_account = &accounts[2];             // Index 2: Pool State PDA
@@ -117,12 +121,12 @@ pub fn process_swap(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ PHASE 3: ULTRA-EFFICIENT FEE COLLECTION - Direct to main treasury
+    // ✅ ULTRA-EFFICIENT FEE COLLECTION: Direct to main treasury
     use crate::utils::fee_validation::collect_regular_swap_fee_ultra_efficient;
     
     collect_regular_swap_fee_ultra_efficient(
         user_signer,
-        main_treasury_account, // Phase 3: Use main treasury instead of specialized treasury
+        main_treasury_account, // Use main treasury instead of specialized treasury
         &accounts[1], // system_program is at index 1 in standardized ordering
         program_id,
     )?;
@@ -302,38 +306,25 @@ pub fn process_swap(
     pool_state_account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
     drop(pool_state_account_data);
 
-    msg!("✅ Swap completed successfully with ultra-optimized account structure");
+    msg!("✅ Swap completed successfully with optimized account structure");
     
     Ok(())
 }
 
-/// **HFT OPTIMIZED VERSION** - Handles token swaps with reduced compute unit consumption using ultra-optimized account ordering.
+/// Handles token swaps with reduced compute unit consumption using optimized account ordering.
 ///
 /// This is the compute-unit optimized version of the swap function designed specifically
 /// for high-frequency trading applications. All security and functionality is preserved
-/// while reducing CU consumption by approximately 30-35%. This version uses the ultra-optimized
+/// while reducing CU consumption by approximately 30-35%. This version uses the optimized
 /// account ordering pattern for maximum efficiency.
 ///
-/// **PHASE 6: ULTRA-OPTIMIZED ACCOUNT STRUCTURE**
-/// After removing rent checks and redundant token mint accounts, this function now requires
-/// only 10 accounts (down from 14), providing a 29% reduction in account overhead.
-/// Combined with eliminated rent checks, total CU savings are ~1,070-1,840 CUs per swap.
-///
-/// **KEY OPTIMIZATIONS APPLIED:**
-/// - ✅ Single serialization at end (saves ~800-1200 CUs)
-/// - ✅ Reduced logging overhead (saves ~500-800 CUs) 
-/// - ✅ Optimized account data access patterns (saves ~200-400 CUs)
-/// - ✅ Batched validation operations (saves ~100-250 CUs)
-/// - ✅ Efficient PDA seed construction (saves ~100-200 CUs)
-/// - ✅ Early failure validation (saves ~50-150 CUs)
-/// - ✅ Removed floating-point operations (saves ~25-75 CUs)
-/// - ✅ PHASE 6: Eliminated rent checks (saves ~500-850 CUs)
-/// - ✅ PHASE 6: Reduced account count (saves ~70-140 CUs)
-/// - ✅ PHASE 6: Removed token mint validation (saves ~50-100 CUs)
-///
-/// **ESTIMATED TOTAL SAVINGS: 2,395-4,165 CUs (30-35% reduction)**
-///
-/// # Ultra-Optimized Account Order:
+/// # Arguments
+/// * `program_id` - The program ID for PDA validation and signing
+/// * `amount_in` - The amount of input tokens to swap (including fees)
+/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
+/// 
+/// # Account Info
+/// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - User authorizing the swap
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Pool State PDA** (writable) - Pool state account
@@ -345,33 +336,24 @@ pub fn process_swap(
 /// 8. **Main Treasury PDA** (writable) - For fee collection
 /// 9. **[Function-specific accounts]** - Additional accounts as needed
 ///
-/// **PHASE 6 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 14 → 10 accounts (29% reduction)
-/// - Eliminated rent checks entirely (no skip_rent_checks parameter needed)
-/// - Removed redundant token mint accounts
-/// - Removed rent and clock sysvar accounts
-/// - Simplified validation logic
-/// - Maximum compute unit efficiency for HFT scenarios
-///
-/// **USAGE RECOMMENDATION:**
-/// Use this function for production HFT environments where compute unit efficiency
-/// is critical. The function now provides maximum speed with all unnecessary
-/// validations removed while maintaining essential security checks.
-///
-/// **SECURITY NOTE:**
-/// All essential security validations are maintained. Pool accounts are structurally
-/// protected from rent exemption loss, making rent checks unnecessary.
-///
-/// # Arguments
-/// * `program_id` - The program ID for PDA validation and signing
-/// * `amount_in` - The amount of input tokens to swap (including fees)
-/// * `accounts` - Array of accounts in ultra-optimized order (10 accounts minimum)
+/// # Returns
+/// * `ProgramResult` - Success or error
 /// 
-/// # Performance Comparison
-/// ```ignore
-/// Original process_swap:     ~8,000-12,000 CUs
-/// Phase 6 process_swap:      ~5,835-8,000 CUs   (30-35% improvement)
-/// ```
+/// # Performance CUs
+/// 15,000 - 18,000 CUs    2025/7/11 11:11 pm
+/// 
+/// # Critical Notes
+/// - **HFT OPTIMIZED**: Compute-unit optimized version for high-frequency trading applications
+/// - **SINGLE SERIALIZATION**: Single serialization at end (saves 800-1200 CUs)
+/// - **REDUCED LOGGING**: Reduced logging overhead (saves 500-800 CUs)
+/// - **OPTIMIZED PATTERNS**: Optimized account data access patterns (saves 200-400 CUs)
+/// - **BATCHED VALIDATION**: Batched validation operations (saves 100-250 CUs)
+/// - **EFFICIENT PDA**: Efficient PDA seed construction (saves 100-200 CUs)
+/// - **EARLY VALIDATION**: Early failure validation (saves 50-150 CUs)
+/// - **NO FLOATING POINT**: Removed floating-point operations (saves 25-75 CUs)
+/// - **RENT ELIMINATION**: Eliminated rent checks (saves 500-850 CUs)
+/// - **ACCOUNT REDUCTION**: Reduced account count (saves 70-140 CUs)
+/// - **TOTAL SAVINGS**: Estimated total savings: 2,395-4,165 CUs (30-35% reduction)
 pub fn process_swap_hft_optimized(
     program_id: &Pubkey,
     amount_in: u64,
@@ -385,7 +367,7 @@ pub fn process_swap_hft_optimized(
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new optimized indices
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                // Index 1: System Program
     let pool_state_account = &accounts[2];             // Index 2: Pool State PDA
@@ -405,12 +387,12 @@ pub fn process_swap_hft_optimized(
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // ✅ PHASE 3: ULTRA-EFFICIENT HFT FEE COLLECTION - Direct to main treasury
+    // ✅ ULTRA-EFFICIENT HFT FEE COLLECTION: Direct to main treasury
     use crate::utils::fee_validation::collect_hft_swap_fee_ultra_efficient;
     
     collect_hft_swap_fee_ultra_efficient(
         user_signer,
-        main_treasury_account, // Phase 3: Use main treasury instead of specialized treasury
+        main_treasury_account, // Use main treasury instead of specialized treasury
         &accounts[1], // system_program is at index 1 in standardized ordering
         program_id,
     )?;
@@ -741,109 +723,6 @@ pub fn process_set_swap_fee(
     Ok(())
 }
 
-/// **NEW STANDARDIZED VERSION**: Set swap fee with standardized account ordering.
-/// 
-/// This function implements the standardized account ordering policy for swap fee configuration.
-/// It uses consistent account positioning while maintaining all existing functionality.
-/// 
-/// # Standardized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - Pool owner account
-/// 1. **System Program** (readable) - Not used in fee setting (placeholder)
-/// 2. **Rent Sysvar** (readable) - Not used in fee setting (placeholder)
-/// 3. **Clock Sysvar** (readable) - Not used in fee setting (placeholder)
-/// 4. **Pool State PDA** (writable) - Pool state account for fee configuration
-/// 5. **Token A Mint** (readable) - Not used in fee setting (placeholder)
-/// 6. **Token B Mint** (readable) - Not used in fee setting (placeholder)
-/// 7. **Token A Vault PDA** (writable) - Not used in fee setting (placeholder)
-/// 8. **Token B Vault PDA** (writable) - Not used in fee setting (placeholder)
-/// 9. **SPL Token Program** (readable) - Not used in fee setting (placeholder)
-/// 10. **User Input Token Account** (writable) - Not used in fee setting (placeholder)
-/// 11. **User Output Token Account** (writable) - Not used in fee setting (placeholder)
-/// 12. **Main Treasury PDA** (writable) - Not used in fee setting (placeholder)
-/// 13. **Swap Treasury PDA** (writable) - Not used in fee setting (placeholder)
-/// 14. **HFT Treasury PDA** (writable) - Not used in fee setting (placeholder)
-/// 
-/// # Arguments
-/// * `program_id` - The program ID
-/// * `fee_basis_points` - The new trading fee rate in basis points (0-50, representing 0%-0.5%)
-/// * `accounts` - Array of accounts in standardized order (15 accounts minimum)
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-pub fn process_set_swap_fee_standardized(
-    _program_id: &Pubkey,
-    fee_basis_points: u64,
-    accounts: &[AccountInfo],
-) -> ProgramResult {
-    msg!("Processing SetSwapFee (Standardized): {} basis points", fee_basis_points);
-    
-    // ✅ STANDARDIZED ACCOUNT VALIDATION: Validate standard account positions where applicable
-    validate_standard_accounts(accounts)?;
-    validate_pool_accounts(accounts)?;
-    // Note: Most token/treasury accounts are placeholders for fee setting
-    
-    // Validate we have enough accounts for fee setting
-    if accounts.len() < 15 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
-    
-    // ✅ SYSTEM PAUSE: System pause validation using standardized account ordering
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 15)?;
-    
-    // ✅ STANDARDIZED ACCOUNT EXTRACTION: Extract accounts using standardized indices
-    let owner = &accounts[0];                          // Index 0: Authority/User Signer
-    // Indices 1-3: System/rent/clock accounts (unused placeholders)
-    let pool_state = &accounts[4];                     // Index 4: Pool State PDA
-    // Indices 5-14: Token/treasury accounts (unused placeholders)
-    
-    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    // Verify owner is signer
-    if !owner.is_signer {
-        msg!("Owner must be a signer to set swap fee");
-        return Err(ProgramError::MissingRequiredSignature);
-    }
-
-    // Load and verify pool state
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state.data.borrow()[..])?;
-    if *owner.key != pool_state_data.owner {
-        msg!("Only pool owner can set swap fees");
-        return Err(ProgramError::InvalidAccountData);
-    }
-
-    // Validate fee is within allowed range (0-50 basis points = 0%-0.5%)
-    if fee_basis_points > MAX_SWAP_FEE_BASIS_POINTS {
-        msg!("Swap fee {} basis points exceeds maximum of {} basis points (0.5%)", 
-             fee_basis_points, MAX_SWAP_FEE_BASIS_POINTS);
-        return Err(ProgramError::InvalidArgument);
-    }
-
-    // Update swap fee
-    let old_fee = pool_state_data.swap_fee_basis_points;
-    pool_state_data.swap_fee_basis_points = fee_basis_points;
-
-    // ========================================================================
-    // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION
-    // ========================================================================
-    // Apply the same workaround used in process_deposit to prevent data corruption
-    // when the pool state PDA is used as both authority and data storage.
-    
-    // Step 1: Serialize the pool state data to a temporary buffer
-    let mut serialized_data = Vec::new();
-    pool_state_data.serialize(&mut serialized_data)?;
-    
-    // Step 2: Atomic copy to account data
-    {
-        let mut account_data = pool_state.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    }
-    
-    // Log the change for transparency
-    msg!("✅ Swap fee updated with standardized account ordering: {} -> {} basis points ({:.2}% -> {:.2}%)", 
-         old_fee, fee_basis_points,
-         old_fee as f64 / 100.0, fee_basis_points as f64 / 100.0);
-
-    Ok(())
-}
 
 /// Validates that pool swaps are not paused (granular pool check)
 /// 

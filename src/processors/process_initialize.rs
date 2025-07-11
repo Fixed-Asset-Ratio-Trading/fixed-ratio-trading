@@ -22,16 +22,17 @@ use crate::{
 
 /// Processes the InitializeProgram instruction with maximum security and efficiency.
 /// 
-/// **CRITICAL SECURITY FIX: PROGRAM AUTHORITY VALIDATION**
-/// This function now enforces strict program authority validation to prevent unauthorized
-/// program initialization. Only the hardcoded PROGRAM_AUTHORITY can initialize the program.
+/// This function handles the program initialization process that sets up the core system 
+/// infrastructure including system state and treasury. It enforces strict program authority 
+/// validation to prevent unauthorized program initialization using Solana's built-in program 
+/// upgrade authority mechanism for maximum flexibility.
 /// 
-/// **PHASE 12: PROGRAM UPGRADE AUTHORITY PATTERN**
-/// After implementing program upgrade authority validation, this function now uses
-/// Solana's built-in program upgrade authority mechanism for maximum flexibility.
-/// The upgrade authority can be transferred to PDAs, multisigs, or governance systems.
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `accounts` - Array of accounts in program upgrade authority order (6 accounts minimum)
 /// 
-/// # Program Upgrade Authority Account Order:
+/// # Account Info
+/// The accounts must be provided in the following order:
 /// 0. **Program Authority** (signer, writable) - MUST match program upgrade authority
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
@@ -39,40 +40,29 @@ use crate::{
 /// 4. **Main Treasury PDA** (writable) - MUST match derived PDA (validated internally)
 /// 5. **Program Data Account** (readable) - Contains the program upgrade authority
 /// 
-/// **PHASE 12 SECURITY BENEFITS:**
-/// - SECURITY FIX: Only program upgrade authority can initialize the program
-/// - SECURITY FIX: All PDAs strictly validated against derived addresses (no fake PDAs possible)
-/// - SECURITY FIX: Prevents unauthorized program initialization attacks
-/// - FLEXIBILITY: Authority can be transferred to PDAs, multisigs, or governance systems
-/// - Complete smart contract control over system infrastructure creation
-/// - Eliminated risk of users providing fake PDA accounts
-/// - Program upgrade authority validation prevents malicious initialization
-/// - Maintains account count at 6 but with maximum security validation
-/// 
-/// **DEPLOYMENT SECURITY:**
-/// - Program upgrade authority is set during deployment and can be transferred
-/// - Only the program upgrade authority can initialize the program
-/// - Prevents malicious actors from creating fake program instances
-/// - Authority can be handed over to governance systems for decentralization
-/// 
-/// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `accounts` - Array of accounts in program upgrade authority order (6 accounts minimum)
-/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Critical Notes
+/// - **AUTHORITY VALIDATION**: Only the program upgrade authority can initialize the program
+/// - **PDA VALIDATION**: All PDAs are strictly validated against derived addresses (no fake PDAs possible)
+/// - **INITIALIZATION PROTECTION**: Prevents unauthorized program initialization attacks
+/// - **AUTHORITY TRANSFER**: Authority can be transferred to PDAs, multisigs, or governance systems
+/// - **SMART CONTRACT CONTROL**: Complete smart contract control over system infrastructure creation
+/// - **DEPLOYMENT SECURITY**: Program upgrade authority is set during deployment and can be transferred
+/// - **GOVERNANCE READY**: Authority can be handed over to governance systems for decentralization
 pub fn process_initialize_program(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure (Phase 12: Program Upgrade Authority)");
+    msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure");
     
-    // ✅ PHASE 12 SECURITY: Program upgrade authority account count requirement
+    // ✅ SECURITY: Program upgrade authority account count requirement
     if accounts.len() < 6 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ PROGRAM UPGRADE AUTHORITY ACCOUNT EXTRACTION: Extract accounts using new upgrade authority indices
+    // ✅ PROGRAM UPGRADE AUTHORITY ACCOUNT EXTRACTION: Extract accounts using upgrade authority indices
     let program_authority_account = &accounts[0];      // Index 0: Program Authority (MUST match upgrade authority)
     let system_program_account = &accounts[1];         // Index 1: System Program
     let rent_sysvar_account = &accounts[2];            // Index 2: Rent Sysvar
@@ -92,7 +82,7 @@ pub fn process_initialize_program(
     // Validate that the provided authority matches the program upgrade authority
     validate_program_upgrade_authority(program_id, program_data_account, program_authority_account)?;
 
-    // ✅ PHASE 11 SECURITY: Derive System State PDA and validate provided account matches
+    // ✅ SECURITY: Derive System State PDA and validate provided account matches
     let system_state_seeds = &[SYSTEM_STATE_SEED_PREFIX];
     let (expected_system_state_pda, system_state_bump) = Pubkey::find_program_address(system_state_seeds, program_id);
     
@@ -103,13 +93,13 @@ pub fn process_initialize_program(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // ✅ PHASE 11 SECURITY: Check if program is already initialized
+    // ✅ SECURITY: Check if program is already initialized
     if system_state_account.data_len() > 0 && !system_state_account.data_is_empty() {
         msg!("❌ Program already initialized (SystemState exists)");
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    // ✅ PHASE 11 SECURITY: Derive Main Treasury PDA and validate provided account matches
+    // ✅ SECURITY: Derive Main Treasury PDA and validate provided account matches
     let main_treasury_seeds = &[MAIN_TREASURY_SEED_PREFIX];
     let (expected_main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(main_treasury_seeds, program_id);
     
@@ -170,12 +160,12 @@ pub fn process_initialize_program(
     let main_treasury_data = MainTreasuryState::new(*program_authority_account.key);
     serialize_to_account(&main_treasury_data, main_treasury_account)?;
 
-    // ✅ PHASE 12: PROGRAM UPGRADE AUTHORITY INITIALIZATION COMPLETE
-    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY (PHASE 12: PROGRAM UPGRADE AUTHORITY):");
+    // ✅ PROGRAM INITIALIZATION COMPLETE
+    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY:");
     msg!("   • SystemState PDA: {} (validated against derived PDA)", system_state_account.key);
     msg!("   • MainTreasury PDA: {} (validated against derived PDA)", main_treasury_account.key);
     msg!("   • Program Authority: {} (validated against upgrade authority)", program_authority_account.key);
-    msg!("🔐 Phase 12 Security Benefits:");
+    msg!("🔐 Security Benefits:");
     msg!("   • Only program upgrade authority can initialize");
     msg!("   • All PDAs strictly validated against derived addresses");
     msg!("   • Prevents unauthorized program initialization attacks");
