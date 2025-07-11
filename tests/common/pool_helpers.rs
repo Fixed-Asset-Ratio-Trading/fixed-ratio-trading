@@ -33,6 +33,7 @@ use solana_sdk::{signature::Keypair, signer::Signer};
 use borsh::BorshSerialize;
 use crate::common::{constants, *};
 use fixed_ratio_trading::constants as frt_constants;
+use fixed_ratio_trading::id;
 
 /// Normalized pool configuration data
 /// 
@@ -139,17 +140,17 @@ pub fn normalize_pool_config(
             &ratio_a_numerator.to_le_bytes(),
             &ratio_b_denominator.to_le_bytes(),
         ],
-        &PROGRAM_ID,
+        &id(),
     );
 
     // Derive vault PDAs
     let (token_a_vault_pda, token_a_vault_bump) = Pubkey::find_program_address(
         &[TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
-        &PROGRAM_ID,
+        &id(),
     );
     let (token_b_vault_pda, token_b_vault_bump) = Pubkey::find_program_address(
         &[TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
-        &PROGRAM_ID,
+        &id(),
     );
 
     // Map vault bumps back to instruction parameters
@@ -200,8 +201,6 @@ pub async fn create_pool_new_pattern(
     recent_blockhash: solana_sdk::hash::Hash,
     multiple_mint: &Keypair,
     base_mint: &Keypair,
-    lp_token_a_mint: &Keypair,
-    lp_token_b_mint: &Keypair,
     multiple_per_base: Option<u64>,
 ) -> Result<PoolConfig, BanksClientError> {
     let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
@@ -209,44 +208,50 @@ pub async fn create_pool_new_pattern(
     // Get normalized pool configuration
     let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
 
+    // Check if pool already exists
+    if let Some(_existing_pool) = get_pool_state(banks, &config.pool_state_pda).await {
+        return Err(BanksClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "Pool already exists with this configuration"
+        )));
+    }
+
     // Derive main treasury PDA for fee collection
     let (main_treasury_pda, _) = Pubkey::find_program_address(
         &[frt_constants::MAIN_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
+        &id(),
     );
 
-    // Derive treasury accounts for standardized ordering
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::SWAP_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
+    // Derive LP token mint PDAs
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
     );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::HFT_TREASURY_SEED_PREFIX],
-        &PROGRAM_ID,
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_B_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
     );
 
-    // Create InitializePool instruction with standardized account ordering
+    // Use main treasury for all operations (Phase 3: Centralized Treasury)
+    // Old specialized treasuries have been consolidated into main treasury
+
+    // ✅ PHASE 11 SECURITY: Ultra-secure account ordering (12 accounts) - LP token mints created as PDAs
     let initialize_pool_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: id(),
         accounts: vec![
-            // Standardized account ordering (17 accounts minimum)
+            // Phase 11 ultra-secure account ordering (12 accounts total)
             AccountMeta::new(payer.pubkey(), true),                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar
-            AccountMeta::new(config.pool_state_pda, false),                  // Index 4: Pool State PDA
-            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 5: Multiple Token Mint (original)
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 6: Base Token Mint (original)
-            AccountMeta::new(config.token_a_vault_pda, false),               // Index 7: Token A Vault PDA
-            AccountMeta::new(config.token_b_vault_pda, false),               // Index 8: Token B Vault PDA
-            AccountMeta::new_readonly(spl_token::id(), false),               // Index 9: SPL Token Program
-            AccountMeta::new(payer.pubkey(), false),                         // Index 10: User Input Token Account (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                         // Index 11: User Output Token Account (placeholder)
-            AccountMeta::new(main_treasury_pda, false),                      // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                      // Index 13: Swap Treasury PDA (placeholder)
-            AccountMeta::new(hft_treasury_pda, false),                       // Index 14: HFT Treasury PDA (placeholder)
-            AccountMeta::new(lp_token_a_mint.pubkey(), true),                // Index 15: LP Token A Mint (signer)
-            AccountMeta::new(lp_token_b_mint.pubkey(), true),                // Index 16: LP Token B Mint (signer)
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 4: First Token Mint
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 5: Second Token Mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 6: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 7: Token B Vault PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 8: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                      // Index 9: Main Treasury PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 10: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 11: LP Token B Mint PDA
         ],
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,
@@ -254,9 +259,9 @@ pub async fn create_pool_new_pattern(
         }.try_to_vec().unwrap(),
     };
 
-    // Send transaction
+    // ✅ PHASE 9 SECURITY: Send transaction without LP token mint signers (they're now PDAs)
     let mut transaction = Transaction::new_with_payer(&[initialize_pool_ix], Some(&payer.pubkey()));
-    let signers = [payer, lp_token_a_mint, lp_token_b_mint];
+    let signers = [payer]; // Only payer signs - LP token mints are derived as PDAs
     transaction.sign(&signers[..], recent_blockhash);
     banks.process_transaction(transaction).await?;
 
@@ -287,8 +292,6 @@ pub async fn create_pool_legacy_pattern(
     recent_blockhash: solana_sdk::hash::Hash,
     multiple_mint: &Keypair,
     base_mint: &Keypair,
-    lp_token_a_mint: &Keypair,
-    lp_token_b_mint: &Keypair,
     multiple_per_base: Option<u64>,
 ) -> Result<PoolConfig, BanksClientError> {
     println!("ℹ️ Legacy pattern redirecting to new pattern (InitializePool)");
@@ -300,8 +303,6 @@ pub async fn create_pool_legacy_pattern(
         recent_blockhash,
         multiple_mint,
         base_mint,
-        lp_token_a_mint,
-        lp_token_b_mint,
         multiple_per_base,
     ).await
 }
@@ -382,12 +383,28 @@ pub async fn verify_pool_state(
         return Err("Token B vault PDA mismatch".to_string());
     }
 
-    // Verify LP token mints
-    if pool_state.lp_token_a_mint != *lp_token_a_mint {
-        return Err("LP Token A mint mismatch".to_string());
+    // ✅ PHASE 9 SECURITY: Verify LP token mints are derived PDAs (not user-provided)
+    let (expected_lp_token_a_mint, _) = Pubkey::find_program_address(
+        &[
+            frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX,
+            config.pool_state_pda.as_ref(),
+        ],
+        &id(),
+    );
+    
+    let (expected_lp_token_b_mint, _) = Pubkey::find_program_address(
+        &[
+            frt_constants::LP_TOKEN_B_MINT_SEED_PREFIX,
+            config.pool_state_pda.as_ref(),
+        ],
+        &id(),
+    );
+    
+    if pool_state.lp_token_a_mint != expected_lp_token_a_mint {
+        return Err("LP Token A mint mismatch - should be derived PDA".to_string());
     }
-    if pool_state.lp_token_b_mint != *lp_token_b_mint {
-        return Err("LP Token B mint mismatch".to_string());
+    if pool_state.lp_token_b_mint != expected_lp_token_b_mint {
+        return Err("LP Token B mint mismatch - should be derived PDA".to_string());
     }
 
     // Verify bump seeds

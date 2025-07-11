@@ -74,6 +74,7 @@ use solana_program::{
 #[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
 use solana_program::entrypoint;
 
+// ⚠️ IMPORTANT: When changing the program ID, also update PROGRAM_AUTHORITY in constants.rs
 declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
 
 // Declare the entrypoint
@@ -113,8 +114,10 @@ use crate::processors::{
         process_swap_hft_optimized,
     },
     // security module contains only governance-controlled security architecture documentation
-    system_pause::{
+    process_initialize::{
         process_initialize_program,
+    },
+    system_pause::{
         process_pause_system,
         process_unpause_system,
     },
@@ -189,8 +192,7 @@ pub fn process_instruction(
         PoolInstruction::SwapHftOptimized {
             input_token_mint: _,
             amount_in,
-            skip_rent_checks,
-        } => process_swap_hft_optimized(program_id, amount_in, skip_rent_checks, accounts),
+        } => process_swap_hft_optimized(program_id, amount_in, accounts),
 
         // Pool owner management instructions not implemented (governance-controlled architecture)
 

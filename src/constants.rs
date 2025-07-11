@@ -159,6 +159,12 @@ pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
 /// This points to the main treasury for any existing references
 pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
 
+/// PDA seed prefix for LP token A mint accounts
+pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";
+
+/// PDA seed prefix for LP token B mint accounts
+pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
+
 // ============================================================================
 // PHASE 3: REMOVED SPECIALIZED TREASURY CONSTANTS
 // ============================================================================
@@ -175,4 +181,40 @@ pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
 // ============================================================================
 
 /// Additional buffer for rent calculations to account for potential rent increases
-pub const MINIMUM_RENT_BUFFER: u64 = 1000; 
+pub const MINIMUM_RENT_BUFFER: u64 = 1000;
+
+//=============================================================================
+// PROGRAM AUTHORITY CONFIGURATION
+//=============================================================================
+//
+// **CRITICAL SECURITY: PROGRAM UPGRADE AUTHORITY PATTERN**
+// 
+// This program now uses Solana's built-in program upgrade authority mechanism
+// instead of hardcoded authority constants. This provides maximum flexibility:
+// 
+// - Authority can be transferred to PDAs, multisigs, or governance systems
+// - No hardcoded limitations on authority management
+// - Follows Solana best practices for program authority
+// - Enables decentralized governance patterns
+// 
+// **DEPLOYMENT SECURITY:**
+// - Program upgrade authority is set during deployment
+// - Authority can be transferred after deployment
+// - Private key should be stored securely (hardware wallet recommended)
+// - Consider multi-signature setup for production deployments
+// 
+// **AUTHORITY TRANSFER:**
+// Use `solana program set-upgrade-authority` to transfer authority to:
+// - A multisig PDA for enhanced security
+// - A governance program for decentralized control
+// - Another keypair for operational changes
+// - `None` to make the program immutable (irreversible)
+//
+// **SECURITY FEATURES:**
+// - Only the program upgrade authority can initialize the program
+// - Only the program upgrade authority can pause/unpause the entire system
+// - Only the program upgrade authority can withdraw treasury fees
+// - Prevents malicious actors from initializing fake program instances
+// - Authority can be handed over to governance systems for decentralization
+//
+//=============================================================================

@@ -39,19 +39,154 @@ use solana_sdk::{
 };
 use crate::common::constants;
 use fixed_ratio_trading::{
-    process_instruction,
-    PoolInstruction,
-    ID as PROGRAM_ID,
     constants::{
         SYSTEM_STATE_SEED_PREFIX,
         MAIN_TREASURY_SEED_PREFIX,
-        SWAP_TREASURY_SEED_PREFIX,
-        HFT_TREASURY_SEED_PREFIX,
     },
+    state::{SystemState, MainTreasuryState},
+    process_instruction,
 };
+
+
 use std::env;
 use env_logger;
 use borsh::BorshSerialize;
+
+// =============================================================================
+// TEST-ONLY CONSTANTS
+// =============================================================================
+// WARNING: These constants are for testing purposes ONLY and should NEVER be
+// used in production deployments. The private keys are publicly visible and
+// provide no security.
+
+/// Test program authority public key for testing
+/// 
+/// This is the program authority used specifically for testing. The corresponding
+/// keypair is loaded from target/deploy/PROGRAM_AUTHORITY-keypair.json.
+/// 
+/// **IMPORTANT:** This is a test-only keypair generated specifically for testing.
+/// The private key is stored in the repository for testing purposes only.
+/// 
+/// **NEVER use this authority in production deployments!**
+pub const TEST_PROGRAM_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn";
+
+/// **HARDCODED TEST PROGRAM AUTHORITY KEYPAIR**
+/// 
+/// This keypair is hardcoded for testing purposes to avoid any risk of accidental
+/// key releases or confusion about which key is being used. The private key is
+/// intentionally visible in the source code as it's ONLY for testing.
+/// 
+/// **SECURITY WARNING:** This keypair is hardcoded in the repository for testing
+/// purposes only. It should NEVER be used in production deployments.
+/// 
+/// **Public Key:** 6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn
+/// 
+/// # Returns
+/// * `Result<Keypair, Box<dyn std::error::Error>>` - The test authority keypair or error
+pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::Keypair, Box<dyn std::error::Error>> {
+    use solana_sdk::signature::Keypair;
+    use std::str::FromStr;
+    
+    // HARDCODED test keypair bytes - NEVER use in production!
+    // This ensures consistent testing without file dependencies or accidental key releases
+    let keypair_bytes = [
+        163, 234,  36, 177,  75, 126, 161, 135,
+        163, 241, 103,  15,  75,  15, 167,  73,
+        233,  11, 113, 216, 162, 207,  50,  60,
+         60, 172,  13, 230,  60,  27,  56, 134,
+         80, 189, 151,  77,  71, 242, 203, 226,
+         23, 157,  38,  50, 145, 212, 227, 241,
+         10, 174,   8,  87, 229,  18, 141,  49,
+        234,  58,  87,  52, 160,   2, 239, 207,
+    ];
+    
+    let keypair = Keypair::from_bytes(&keypair_bytes)
+        .map_err(|e| format!("Failed to create hardcoded test keypair: {}", e))?;
+    
+    // Verify the keypair matches our expected public key
+    let expected_pubkey = solana_program::pubkey::Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
+        .map_err(|e| format!("Invalid TEST_PROGRAM_AUTHORITY constant: {}", e))?;
+    
+    if keypair.pubkey() != expected_pubkey {
+        return Err(format!(
+            "Hardcoded keypair mismatch! Expected: {}, Got: {}",
+            expected_pubkey, keypair.pubkey()
+        ).into());
+    }
+    
+    Ok(keypair)
+}
+
+/// Helper function to get program data account address for testing
+/// 
+/// This function derives the program data account address for the test program,
+/// which is needed for program upgrade authority validation.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID
+/// 
+/// # Returns
+/// * `Pubkey` - The program data account address
+pub fn get_test_program_data_address(program_id: &Pubkey) -> Pubkey {
+    use solana_program::bpf_loader_upgradeable;
+    Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0
+}
+
+/// Helper function to create program upgrade authority account meta for testing
+/// 
+/// This creates the AccountMeta needed for program upgrade authority validation
+/// in test transactions.
+/// 
+/// # Arguments
+/// * `program_id` - The program ID
+/// * `authority_keypair` - The authority keypair
+/// 
+/// # Returns
+/// * `Vec<AccountMeta>` - Account metas for authority validation
+pub fn create_program_authority_account_metas(
+    program_id: &Pubkey,
+    authority_keypair: &Keypair,
+) -> Vec<AccountMeta> {
+    let program_data_address = get_test_program_data_address(program_id);
+    
+    vec![
+        AccountMeta::new(authority_keypair.pubkey(), true),  // Program authority (signer)
+        AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+        AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Rent sysvar
+        AccountMeta::new_readonly(program_data_address, false),  // Program data account
+    ]
+}
+
+/// Verify that the test program authority matches the hardcoded keypair
+/// 
+/// This function ensures that the TEST_PROGRAM_AUTHORITY constant matches
+/// the hardcoded keypair. This is a safety check to prevent mismatches.
+/// 
+/// # Arguments
+/// * `keypair` - The hardcoded keypair
+/// 
+/// # Returns
+/// * `Result<(), String>` - Ok if they match, error message if they don't
+pub fn verify_test_program_authority_consistency(keypair: &Keypair) -> Result<(), String> {
+    use std::str::FromStr;
+    
+    let expected_pubkey = Pubkey::from_str(TEST_PROGRAM_AUTHORITY)
+        .map_err(|e| format!("Invalid TEST_PROGRAM_AUTHORITY constant: {}", e))?;
+    
+    if keypair.pubkey() != expected_pubkey {
+        return Err(format!(
+            "TEST_PROGRAM_AUTHORITY constant ({}) does not match hardcoded keypair ({})",
+            expected_pubkey,
+            keypair.pubkey()
+        ));
+    }
+    
+    Ok(())
+}
+
+// =============================================================================
+// TEST ENVIRONMENT STRUCTURES
+// =============================================================================
 
 /// Test environment context
 /// 
@@ -85,7 +220,7 @@ pub struct PoolTestContext {
 pub fn create_program_test() -> ProgramTest {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
-        PROGRAM_ID,
+        fixed_ratio_trading::id(),
         processor!(process_instruction),
     );
     
@@ -449,44 +584,27 @@ pub async fn initialize_treasury_system(
     // Derive all required PDA addresses using the actual program constants
     let (system_state_pda, _) = Pubkey::find_program_address(
         &[SYSTEM_STATE_SEED_PREFIX], 
-        &PROGRAM_ID
+        &fixed_ratio_trading::id()
     );
     let (main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
+        &fixed_ratio_trading::id()
     );
-    let (swap_treasury_pda, _) = Pubkey::find_program_address(
-        &[SWAP_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
-    );
-    let (hft_treasury_pda, _) = Pubkey::find_program_address(
-        &[HFT_TREASURY_SEED_PREFIX], 
-        &PROGRAM_ID
-    );
+    let program_data_address = get_test_program_data_address(&fixed_ratio_trading::id());
     
-    // Create InitializeProgram instruction with standardized account ordering (16 accounts minimum)
+    // Create InitializeProgram instruction with Phase 12 program upgrade authority account ordering (6 accounts)
     let initialize_program_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: fixed_ratio_trading::id(),
         accounts: vec![
-            // Standardized account ordering (indices 0-14 + function-specific at 15+)
-            AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Authority/User Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 3: Clock Sysvar (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 4: Pool State PDA (placeholder)
-            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 5: Token A Mint (placeholder)
-            AccountMeta::new_readonly(payer.pubkey(), false),                       // Index 6: Token B Mint (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 7: Token A Vault PDA (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 8: Token B Vault PDA (placeholder)
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 9: SPL Token Program (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 10: User Input Token Account (placeholder)
-            AccountMeta::new(payer.pubkey(), false),                                // Index 11: User Output Token Account (placeholder)
-            AccountMeta::new(main_treasury_pda, false),                             // Index 12: Main Treasury PDA
-            AccountMeta::new(swap_treasury_pda, false),                             // Index 13: Swap Treasury PDA
-            AccountMeta::new(hft_treasury_pda, false),                              // Index 14: HFT Treasury PDA
-            AccountMeta::new(system_state_pda, false),                              // Index 15: System State PDA (function-specific)
+            // Phase 12 program upgrade authority account ordering (6 accounts total)
+            AccountMeta::new(system_authority.pubkey(), true),                       // Index 0: Program Authority (signer, writable)
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program (readable)
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 2: Rent Sysvar (readable)
+            AccountMeta::new(system_state_pda, false),                              // Index 3: System State PDA (writable)
+            AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA (writable)
+            AccountMeta::new_readonly(program_data_address, false),                 // Index 5: Program Data Account (readable)
         ],
-        data: PoolInstruction::InitializeProgram {
+        data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
             // No fields needed - system authority comes from accounts[0]
         }.try_to_vec().unwrap(),
     };
@@ -498,7 +616,5 @@ pub async fn initialize_treasury_system(
     println!("✅ Treasury system initialized successfully");
     println!("   • SystemState PDA: {}", system_state_pda);
     println!("   • MainTreasury PDA: {}", main_treasury_pda);
-    println!("   • SwapTreasury PDA: {}", swap_treasury_pda);
-    println!("   • HftTreasury PDA: {}", hft_treasury_pda);
     Ok(())
 }

@@ -6,6 +6,7 @@ pub mod pool_creation;
 pub mod liquidity;
 pub mod swap;
 pub mod system_pause;
+pub mod process_initialize;
 pub mod utilities;
 pub mod treasury;
 
@@ -22,6 +23,9 @@ pub use swap::*;
 
 // Re-export system pause functions
 pub use system_pause::*;
+
+// Re-export program initialization functions
+pub use process_initialize::*;
 
 // Re-export utility functions
 pub use utilities::*;

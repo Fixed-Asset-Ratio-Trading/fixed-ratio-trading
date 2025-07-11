@@ -12,7 +12,7 @@ mod compliance_examples_tests {
         let swap = ComplexTokenSwap {
             input_amount: 1000,
             minimum_output: 950,
-            slippage_tolerance: 5,
+            slippage_tolerance: 0, // Not used for fixed-ratio trading
         };
         
         assert_eq!(swap.operation_type(), "ComplexTokenSwap");

@@ -39,7 +39,7 @@ Core Swap Tests:
 [✅] test_successful_a_to_b_swap - Core swap functionality A→B
 [✅] test_successful_b_to_a_swap - Core swap functionality B→A
 [✅] test_swap_with_various_ratios - Test different pool ratios
-[✅] test_slippage_protection_boundaries - Slippage protection logic
+[✅] test_fixed_ratio_calculation_boundaries - Fixed ratio calculation logic
 [✅] test_swap_liquidity_constraints - Liquidity availability checks
 [✅] test_swap_edge_cases_and_security - Edge cases and security validation
 [✅] test_process_swap_a_to_b_execution - Low-level swap execution A→B
@@ -171,6 +171,15 @@ pub async fn setup_swap_test_environment(
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await.map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+
     // Create pool with specified ratio
     let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
@@ -178,8 +187,6 @@ pub async fn setup_swap_test_environment(
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
         ratio,
     ).await?;
 
@@ -388,13 +395,13 @@ async fn test_successful_a_to_b_swap() -> TestResult {
         swap_amount,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction
-    assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
+    // Verify instruction construction (Phase 6: Ultra-optimized to 10 accounts)
+    assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (Phase 6 optimization)");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ Swap instruction constructed successfully:");
-    println!("    ✓ 17 accounts configured with proper permissions");
+    println!("    ✓ 10 accounts configured with proper permissions (Phase 6 optimization)");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ Swap parameters: {} → {} (deterministic output)", swap_amount, expected_output);
@@ -498,13 +505,13 @@ async fn test_successful_b_to_a_swap() -> TestResult {
         swap_amount,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction for B→A swap
-    assert_eq!(swap_ix.accounts.len(), 17, "B→A swap instruction should have 17 accounts");
+    // Verify instruction construction for B→A swap (Phase 6: Ultra-optimized to 10 accounts)
+    assert_eq!(swap_ix.accounts.len(), 10, "B→A swap instruction should have 10 accounts (Phase 6 optimization)");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ B→A swap instruction constructed successfully:");
-    println!("    ✓ 17 accounts configured with proper permissions");
+    println!("    ✓ 10 accounts configured with proper permissions (Phase 6 optimization)");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ B→A swap parameters: {} B → {} A (deterministic output)", swap_amount, expected_output);
@@ -781,8 +788,8 @@ async fn test_swap_with_various_ratios() -> TestResult {
             instruction_test_amount,
         ).expect("Failed to create swap instruction");
 
-        // Verify instruction construction
-        assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
+        // Verify instruction construction (Phase 6: Ultra-optimized to 10 accounts)
+        assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (Phase 6 optimization)");
         assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
@@ -956,7 +963,7 @@ async fn test_fixed_ratio_calculation_boundaries() -> TestResult {
     println!();
     println!("🎯 This demonstrates true fixed-ratio trading:");
     println!("   • Predictable outputs with zero variance");
-    println!("   • No slippage protection needed");
+    println!("   • Deterministic exchange rates");
     println!("   • Mathematical precision and consistency");
     println!("   • All-or-nothing execution model");
     
@@ -1040,8 +1047,8 @@ async fn test_swap_liquidity_constraints() -> TestResult {
             swap_amount,
         ).expect("Failed to create swap instruction");
         
-        // Verify instruction construction
-        assert_eq!(swap_ix.accounts.len(), 17, "Swap instruction should have 17 accounts");
+        // Verify instruction construction (Phase 6: Ultra-optimized to 10 accounts)
+        assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (Phase 6 optimization)");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
         println!("    ✓ Sufficient liquidity swap instruction validated: {} → {} (sufficient)", 
@@ -1363,8 +1370,8 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         1000u64,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction works
-    assert_eq!(pause_validation_ix.accounts.len(), 17, "Pause validation instruction should have 17 accounts");
+    // Verify instruction construction works (Phase 6: Ultra-optimized to 10 accounts)
+    assert_eq!(pause_validation_ix.accounts.len(), 10, "Pause validation instruction should have 10 accounts (Phase 6 optimization)");
     assert!(!pause_validation_ix.data.is_empty(), "Pause validation instruction should have data");
     
     println!("✅ Pool pause status validation - owner-only system working correctly");
@@ -1403,8 +1410,8 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         1000u64,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction properties
-    assert_eq!(valid_instruction.accounts.len(), 17, "Instruction should have correct account count");
+    // Verify instruction properties (Phase 6: Ultra-optimized to 10 accounts)
+    assert_eq!(valid_instruction.accounts.len(), 10, "Instruction should have correct account count (Phase 6 optimization)");
     assert_eq!(valid_instruction.program_id, PROGRAM_ID, "Instruction should have correct program ID");
     assert!(!valid_instruction.data.is_empty(), "Instruction data should not be empty");
     

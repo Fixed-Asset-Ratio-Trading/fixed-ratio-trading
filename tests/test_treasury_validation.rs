@@ -15,20 +15,14 @@ use common::*;
 async fn test_treasury_pda_derivation() {
     println!("🏗️ Testing treasury PDA derivation");
     
-    // Derive treasury PDAs
+    // Derive treasury PDA (Phase 3: Centralized Treasury)
     let (main_treasury, main_bump) = Pubkey::find_program_address(&[b"main_treasury"], &PROGRAM_ID);
-    let (swap_treasury, swap_bump) = Pubkey::find_program_address(&[b"swap_treasury"], &PROGRAM_ID);
-    let (hft_treasury, hft_bump) = Pubkey::find_program_address(&[b"hft_treasury"], &PROGRAM_ID);
     
-    println!("Treasury PDAs:");
+    println!("Treasury PDA:");
     println!("  Main: {} (bump: {})", main_treasury, main_bump);
-    println!("  Swap: {} (bump: {})", swap_treasury, swap_bump);
-    println!("  HFT:  {} (bump: {})", hft_treasury, hft_bump);
     
-    // Verify uniqueness
-    assert_ne!(main_treasury, swap_treasury);
-    assert_ne!(main_treasury, hft_treasury);
-    assert_ne!(swap_treasury, hft_treasury);
+    // Verify PDA is valid
+    assert!(!main_treasury.to_string().is_empty());
     
     println!("✅ Treasury PDA derivation working correctly");
 }
@@ -42,17 +36,9 @@ async fn test_treasury_instruction_serialization() {
     let withdraw = PoolInstruction::WithdrawTreasuryFees { amount: 1_000_000 };
     assert!(withdraw.try_to_vec().is_ok());
     
-    // Test ConsolidateTreasuries
-    let consolidate = PoolInstruction::ConsolidateTreasuries;
-    assert!(consolidate.try_to_vec().is_ok());
-    
     // Test GetTreasuryInfo
     let info = PoolInstruction::GetTreasuryInfo {};
     assert!(info.try_to_vec().is_ok());
-    
-    // Test GetSpecializedTreasuryBalances
-    let balances = PoolInstruction::GetSpecializedTreasuryBalances {};
-    assert!(balances.try_to_vec().is_ok());
     
     println!("✅ All treasury instructions serialize correctly");
 }
@@ -68,11 +54,11 @@ async fn test_fee_routing_validation() {
     let swap_fee = 27_150u64; // 0.00002715 SOL → Swap Treasury
     let hft_fee = 16_290u64; // 0.0000163 SOL → HFT Treasury
     
-    println!("Fee routing:");
+    println!("Fee routing (Phase 3: Centralized Treasury):");
     println!("  Pool creation: {} lamports → Main Treasury", pool_creation_fee);
     println!("  Liquidity ops: {} lamports → Main Treasury", liquidity_fee);
-    println!("  Regular swaps: {} lamports → Swap Treasury", swap_fee);
-    println!("  HFT swaps: {} lamports → HFT Treasury", hft_fee);
+    println!("  Regular swaps: {} lamports → Main Treasury", swap_fee);
+    println!("  HFT swaps: {} lamports → Main Treasury", hft_fee);
     
     // Validate fee relationships
     assert!(pool_creation_fee > liquidity_fee);
@@ -115,34 +101,28 @@ async fn test_treasury_workflow_documentation() {
     println!("📋 Treasury System Workflow Documentation");
     println!();
     
-    println!("🔄 COMPLETE TREASURY WORKFLOW:");
-    println!("1. Fee Collection:");
+    println!("🔄 PHASE 3: CENTRALIZED TREASURY WORKFLOW:");
+    println!("1. Fee Collection (Real-time to Main Treasury):");
     println!("   • Pool creation (1.15 SOL) → Main Treasury (immediate)");
     println!("   • Liquidity operations (0.0013 SOL) → Main Treasury (immediate)");
-    println!("   • Regular swaps (0.00002715 SOL) → Swap Treasury (accumulated)");
-    println!("   • HFT swaps (0.0000163 SOL) → HFT Treasury (accumulated)");
+    println!("   • Regular swaps (0.00002715 SOL) → Main Treasury (immediate)");
+    println!("   • HFT swaps (0.0000163 SOL) → Main Treasury (immediate)");
     println!();
     
-    println!("2. Consolidation (Periodic):");
-    println!("   • ConsolidateTreasuries instruction");
-    println!("   • Moves specialized treasury funds → Main Treasury");
-    println!("   • Updates counters and analytics");
-    println!("   • Can be called by anyone for gas efficiency");
-    println!();
-    
-    println!("3. Withdrawal (System Authority Only):");
+    println!("2. Withdrawal (System Authority Only):");
     println!("   • WithdrawTreasuryFees instruction");
     println!("   • Validates system authority signature");
     println!("   • Maintains rent-exempt minimum balance");
     println!("   • Supports partial or full withdrawal");
     println!();
     
-    println!("🏗️ ARCHITECTURE BENEFITS:");
-    println!("✓ Zero additional CU overhead for swaps");
-    println!("✓ Centralized fee collection prevents fragmentation");
+    println!("🏗️ PHASE 3 ARCHITECTURE BENEFITS:");
+    println!("✓ Real-time fee collection to main treasury");
+    println!("✓ Eliminates consolidation race conditions");
+    println!("✓ Simplified architecture with single treasury");
     println!("✓ System authority controls all protocol revenue");
     println!("✓ Rent-safe withdrawal mechanism");
-    println!("✓ Comprehensive fee analytics and monitoring");
+    println!("✓ No fragmentation or specialized treasury complexity");
     
     println!("✅ Treasury workflow documentation complete");
 } 

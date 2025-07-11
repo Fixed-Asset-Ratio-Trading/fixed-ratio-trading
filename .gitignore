@@ -2,6 +2,10 @@
 /test-ledger
 .DS_Store
 
+# Solana keypair files - NEVER commit these!
+!deployment_info.json
+target/deploy/*-keypair.json
+
 # Node.js (not needed for this Rust/Solana project)
 node_modules/
 package-lock.json

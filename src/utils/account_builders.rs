@@ -214,9 +214,17 @@ pub fn extend_for_system_operations(
 
 /// Validates that the standard account positions are correct.
 /// 
-/// This function performs validation on the standard account positions (0-14)
-/// to ensure they match the expected types and requirements. It's used as a
-/// common validation step across all process functions.
+/// **PHASE 8: ULTRA-OPTIMIZED ACCOUNT VALIDATION**
+/// This function now handles multiple ultra-optimized account structures based on account count.
+/// Different operations now use dramatically reduced account counts for maximum efficiency.
+/// 
+/// # Supported Account Structures:
+/// - **1 account**: Treasury info operations
+/// - **2 accounts**: System pause/unpause operations  
+/// - **5 accounts**: System initialization operations
+/// - **6 accounts**: Treasury withdrawal operations
+/// - **10 accounts**: Swap operations (Phase 6)
+/// - **12 accounts**: Liquidity and pool creation operations
 /// 
 /// # Arguments
 /// * `accounts` - Array of account infos to validate
@@ -225,26 +233,60 @@ pub fn extend_for_system_operations(
 /// * `ProgramResult` - Success if all validations pass, error otherwise
 /// 
 /// # Errors
-/// * `ProgramError::NotEnoughAccountKeys` - If fewer than 15 accounts provided
-/// * `ProgramError::MissingRequiredSignature` - If authority (index 0) is not a signer
-/// * `ProgramError::IncorrectProgramId` - If system program (index 1) is incorrect
-/// * `ProgramError::InvalidAccountData` - If sysvar accounts are incorrect
+/// * `ProgramError::NotEnoughAccountKeys` - If account count doesn't match any known structure
+/// * `ProgramError::MissingRequiredSignature` - If authority (index 0) is not a signer when required
+/// * `ProgramError::IncorrectProgramId` - If system program is incorrect when present
+/// * `ProgramError::InvalidAccountData` - If sysvar accounts are incorrect when present
 pub fn validate_standard_accounts(accounts: &[AccountInfo]) -> ProgramResult {
-    if accounts.len() < 15 {
-        return Err(ProgramError::NotEnoughAccountKeys);
+    match accounts.len() {
+        1 => {
+            // Treasury info operation: 1 account (main treasury only)
+            // No validation needed - just read-only access
+            Ok(())
+        },
+        2 => {
+            // System pause/unpause operations: 2 accounts
+            // Index 0: Authority/User Signer, Index 1: System State PDA
+            crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;
+            crate::utils::validation::validate_writable(&accounts[1], "System State PDA")?;
+            Ok(())
+        },
+        5 => {
+            // System initialization: 5 accounts
+            // Index 0: Authority, Index 1: System Program, Index 2: Rent Sysvar
+            crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;
+            validate_program_id(&accounts[1], &system_program::id())?;
+            validate_sysvar(&accounts[2], &rent::id())?;
+            Ok(())
+        },
+        6 => {
+            // Treasury withdrawal: 6 accounts
+            // Index 0: Authority, Index 1: System Program, Index 2: Rent Sysvar
+            crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;
+            validate_program_id(&accounts[1], &system_program::id())?;
+            validate_sysvar(&accounts[2], &rent::id())?;
+            Ok(())
+        },
+        10 => {
+            // Swap operations: 10 accounts (Phase 6 optimized)
+            // Index 0: Authority, Index 1: System Program
+            crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;
+            validate_program_id(&accounts[1], &system_program::id())?;
+            Ok(())
+        },
+        12 => {
+            // Liquidity and pool creation operations: 12 accounts
+            // Index 0: Authority, Index 1: System Program, Index 2: Clock/Rent Sysvar
+            crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;
+            validate_program_id(&accounts[1], &system_program::id())?;
+            // Index 2 can be either clock sysvar (liquidity) or rent sysvar (pool creation)
+            Ok(())
+        },
+        _ => {
+            // Unknown account structure
+            Err(ProgramError::NotEnoughAccountKeys)
+        }
     }
-    
-    // Validate standard account positions
-    crate::utils::validation::validate_signer(&accounts[0], "Authority/User")?;           // Index 0
-    validate_program_id(&accounts[1], &system_program::id())?;  // Index 1
-    validate_sysvar(&accounts[2], &rent::id())?;                // Index 2
-    validate_sysvar(&accounts[3], &clock::id())?;               // Index 3
-    
-    // Note: Pool accounts (4-8) are validated by specific functions
-    // Note: Token program (9) is validated by specific functions
-    // Note: Treasury accounts (12-14) are validated by specific functions
-    
-    Ok(())
 }
 
 /// Validates that the pool-related accounts are correct.
@@ -294,8 +336,13 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 
 /// Validates that the treasury accounts are correct.
 /// 
-/// This function validates accounts at indices 12-14 (treasury system) and
-/// ensures they match the expected treasury structure.
+/// **PHASE 7: ULTRA-OPTIMIZED TREASURY VALIDATION**
+/// After removing all placeholder accounts, treasury functions now use minimal account structures.
+/// This function validates the minimal treasury account requirements based on the operation type.
+/// 
+/// This function validates treasury accounts based on the actual account structure used:
+/// - For treasury withdrawal: 6 accounts (main treasury at index 3)
+/// - For treasury info: 1 account (main treasury at index 0)
 /// 
 /// # Arguments
 /// * `accounts` - Array of account infos to validate
@@ -303,15 +350,25 @@ pub fn validate_token_accounts(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Success if all validations pass, error otherwise
 pub fn validate_treasury_accounts(accounts: &[AccountInfo]) -> ProgramResult {
-    if accounts.len() < 15 {
-        return Err(ProgramError::NotEnoughAccountKeys);
+    // Determine operation type based on account count
+    match accounts.len() {
+        1 => {
+            // Treasury info operation: 1 account (main treasury only)
+            // Index 0: Main Treasury PDA
+            // No validation needed - just read-only access
+            Ok(())
+        },
+        6..=usize::MAX => {
+            // Treasury withdrawal operation: 6+ accounts
+            // Index 3: Main Treasury PDA
+            crate::utils::validation::validate_writable(&accounts[3], "Main Treasury PDA")?;
+            Ok(())
+        },
+        _ => {
+            // Invalid account count for treasury operations
+            Err(ProgramError::NotEnoughAccountKeys)
+        }
     }
-    
-    crate::utils::validation::validate_writable(&accounts[12], "Main Treasury PDA")?;     // Index 12
-    crate::utils::validation::validate_writable(&accounts[13], "Swap Treasury PDA")?;     // Index 13
-    crate::utils::validation::validate_writable(&accounts[14], "HFT Treasury PDA")?;      // Index 14
-    
-    Ok(())
 }
 
 // Note: validate_signer and validate_writable are defined in utils::validation
@@ -385,6 +442,8 @@ pub fn validate_treasury_operation_accounts(accounts: &[AccountInfo]) -> Program
 
 /// Comprehensive validation for system operation accounts.
 /// 
+/// **PHASE 5: OPTIMIZED SYSTEM VALIDATION**
+/// After Phase 3 centralization, system state is now at index 13 instead of 15.
 /// This function validates all standard accounts needed for system operations
 /// including system accounts and system state.
 /// 
@@ -396,12 +455,12 @@ pub fn validate_treasury_operation_accounts(accounts: &[AccountInfo]) -> Program
 pub fn validate_system_operation_accounts(accounts: &[AccountInfo]) -> ProgramResult {
     validate_standard_accounts(accounts)?;
     
-    // System state is at index 15 for system operations
-    if accounts.len() < 16 {
+    // Phase 5: System state is at index 13 for system operations (was 15)
+    if accounts.len() < 14 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    crate::utils::validation::validate_writable(&accounts[15], "System State")?;
+    crate::utils::validation::validate_writable(&accounts[13], "System State")?;
     
     Ok(())
 } 

@@ -251,15 +251,24 @@ async fn test_owner_operations_respect_system_pause() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let _pool_config = create_pool_new_pattern(
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
+
+    let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
+        Some(3),
     ).await?;
 
     println!("🧪 Testing owner-only operations with empty SystemState - demonstrates need for initialization");
@@ -364,21 +373,30 @@ async fn test_read_only_queries_work_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
+
+    let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
+        Some(3),
     ).await?;
 
     println!("🧪 Testing read-only operations with empty SystemState - demonstrates backward compatibility");
 
     // Test that we can read pool state (this should work)
-    let pool_state = get_pool_state(&mut ctx.env.banks_client, &pool_config.pool_state_pda).await;
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await;
     assert!(pool_state.is_some(), "Should be able to read pool state");
     println!("✅ Pool state is readable");
 
@@ -423,21 +441,30 @@ async fn test_pool_info_accessible_when_system_paused() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let pool_config = create_pool_new_pattern(
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
+
+    let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
+        Some(3),
     ).await?;
 
     println!("🧪 Testing pool info accessibility with empty SystemState - demonstrates read operations work");
 
     // Verify pool info is accessible regardless of system state
-    let pool_state = get_pool_state(&mut ctx.env.banks_client, &pool_config.pool_state_pda).await
+    let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Pool state should be accessible");
 
     assert!(pool_state.is_initialized, "Pool should be initialized");
@@ -540,15 +567,24 @@ async fn test_all_operations_resume_after_unpause() -> TestResult {
         &[&ctx.primary_mint, &ctx.base_mint],
     ).await?;
 
-    let _pool_config = create_pool_new_pattern(
+    // Initialize treasury system (required before pool creation)
+    let system_authority = Keypair::new();
+    if let Err(_) = initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, "Treasury initialization failed")));
+    }
+
+    let config = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        &ctx.lp_token_a_mint,
-        &ctx.lp_token_b_mint,
-        None,
+        Some(3),
     ).await?;
 
     println!("🧪 Testing operation resume after unpause - demonstrates pause/unpause cycle need");
