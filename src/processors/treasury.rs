@@ -41,21 +41,18 @@ use crate::{
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Authority/User Signer** (signer, writable) - System authority authorizing withdrawal
+/// 0. **System Authority** (signer, writable) - System authority authorizing withdrawal
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
 /// 3. **Main Treasury PDA** (writable) - Main treasury account for withdrawal
 /// 4. **Destination Account** (writable) - Account receiving the withdrawn SOL
-/// 5. **System State Account** (readable) - For authority validation
+/// 5. **System State PDA** (readable) - For authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
 /// # Critical Notes
-/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 15 to 6 accounts (60% reduction)
-/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 3-11) removed
 /// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead significantly
-/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 210-420 CUs per transaction
 /// - **CLIENT INTEGRATION**: Simplified client integration with minimal account requirements
 /// - **AUTHORITY VALIDATION**: Strict system authority validation for all withdrawals
 pub fn process_withdraw_treasury_fees(
@@ -71,16 +68,16 @@ pub fn process_withdraw_treasury_fees(
     }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let authority_account = &accounts[0];              // Index 0: Authority/User Signer
-    let _system_program = &accounts[1];                // Index 1: System Program
+    let system_authority = &accounts[0];              // Index 0: System Authority
+    let system_program = &accounts[1];                // Index 1: System Program
     let rent_sysvar = &accounts[2];                    // Index 2: Rent Sysvar
-    let main_treasury_account = &accounts[3];          // Index 3: Main Treasury PDA
+    let main_treasury = &accounts[3];          // Index 3: Main Treasury PDA
     let destination_account = &accounts[4];            // Index 4: Destination Account
-    let system_state_account = &accounts[5];           // Index 5: System State Account
+    let system_state_account = &accounts[5];           // Index 5: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    validate_signer(authority_account, "System authority")?;
-    validate_writable(main_treasury_account, "Main treasury")?;
+    validate_signer(system_authority, "System authority")?;
+    validate_writable(main_treasury, "Main treasury")?;
     validate_writable(destination_account, "Destination account")?;
     
     // Verify main treasury PDA
@@ -88,29 +85,29 @@ pub fn process_withdraw_treasury_fees(
         &[MAIN_TREASURY_SEED_PREFIX],
         program_id,
     );
-    if *main_treasury_account.key != expected_main_treasury {
+    if *main_treasury.key != expected_main_treasury {
         msg!("Invalid main treasury PDA. Expected: {}, Got: {}", 
-             expected_main_treasury, main_treasury_account.key);
+             expected_main_treasury, main_treasury.key);
         return Err(ProgramError::InvalidAccountData);
     }
     
     // Load and validate system state to verify authority
     let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
-    if !system_state.validate_authority(authority_account.key) {
-        msg!("Unauthorized: {} is not the system authority", authority_account.key);
+    if !system_state.validate_authority(system_authority.key) {
+        msg!("Unauthorized: {} is not the system authority", system_authority.key);
         return Err(PoolError::UnauthorizedAccess.into());
     }
-    msg!("✅ Authority validation passed: {}", authority_account.key);
+    msg!("✅ Authority validation passed: {}", system_authority.key);
     
     // Load main treasury state
-    let mut main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
+    let mut main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury.data.borrow())?;
     
     // Calculate rent-exempt minimum
     let rent = &Rent::from_account_info(rent_sysvar)?;
     let rent_exempt_minimum = rent.minimum_balance(MainTreasuryState::get_packed_len());
     
     // Calculate available balance for withdrawal
-    let current_balance = main_treasury_account.lamports();
+    let current_balance = main_treasury.lamports();
     let available_balance = if current_balance > rent_exempt_minimum {
         current_balance - rent_exempt_minimum
     } else {
@@ -142,23 +139,23 @@ pub fn process_withdraw_treasury_fees(
     msg!("   Withdrawing: {} lamports", withdrawal_amount);
     
     // Transfer SOL from treasury to destination account
-    **main_treasury_account.try_borrow_mut_lamports()? -= withdrawal_amount;
+    **main_treasury.try_borrow_mut_lamports()? -= withdrawal_amount;
     **destination_account.try_borrow_mut_lamports()? += withdrawal_amount;
     
     // Update treasury statistics
-    main_treasury.total_withdrawn = main_treasury.total_withdrawn
+    main_treasury_state.total_withdrawn = main_treasury_state.total_withdrawn
         .checked_add(withdrawal_amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    main_treasury.total_balance = main_treasury_account.lamports();
+    main_treasury_state.total_balance = main_treasury.lamports();
     
     // Serialize updated treasury state
-    let serialized_data = main_treasury.try_to_vec()?;
-    main_treasury_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    let serialized_data = main_treasury_state.try_to_vec()?;
+    main_treasury.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     msg!("✅ Treasury withdrawal completed successfully");
     msg!("   Amount withdrawn: {} lamports", withdrawal_amount);
-    msg!("   Remaining treasury balance: {} lamports", main_treasury.total_balance);
+    msg!("   Remaining treasury balance: {} lamports", main_treasury_state.total_balance);
     
     Ok(())
 }
@@ -181,9 +178,6 @@ pub fn process_withdraw_treasury_fees(
 /// * `ProgramResult` - Success or error
 /// 
 /// # Critical Notes
-/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 13 to 1 account (92% reduction)
-/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 0-11) removed
-/// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
 /// - **COMPUTE SAVINGS**: Estimated compute unit savings of 420-840 CUs per transaction
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration with single account requirement
 /// - **READ-ONLY OPERATION**: Maximum efficiency for information retrieval
@@ -199,37 +193,37 @@ pub fn process_get_treasury_info(
     }
     
     // ✅ ACCOUNT EXTRACTION: Single account extraction
-    let main_treasury_account = &accounts[0]; // Index 0: Main Treasury PDA
+    let main_treasury = &accounts[0]; // Index 0: Main Treasury PDA
     
     // Load main treasury data (real-time data, no consolidation needed)
-    let main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
+    let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury.data.borrow())?;
     
     msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
-    msg!("   Authority: {}", main_treasury.authority);
+    msg!("   Authority: {}", main_treasury_state.authority);
     msg!("   Current Balance: {} lamports ({} SOL)", 
-         main_treasury.total_balance, 
-         main_treasury.total_balance as f64 / 1_000_000_000.0);
+         main_treasury_state.total_balance, 
+         main_treasury_state.total_balance as f64 / 1_000_000_000.0);
     msg!("   Total Withdrawn: {} lamports ({} SOL)", 
-         main_treasury.total_withdrawn,
-         main_treasury.total_withdrawn as f64 / 1_000_000_000.0);
+         main_treasury_state.total_withdrawn,
+         main_treasury_state.total_withdrawn as f64 / 1_000_000_000.0);
     msg!("");
     msg!("📈 REAL-TIME FEE STATISTICS:");
     msg!("   Pool Creations: {} (Total fees: {} lamports)", 
-         main_treasury.pool_creation_count, main_treasury.total_pool_creation_fees);
+         main_treasury_state.pool_creation_count, main_treasury_state.total_pool_creation_fees);
     msg!("   Liquidity Operations: {} (Total fees: {} lamports)", 
-         main_treasury.liquidity_operation_count, main_treasury.total_liquidity_fees);
+         main_treasury_state.liquidity_operation_count, main_treasury_state.total_liquidity_fees);
     msg!("   Regular Swaps: {} (Total fees: {} lamports)", 
-         main_treasury.regular_swap_count, main_treasury.total_regular_swap_fees);
+         main_treasury_state.regular_swap_count, main_treasury_state.total_regular_swap_fees);
     msg!("   HFT Swaps: {} (Total fees: {} lamports)", 
-         main_treasury.hft_swap_count, main_treasury.total_hft_swap_fees);
+         main_treasury_state.hft_swap_count, main_treasury_state.total_hft_swap_fees);
     msg!("");
     msg!("📊 ANALYTICS:");
-    msg!("   Total Operations: {}", main_treasury.total_operations_processed());
-    msg!("   Total Fees Collected: {} lamports", main_treasury.total_fees_collected());
-    msg!("   Average Fee per Operation: {:.2} lamports", main_treasury.average_fee_per_operation());
+    msg!("   Total Operations: {}", main_treasury_state.total_operations_processed());
+    msg!("   Total Fees Collected: {} lamports", main_treasury_state.total_fees_collected());
+    msg!("   Average Fee per Operation: {:.2} lamports", main_treasury_state.average_fee_per_operation());
     msg!("");
     msg!("⏰ TIMING INFORMATION:");
-    msg!("   Last Update: {}", main_treasury.last_update_timestamp);
+    msg!("   Last Update: {}", main_treasury_state.last_update_timestamp);
     msg!("");
     msg!("✅ TREASURY BENEFITS:");
     msg!("   • Real-time data (no consolidation needed)");

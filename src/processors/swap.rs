@@ -78,7 +78,6 @@ use crate::{
 /// # Critical Notes
 /// - **OPTIMIZED STRUCTURE**: Optimized account structure with 29% reduction in account overhead
 /// - **RENT ELIMINATION**: Eliminated rent checks with 500-850 CU savings per swap
-/// - **ACCOUNT REDUCTION**: Reduced account count from 14 to 10 accounts
 /// - **VALIDATION OPTIMIZATION**: Reduced validation overhead for better performance
 /// - **DETERMINISTIC OUTPUTS**: Deterministic outputs based on fixed exchange rates
 /// - **CONFIGURABLE FEES**: Configurable trading fees with user expectation validation
