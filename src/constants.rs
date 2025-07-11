@@ -181,4 +181,31 @@ pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
 // ============================================================================
 
 /// Additional buffer for rent calculations to account for potential rent increases
-pub const MINIMUM_RENT_BUFFER: u64 = 1000; 
+pub const MINIMUM_RENT_BUFFER: u64 = 1000;
+
+//=============================================================================
+// PROGRAM AUTHORITY CONFIGURATION
+//=============================================================================
+
+/// **CRITICAL SECURITY: HARDCODED PROGRAM AUTHORITY**
+/// 
+/// This is the ONLY public key authorized to initialize the program and perform
+/// system-level operations. This prevents unauthorized program initialization
+/// and ensures only the legitimate contract owner can control the system.
+/// 
+/// **IMPORTANT:** This MUST match the program ID declared in lib.rs!
+/// When changing the program ID, update BOTH locations:
+/// 1. lib.rs: declare_id!("YOUR_PROGRAM_ID_HERE");
+/// 2. constants.rs: pub const PROGRAM_AUTHORITY: &str = "YOUR_PROGRAM_ID_HERE";
+/// 
+/// **SECURITY FEATURES:**
+/// - Only the program deployer can initialize the program
+/// - Only the program deployer can pause/unpause the entire system
+/// - Only the program deployer can withdraw treasury fees
+/// - Prevents malicious actors from initializing fake program instances
+/// 
+/// **DEPLOYMENT SECURITY:**
+/// - This key MUST be controlled by the legitimate contract deployment authority
+/// - Private key should be stored securely (hardware wallet recommended)
+/// - Consider multi-signature setup for production deployments
+pub const PROGRAM_AUTHORITY: &str = "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"; 

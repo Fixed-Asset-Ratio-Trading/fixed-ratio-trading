@@ -24,33 +24,41 @@ use crate::{
     utils::account_builders::*,
 };
 
-/// Processes the InitializeProgram instruction with ultra-optimized account ordering.
+/// Processes the InitializeProgram instruction with maximum security and efficiency.
 /// 
-/// This function implements an ultra-optimized account structure for program initialization
-/// by removing all placeholder accounts that are not used in system operations. This provides
-/// maximum efficiency for system infrastructure creation.
+/// **CRITICAL SECURITY FIX: PROGRAM AUTHORITY VALIDATION**
+/// This function now enforces strict program authority validation to prevent unauthorized
+/// program initialization. Only the hardcoded PROGRAM_AUTHORITY can initialize the program.
 /// 
-/// **PHASE 8: ULTRA-OPTIMIZED SYSTEM ACCOUNT STRUCTURE**
-/// After removing all placeholder pool/token accounts, this function now requires only 5 accounts
-/// (down from 13), providing a 62% reduction in account overhead.
+/// **PHASE 11: MAXIMUM SECURITY PROGRAM INITIALIZATION**
+/// After implementing program authority validation and strict PDA validation,
+/// this function now requires only 5 accounts but with maximum security validation.
+/// Only the hardcoded program authority can initialize, and all PDAs are strictly validated.
 /// 
-/// # Ultra-Optimized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// # Maximum Security Account Order:
+/// 0. **Program Authority** (signer, writable) - MUST match hardcoded PROGRAM_AUTHORITY
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
-/// 3. **Main Treasury PDA** (writable) - Main treasury account to create
-/// 4. **System State PDA** (writable) - System state account to create
+/// 3. **System State PDA** (writable) - MUST match derived PDA (validated internally)
+/// 4. **Main Treasury PDA** (writable) - MUST match derived PDA (validated internally)
 /// 
-/// **PHASE 8 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 13 → 5 accounts (62% reduction)
-/// - Eliminated all placeholder pool/token accounts (indices 4-11 removed)
-/// - Reduced transaction size and validation overhead significantly
-/// - Estimated compute unit savings: 280-560 CUs per transaction
-/// - Simplified client integration with minimal account requirements
+/// **PHASE 11 SECURITY BENEFITS:**
+/// - SECURITY FIX: Only hardcoded PROGRAM_AUTHORITY can initialize the program
+/// - SECURITY FIX: All PDAs strictly validated against derived addresses (no fake PDAs possible)
+/// - SECURITY FIX: Prevents unauthorized program initialization attacks
+/// - Complete smart contract control over system infrastructure creation
+/// - Eliminated risk of users providing fake PDA accounts
+/// - Program authority validation prevents malicious initialization
+/// - Maintains account count at 5 but with maximum security validation
+/// 
+/// **DEPLOYMENT SECURITY:**
+/// - Program authority must be configured in constants.rs before deployment
+/// - Only the legitimate contract owner can initialize the program
+/// - Prevents malicious actors from creating fake program instances
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
-/// * `accounts` - Array of accounts in ultra-optimized order (5 accounts minimum)
+/// * `accounts` - Array of accounts in maximum security order (5 accounts minimum)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -58,60 +66,86 @@ pub fn process_initialize_program(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure (Phase 8: Ultra-Optimized)");
+    msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure (Phase 11: Maximum Security)");
     
-    // ✅ PHASE 8 OPTIMIZATION: Ultra-reduced account count requirement
+    // ✅ PHASE 11 SECURITY: Maximum security account count requirement
     if accounts.len() < 5 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
-    let system_authority_account = &accounts[0];       // Index 0: Authority/User Signer
+    // ✅ MAXIMUM SECURITY ACCOUNT EXTRACTION: Extract accounts using new maximum security indices
+    let program_authority_account = &accounts[0];      // Index 0: Program Authority (MUST match hardcoded authority)
     let system_program_account = &accounts[1];         // Index 1: System Program
     let rent_sysvar_account = &accounts[2];            // Index 2: Rent Sysvar
-    let main_treasury_account = &accounts[3];          // Index 3: Main Treasury PDA (was 12)
-    let system_state_account = &accounts[4];           // Index 4: System State PDA (was 13)
+    let system_state_account = &accounts[3];           // Index 3: System State PDA (MUST match derived PDA)
+    let main_treasury_account = &accounts[4];          // Index 4: Main Treasury PDA (MUST match derived PDA)
     
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
-    // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    // Verify system authority is signer
-    if !system_authority_account.is_signer {
-        msg!("❌ System authority must be a signer");
+    // ✅ CRITICAL SECURITY: Verify program authority is signer
+    if !program_authority_account.is_signer {
+        msg!("❌ Program authority must be a signer");
         return Err(ProgramError::MissingRequiredSignature);
     }
 
-    // System authority is validated by signer check above
-    // The account key itself is the authority
+    // ✅ CRITICAL SECURITY: Validate program authority matches hardcoded authority
+    use std::str::FromStr;
+    let expected_program_authority = Pubkey::from_str(PROGRAM_AUTHORITY)
+        .map_err(|_| ProgramError::InvalidAccountData)?;
+    
+    if *program_authority_account.key != expected_program_authority {
+        msg!("❌ UNAUTHORIZED: Only the program authority can initialize the program");
+        msg!("   Expected: {}", expected_program_authority);
+        msg!("   Provided: {}", program_authority_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    // 1. CREATE SYSTEMSTATE PDA
+    msg!("✅ Program authority validated: {}", program_authority_account.key);
+
+    // ✅ PHASE 11 SECURITY: Derive System State PDA and validate provided account matches
     let system_state_seeds = &[SYSTEM_STATE_SEED_PREFIX];
     let (expected_system_state_pda, system_state_bump) = Pubkey::find_program_address(system_state_seeds, program_id);
     
     if *system_state_account.key != expected_system_state_pda {
-        msg!("❌ Invalid SystemState PDA");
-        return Err(ProgramError::InvalidArgument);
+        msg!("❌ SECURITY VIOLATION: System State PDA does not match expected derived PDA");
+        msg!("   Expected: {}", expected_system_state_pda);
+        msg!("   Provided: {}", system_state_account.key);
+        return Err(ProgramError::InvalidAccountData);
     }
 
-    // Check if already initialized
+    // ✅ PHASE 11 SECURITY: Check if program is already initialized
     if system_state_account.data_len() > 0 && !system_state_account.data_is_empty() {
         msg!("❌ Program already initialized (SystemState exists)");
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
+    // ✅ PHASE 11 SECURITY: Derive Main Treasury PDA and validate provided account matches
+    let main_treasury_seeds = &[MAIN_TREASURY_SEED_PREFIX];
+    let (expected_main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(main_treasury_seeds, program_id);
+    
+    if *main_treasury_account.key != expected_main_treasury_pda {
+        msg!("❌ SECURITY VIOLATION: Main Treasury PDA does not match expected derived PDA");
+        msg!("   Expected: {}", expected_main_treasury_pda);
+        msg!("   Provided: {}", main_treasury_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    msg!("✅ All PDAs validated against derived addresses");
+
+    // Create System State PDA account
     let system_state_rent = rent.minimum_balance(SystemState::LEN);
     let system_state_seeds_with_bump = &[SYSTEM_STATE_SEED_PREFIX, &[system_state_bump]];
     
     invoke_signed(
         &system_instruction::create_account(
-            system_authority_account.key,
+            program_authority_account.key,
             system_state_account.key,
             system_state_rent,
             SystemState::LEN as u64,
             program_id,
         ),
         &[
-            system_authority_account.clone(),
+            program_authority_account.clone(),
             system_state_account.clone(),
             system_program_account.clone(),
         ],
@@ -119,31 +153,23 @@ pub fn process_initialize_program(
     )?;
 
     // Initialize SystemState data
-    let system_state_data = SystemState::new(*system_authority_account.key);
+    let system_state_data = SystemState::new(*program_authority_account.key);
     serialize_to_account(&system_state_data, system_state_account)?;
     
-    // 2. CREATE MAIN TREASURY PDA
-    let main_treasury_seeds = &[MAIN_TREASURY_SEED_PREFIX];
-    let (expected_main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(main_treasury_seeds, program_id);
-    
-    if *main_treasury_account.key != expected_main_treasury_pda {
-        msg!("❌ Invalid MainTreasury PDA");
-        return Err(ProgramError::InvalidArgument);
-    }
-
+    // Create Main Treasury PDA account
     let main_treasury_rent = rent.minimum_balance(MainTreasuryState::get_packed_len());
     let main_treasury_seeds_with_bump = &[MAIN_TREASURY_SEED_PREFIX, &[main_treasury_bump]];
     
     invoke_signed(
         &system_instruction::create_account(
-            system_authority_account.key,
+            program_authority_account.key,
             main_treasury_account.key,
             main_treasury_rent,
             MainTreasuryState::get_packed_len() as u64,
             program_id,
         ),
         &[
-            system_authority_account.clone(),
+            program_authority_account.clone(),
             main_treasury_account.clone(),
             system_program_account.clone(),
         ],
@@ -151,21 +177,19 @@ pub fn process_initialize_program(
     )?;
 
     // Initialize MainTreasury data
-    let main_treasury_data = MainTreasuryState::new(*system_authority_account.key);
+    let main_treasury_data = MainTreasuryState::new(*program_authority_account.key);
     serialize_to_account(&main_treasury_data, main_treasury_account)?;
 
-    // ✅ PHASE 3: SPECIALIZED TREASURIES REMOVED
-    // No longer creating specialized treasuries - all fees go directly to main treasury
-    // This eliminates consolidation race conditions and simplifies the architecture
-
-    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY (PHASE 3: CENTRALIZED ARCHITECTURE):");
-    msg!("   • SystemState PDA: {}", system_state_account.key);
-    msg!("   • MainTreasury PDA: {}", main_treasury_account.key);
-    msg!("   • System Authority: {}", system_authority_account.key);
-    msg!("🎯 Phase 3 Benefits:");
-    msg!("   • Single centralized treasury for all fees");
-    msg!("   • Real-time fee tracking (no consolidation needed)");
-    msg!("   • Simplified architecture with no race conditions");
+    // ✅ PHASE 11: MAXIMUM SECURITY PROGRAM INITIALIZATION COMPLETE
+    msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY (PHASE 11: MAXIMUM SECURITY):");
+    msg!("   • SystemState PDA: {} (validated against derived PDA)", system_state_account.key);
+    msg!("   • MainTreasury PDA: {} (validated against derived PDA)", main_treasury_account.key);
+    msg!("   • Program Authority: {} (validated against hardcoded authority)", program_authority_account.key);
+    msg!("🔐 Phase 11 Security Benefits:");
+    msg!("   • Only authorized program authority can initialize");
+    msg!("   • All PDAs strictly validated against derived addresses");
+    msg!("   • Prevents unauthorized program initialization attacks");
+    msg!("   • Complete smart contract control over system infrastructure");
     msg!("   • Pool creation and treasury operations now available!");
 
     Ok(())
