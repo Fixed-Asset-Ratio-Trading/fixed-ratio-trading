@@ -361,6 +361,8 @@ fn test_pool_state_get_packed_len() {
         1 +  // pool_authority_bump_seed
         1 +  // token_a_vault_bump_seed
         1 +  // token_b_vault_bump_seed
+        1 +  // lp_token_a_mint_bump_seed
+        1 +  // lp_token_b_mint_bump_seed
         1 +  // is_initialized
         40 + // rent_requirements
         1 +  // paused
