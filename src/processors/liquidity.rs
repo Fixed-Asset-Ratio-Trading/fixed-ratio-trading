@@ -71,16 +71,14 @@ use spl_token::{
 };
 use crate::utils::validation::validate_non_zero_amount;
 
-/// **PHASE 10: USER LP TOKEN ACCOUNT CREATION**
+/// **PHASE 10: USER LP TOKEN ACCOUNT ON-DEMAND CREATION**
 /// 
 /// Creates the user's LP token account if it doesn't exist yet.
-/// This is needed because LP token mints are created on-demand, but users need
-/// accounts to receive LP tokens. The account will be created with the correct
-/// mint and owner information.
+/// This is called after the LP token mint has been created.
 /// 
 /// # Arguments
 /// * `user_authority` - User who will own the LP token account
-/// * `user_lp_account` - The user's LP token account to create (if needed)
+/// * `user_lp_account` - The user's LP token account to create
 /// * `lp_token_mint` - The LP token mint for the account
 /// * `system_program` - System program account
 /// * `spl_token_program` - SPL token program account
@@ -88,7 +86,7 @@ use crate::utils::validation::validate_non_zero_amount;
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
-fn create_user_lp_token_account_if_needed<'a>(
+fn create_user_lp_token_account_on_demand<'a>(
     user_authority: &AccountInfo<'a>,
     user_lp_account: &AccountInfo<'a>,
     lp_token_mint: &Pubkey,
@@ -96,29 +94,14 @@ fn create_user_lp_token_account_if_needed<'a>(
     spl_token_program: &AccountInfo<'a>,
     rent_sysvar: &AccountInfo<'a>,
 ) -> ProgramResult {
-    // Check if the account already exists and is initialized
-    if user_lp_account.data_len() > 0 {
-        // Account already exists, verify it's correctly configured
-        if let Ok(account_data) = spl_token::state::Account::unpack(&user_lp_account.data.borrow()) {
-            if account_data.mint == *lp_token_mint && account_data.owner == *user_authority.key {
-                msg!("✅ User LP token account already exists and is correctly configured");
-                return Ok(());
-            } else {
-                msg!("❌ User LP token account exists but has incorrect configuration");
-                return Err(ProgramError::InvalidAccountData);
-            }
-        }
-    }
-    
-    // Account doesn't exist or isn't initialized, create it
-    msg!("Creating user LP token account: {}", user_lp_account.key);
-    
     let rent = &Rent::from_account_info(rent_sysvar)?;
     let account_space = spl_token::state::Account::LEN;
     let account_rent = rent.minimum_balance(account_space);
     
     use solana_program::{program::invoke, system_instruction};
     use spl_token::instruction as token_instruction;
+    
+    msg!("Creating user LP token account: {}", user_lp_account.key);
     
     // Create the account
     invoke(
@@ -146,6 +129,8 @@ fn create_user_lp_token_account_if_needed<'a>(
     msg!("✅ User LP token account created: {}", user_lp_account.key);
     Ok(())
 }
+
+ 
 
 /// **PHASE 10: ON-DEMAND LP TOKEN MINT CREATION**
 /// 
@@ -406,25 +391,13 @@ pub fn process_deposit(
         return Err(ProgramError::InvalidInstructionData);
     }
 
-    // ✅ PHASE 10 SECURITY: Create only the specific LP token mint needed for this deposit
-    // OPTIMIZATION: Instead of creating both LP token mints, we only create the one needed
-    // for the current deposit operation, reducing unnecessary account creation costs
+    // ✅ PHASE 11 SECURITY: LP token mints now exist from pool creation
+    // No on-demand creation needed - LP token mints are created during pool initialization
     let target_lp_mint_account = if is_depositing_token_a {
         lp_token_a_mint
     } else {
         lp_token_b_mint
     };
-    
-    create_lp_token_mint_on_demand(
-        program_id,
-        pool_state_account,
-        user_authority,
-        system_program,
-        spl_token_program,
-        rent_sysvar,
-        target_lp_mint_account,
-        is_depositing_token_a,
-    )?;
 
     // ✅ PHASE 10 SECURITY: Derive the expected PDA for validation
     let target_lp_mint_pda = if is_depositing_token_a {
@@ -455,24 +428,28 @@ pub fn process_deposit(
     msg!("✅ SECURITY: Target LP token mint account validated as correct PDA");
     msg!("   Using: {} (Token {})", target_lp_mint_pda, if is_depositing_token_a { "A" } else { "B" });
     
-    // ✅ PHASE 10 SECURITY: Create user's LP token account if it doesn't exist yet
-    // The LP token mint now exists, so we can create the user's account for receiving LP tokens
-    create_user_lp_token_account_if_needed(
-        user_authority,
-        user_output_account,
-        target_lp_mint_account.key,
-        system_program,
-        spl_token_program,
-        rent_sysvar,
-    )?;
+    // ✅ PHASE 10 OPTIMIZATION: User LP token account should exist (created by client)
+    // The LP token mint now exists, so user should have created their account ahead of time
 
     // ✅ PHASE 9 OPTIMIZATION 1: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user input token account data (eliminates redundant deserialization)
     let user_input_data = TokenAccount::unpack_from_slice(&user_input_account.data.borrow())?;
     let actual_deposit_mint = user_input_data.mint;
     
-    // Cache user output token account data (eliminates redundant deserialization)
-    let user_output_data = TokenAccount::unpack_from_slice(&user_output_account.data.borrow())?;
+    // Cache user output token account data (with safe handling for uninitialized accounts)
+    let user_output_data = if user_output_account.data_len() > 0 {
+        // Account exists, try to deserialize
+        match TokenAccount::unpack_from_slice(&user_output_account.data.borrow()) {
+            Ok(data) => Some(data),
+            Err(_) => {
+                msg!("⚠️ User LP token account exists but is not properly initialized");
+                None
+            }
+        }
+    } else {
+        msg!("⚠️ User LP token account does not exist yet, will be created on-demand");
+        None
+    };
     
     // Validate instruction parameter matches accounts-derived mint
     if actual_deposit_mint != deposit_token_mint_key {
@@ -483,16 +460,33 @@ pub fn process_deposit(
     
     msg!("Deposit token mint validated: {}", deposit_token_mint_key);
 
-    // ✅ PHASE 10 SECURITY: Validate vault accounts match pool state
-    // We already determined is_depositing_token_a and validated the target LP mint above
-    let _validated = validate_vault_and_mint_accounts(
-        &deposit_token_mint_key,
-        &pool_state_data,
-        token_a_vault.key,
-        token_b_vault.key,
-        lp_token_a_mint.key,  // Use the original LP token mint accounts from instruction
-        lp_token_b_mint.key,  // Use the original LP token mint accounts from instruction
-    )?;
+    // ✅ PHASE 10 SECURITY: Validate vault accounts match pool state (simplified for optimization)
+    // Only validate the vault for the side being deposited to, not both sides
+    let target_vault_key = if is_depositing_token_a {
+        token_a_vault.key
+    } else {
+        token_b_vault.key
+    };
+    
+    // Simplified validation - only check the vault being used
+    let expected_vault_key = if is_depositing_token_a {
+        let (vault_pda, _) = Pubkey::find_program_address(
+            &[TOKEN_A_VAULT_SEED_PREFIX, pool_state_account.key.as_ref()],
+            program_id,
+        );
+        vault_pda
+    } else {
+        let (vault_pda, _) = Pubkey::find_program_address(
+            &[TOKEN_B_VAULT_SEED_PREFIX, pool_state_account.key.as_ref()],
+            program_id,
+        );
+        vault_pda
+    };
+    
+    if *target_vault_key != expected_vault_key {
+        msg!("❌ Target vault account does not match expected PDA");
+        return Err(ProgramError::InvalidAccountData);
+    }
     
     // Determine target accounts based on deposit token (using already validated accounts)
     let (target_vault, target_lp_mint) = if is_depositing_token_a {
@@ -501,18 +495,45 @@ pub fn process_deposit(
         (token_b_vault, target_lp_mint_account)
     };
 
-    // Validate user accounts using consolidated validation
-    validate_user_accounts(
-        user_authority.key,
-        &user_input_data,
-        &user_output_data,
-        target_lp_mint_account.key,  // Use the already validated target LP mint account
-        amount,
-        "Deposit",
-    )?;
+    // Validate user accounts (user's LP token account must exist)
+    let user_output_data = if let Some(output_data) = user_output_data {
+        output_data
+    } else {
+        msg!("❌ User LP token account does not exist. User must create it before deposit.");
+        msg!("   LP token mint PDA: {}", target_lp_mint_pda);
+        msg!("   User LP token account: {}", user_output_account.key);
+        msg!("   Depositing Token A: {}", is_depositing_token_a);
+        return Err(ProgramError::Custom(4001)); // Custom error for missing user LP token account
+    };
     
-    // Record initial LP balance for strict 1:1 verification (using cached data)
+    // Validate user LP token account
+    if user_output_data.mint != target_lp_mint_pda {
+        msg!("❌ User LP token account mint mismatch");
+        msg!("   Expected: {}", target_lp_mint_pda);
+        msg!("   Actual: {}", user_output_data.mint);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_output_data.owner != *user_authority.key {
+        msg!("❌ User LP token account owner mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
     let initial_lp_balance = user_output_data.amount;
+    
+    // Validate user input account
+    if user_input_data.mint != actual_deposit_mint {
+        msg!("❌ User input token account mint mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_input_data.owner != *user_authority.key {
+        msg!("❌ User input token account owner mismatch");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if user_input_data.amount < amount {
+        msg!("❌ Insufficient balance for deposit");
+        return Err(ProgramError::InsufficientFunds);
+    }
+    
     msg!("Initial LP balance: {}, expecting to mint: {}", initial_lp_balance, amount);
 
     // Transfer tokens from user to pool vault

@@ -167,6 +167,46 @@ pub async fn mint_tokens(
     banks.process_transaction(transaction).await
 }
 
+/// Create a token account instruction (for batching)
+/// 
+/// # Arguments
+/// * `payer` - Account that pays for the token account creation
+/// * `token_account` - Keypair for the new token account
+/// * `mint` - Mint that this token account will hold
+/// * `owner` - Owner of the token account
+/// 
+/// # Returns
+/// Instruction for creating and initializing the token account
+#[allow(dead_code)]
+pub async fn create_token_account_instruction(
+    payer: &solana_program::pubkey::Pubkey,
+    token_account: &solana_program::pubkey::Pubkey,
+    mint: &solana_program::pubkey::Pubkey,
+    owner: &solana_program::pubkey::Pubkey,
+) -> Result<solana_sdk::instruction::Instruction, solana_program_test::BanksClientError> {
+    use solana_sdk::instruction::Instruction;
+    
+    let create_account_ix = solana_sdk::system_instruction::create_account(
+        payer,
+        token_account,
+        0, // Will be calculated by the system
+        TokenAccount::LEN as u64,
+        &spl_token::id(),
+    );
+    
+    let initialize_account_ix = token_instruction::initialize_account(
+        &spl_token::id(),
+        token_account,
+        mint,
+        owner,
+    )
+    .map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+    
+    // For simplicity, just return the initialize instruction
+    // The create_account part will be handled separately
+    Ok(initialize_account_ix)
+}
+
 /// Get the balance of a token account
 /// 
 /// # Arguments

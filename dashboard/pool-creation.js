@@ -572,14 +572,14 @@ async function createPool() {
         
         // Redirect to pool success page with pool details
         const params = new URLSearchParams({
-            poolAddress: poolData.address,
-            tokenASymbol: poolData.tokenASymbol,
-            tokenBSymbol: poolData.tokenBSymbol,
-            tokenAName: poolData.tokenAName,
-            tokenBName: poolData.tokenBName,
-            ratio: poolData.ratio,
-            creator: poolData.creator,
-            createdAt: poolData.createdAt
+            poolAddress: poolData.poolId,
+            tokenASymbol: selectedTokenA.symbol,
+            tokenBSymbol: selectedTokenB.symbol,
+            tokenAName: selectedTokenA.name,
+            tokenBName: selectedTokenB.name,
+            ratio: currentRatio,
+            creator: wallet.publicKey.toString(),
+            createdAt: new Date().toISOString()
         });
         
         window.location.href = `pool-success.html?${params.toString()}`;
@@ -689,15 +689,6 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             throw new Error('Program not deployed: Fixed Ratio Trading program not found on this network. Please deploy the program first.');
         }
         
-        // Generate LP token mint keypairs
-        const lpTokenAMint = solanaWeb3.Keypair.generate();
-        const lpTokenBMint = solanaWeb3.Keypair.generate();
-        
-        console.log('Generated LP token mints:', {
-            lpTokenA: lpTokenAMint.publicKey.toString(),
-            lpTokenB: lpTokenBMint.publicKey.toString()
-        });
-        
         // Use original token order - let smart contract do normalization internally
         const primaryTokenMint = new solanaWeb3.PublicKey(tokenA.mint); // User-selected Token A
         const baseTokenMint = new solanaWeb3.PublicKey(tokenB.mint);     // User-selected Token B
@@ -716,316 +707,166 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         const tokenBMint = primaryTokenMint.toString() < baseTokenMint.toString() 
             ? baseTokenMint : primaryTokenMint;
         
-        console.log('Token normalization:', {
-            primary: primaryTokenMint.toString(),
-            base: baseTokenMint.toString(),
+        console.log('Normalized token order (for PDA derivation):', {
             tokenA: tokenAMint.toString(),
-            tokenB: tokenBMint.toString(),
-            primaryIsTokenA: primaryTokenMint.toString() === tokenAMint.toString()
+            tokenB: tokenBMint.toString()
         });
         
-        const ratioANumerator = Math.floor(ratioPrimaryPerBase);
-        const ratioBDenominator = 1;
-        
-        // Convert strings to bytes using TextEncoder (browser-compatible)
-        const encoder = new TextEncoder();
-        
-        // Convert ratio numbers to little-endian bytes
-        const ratioABytes = new Uint8Array(8);
-        const ratioBBytes = new Uint8Array(8);
-        new DataView(ratioABytes.buffer).setBigUint64(0, BigInt(ratioANumerator), true); // little-endian
-        new DataView(ratioBBytes.buffer).setBigUint64(0, BigInt(ratioBDenominator), true); // little-endian
-        
-        const [poolStatePDA, poolStateBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        // Create pool state PDA - same derivation logic as smart contract
+        const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                encoder.encode('pool_state_v2'),
-                tokenAMint.toBytes(), 
-                tokenBMint.toBytes(),
-                ratioABytes,
-                ratioBBytes
+                Buffer.from('pool_state'),
+                tokenAMint.toBuffer(),
+                tokenBMint.toBuffer(),
+                Buffer.from(new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer)),
+                Buffer.from(new Uint8Array(new BigUint64Array([BigInt(1)]).buffer)) // ratio_b_denominator = 1
             ],
             programId
         );
         
-        // Derive vault PDAs (using normalized token order for PDA derivation) 
-        const [tokenAVaultPDA, tokenAVaultBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        console.log('Pool state PDA:', poolStatePDA[0].toString());
+        
+        // ✅ SECURITY FIX: Derive LP token mint PDAs (controlled by smart contract)
+        // This prevents users from creating fake LP tokens to drain pools
+        const lpTokenAMintPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                encoder.encode('token_a_vault'),
-                poolStatePDA.toBytes()
+                Buffer.from('lp_token_a_mint'),
+                poolStatePDA[0].toBuffer()
             ],
             programId
         );
         
-        const [tokenBVaultPDA, tokenBVaultBump] = await solanaWeb3.PublicKey.findProgramAddress(
+        const lpTokenBMintPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                encoder.encode('token_b_vault'),
-                poolStatePDA.toBytes()
+                Buffer.from('lp_token_b_mint'),
+                poolStatePDA[0].toBuffer()
             ],
             programId
         );
         
-        console.log('Derived PDAs:', {
-            poolState: poolStatePDA.toString(),
-            tokenAVault: tokenAVaultPDA.toString(),
-            tokenBVault: tokenBVaultPDA.toString(),
-            bumps: {
-                poolState: poolStateBump,
-                tokenAVault: tokenAVaultBump,
-                tokenBVault: tokenBVaultBump
-            }
+        console.log('🔒 SECURE LP token mints (PDAs controlled by smart contract):', {
+            lpTokenA: lpTokenAMintPDA[0].toString(),
+            lpTokenB: lpTokenBMintPDA[0].toString()
         });
         
-        // Debug: verify program account exists and has correct data
-        console.log('Program account info:', {
-            programId: programId.toString(),
-            executable: programAccount.executable,
-            dataLength: programAccount.data.length,
-            owner: programAccount.owner.toString()
+        // Create token vault PDAs
+        const tokenAVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                Buffer.from('token_a_vault'),
+                poolStatePDA[0].toBuffer()
+            ],
+            programId
+        );
+        
+        const tokenBVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
+            [
+                Buffer.from('token_b_vault'),
+                poolStatePDA[0].toBuffer()
+            ],
+            programId
+        );
+        
+        console.log('Token vault PDAs:', {
+            tokenAVault: tokenAVaultPDA[0].toString(),
+            tokenBVault: tokenBVaultPDA[0].toString()
         });
         
-        // Determine if original primary token is tokenA after normalization
-        const primaryTokenIstokenA = primaryTokenMint.toString() === tokenAMint.toString();
-        const primaryVaultBump = primaryTokenIstokenA ? tokenAVaultBump : tokenBVaultBump;
-        const baseVaultBump = primaryTokenIstokenA ? tokenBVaultBump : tokenAVaultBump;
+        // Get main treasury PDA
+        const mainTreasuryPDA = await solanaWeb3.PublicKey.findProgramAddress(
+            [Buffer.from('main_treasury')],
+            programId
+        );
         
-        console.log('Vault bump mapping:', {
-            primaryTokenIstokenA,
-            primaryToken: primaryTokenMint.toString(),
-            tokenA: tokenAMint.toString(),
-            primaryVaultBump,
-            baseVaultBump
-        });
+        console.log('Main treasury PDA:', mainTreasuryPDA[0].toString());
         
-        // Create the instruction data buffer - CORRECTED FORMAT
-        console.log('Creating instruction with ratio:', ratioPrimaryPerBase);
-        console.log('Bump seeds:', {
-            poolStateBump,
-            primaryVaultBump,
-            baseVaultBump,
-            primaryTokenIstokenA
-        });
+        // Create instruction data for InitializePool
+        const instructionData = Buffer.concat([
+            Buffer.from([0]), // InitializePool instruction discriminator
+            Buffer.from(new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer)), // ratio_a_numerator  
+            Buffer.from(new Uint8Array(new BigUint64Array([BigInt(1)]).buffer)) // ratio_b_denominator
+        ]);
         
-        // Ensure ratio is a valid integer
-        const ratioInteger = Math.floor(Number(ratioPrimaryPerBase));
-        if (ratioInteger <= 0 || !Number.isInteger(ratioInteger)) {
-            throw new Error(`Invalid ratio: ${ratioPrimaryPerBase}. Must be a positive integer.`);
-        }
-        
-        // CRITICAL FIX: InitializePool is the 3rd variant in enum, so discriminator = 2
-        const instructionData = new Uint8Array(12); // 1 + 8 + 1 + 1 + 1 = 12 bytes
-        let offset = 0;
-        
-        // Discriminator: InitializePool = 2 (3rd variant in enum)
-        instructionData[offset] = 2;
-        offset += 1;
-        
-        // ratio_primary_per_base: u64 (8 bytes, little-endian)
-        const ratioBytes = new Uint8Array(8);
-        const dataView = new DataView(ratioBytes.buffer);
-        dataView.setBigUint64(0, BigInt(ratioInteger), true); // true = little-endian
-        instructionData.set(ratioBytes, offset);
-        offset += 8;
-        
-        // pool_authority_bump_seed: u8 (1 byte)
-        instructionData[offset] = poolStateBump;
-        offset += 1;
-        
-        // primary_token_vault_bump_seed: u8 (1 byte)  
-        instructionData[offset] = primaryVaultBump;
-        offset += 1;
-        
-        // base_token_vault_bump_seed: u8 (1 byte)
-        instructionData[offset] = baseVaultBump;
-        offset += 1;
-        
-        console.log('Instruction data bytes:', Array.from(instructionData).map(b => b.toString(16).padStart(2, '0')).join(' '));
-        console.log('Instruction breakdown:', {
-            discriminator: instructionData[0],
-            ratio: dataView.getBigUint64(0, true),
-            poolAuthorityBump: instructionData[9],
-            primaryVaultBump: instructionData[10], 
-            baseVaultBump: instructionData[11]
-        });
-        
-        // Debug: Check if any accounts already exist at the derived addresses
-        console.log('Checking for existing accounts...');
-        const existingPoolAccount = await connection.getAccountInfo(poolStatePDA);
-        const existingTokenAVault = await connection.getAccountInfo(tokenAVaultPDA);
-        const existingTokenBVault = await connection.getAccountInfo(tokenBVaultPDA);
+        // Check if accounts already exist
+        const existingPoolAccount = await connection.getAccountInfo(poolStatePDA[0]);
+        const existingTokenAVault = await connection.getAccountInfo(tokenAVaultPDA[0]);
+        const existingTokenBVault = await connection.getAccountInfo(tokenBVaultPDA[0]);
         
         if (existingPoolAccount) {
-            console.log('WARNING: Pool state account already exists:', poolStatePDA.toString());
+            console.log('WARNING: Pool state account already exists:', poolStatePDA[0].toString());
         }
         if (existingTokenAVault) {
-            console.log('WARNING: Token A vault already exists:', tokenAVaultPDA.toString());
+            console.log('WARNING: Token A vault already exists:', tokenAVaultPDA[0].toString());
         }
         if (existingTokenBVault) {
-            console.log('WARNING: Token B vault already exists:', tokenBVaultPDA.toString());
+            console.log('WARNING: Token B vault already exists:', tokenBVaultPDA[0].toString());
         }
         
-        // Create the transaction instruction with correct account order (matching test pattern)
+        // ✅ SECURITY FIX: Updated account structure to match smart contract's Phase 11 ultra-secure pattern
+        // 12 accounts total, LP token mints are now PDAs, not user-controlled keypairs
         const createPoolInstruction = new solanaWeb3.TransactionInstruction({
             keys: [
-                { pubkey: wallet.publicKey, isSigner: true, isWritable: true },     // 0: Payer (signer)
-                { pubkey: poolStatePDA, isSigner: false, isWritable: true },        // 1: Pool state PDA
-                { pubkey: primaryTokenMint, isSigner: false, isWritable: false },   // 2: Primary token mint
-                { pubkey: baseTokenMint, isSigner: false, isWritable: false },      // 3: Base token mint
-                { pubkey: lpTokenAMint.publicKey, isSigner: true, isWritable: true }, // 4: LP Token A mint (signer)
-                { pubkey: lpTokenBMint.publicKey, isSigner: true, isWritable: true }, // 5: LP Token B mint (signer)
-                { pubkey: tokenAVaultPDA, isSigner: false, isWritable: true },      // 6: Token A vault PDA (normalized)
-                { pubkey: tokenBVaultPDA, isSigner: false, isWritable: true },      // 7: Token B vault PDA (normalized)
-                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 8: System program
-                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },   // 9: SPL Token program
-                { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false }       // 10: Rent sysvar
+                { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // 0: Authority/User Signer
+                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program
+                { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },      // 2: Rent Sysvar
+                { pubkey: poolStatePDA[0], isSigner: false, isWritable: true },           // 3: Pool State PDA
+                { pubkey: primaryTokenMint, isSigner: false, isWritable: false },         // 4: First Token Mint
+                { pubkey: baseTokenMint, isSigner: false, isWritable: false },            // 5: Second Token Mint
+                { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },         // 6: Token A Vault PDA
+                { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },         // 7: Token B Vault PDA
+                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },   // 8: SPL Token Program
+                { pubkey: mainTreasuryPDA[0], isSigner: false, isWritable: true },        // 9: Main Treasury PDA
+                { pubkey: lpTokenAMintPDA[0], isSigner: false, isWritable: true },        // 10: LP Token A Mint PDA
+                { pubkey: lpTokenBMintPDA[0], isSigner: false, isWritable: true }         // 11: LP Token B Mint PDA
             ],
             programId: programId,
             data: instructionData
         });
         
-        // Get recent blockhash first
-        console.log('🔗 Getting recent blockhash...');
-        const { blockhash } = await connection.getLatestBlockhash(CONFIG.commitment);
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(createPoolInstruction);
         
-        // Create transaction with proper structure
-        const transaction = new solanaWeb3.Transaction({
-            recentBlockhash: blockhash,
-            feePayer: wallet.publicKey
-        });
+        // Set recent blockhash and fee payer
+        transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+        transaction.feePayer = wallet.publicKey;
         
-        // Add the instruction
-        transaction.add(createPoolInstruction);
+        // ✅ SECURITY FIX: No longer need to sign with LP token mint keypairs
+        // LP token mints are now PDAs controlled by the smart contract
+        console.log('🔒 SECURITY: LP token mints are now PDAs controlled by the smart contract');
+        console.log('   This prevents users from creating fake LP tokens to drain pools');
         
-        console.log('✅ Transaction constructed successfully');
-        console.log('Transaction details:', {
-            feePayer: transaction.feePayer?.toString(),
-            recentBlockhash: transaction.recentBlockhash,
-            instructionCount: transaction.instructions.length,
-            requiredSigners: transaction.instructions.map(ix => 
-                ix.keys.filter(key => key.isSigner).map(key => key.pubkey.toString())
-            ).flat()
-        });
+        // Sign and send transaction
+        const signature = await wallet.signAndSendTransaction(transaction);
+        console.log('✅ Pool creation transaction sent:', signature);
         
-        // Skip simulation for now - proceed directly to signing and sending
-        console.log('📝 Skipping simulation, proceeding to wallet signing...');
-        
-        // Now sign the transaction properly
-        console.log('🔐 Requesting Backpack wallet signature...');
-        showStatus('info', 'Please approve the transaction in your Backpack wallet...');
-        
-        // Sign with Backpack wallet first (this will trigger the authorization popup)
-        let walletSignedTransaction;
-        try {
-            walletSignedTransaction = await wallet.signTransaction(transaction);
-            console.log('✅ Backpack wallet signature received');
-        } catch (signError) {
-            console.error('❌ Wallet signing failed:', signError);
-            throw new Error(`Wallet signing failed: ${signError.message}`);
-        }
-        
-        // Then add the LP mint signatures
-        console.log('✍️ Adding LP token mint signatures...');
-        try {
-            walletSignedTransaction.partialSign(lpTokenAMint, lpTokenBMint);
-            console.log('✅ LP token signatures added');
-        } catch (partialSignError) {
-            console.error('❌ LP token signing failed:', partialSignError);
-            throw new Error(`LP token signing failed: ${partialSignError.message}`);
-        }
-        
-        console.log('✅ Transaction fully signed');
-        console.log('Final transaction details:', {
-            feePayer: walletSignedTransaction.feePayer?.toString(),
-            recentBlockhash: walletSignedTransaction.recentBlockhash,
-            signatureCount: walletSignedTransaction.signatures?.length || 0
-        });
-        
-        console.log('📡 Sending transaction to Solana network...');
-        showStatus('info', 'Sending transaction to blockchain...');
-        
-        // Validate transaction before sending
-        if (!walletSignedTransaction.feePayer) {
-            throw new Error('Transaction missing feePayer');
-        }
-        if (!walletSignedTransaction.recentBlockhash) {
-            throw new Error('Transaction missing recentBlockhash');
-        }
-        if (!walletSignedTransaction.instructions || walletSignedTransaction.instructions.length === 0) {
-            throw new Error('Transaction missing instructions');
-        }
-        
-        console.log('✅ Transaction validation passed');
-        
-        // Send transaction using the fully signed transaction
-        let signature;
-        try {
-            signature = await connection.sendRawTransaction(walletSignedTransaction.serialize(), {
-                skipPreflight: false,
-                preflightCommitment: CONFIG.commitment,
-                maxRetries: 3
-            });
-            console.log('✅ Transaction sent successfully:', signature);
-        } catch (sendError) {
-            console.error('❌ Transaction send failed:', sendError);
-            throw new Error(`Failed to send transaction: ${sendError.message}`);
-        }
-        
-        console.log('⏳ Confirming transaction:', signature);
-        showStatus('info', `Transaction sent: ${signature.slice(0, 20)}... - Waiting for confirmation...`);
-        
-        // Confirm transaction with extended timeout and progress updates
-        const confirmation = await confirmTransactionWithProgress(signature, CONFIG.commitment);
+        // Wait for confirmation
+        const confirmation = await connection.confirmTransaction(signature, 'confirmed');
         
         if (confirmation.value.err) {
-            console.error('Transaction confirmation error:', confirmation.value.err);
-            throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+            throw new Error(`Pool creation failed: ${JSON.stringify(confirmation.value.err)}`);
         }
         
-        console.log('✅ Transaction confirmed successfully!');
+        console.log('✅ Pool created successfully!');
+        console.log('Pool details:', {
+            poolId: poolStatePDA[0].toString(),
+            tokenA: tokenAMint.toString(),
+            tokenB: tokenBMint.toString(),
+            ratio: ratioPrimaryPerBase,
+            lpTokenAMint: lpTokenAMintPDA[0].toString(),
+            lpTokenBMint: lpTokenBMintPDA[0].toString()
+        });
         
-        // Create pool data for storage and success page
-        const poolData = {
-            address: poolStatePDA.toString(),
-            tokenAMint: tokenA.mint,
-            tokenBMint: tokenB.mint,
-            tokenASymbol: tokenA.symbol,
-            tokenBSymbol: tokenB.symbol,
-            tokenAName: tokenA.name,
-            tokenBName: tokenB.name,
-            ratio: ratio,
-            totalTokenALiquidity: 0,
-            totalTokenBLiquidity: 0,
-            creator: wallet.publicKey.toString(),
-            createdAt: new Date().toISOString(),
-            poolStatus: 'created',
-            isInitialized: true,
-            isPaused: false,
-            swapsPaused: false,
-            swapFeeBasisPoints: 0,
-            collectedFeesTokenA: 0,
-            collectedFeesTokenB: 0,
-            collectedSolFees: 0,
-            transactionSignature: signature
+        return {
+            success: true,
+            poolId: poolStatePDA[0].toString(),
+            signature: signature,
+            lpTokenAMint: lpTokenAMintPDA[0].toString(),
+            lpTokenBMint: lpTokenBMintPDA[0].toString(),
+            tokenAVault: tokenAVaultPDA[0].toString(),
+            tokenBVault: tokenBVaultPDA[0].toString()
         };
         
-        // Note: No longer storing in localStorage since dashboard now reads from RPC
-        // The pool will be discovered automatically on the next dashboard refresh
-        
-        console.log('✅ Pool created successfully on-chain:', poolData);
-        
-        return poolData;
-        
     } catch (error) {
-        console.error('❌ Error in createPoolTransaction:', error);
-        
-        // Enhanced error handling for different types of failures
-        if (error.message.includes('User rejected the request')) {
-            throw new Error('User rejected the transaction in Backpack wallet');
-        } else if (error.message.includes('Insufficient funds')) {
-            throw new Error('Insufficient funds: You need more SOL to pay for the pool creation fee and transaction costs');
-        } else if (error.message.includes('Network error') || error.message.includes('Failed to fetch')) {
-            throw new Error('Network error: Unable to connect to Solana network. Please check your internet connection');
-        }
-        
+        console.error('❌ Pool creation error:', error);
         throw error;
     }
 }

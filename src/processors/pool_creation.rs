@@ -36,8 +36,8 @@ use crate::utils::account_builders::*;
 /// CRITICAL SECURITY FIX: LP token mints are now derived as PDAs and created by the smart contract
 /// instead of being provided by users. This prevents users from creating fake LP tokens to drain pools.
 /// 
-/// After removing user-provided LP token mint accounts, this function now requires only 10 accounts
-/// (down from 12), providing a 17% reduction in account overhead and eliminating a major security vulnerability.
+/// With secure LP token mint creation, this function now requires 12 accounts, 
+/// creating LP token mints as PDAs during pool creation for maximum security.
 /// 
 /// # Ultra-Secure Account Order:
 /// 0. **Authority/User Signer** (signer, writable) - User creating the pool
@@ -50,23 +50,25 @@ use crate::utils::account_builders::*;
 /// 7. **Token B Vault PDA** (writable) - Token B vault to create
 /// 8. **SPL Token Program** (readable) - Token program
 /// 9. **Main Treasury PDA** (writable) - For registration fee collection
+/// 10. **LP Token A Mint PDA** (writable) - LP Token A mint to create
+/// 11. **LP Token B Mint PDA** (writable) - LP Token B mint to create
 /// 
 /// **PHASE 11 SECURITY BENEFITS:**
-/// - SECURITY FIX: LP token mints are now derived as PDAs, preventing user manipulation
+/// - SECURITY FIX: LP token mints are now created as PDAs during pool creation, preventing user manipulation  
 /// - SECURITY FIX: All PDAs strictly validated against derived addresses (no fake PDAs possible)
 /// - SECURITY FIX: Enhanced error messages for security violations
-/// - Reduced account count: 12 → 10 accounts (17% reduction)
+/// - SECURITY FIX: LP token mints immediately available for user token account creation
 /// - Eliminated risk of fake LP tokens being used to drain pools
 /// - Pool has complete control over LP token minting and burning
-/// - Simplified client integration with fewer account requirements
-/// - Additional compute unit savings: 140-280 CUs per transaction
+/// - Simplified client integration - LP mints exist from pool creation
+/// - No on-demand account creation delays during deposits
 /// - Complete smart contract control over pool infrastructure creation
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
 /// * `ratio_a_numerator` - Numerator for token A in the ratio
 /// * `ratio_b_denominator` - Denominator for token B in the ratio  
-/// * `accounts` - Array of accounts in ultra-secure order (10 accounts minimum)
+/// * `accounts` - Array of accounts in ultra-secure order (12 accounts minimum)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -79,10 +81,10 @@ pub fn process_initialize_pool(
     msg!("Processing InitializePool with Phase 9 ultra-secure account structure");
     
     // ✅ SYSTEM PAUSE: Check system-wide pause
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 10)?;
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
     
-    // ✅ PHASE 9 SECURITY: Ultra-secure account count requirement
-    if accounts.len() < 10 {
+    // ✅ PHASE 11 SECURITY: Ultra-secure account count requirement  
+    if accounts.len() < 12 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
@@ -97,6 +99,8 @@ pub fn process_initialize_pool(
     let token_b_vault_pda_account = &accounts[7];  // Index 7: Token B Vault PDA
     let token_program_account = &accounts[8];      // Index 8: SPL Token Program
     let main_treasury_account = &accounts[9];      // Index 9: Main Treasury PDA
+    let lp_token_a_mint_account = &accounts[10];   // Index 10: LP Token A Mint PDA
+    let lp_token_b_mint_account = &accounts[11];   // Index 11: LP Token B Mint PDA
 
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
@@ -259,6 +263,20 @@ pub fn process_initialize_pool(
         return Err(ProgramError::InvalidAccountData);
     }
 
+    // ✅ PHASE 11 SECURITY: Validate LP token mint PDAs match expected derived addresses
+    if *lp_token_a_mint_account.key != lp_token_a_mint_pda {
+        msg!("❌ SECURITY VIOLATION: LP Token A mint PDA does not match expected derived PDA");
+        msg!("   Expected: {}", lp_token_a_mint_pda);
+        msg!("   Provided: {}", lp_token_a_mint_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if *lp_token_b_mint_account.key != lp_token_b_mint_pda {
+        msg!("❌ SECURITY VIOLATION: LP Token B mint PDA does not match expected derived PDA");
+        msg!("   Expected: {}", lp_token_b_mint_pda);
+        msg!("   Provided: {}", lp_token_b_mint_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+
     msg!("✅ All PDAs validated against derived addresses");
 
     // Create seeds for signing
@@ -389,19 +407,84 @@ pub fn process_initialize_pool(
         ],
     )?;
 
-    // ✅ PHASE 9 SECURITY: Create LP token mint accounts as PDAs (prevents user manipulation)
-    // Note: We cannot create the accounts directly since we don't have AccountInfo for the PDAs.
-    // Instead, we'll store the derived PDAs in the pool state and expect clients to derive them correctly.
-    // This ensures only the program can create valid LP token mints for each pool.
+    // ✅ PHASE 11 SECURITY: Create LP token mint accounts as PDAs during pool creation
+    // This ensures LP token mints exist immediately and are controlled by the smart contract
     let mint_space = spl_token::state::Mint::LEN;
     let mint_rent = rent.minimum_balance(mint_space);
     
-    msg!("✅ SECURITY: LP token mints will be created on-demand during first deposit");
+    msg!("🔨 Creating LP token mints during pool creation");
     msg!("  LP Token A Mint PDA: {}", lp_token_a_mint_pda);
     msg!("  LP Token B Mint PDA: {}", lp_token_b_mint_pda);
 
-    // ✅ PHASE 9 SECURITY: LP token mints will be created on-demand during first deposit
-    // This prevents users from providing fake LP token mints to drain the pool
+    // Create LP Token A mint account
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_a_mint_account.key,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[
+            payer.clone(),
+            lp_token_a_mint_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[lp_token_a_mint_seeds],
+    )?;
+
+    // Initialize LP Token A mint with pool state PDA as authority
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_a_mint_account.key,
+            pool_state_pda_account.key, // Pool controls minting/burning
+            None, // No freeze authority
+            6, // 6 decimals for LP tokens
+        )?,
+        &[
+            lp_token_a_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pool_state_pda_seeds], // Pool state PDA signs as mint authority
+    )?;
+
+    // Create LP Token B mint account
+    invoke_signed(
+        &system_instruction::create_account(
+            payer.key,
+            lp_token_b_mint_account.key,
+            mint_rent,
+            mint_space as u64,
+            &spl_token::id(),
+        ),
+        &[
+            payer.clone(),
+            lp_token_b_mint_account.clone(),
+            system_program_account.clone(),
+        ],
+        &[lp_token_b_mint_seeds],
+    )?;
+
+    // Initialize LP Token B mint with pool state PDA as authority
+    invoke_signed(
+        &token_instruction::initialize_mint(
+            token_program_account.key,
+            lp_token_b_mint_account.key,
+            pool_state_pda_account.key, // Pool controls minting/burning
+            None, // No freeze authority
+            6, // 6 decimals for LP tokens
+        )?,
+        &[
+            lp_token_b_mint_account.clone(),
+            rent_sysvar_account.clone(),
+            token_program_account.clone(),
+        ],
+        &[pool_state_pda_seeds], // Pool state PDA signs as mint authority
+    )?;
+
+    msg!("✅ LP token mints created and controlled by smart contract");
 
     // Initialize pool state data
     let pool_state_data = PoolState {

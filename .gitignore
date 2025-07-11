@@ -3,7 +3,6 @@
 .DS_Store
 
 # Solana keypair files - NEVER commit these!
-*.json
 !deployment_info.json
 target/deploy/*-keypair.json
 

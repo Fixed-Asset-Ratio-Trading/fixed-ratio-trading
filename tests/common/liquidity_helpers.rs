@@ -142,12 +142,10 @@ pub async fn create_liquidity_test_foundation(
     let accounts_to_create = [
         (&user1_primary_account, &primary_mint.pubkey(), &user1.pubkey()),
         (&user1_base_account, &base_mint.pubkey(), &user1.pubkey()),
-        (&user1_lp_a_account, &lp_token_a_mint_pda, &user1.pubkey()),
-        (&user1_lp_b_account, &lp_token_b_mint_pda, &user1.pubkey()),
         (&user2_primary_account, &primary_mint.pubkey(), &user2.pubkey()),
         (&user2_base_account, &base_mint.pubkey(), &user2.pubkey()),
-        (&user2_lp_a_account, &lp_token_a_mint_pda, &user2.pubkey()),
-        (&user2_lp_b_account, &lp_token_b_mint_pda, &user2.pubkey()),
+        // NOTE: LP token accounts and mints are created on-demand during first deposit operation
+        // The LP token mints are created by the smart contract and don't exist yet
     ];
     
     // Process accounts in smaller batches to prevent timeouts
@@ -244,23 +242,24 @@ pub fn create_deposit_instruction_standardized(
     );
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with Phase 8 ultra-optimized account ordering (12 accounts total)
+    // Create instruction with Phase 8 ultra-optimized account ordering (13 accounts total)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // Phase 8 ultra-optimized account ordering (12 accounts total)
+            // Phase 8 ultra-optimized account ordering (13 accounts total)
             AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 2: Clock Sysvar
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 4: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 5: Token B Vault PDA
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 6: SPL Token Program
-            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account
-            AccountMeta::new(*user_output_lp_account, false),                       // Index 8: User Output LP Token Account
-            AccountMeta::new(main_treasury_pda, false),                             // Index 9: Main Treasury PDA
-            AccountMeta::new(*lp_token_a_mint, false),                              // Index 10: LP Token A Mint
-            AccountMeta::new(*lp_token_b_mint, false),                              // Index 11: LP Token B Mint
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 3: Rent Sysvar
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 4: Pool State PDA
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 7: SPL Token Program
+            AccountMeta::new(*user_input_token_account, false),                     // Index 8: User Input Token Account
+            AccountMeta::new(*user_output_lp_account, false),                       // Index 9: User Output LP Token Account
+            AccountMeta::new(main_treasury_pda, false),                             // Index 10: Main Treasury PDA
+            AccountMeta::new(*lp_token_a_mint, false),                              // Index 11: LP Token A Mint
+            AccountMeta::new(*lp_token_b_mint, false),                              // Index 12: LP Token B Mint
         ],
         data: serialized,
     })
@@ -348,8 +347,33 @@ pub fn create_swap_instruction_standardized(
     })
 }
 
+/// Creates LP token accounts on-demand if they don't exist yet
+/// This is needed because LP token mints are created by the smart contract
+#[allow(dead_code)]
+pub async fn ensure_lp_token_account_exists(
+    foundation: &mut LiquidityTestFoundation,
+    user_keypair: &Keypair,
+    lp_token_account: &Keypair,
+    lp_token_mint: &Pubkey,
+) -> TestResult {
+    // Check if the account already exists
+    if let Ok(Some(_)) = foundation.env.banks_client.get_account(lp_token_account.pubkey()).await {
+        return Ok(()); // Account already exists
+    }
+    
+    // Create the LP token account
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        lp_token_account,
+        lp_token_mint,
+        &user_keypair.pubkey(),
+    ).await
+}
+
 /// Executes a deposit operation using the standardized foundation
-/// OPTIMIZED VERSION - adds timeout handling to prevent deadlocks
+/// OPTIMIZED VERSION - creates user LP token account for specific mint before deposit
 #[allow(dead_code)]
 pub async fn execute_deposit_operation(
     foundation: &mut LiquidityTestFoundation,
@@ -359,6 +383,57 @@ pub async fn execute_deposit_operation(
     deposit_token_mint: &Pubkey,
     amount: u64,
 ) -> TestResult {
+    println!("🚀 Executing deposit: {} tokens", amount);
+    
+    // Step 1: Determine which LP token mint will be used for this deposit
+    let is_depositing_token_a = *deposit_token_mint == foundation.pool_config.token_a_mint;
+    let target_lp_mint_pda = if is_depositing_token_a {
+        foundation.lp_token_a_mint_pda
+    } else {
+        foundation.lp_token_b_mint_pda
+    };
+    
+    // Step 2: Create user's LP token account for the specific mint they're depositing
+    let user_lp_account_keypair = if is_depositing_token_a {
+        &foundation.user1_lp_a_account
+    } else {
+        &foundation.user1_lp_b_account
+    };
+    
+    // Check if the LP token mint exists first
+    println!("🔍 Checking if LP token mint exists: {}", target_lp_mint_pda);
+    let mint_account = foundation.env.banks_client.get_account(target_lp_mint_pda).await?;
+    
+    if mint_account.is_none() {
+        println!("⚠️ LP token mint does not exist yet. It will be created during deposit.");
+        println!("   The user's LP token account will be handled by the smart contract.");
+        
+        // Don't try to create the user's LP token account now - let the smart contract handle it
+    } else {
+        println!("✅ LP token mint exists, checking user's LP token account...");
+        
+        // Check if user's LP token account already exists
+        if let Ok(None) = foundation.env.banks_client.get_account(user_lp_account_keypair.pubkey()).await {
+            println!("📝 Creating user LP token account for {} deposit...", 
+                     if is_depositing_token_a { "Token A" } else { "Token B" });
+            
+            // Create the user's LP token account
+            crate::common::tokens::create_token_account(
+                &mut foundation.env.banks_client,
+                &foundation.env.payer,
+                foundation.env.recent_blockhash,
+                user_lp_account_keypair,
+                &target_lp_mint_pda,
+                &user_keypair.pubkey(),
+            ).await?;
+            
+            println!("✅ User LP token account created for specific deposit");
+        } else {
+            println!("✅ User LP token account already exists");
+        }
+    }
+    
+    // Step 3: Execute the deposit
     let deposit_instruction_data = PoolInstruction::Deposit {
         deposit_token_mint: *deposit_token_mint,
         amount,
@@ -380,12 +455,86 @@ pub async fn execute_deposit_operation(
     );
     deposit_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    // Add timeout handling to prevent deadlocks
-    let timeout_duration = std::time::Duration::from_secs(10); // 10 second timeout
+    // Execute deposit with timeout handling
+    let timeout_duration = std::time::Duration::from_secs(10);
     let process_future = foundation.env.banks_client.process_transaction(deposit_tx);
     
     match tokio::time::timeout(timeout_duration, process_future).await {
-        Ok(result) => result?,
+        Ok(result) => {
+            match result {
+                Ok(_) => {
+                    println!("✅ Deposit operation completed successfully");
+                }
+                Err(e) => {
+                    println!("❌ First deposit attempt failed with error: {:?}", e);
+                    
+                    // Check if this is the specific error for missing user LP token account
+                    if let solana_program_test::BanksClientError::TransactionError(
+                        solana_sdk::transaction::TransactionError::InstructionError(_, 
+                        solana_sdk::instruction::InstructionError::Custom(4001))) = e {
+                        
+                        println!("⚠️ First deposit attempt failed: User LP token account doesn't exist");
+                        println!("📝 Creating user LP token account and retrying...");
+                        
+                        // Check if the LP token mint was created during the first deposit
+                        println!("🔍 Checking if LP token mint exists after first deposit: {}", target_lp_mint_pda);
+                        let mint_account_after = foundation.env.banks_client.get_account(target_lp_mint_pda).await?;
+                        
+                        if mint_account_after.is_none() {
+                            println!("❌ LP token mint still doesn't exist after first deposit attempt");
+                            println!("   This means the first deposit didn't create the mint as expected");
+                            return Err(solana_program_test::BanksClientError::Io(
+                                std::io::Error::new(std::io::ErrorKind::Other, "LP token mint not created during first deposit")
+                            ).into());
+                        } else {
+                            println!("✅ LP token mint exists after first deposit, creating user account...");
+                        }
+                        
+                        // Create the user's LP token account now that the mint exists
+                        crate::common::tokens::create_token_account(
+                            &mut foundation.env.banks_client,
+                            &foundation.env.payer,
+                            foundation.env.recent_blockhash,
+                            user_lp_account_keypair,
+                            &target_lp_mint_pda,
+                            &user_keypair.pubkey(),
+                        ).await?;
+                        
+                        println!("✅ User LP token account created, retrying deposit...");
+                        
+                        // Retry the deposit
+                        let retry_deposit_ix = create_deposit_instruction_standardized(
+                            &user_keypair.pubkey(),
+                            user_input_token_account,
+                            user_output_lp_account,
+                            &foundation.pool_config,
+                            &foundation.lp_token_a_mint_pda,
+                            &foundation.lp_token_b_mint_pda,
+                            &deposit_instruction_data,
+                        ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+                        
+                        let mut retry_tx = solana_sdk::transaction::Transaction::new_with_payer(
+                            &[retry_deposit_ix], 
+                            Some(&user_keypair.pubkey())
+                        );
+                        retry_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+                        
+                        let retry_future = foundation.env.banks_client.process_transaction(retry_tx);
+                        match tokio::time::timeout(timeout_duration, retry_future).await {
+                            Ok(result) => {
+                                result?;
+                                println!("✅ Retry deposit operation completed successfully");
+                            }
+                            Err(_) => return Err(solana_program_test::BanksClientError::Io(
+                                std::io::Error::new(std::io::ErrorKind::TimedOut, "Retry deposit operation timed out")
+                            ).into()),
+                        }
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
         Err(_) => return Err(solana_program_test::BanksClientError::Io(
             std::io::Error::new(std::io::ErrorKind::TimedOut, "Deposit operation timed out")
         ).into()),
@@ -408,6 +557,9 @@ pub async fn execute_withdrawal_operation(
     withdraw_token_mint: &Pubkey,
     lp_amount_to_burn: u64,
 ) -> TestResult {
+    // Note: LP token accounts should exist from previous deposit operations
+    // The smart contract handles LP token account validation
+    
     let withdrawal_instruction_data = PoolInstruction::Withdraw {
         withdraw_token_mint: *withdraw_token_mint,
         lp_amount_to_burn,

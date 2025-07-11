@@ -210,7 +210,7 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
         ctx.env.recent_blockhash,
     ).await?;
 
-    // Create first pool: 2 primary per 1 base (exchange rate: 2:1)
+    // Test 1: Create first pool successfully: 2 primary per 1 base (exchange rate: 2:1)
     let _config1 = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
@@ -222,62 +222,49 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
 
     println!("✅ Created first pool: 2 primary per 1 base");
 
-    // Try to create economically equivalent pool: 1 base per 2 primary (same exchange rate: 2:1)
-    let _config2 = create_pool_new_pattern(
+    // Test 2: Try to create economically equivalent pool with swapped tokens
+    // This should fail because normalization will result in the same PDA
+    let result2 = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
+        &ctx.base_mint,  // Swapped order
+        &ctx.primary_mint,  // Swapped order
         Some(2),
-    ).await?;
+    ).await;
 
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
+    assert!(result2.is_err(), "Creating economically equivalent pool should fail");
+    println!("✅ Correctly rejected economically equivalent pool creation");
 
-    // Try to create pool with zero ratio (should fail)
-    let _config3 = create_pool_new_pattern(
+    // Test 3: Try to create pool with zero ratio (should fail)
+    let result3 = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
         Some(0),
-    ).await?;
+    ).await;
 
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
+    assert!(result3.is_err(), "Creating pool with zero ratio should fail");
+    println!("✅ Correctly rejected pool creation with zero ratio");
 
-    // Create first pool successfully
-    let _config4 = create_pool_new_pattern(
+    // Test 4: Try to create the exact same pool again (should fail due to AccountAlreadyInitialized)
+    let result4 = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &ctx.primary_mint,
         &ctx.base_mint,
-        Some(3),
-    ).await?;
+        Some(2),  // Same ratio as first pool
+    ).await;
 
-    // Try to create the exact same pool again (should fail)
-    let _config5 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),
-    ).await?;
+    assert!(result4.is_err(), "Creating duplicate pool should fail");
+    println!("✅ Correctly rejected duplicate pool creation");
 
-    // Try to create pool with same token as both primary and base (should fail)
-    // This should panic in normalize_pool_config or fail during instruction processing
+    // Test 5: Try to create pool with same token as both primary and base (should fail)
+    // This will panic in the normalize function, so we need to handle it differently
+    println!("✅ Test 5: Attempting to create pool with identical tokens (should be rejected)");
     
     // We'll test this by checking if the normalize function panics
     use std::panic;
@@ -287,8 +274,19 @@ async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
     });
 
     assert!(result.is_err(), "normalize_pool_config should panic with identical tokens");
-    
-    println!("✅ Correctly rejected pool creation with identical token mints");
+    println!("✅ Correctly rejected pool creation with identical token mints (panic caught)");
+
+    // Test 6: Create a valid different pool to ensure the system still works
+    let _config6 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),  // Different ratio
+    ).await?;
+
+    println!("✅ Successfully created pool with different ratio (3:1)");
     
     Ok(())
 }
@@ -687,75 +685,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("     - Base Token Account: {}", user3_base_account_kp.pubkey());
     
     // =============================================
-    // STEP 7: Create LP Token Accounts for Users
-    // =============================================
-    println!("\n🎫 Creating LP token accounts for users...");
-    
-    // Create LP token accounts for each user
-    let user1_lp_a_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user1_lp_a_account_kp,
-        &pool_state.lp_token_a_mint,
-        &user1.pubkey(),
-    ).await?;
-    
-    let user1_lp_b_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user1_lp_b_account_kp,
-        &pool_state.lp_token_b_mint,
-        &user1.pubkey(),
-    ).await?;
-    
-    let user2_lp_a_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user2_lp_a_account_kp,
-        &pool_state.lp_token_a_mint,
-        &user2.pubkey(),
-    ).await?;
-    
-    let user2_lp_b_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user2_lp_b_account_kp,
-        &pool_state.lp_token_b_mint,
-        &user2.pubkey(),
-    ).await?;
-    
-    let user3_lp_a_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user3_lp_a_account_kp,
-        &pool_state.lp_token_a_mint,
-        &user3.pubkey(),
-    ).await?;
-    
-    let user3_lp_b_account_kp = Keypair::new();
-    create_token_account(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &user3_lp_b_account_kp,
-        &pool_state.lp_token_b_mint,
-        &user3.pubkey(),
-    ).await?;
-    
-    println!("✅ LP token accounts created for all users");
-    
-    // =============================================
-    // STEP 8: Final Verification & Summary
+    // STEP 7: Final Verification & Summary
     // =============================================
     println!("\n🎯 FOUNDATION TEST COMPLETE - Full Environment Ready!");
     println!("════════════════════════════════════════════════════════");
@@ -764,11 +694,11 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("   • Token Mints: Primary and Base tokens created");
     println!("   • Trading Pool: 3:1 ratio pool with LP tokens");
     println!("   • User Accounts: 3 funded users with all token accounts");
-    println!("   • LP Token Accounts: Ready for liquidity operations");
+    println!("   • LP Token Mints: Created as PDAs (will be initialized on first deposit)");
     println!();
     println!("🔧 READY FOR OPERATIONS:");
-    println!("   • Deposits: Users can provide liquidity");
-    println!("   • Withdrawals: Users can withdraw liquidity");
+    println!("   • Deposits: Users can provide liquidity (LP tokens created on-demand)");
+    println!("   • Withdrawals: Users can withdraw liquidity (after deposits)");
     println!("   • Swaps: Users can trade at fixed 3:1 ratio");
     println!("   • Fee Collection: SOL fees flow to treasury system");
     println!();
@@ -779,9 +709,12 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("   Ratio: 3 Primary : 1 Base");
     println!("   Users: 3 traders with varying balances");
     println!("   Fee System: Fully operational treasury PDAs");
+    println!("   LP Token A Mint PDA: {}", pool_state.lp_token_a_mint);
+    println!("   LP Token B Mint PDA: {}", pool_state.lp_token_b_mint);
     println!();
     println!("💡 USAGE: Other tests can reference this test as a setup example");
     println!("   or extract its components to create similar test environments.");
+    println!("   LP token accounts should be created by users before first deposit.");
     
     Ok(())
 } 
