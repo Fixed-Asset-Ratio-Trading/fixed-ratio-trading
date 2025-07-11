@@ -9,10 +9,13 @@
 #   ✅ Smart ngrok management (preserves existing tunnels)
 #   ✅ Dedicated screen sessions (ngrok + validator)
 #   ✅ Clean validator initialization (--reset)
+#   ✅ Intelligent error detection and auto-recovery
+#   ✅ Automatic retry with cleanup on startup failures
 #   ✅ Global tunnel access (https://fixed.ngrok.app)
 #   ✅ Automatic SOL airdrops to configured accounts
 #   ✅ Real-time status monitoring
 #   ✅ Comprehensive logging
+#   ✅ Reset status reporting
 #
 # USAGE:
 #   ./scripts/start_production_validator.sh [--reset]
@@ -24,7 +27,7 @@
 #     EXTERNAL_IP=192.168.1.100 ./scripts/start_production_validator.sh
 #
 # AUTHOR: Fixed Ratio Trading Development Team
-# VERSION: 4.0 - Full Automation Update
+# VERSION: 4.1 - Enhanced Error Recovery Update
 # UPDATED: January 2025
 
 set -e
@@ -122,6 +125,9 @@ PRIMARY_ACCOUNT="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 SECONDARY_ACCOUNT="3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f"
 AIRDROP_AMOUNT=100
 SECONDARY_AIRDROP_AMOUNT=10
+
+# Reset tracking
+RESET_PERFORMED=false
 
 # Network Configuration - Auto-detect or use environment variable
 if [[ -n "$EXTERNAL_IP" ]]; then
@@ -422,15 +428,13 @@ if [ "$NEED_VALIDATOR_START" = true ]; then
         sleep 3
     fi
     
-    # Handle reset logic
-    RESET_FLAG=""
-    if [ "$FORCE_RESET" = true ]; then
-        echo -e "${CYAN}🔄 --reset flag detected: Forcing clean blockchain state${NC}"
-        RESET_FLAG="--reset"
+    # Function to clean up validator state
+    cleanup_validator_state() {
+        echo -e "${YELLOW}🧹 Cleaning up validator state...${NC}"
         
         # Remove old test ledger to ensure clean start
         if [ -d "test-ledger" ]; then
-            echo -e "${YELLOW}🧹 Cleaning up old ledger data...${NC}"
+            echo -e "${YELLOW}🧹 Removing old ledger data...${NC}"
             rm -rf test-ledger
         fi
         
@@ -441,84 +445,158 @@ if [ "$NEED_VALIDATOR_START" = true ]; then
                 rm -rf "$ledger_dir"
             fi
         done
+        
+        RESET_PERFORMED=true
+    }
+    
+    # Function to check for validator startup errors
+    check_validator_errors() {
+        if [ -f "test-ledger/validator.log" ]; then
+            if grep -q "Address already in use" test-ledger/validator.log; then
+                echo -e "${RED}❌ Detected 'Address already in use' error${NC}"
+                return 1
+            fi
+            if grep -q "Faucet failed to start" test-ledger/validator.log; then
+                echo -e "${RED}❌ Detected faucet startup failure${NC}"
+                return 1
+            fi
+        fi
+        return 0
+    }
+    
+    # Handle reset logic
+    RESET_FLAG=""
+    if [ "$FORCE_RESET" = true ]; then
+        echo -e "${CYAN}🔄 --reset flag detected: Forcing clean blockchain state${NC}"
+        RESET_FLAG="--reset"
+        cleanup_validator_state
     else
         echo -e "${CYAN}💡 No --reset flag: Preserving existing blockchain state (if any)${NC}"
         # Only remove ledger if it exists and seems corrupted
         if [ -d "test-ledger" ]; then
             if [ ! -f "test-ledger/genesis.bin" ]; then
                 echo -e "${YELLOW}🧹 Removing corrupted ledger data...${NC}"
-                rm -rf test-ledger
+                cleanup_validator_state
                 RESET_FLAG="--reset"
             fi
         fi
     fi
     
-    # Start validator in screen session
-    screen -dmS "$VALIDATOR_SESSION_NAME" bash -c "
-        echo '⛓️  Solana Test Validator Manager'
-        echo '================================'
-        echo 'Started: \$(date)'
-        echo 'RPC Port: $RPC_PORT'
-        echo 'Bind Address: 0.0.0.0'
-        echo 'Session: $VALIDATOR_SESSION_NAME'
-        echo ''
-        echo 'Screen Commands:'
-        echo '  Detach: Ctrl+A, then D'
-        echo '  Kill session: screen -S $VALIDATOR_SESSION_NAME -X quit'
-        echo ''
-        echo '════════════════════════════════════════════════════════════════'
-        echo ''
+    # Function to start validator with retry logic
+    start_validator_with_retry() {
+        local attempt=1
+        local max_attempts=3
+        local current_reset_flag="$1"
         
-        echo 'Starting Solana test validator...'
-        echo 'RPC URL: http://localhost:$RPC_PORT'
-        echo 'WebSocket URL: ws://localhost:$((RPC_PORT + 1))'
-        echo 'Logs: test-ledger/validator.log'
-        echo ''
+        while [ $attempt -le $max_attempts ]; do
+            echo -e "${YELLOW}🚀 Validator startup attempt $attempt/$max_attempts${NC}"
+            
+            # Start validator in screen session
+            screen -dmS "$VALIDATOR_SESSION_NAME" bash -c "
+                echo '⛓️  Solana Test Validator Manager'
+                echo '================================'
+                echo 'Started: \$(date)'
+                echo 'RPC Port: $RPC_PORT'
+                echo 'Bind Address: 0.0.0.0'
+                echo 'Session: $VALIDATOR_SESSION_NAME'
+                echo 'Attempt: $attempt/$max_attempts'
+                echo ''
+                echo 'Screen Commands:'
+                echo '  Detach: Ctrl+A, then D'
+                echo '  Kill session: screen -S $VALIDATOR_SESSION_NAME -X quit'
+                echo ''
+                echo '════════════════════════════════════════════════════════════════'
+                echo ''
+                
+                echo 'Starting Solana test validator...'
+                echo 'RPC URL: http://localhost:$RPC_PORT'
+                echo 'WebSocket URL: ws://localhost:$((RPC_PORT + 1))'
+                echo 'Logs: test-ledger/validator.log'
+                echo 'Reset Flag: $current_reset_flag'
+                echo ''
+                
+                # Start the validator
+                solana-test-validator \\
+                    --rpc-port $RPC_PORT \\
+                    --bind-address 0.0.0.0 \\
+                    $current_reset_flag \\
+                    --quiet
+            "
+            
+            echo -e "${GREEN}✅ Solana validator started in screen session '$VALIDATOR_SESSION_NAME' (attempt $attempt)${NC}"
+            
+            # Wait for validator to initialize
+            echo -e "${YELLOW}⏳ Waiting for validator to initialize...${NC}"
+            RETRY_COUNT=0
+            MAX_RETRIES=5
+            
+            # Wait for startup
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+                if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
+                    echo -e "${GREEN}✅ Validator is now responding to RPC calls${NC}"
+                    VALIDATOR_RUNNING=true
+                    return 0
+                fi
+                
+                echo -e "${CYAN}   Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - waiting...${NC}"
+                sleep 2
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+            done
+            
+            # Check for specific errors if startup failed
+            echo -e "${YELLOW}🔍 Checking for startup errors...${NC}"
+            sleep 2  # Give time for logs to be written
+            
+            if ! check_validator_errors; then
+                echo -e "${YELLOW}🔄 Detected startup error - attempting recovery...${NC}"
+                
+                # Stop the failed validator
+                if screen -list | grep -q "$VALIDATOR_SESSION_NAME"; then
+                    screen -S "$VALIDATOR_SESSION_NAME" -X quit 2>/dev/null || true
+                fi
+                if pgrep -f "solana-test-validator" > /dev/null; then
+                    pkill -f "solana-test-validator" 2>/dev/null || true
+                    sleep 3
+                fi
+                
+                # Clean up state and force reset for next attempt
+                cleanup_validator_state
+                current_reset_flag="--reset"
+                
+                echo -e "${CYAN}💡 State cleaned up, will retry with --reset flag${NC}"
+            else
+                echo -e "${RED}❌ Validator failed to start (attempt $attempt/$max_attempts)${NC}"
+                
+                if [ -f "test-ledger/validator.log" ]; then
+                    echo -e "${YELLOW}📋 Last 10 lines of validator log:${NC}"
+                    echo -e "${CYAN}════════════════════════════════════════${NC}"
+                    tail -10 test-ledger/validator.log | sed 's/^/   /'
+                    echo -e "${CYAN}════════════════════════════════════════${NC}"
+                fi
+            fi
+            
+            attempt=$((attempt + 1))
+            
+            if [ $attempt -le $max_attempts ]; then
+                echo -e "${YELLOW}⏳ Waiting 5 seconds before retry...${NC}"
+                sleep 5
+            fi
+        done
         
-        # Start the validator
-        solana-test-validator \\
-            --rpc-port $RPC_PORT \\
-            --bind-address 0.0.0.0 \\
-            $RESET_FLAG \\
-            --quiet
-    "
-    
-    echo -e "${GREEN}✅ Solana validator started in screen session '$VALIDATOR_SESSION_NAME'${NC}"
-    
-    # Wait for validator to initialize
-    echo -e "${YELLOW}⏳ Waiting for validator to initialize...${NC}"
-    RETRY_COUNT=0
-    MAX_RETRIES=5
-    
-    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        if curl -s $LOCAL_RPC_URL -X POST -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' | grep -q "ok" 2>/dev/null; then
-            echo -e "${GREEN}✅ Validator is now responding to RPC calls${NC}"
-            VALIDATOR_RUNNING=true
-            break
-        fi
-        
-        echo -e "${CYAN}   Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES - waiting...${NC}"
-        sleep 2
-        RETRY_COUNT=$((RETRY_COUNT + 1))
-    done
-    
-    if [ "$VALIDATOR_RUNNING" = false ]; then
-        echo -e "${RED}❌ Validator failed to start within $((MAX_RETRIES * 2)) seconds${NC}"
-        echo ""
-        echo -e "${YELLOW}📋 Last 20 lines of validator log:${NC}"
-        echo -e "${CYAN}════════════════════════════════════════${NC}"
-        if [ -f "test-ledger/validator.log" ]; then
-            tail -20 test-ledger/validator.log | sed 's/^/   /'
-        else
-            echo -e "${RED}   No validator log found at test-ledger/validator.log${NC}"
-        fi
-        echo -e "${CYAN}════════════════════════════════════════${NC}"
+        # All attempts failed
+        echo -e "${RED}❌ Validator failed to start after $max_attempts attempts${NC}"
         echo ""
         echo -e "${YELLOW}💡 Additional debugging options:${NC}"
         echo -e "${YELLOW}   View live logs: screen -r $VALIDATOR_SESSION_NAME${NC}"
         echo -e "${YELLOW}   Follow log file: tail -f test-ledger/validator.log${NC}"
         echo -e "${YELLOW}   Check processes: ps aux | grep solana-test-validator${NC}"
-    fi
+        echo -e "${YELLOW}   Manual cleanup: rm -rf test-ledger && ./scripts/start_production_validator.sh --reset${NC}"
+        
+        return 1
+    }
+    
+    # Start validator with enhanced error handling
+    start_validator_with_retry "$RESET_FLAG"
 fi
 
 # Perform CLI configuration and airdrops if validator is running
@@ -653,10 +731,13 @@ echo -e "${GREEN}   ✅ Automatic Solana validator startup${NC}"
 echo -e "${GREEN}   ✅ Smart ngrok management (preserves existing tunnels)${NC}"
 echo -e "${GREEN}   ✅ Dedicated screen sessions (ngrok + validator)${NC}"
 echo -e "${GREEN}   ✅ Clean validator initialization (--reset)${NC}"
+echo -e "${GREEN}   ✅ Intelligent error detection and auto-recovery${NC}"
+echo -e "${GREEN}   ✅ Automatic retry with cleanup on startup failures${NC}"
 echo -e "${GREEN}   ✅ Global tunnel access ($NGROK_URL)${NC}"
 echo -e "${GREEN}   ✅ Automatic SOL airdrops to configured accounts${NC}"
 echo -e "${GREEN}   ✅ Real-time status monitoring${NC}"
 echo -e "${GREEN}   ✅ Comprehensive logging${NC}"
+echo -e "${GREEN}   ✅ Reset status reporting${NC}"
 echo ""
 
 echo -e "${GREEN}✨ Production environment is now fully operational!${NC}"
@@ -665,3 +746,21 @@ echo -e "${BLUE}   ⛓️  Validator: Running in screen session${NC}"
 echo -e "${BLUE}   📱 Monitor ngrok: screen -r $NGROK_SESSION_NAME${NC}"
 echo -e "${BLUE}   📱 Monitor validator: screen -r $VALIDATOR_SESSION_NAME${NC}"
 echo -e "${BLUE}   💰 Accounts funded and ready for transactions${NC}"
+
+# Reset status report
+echo ""
+echo -e "${PURPLE}🔄 RESET STATUS REPORT:${NC}"
+if [ "$RESET_PERFORMED" = true ]; then
+    echo -e "${YELLOW}   ⚠️  VALIDATOR WAS RESET during this session${NC}"
+    echo -e "${YELLOW}   📋 Blockchain state was cleaned and reinitialized${NC}"
+    echo -e "${YELLOW}   💡 All previous transactions and accounts were cleared${NC}"
+    if [ "$FORCE_RESET" = true ]; then
+        echo -e "${CYAN}   🎯 Reset was requested via --reset flag${NC}"
+    else
+        echo -e "${CYAN}   🔧 Reset was performed automatically to fix startup issues${NC}"
+    fi
+else
+    echo -e "${GREEN}   ✅ NO RESET PERFORMED - blockchain state preserved${NC}"
+    echo -e "${GREEN}   📋 Existing transactions and accounts remain intact${NC}"
+    echo -e "${CYAN}   💡 Use --reset flag to force clean blockchain state${NC}"
+fi
