@@ -26,45 +26,45 @@ use crate::{
 /// Processes the PauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Pauses the entire system, blocking all operations except unpause.
-/// Only the system authority can execute this instruction.
-/// 
-/// **PHASE 8: ULTRA-OPTIMIZED SYSTEM PAUSE ACCOUNT STRUCTURE**
-/// After removing all placeholder accounts, this function now requires only 2 accounts
-/// (down from 13), providing a 85% reduction in account overhead.
-/// 
-/// # Ultra-Optimized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - System authority account
-/// 1. **System State PDA** (writable) - System state account for pause
-/// 
-/// **PHASE 8 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 13 → 2 accounts (85% reduction)
-/// - Eliminated all placeholder accounts (indices 1-12 removed)
-/// - Minimal transaction size and validation overhead
-/// - Estimated compute unit savings: 385-770 CUs per transaction
-/// - Extremely simplified client integration
+/// Only the system authority can execute this instruction. This provides
+/// emergency controls for the contract authority with system-wide pause
+/// taking precedence over all pool-specific pause states.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
 /// * `reason` - Human-readable reason for the system pause
 /// * `accounts` - Array of accounts in ultra-optimized order (2 accounts minimum)
 /// 
+/// # Account Info
+/// The accounts must be provided in the following order:
+/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// 1. **System State PDA** (writable) - System state account for pause
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Critical Notes
+/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 13 to 2 accounts (85% reduction)
+/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 1-12) removed
+/// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
+/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 385-770 CUs per transaction
+/// - **CLIENT INTEGRATION**: Extremely simplified client integration
+/// - **EMERGENCY CONTROLS**: System pause takes precedence over all pool pause states
 pub fn process_pause_system(
     _program_id: &Pubkey,
     reason: String,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🛑 Processing system pause: {} (Phase 8: Ultra-Optimized)", reason);
+    msg!("🛑 Processing system pause: {}", reason);
     
-    // ✅ PHASE 8 OPTIMIZATION: Ultra-minimal account count requirement
+    // ✅ ACCOUNT VALIDATION: Ultra-minimal account count requirement
     if accounts.len() < 2 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let authority_account = &accounts[0];              // Index 0: Authority/User Signer
-    let system_state_account = &accounts[1];           // Index 1: System State PDA (was 13)
+    let system_state_account = &accounts[1];           // Index 1: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(authority_account, "System authority")?;
@@ -110,43 +110,43 @@ pub fn process_pause_system(
 /// Processes the UnpauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Unpauses the entire system, allowing all operations to resume.
-/// Only the system authority can execute this instruction.
-/// 
-/// **PHASE 8: ULTRA-OPTIMIZED SYSTEM UNPAUSE ACCOUNT STRUCTURE**
-/// After removing all placeholder accounts, this function now requires only 2 accounts
-/// (down from 13), providing a 85% reduction in account overhead.
-/// 
-/// # Ultra-Optimized Account Order:
-/// 0. **Authority/User Signer** (signer, writable) - System authority account
-/// 1. **System State PDA** (writable) - System state account for unpause
-/// 
-/// **PHASE 8 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 13 → 2 accounts (85% reduction)
-/// - Eliminated all placeholder accounts (indices 1-12 removed)
-/// - Minimal transaction size and validation overhead
-/// - Estimated compute unit savings: 385-770 CUs per transaction
-/// - Extremely simplified client integration
+/// Only the system authority can execute this instruction. This restores
+/// normal system operations while maintaining any pool-specific pause states
+/// that were previously set.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
 /// * `accounts` - Array of accounts in ultra-optimized order (2 accounts minimum)
 /// 
+/// # Account Info
+/// The accounts must be provided in the following order:
+/// 0. **Authority/User Signer** (signer, writable) - System authority account
+/// 1. **System State PDA** (writable) - System state account for unpause
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Critical Notes
+/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 13 to 2 accounts (85% reduction)
+/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 1-12) removed
+/// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
+/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 385-770 CUs per transaction
+/// - **CLIENT INTEGRATION**: Extremely simplified client integration
+/// - **POOL STATES**: Pool-specific pause states remain active if previously set
 pub fn process_unpause_system(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("✅ Processing system unpause (Phase 8: Ultra-Optimized)");
+    msg!("✅ Processing system unpause");
     
-    // ✅ PHASE 8 OPTIMIZATION: Ultra-minimal account count requirement
+    // ✅ ACCOUNT VALIDATION: Ultra-minimal account count requirement
     if accounts.len() < 2 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let authority_account = &accounts[0];              // Index 0: Authority/User Signer
-    let system_state_account = &accounts[1];           // Index 1: System State PDA (was 13)
+    let system_state_account = &accounts[1];           // Index 1: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(authority_account, "System authority")?;

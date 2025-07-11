@@ -1,13 +1,11 @@
 //! Treasury Management Processors
 //!
-//! **PHASE 3: CENTRALIZED TREASURY MANAGEMENT**
-//!
 //! This module handles centralized treasury operations with real-time tracking:
 //! - Contract fee withdrawals by system authority
 //! - Real-time treasury information queries
 //! - Simplified architecture with single treasury
 //!
-//! **Removed in Phase 3:**
+//! Removed functionality:
 //! - Specialized treasury consolidation (no longer needed)
 //! - Specialized treasury balance queries (no longer needed)
 //! - Complex consolidation race condition handling (eliminated by design)
@@ -34,13 +32,15 @@ use crate::{
 /// 
 /// This function implements an ultra-optimized account structure by removing all
 /// placeholder accounts that are not used in treasury operations. This provides
-/// maximum efficiency for treasury management operations.
+/// maximum efficiency for treasury management operations with strict authority validation.
 /// 
-/// **PHASE 7: ULTRA-OPTIMIZED TREASURY ACCOUNT STRUCTURE**
-/// After removing all placeholder accounts, this function now requires only 6 accounts
-/// (down from 15), providing a 60% reduction in account overhead.
+/// # Arguments
+/// * `program_id` - The program ID for PDA derivation
+/// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
+/// * `accounts` - Array of accounts in ultra-optimized order (6 accounts minimum)
 /// 
-/// # Ultra-Optimized Account Order:
+/// # Account Info
+/// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - System authority authorizing withdrawal
 /// 1. **System Program** (readable) - Solana system program
 /// 2. **Rent Sysvar** (readable) - For rent calculations
@@ -48,39 +48,35 @@ use crate::{
 /// 4. **Destination Account** (writable) - Account receiving the withdrawn SOL
 /// 5. **System State Account** (readable) - For authority validation
 /// 
-/// **PHASE 7 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 15 → 6 accounts (60% reduction)
-/// - Eliminated all placeholder accounts (indices 3-11 removed)
-/// - Reduced transaction size and validation overhead significantly
-/// - Estimated compute unit savings: 210-420 CUs per transaction
-/// - Simplified client integration with minimal account requirements
-/// 
-/// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
-/// * `accounts` - Array of accounts in ultra-optimized order (6 accounts minimum)
-/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Critical Notes
+/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 15 to 6 accounts (60% reduction)
+/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 3-11) removed
+/// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead significantly
+/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 210-420 CUs per transaction
+/// - **CLIENT INTEGRATION**: Simplified client integration with minimal account requirements
+/// - **AUTHORITY VALIDATION**: Strict system authority validation for all withdrawals
 pub fn process_withdraw_treasury_fees(
     program_id: &Pubkey,
     amount: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🏦 Processing treasury fee withdrawal: {} lamports (Phase 7: Ultra-Optimized)", amount);
+    msg!("🏦 Processing treasury fee withdrawal: {} lamports", amount);
     
-    // ✅ PHASE 7 OPTIMIZATION: Ultra-reduced account count requirement
+    // ✅ ACCOUNT VALIDATION: Ultra-reduced account count requirement
     if accounts.len() < 6 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using new ultra-optimized indices
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let authority_account = &accounts[0];              // Index 0: Authority/User Signer
     let _system_program = &accounts[1];                // Index 1: System Program
     let rent_sysvar = &accounts[2];                    // Index 2: Rent Sysvar
-    let main_treasury_account = &accounts[3];          // Index 3: Main Treasury PDA (was 12)
-    let destination_account = &accounts[4];            // Index 4: Destination Account (was 13)
-    let system_state_account = &accounts[5];           // Index 5: System State Account (was 14)
+    let main_treasury_account = &accounts[3];          // Index 3: Main Treasury PDA
+    let destination_account = &accounts[4];            // Index 4: Destination Account
+    let system_state_account = &accounts[5];           // Index 5: System State Account
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(authority_account, "System authority")?;
@@ -171,42 +167,39 @@ pub fn process_withdraw_treasury_fees(
 /// 
 /// This function implements an ultra-optimized account structure by removing all
 /// placeholder accounts that are not used in treasury information queries. This provides
-/// maximum efficiency for treasury information retrieval.
-/// 
-/// **PHASE 7: ULTRA-OPTIMIZED TREASURY INFO ACCOUNT STRUCTURE**
-/// After removing all placeholder accounts, this function now requires only 1 account
-/// (down from 13), providing a 92% reduction in account overhead.
-/// 
-/// # Ultra-Optimized Account Order:
-/// 0. **Main Treasury PDA** (readable) - Main treasury account for info query
-/// 
-/// **PHASE 7 OPTIMIZATION BENEFITS:**
-/// - Reduced account count: 13 → 1 account (92% reduction)
-/// - Eliminated all placeholder accounts (indices 0-11 removed)
-/// - Minimal transaction size and validation overhead
-/// - Estimated compute unit savings: 420-840 CUs per transaction
-/// - Extremely simplified client integration with single account requirement
-/// - Read-only operation with maximum efficiency
+/// maximum efficiency for treasury information retrieval with real-time data access.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation (unused, kept for compatibility)
 /// * `accounts` - Array of accounts in ultra-optimized order (1 account minimum)
 /// 
+/// # Account Info
+/// The accounts must be provided in the following order:
+/// 0. **Main Treasury PDA** (readable) - Main treasury account for info query
+/// 
 /// # Returns
 /// * `ProgramResult` - Success or error
+/// 
+/// # Critical Notes
+/// - **ACCOUNT OPTIMIZATION**: Reduced account count from 13 to 1 account (92% reduction)
+/// - **PLACEHOLDER ELIMINATION**: All placeholder accounts (indices 0-11) removed
+/// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
+/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 420-840 CUs per transaction
+/// - **CLIENT INTEGRATION**: Extremely simplified client integration with single account requirement
+/// - **READ-ONLY OPERATION**: Maximum efficiency for information retrieval
 pub fn process_get_treasury_info(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("📊 Getting real-time treasury information (Phase 7: Ultra-Optimized - 1 account)");
+    msg!("📊 Getting real-time treasury information");
     
-    // ✅ PHASE 7 OPTIMIZATION: Ultra-minimal account count requirement
+    // ✅ ACCOUNT VALIDATION: Ultra-minimal account count requirement
     if accounts.len() < 1 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
-    // ✅ ULTRA-OPTIMIZED ACCOUNT EXTRACTION: Single account extraction
-    let main_treasury_account = &accounts[0]; // Index 0: Main Treasury PDA (was 12)
+    // ✅ ACCOUNT EXTRACTION: Single account extraction
+    let main_treasury_account = &accounts[0]; // Index 0: Main Treasury PDA
     
     // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury = MainTreasuryState::try_from_slice(&main_treasury_account.data.borrow())?;
@@ -238,7 +231,7 @@ pub fn process_get_treasury_info(
     msg!("⏰ TIMING INFORMATION:");
     msg!("   Last Update: {}", main_treasury.last_update_timestamp);
     msg!("");
-    msg!("✅ PHASE 3 BENEFITS:");
+    msg!("✅ TREASURY BENEFITS:");
     msg!("   • Real-time data (no consolidation needed)");
     msg!("   • Single source of truth");
     msg!("   • No race conditions");
@@ -248,10 +241,10 @@ pub fn process_get_treasury_info(
 }
 
 // ============================================================================
-// PHASE 3: REMOVED FUNCTIONS
+// REMOVED FUNCTIONS
 // ============================================================================
 // 
-// The following functions have been removed in Phase 3:
+// The following functions have been removed for simplification:
 // 
 // - process_consolidate_treasuries(): No longer needed, fees go directly to main treasury
 // - process_get_specialized_treasury_balances(): No specialized treasuries exist
