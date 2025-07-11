@@ -67,373 +67,37 @@ async fn init_treasury_for_test(
 // NEW SINGLE-INSTRUCTION PATTERN TESTS (RECOMMENDED)
 // ================================================================================================
 
-/// Test pool initialization using the new single-instruction pattern.
+/// **COMPREHENSIVE TEST**: Complete pool initialization and validation
 /// 
-/// This test demonstrates the improved InitializePool instruction that replaces the
-/// deprecated two-instruction pattern with a single atomic operation.
-#[tokio::test]
-async fn test_initialize_pool_new_pattern() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create pool using new single-instruction pattern
-    let config = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),
-    ).await?;
-
-    // Verify pool state
-    verify_pool_state(
-        &mut ctx.env.banks_client,
-        &config,
-        &ctx.env.payer.pubkey(),
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-    ).await.expect("Pool state verification failed");
-
-    println!("✅ New single-instruction pattern: Pool created and verified successfully!");
-    println!("✅ Atomic operation - all accounts created and data initialized in one transaction");
-    
-    Ok(())
-}
-
-
-/// Test multiple pools with different ratios
-#[tokio::test]
-async fn test_initialize_multiple_pools_different_ratios() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints (shared between pools)
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Create first pool with 2:1 ratio
-    let config1 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(2),
-    ).await?;
-
-    // Create second pool with 10:1 ratio (different LP tokens)
-    let config2 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(10),
-    ).await?;
-
-    // Verify both pools exist and have different PDAs
-    assert_ne!(config1.pool_state_pda, config2.pool_state_pda, 
-        "Pools with different ratios should have different PDAs");
-
-    // Verify both pools have correct ratios
-    let pool_state1 = get_pool_state(&mut ctx.env.banks_client, &config1.pool_state_pda).await
-        .expect("First pool state should exist");
-    let pool_state2 = get_pool_state(&mut ctx.env.banks_client, &config2.pool_state_pda).await
-        .expect("Second pool state should exist");
-
-    assert!(pool_state1.is_initialized);
-    assert!(pool_state2.is_initialized);
-
-    println!("✅ Multiple pools with different ratios created successfully!");
-    println!("   Pool 1 PDA: {}", config1.pool_state_pda);
-    println!("   Pool 2 PDA: {}", config2.pool_state_pda);
-    
-    Ok(())
-}
-
-// ================================================================================================
-// VALIDATION AND ERROR TESTS
-// ================================================================================================
-
-/// Test that creating a pool with reversed tokens but equivalent exchange rate fails
-/// 
-/// This test verifies a critical invariant: the contract prevents creation of economically
-/// duplicate pools. If a pool exists with "3 A per 1 B", attempting to create a pool with 
-/// "1 B per 3 A" should fail since they represent the same exchange rate.
-/// 
-/// This prevents:
-/// - Market fragmentation
-/// - Liquidity splitting across equivalent pools  
-/// - User confusion about which pool to use
-/// - Arbitrage opportunities due to liquidity imbalances
-#[tokio::test]
-async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Test 1: Create first pool successfully: 2 primary per 1 base (exchange rate: 2:1)
-    let _config1 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(2),
-    ).await?;
-
-    println!("✅ Created first pool: 2 primary per 1 base");
-
-    // Test 2: Try to create economically equivalent pool with swapped tokens
-    // This should fail because normalization will result in the same PDA
-    let result2 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.base_mint,  // Swapped order
-        &ctx.primary_mint,  // Swapped order
-        Some(2),
-    ).await;
-
-    assert!(result2.is_err(), "Creating economically equivalent pool should fail");
-    println!("✅ Correctly rejected economically equivalent pool creation");
-
-    // Test 3: Try to create pool with zero ratio (should fail)
-    let result3 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(0),
-    ).await;
-
-    assert!(result3.is_err(), "Creating pool with zero ratio should fail");
-    println!("✅ Correctly rejected pool creation with zero ratio");
-
-    // Test 4: Try to create the exact same pool again (should fail due to AccountAlreadyInitialized)
-    let result4 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(2),  // Same ratio as first pool
-    ).await;
-
-    assert!(result4.is_err(), "Creating duplicate pool should fail");
-    println!("✅ Correctly rejected duplicate pool creation");
-
-    // Test 5: Try to create pool with same token as both primary and base (should fail)
-    // This will panic in the normalize function, so we need to handle it differently
-    println!("✅ Test 5: Attempting to create pool with identical tokens (should be rejected)");
-    
-    // We'll test this by checking if the normalize function panics
-    use std::panic;
-    
-    let result = panic::catch_unwind(|| {
-        normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.primary_mint.pubkey(), 2)
-    });
-
-    assert!(result.is_err(), "normalize_pool_config should panic with identical tokens");
-    println!("✅ Correctly rejected pool creation with identical token mints (panic caught)");
-
-    // Test 6: Create a valid different pool to ensure the system still works
-    let _config6 = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),  // Different ratio
-    ).await?;
-
-    println!("✅ Successfully created pool with different ratio (3:1)");
-    
-    Ok(())
-}
-
-// ================================================================================================
-// INTEGRATION WITH UTILITIES
-// ================================================================================================
-
-/// Test pool creation using the comprehensive utility functions
-#[tokio::test]
-async fn test_pool_creation_with_utilities() -> TestResult {
-    // Use the setup utility for a complete test context
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create all required mints using the utility
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Initialize treasury system first (required for pool creation fees)
-    init_treasury_for_test(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-    ).await?;
-
-    // Test both patterns to ensure utilities work with both
-    
-    // Pattern 1: New single-instruction (recommended)
-    let config_new = create_pool_new_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(3),
-    ).await?;
-
-    // Verify using utility
-    verify_pool_state(
-        &mut ctx.env.banks_client,
-        &config_new,
-        &ctx.env.payer.pubkey(),
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-    ).await.expect("New pattern pool verification failed");
-
-    // Pattern 2: Legacy two-instruction (for compatibility)
-    let config_legacy = create_pool_legacy_pattern(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.primary_mint,
-        &ctx.base_mint,
-        Some(4), // Different ratio to avoid conflict
-    ).await?;
-
-    // Verify using utility
-    verify_pool_state(
-        &mut ctx.env.banks_client,
-        &config_legacy,
-        &ctx.env.payer.pubkey(),
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-    ).await.expect("Legacy pattern pool verification failed");
-
-    // Verify pools are different
-    assert_ne!(config_new.pool_state_pda, config_legacy.pool_state_pda,
-        "Different ratio pools should have different PDAs");
-
-    println!("✅ Both pool creation patterns work correctly with common utilities!");
-    println!("   New pattern PDA: {}", config_new.pool_state_pda);
-    println!("   Legacy pattern PDA: {}", config_legacy.pool_state_pda);
-    
-    Ok(())
-}
-
-/// Test normalization logic with various token orderings
-#[tokio::test]
-async fn test_pool_normalization_logic() -> TestResult {
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create token mints
-    create_test_mints(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &[&ctx.primary_mint, &ctx.base_mint],
-    ).await?;
-
-    // Test normalization directly with economically equivalent ratios
-    let config1 = normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 4);
-    let config2 = normalize_pool_config_legacy(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 4);
-
-    // Both should normalize to the same token ordering (lexicographically)
-    assert_eq!(config1.token_a_mint, config2.token_a_mint, "Token A should be the same after normalization");
-    assert_eq!(config1.token_b_mint, config2.token_b_mint, "Token B should be the same after normalization");
-    
-    // These represent economically equivalent pools and should result in the same PDA
-    // Pool 1: 4 primary per 1 base 
-    // Pool 2: 4 base per 1 primary (when tokens are reversed)
-    // After normalization, these should be detected as equivalent
-    assert_eq!(config1.pool_state_pda, config2.pool_state_pda, "Economically equivalent pools should have the same PDA");
-
-    println!("✅ Normalization logic correctly detects economically equivalent pools");
-    println!("   Config 1 - Token A: {}, Token B: {}", config1.token_a_mint, config1.token_b_mint);
-    println!("   Config 1 - Ratio: {}:{}", config1.ratio_a_numerator, config1.ratio_b_denominator);
-    println!("   Config 2 - Ratio: {}:{}", config2.ratio_a_numerator, config2.ratio_b_denominator);
-    println!("   Same PDA prevents liquidity fragmentation: {}", config1.pool_state_pda);
-    
-    Ok(())
-}
-
-// ================================================================================================
-// FOUNDATION TEST - CORE INFRASTRUCTURE FOR OTHER TESTS
-// ================================================================================================
-
-/// **FOUNDATION TEST**: Core pool initialization with user accounts for testing
+/// This consolidated test covers all aspects of pool creation and initialization:
+/// 1. New single-instruction pattern testing (from test_initialize_pool_new_pattern)
+/// 2. Utility function integration testing (from test_pool_creation_with_utilities)
+/// 3. Complete environment setup and validation (from test_process_initialize_pool_success)
+/// 4. Multiple users and comprehensive state verification
 /// 
 /// This test creates a complete testing environment that serves as the foundation
-/// for all other tests. It initializes:
-/// 
-/// 1. **Treasury System** - All required PDAs for fee collection
-/// 2. **Token Infrastructure** - Two token mints with proper ordering
-/// 3. **Pool Creation** - A functioning pool with standard 3:1 ratio
-/// 4. **User Accounts** - Multiple funded users with token accounts
-/// 5. **Test Verification** - Complete state validation
-/// 
-/// This test can be used as a reference implementation for setting up test environments
-/// and ensures all components work together properly.
+/// for all other tests and validates:
+/// - Treasury System initialization
+/// - Token infrastructure creation
+/// - Pool creation with standard 3:1 ratio
+/// - User accounts with proper funding
+/// - Both new and legacy pattern compatibility
+/// - Complete state verification
 /// 
 /// # Test Flow
 /// 1. Initialize treasury system (required first step)
 /// 2. Create ordered token mints (lexicographically)
-/// 3. Create pool with standardized account ordering
-/// 4. Setup multiple test users with token accounts
-/// 5. Verify all components are properly initialized
+/// 3. Test new single-instruction pattern
+/// 4. Test utility functions with both patterns
+/// 5. Setup multiple test users with token accounts
+/// 6. Verify all components are properly initialized
 /// 
 /// # Returns
 /// Success when all components are properly initialized and verified
 #[tokio::test]
-async fn test_process_initialize_pool_success() -> TestResult {
-    println!("🚀 FOUNDATION TEST: Initializing complete pool testing environment");
-    println!("   This test creates the core infrastructure that other tests can reuse");
+async fn test_process_initialize_pool() -> TestResult {
+    println!("🚀 COMPREHENSIVE TEST: Complete pool initialization and validation");
+    println!("   This test consolidates all pool creation testing into one comprehensive test");
     
     // =============================================
     // STEP 1: Setup Test Environment
@@ -479,10 +143,12 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("✅ Token mints created and initialized");
     
     // =============================================
-    // STEP 4: Create Pool with Standard 3:1 Ratio
+    // STEP 4: Test New Single-Instruction Pattern
     // =============================================
-    println!("\n🏊 Creating trading pool...");
-    let pool_config = create_pool_new_pattern(
+    println!("\n🧪 Testing new single-instruction pattern...");
+    
+    // Create pool using new single-instruction pattern
+    let config_new = create_pool_new_pattern(
         &mut ctx.env.banks_client,
         &ctx.env.payer,
         ctx.env.recent_blockhash,
@@ -490,6 +156,56 @@ async fn test_process_initialize_pool_success() -> TestResult {
         &base_mint,
         Some(3),
     ).await?;
+
+    // Verify pool state
+    verify_pool_state(
+        &mut ctx.env.banks_client,
+        &config_new,
+        &ctx.env.payer.pubkey(),
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+    ).await.expect("Pool state verification failed");
+
+    println!("✅ New single-instruction pattern: Pool created and verified successfully!");
+    println!("✅ Atomic operation - all accounts created and data initialized in one transaction");
+    
+    // =============================================
+    // STEP 5: Test Utility Functions with Both Patterns
+    // =============================================
+    println!("\n🔧 Testing utility functions with both patterns...");
+    
+    // Test legacy pattern with different ratio to avoid conflict
+    let config_legacy = create_pool_legacy_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &primary_mint,
+        &base_mint,
+        Some(4), // Different ratio to avoid conflict
+    ).await?;
+
+    // Verify using utility
+    verify_pool_state(
+        &mut ctx.env.banks_client,
+        &config_legacy,
+        &ctx.env.payer.pubkey(),
+        &ctx.lp_token_a_mint.pubkey(),
+        &ctx.lp_token_b_mint.pubkey(),
+    ).await.expect("Legacy pattern pool verification failed");
+
+    // Verify pools are different
+    assert_ne!(config_new.pool_state_pda, config_legacy.pool_state_pda,
+        "Different ratio pools should have different PDAs");
+
+    println!("✅ Both pool creation patterns work correctly with common utilities!");
+    println!("   New pattern PDA: {}", config_new.pool_state_pda);
+    println!("   Legacy pattern PDA: {}", config_legacy.pool_state_pda);
+    
+    // =============================================
+    // STEP 6: Use Primary Pool for Comprehensive Testing
+    // =============================================
+    println!("\n🏊 Using primary pool (3:1 ratio) for comprehensive testing...");
+    let pool_config = config_new; // Use the new pattern pool as primary
     
     println!("✅ Pool created successfully:");
     println!("   Pool State PDA: {}", pool_config.pool_state_pda);
@@ -500,17 +216,9 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("   Token B Vault: {}", pool_config.token_b_vault_pda);
     
     // =============================================
-    // STEP 5: Verify Pool State
+    // STEP 7: Verify Pool State
     // =============================================
     println!("\n🔍 Verifying pool state...");
-    verify_pool_state(
-        &mut ctx.env.banks_client,
-        &pool_config,
-        &ctx.env.payer.pubkey(),
-        &ctx.lp_token_a_mint.pubkey(),
-        &ctx.lp_token_b_mint.pubkey(),
-    ).await.expect("Pool state verification failed");
-    
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &pool_config.pool_state_pda).await
         .expect("Pool state should exist");
     
@@ -523,7 +231,7 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("   Initial Token B Liquidity: {}", pool_state.total_token_b_liquidity);
     
     // =============================================
-    // STEP 6: Create Test Users with Token Accounts
+    // STEP 8: Create Test Users with Token Accounts
     // =============================================
     println!("\n👥 Creating test users with token accounts...");
     
@@ -685,36 +393,196 @@ async fn test_process_initialize_pool_success() -> TestResult {
     println!("     - Base Token Account: {}", user3_base_account_kp.pubkey());
     
     // =============================================
-    // STEP 7: Final Verification & Summary
+    // STEP 9: Final Verification & Summary
     // =============================================
-    println!("\n🎯 FOUNDATION TEST COMPLETE - Full Environment Ready!");
-    println!("════════════════════════════════════════════════════════");
-    println!("✅ INFRASTRUCTURE CREATED:");
+    println!("\n🎯 COMPREHENSIVE TEST COMPLETE - All Pool Creation Features Validated!");
+    println!("══════════════════════════════════════════════════════════════════════════════");
+    println!("✅ CONSOLIDATED FEATURES TESTED:");
+    println!("   • New Single-Instruction Pattern: Atomic pool creation ✓");
+    println!("   • Legacy Pattern Compatibility: Two-step pool creation ✓");
+    println!("   • Utility Function Integration: Both patterns work with utilities ✓");
+    println!("   • Complete Environment Setup: Full testing infrastructure ✓");
+    println!("   • Multiple User Accounts: 3 funded users with all token accounts ✓");
+    println!("   • Treasury System: All fee collection PDAs initialized ✓");
+    println!("   • State Verification: Comprehensive pool state validation ✓");
+    println!();
+    println!("🔧 INFRASTRUCTURE CREATED:");
     println!("   • Treasury System: All fee collection PDAs initialized");
     println!("   • Token Mints: Primary and Base tokens created");
-    println!("   • Trading Pool: 3:1 ratio pool with LP tokens");
+    println!("   • Trading Pools: Both 3:1 and 4:1 ratio pools created");
     println!("   • User Accounts: 3 funded users with all token accounts");
     println!("   • LP Token Mints: Created as PDAs (will be initialized on first deposit)");
     println!();
-    println!("🔧 READY FOR OPERATIONS:");
-    println!("   • Deposits: Users can provide liquidity (LP tokens created on-demand)");
-    println!("   • Withdrawals: Users can withdraw liquidity (after deposits)");
-    println!("   • Swaps: Users can trade at fixed 3:1 ratio");
-    println!("   • Fee Collection: SOL fees flow to treasury system");
-    println!();
-    println!("📋 TEST INFRASTRUCTURE SUMMARY:");
-    println!("   Pool ID: {}", pool_config.pool_state_pda);
+    println!("📋 POOL INFORMATION:");
+    println!("   Primary Pool ID: {}", pool_config.pool_state_pda);
+    println!("   Legacy Pool ID: {}", config_legacy.pool_state_pda);
     println!("   Primary Mint: {}", primary_mint.pubkey());
     println!("   Base Mint: {}", base_mint.pubkey());
-    println!("   Ratio: 3 Primary : 1 Base");
+    println!("   Primary Ratio: 3 Primary : 1 Base");
+    println!("   Legacy Ratio: 4 Primary : 1 Base");
     println!("   Users: 3 traders with varying balances");
     println!("   Fee System: Fully operational treasury PDAs");
     println!("   LP Token A Mint PDA: {}", pool_state.lp_token_a_mint);
     println!("   LP Token B Mint PDA: {}", pool_state.lp_token_b_mint);
     println!();
-    println!("💡 USAGE: Other tests can reference this test as a setup example");
-    println!("   or extract its components to create similar test environments.");
-    println!("   LP token accounts should be created by users before first deposit.");
+    println!("💡 USAGE: This comprehensive test covers all pool creation scenarios");
+    println!("   and can serve as a reference for pool initialization testing.");
+    println!("   Other tests can use this as a foundation for testing specific operations.");
+    
+    Ok(())
+}
+
+// ================================================================================================
+// VALIDATION AND ERROR TESTS
+// ================================================================================================
+
+/// Test that creating a pool with reversed tokens but equivalent exchange rate fails
+/// 
+/// This test verifies a critical invariant: the contract prevents creation of economically
+/// duplicate pools. If a pool exists with "3 A per 1 B", attempting to create a pool with 
+/// "1 B per 3 A" should fail since they represent the same exchange rate.
+/// 
+/// This prevents:
+/// - Market fragmentation
+/// - Liquidity splitting across equivalent pools  
+/// - User confusion about which pool to use
+/// - Arbitrage opportunities due to liquidity imbalances
+#[tokio::test]
+async fn test_create_pool_reversed_tokens_same_ratio_fails() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    // Initialize treasury system first (required for pool creation fees)
+    init_treasury_for_test(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+    ).await?;
+
+    // Test 1: Create first pool successfully: 2 primary per 1 base (exchange rate: 2:1)
+    let _config1 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(2),
+    ).await?;
+
+    println!("✅ Created first pool: 2 primary per 1 base");
+
+    // Test 2: Try to create economically equivalent pool with swapped tokens
+    // This should fail because normalization will result in the same PDA
+    let result2 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.base_mint,  // Swapped order
+        &ctx.primary_mint,  // Swapped order
+        Some(2),
+    ).await;
+
+    assert!(result2.is_err(), "Creating economically equivalent pool should fail");
+    println!("✅ Correctly rejected economically equivalent pool creation");
+
+    // Test 3: Try to create pool with zero ratio (should fail)
+    let result3 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(0),
+    ).await;
+
+    assert!(result3.is_err(), "Creating pool with zero ratio should fail");
+    println!("✅ Correctly rejected pool creation with zero ratio");
+
+    // Test 4: Try to create the exact same pool again (should fail due to AccountAlreadyInitialized)
+    let result4 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(2),  // Same ratio as first pool
+    ).await;
+
+    assert!(result4.is_err(), "Creating duplicate pool should fail");
+    println!("✅ Correctly rejected duplicate pool creation");
+
+    // Test 5: Try to create pool with same token as both primary and base (should fail)
+    // This will panic in the normalize function, so we need to handle it differently
+    println!("✅ Test 5: Attempting to create pool with identical tokens (should be rejected)");
+    
+    // We'll test this by checking if the normalize function panics
+    use std::panic;
+    
+    let result = panic::catch_unwind(|| {
+        normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.primary_mint.pubkey(), 2)
+    });
+
+    assert!(result.is_err(), "normalize_pool_config should panic with identical tokens");
+    println!("✅ Correctly rejected pool creation with identical token mints (panic caught)");
+
+    // Test 6: Create a valid different pool to ensure the system still works
+    let _config6 = create_pool_new_pattern(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.primary_mint,
+        &ctx.base_mint,
+        Some(3),  // Different ratio
+    ).await?;
+
+    println!("✅ Successfully created pool with different ratio (3:1)");
+    
+    Ok(())
+}
+
+// ================================================================================================
+// INTEGRATION WITH UTILITIES
+// ================================================================================================
+
+/// Test normalization logic with various token orderings
+#[tokio::test]
+async fn test_pool_normalization_logic() -> TestResult {
+    let mut ctx = setup_pool_test_context(false).await;
+    
+    // Create token mints
+    create_test_mints(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &[&ctx.primary_mint, &ctx.base_mint],
+    ).await?;
+
+    // Test normalization directly with economically equivalent ratios
+    let config1 = normalize_pool_config_legacy(&ctx.primary_mint.pubkey(), &ctx.base_mint.pubkey(), 4);
+    let config2 = normalize_pool_config_legacy(&ctx.base_mint.pubkey(), &ctx.primary_mint.pubkey(), 4);
+
+    // Both should normalize to the same token ordering (lexicographically)
+    assert_eq!(config1.token_a_mint, config2.token_a_mint, "Token A should be the same after normalization");
+    assert_eq!(config1.token_b_mint, config2.token_b_mint, "Token B should be the same after normalization");
+    
+    // These represent economically equivalent pools and should result in the same PDA
+    // Pool 1: 4 primary per 1 base 
+    // Pool 2: 4 base per 1 primary (when tokens are reversed)
+    // After normalization, these should be detected as equivalent
+    assert_eq!(config1.pool_state_pda, config2.pool_state_pda, "Economically equivalent pools should have the same PDA");
+
+    println!("✅ Normalization logic correctly detects economically equivalent pools");
+    println!("   Config 1 - Token A: {}, Token B: {}", config1.token_a_mint, config1.token_b_mint);
+    println!("   Config 1 - Ratio: {}:{}", config1.ratio_a_numerator, config1.ratio_b_denominator);
+    println!("   Config 2 - Ratio: {}:{}", config2.ratio_a_numerator, config2.ratio_b_denominator);
+    println!("   Same PDA prevents liquidity fragmentation: {}", config1.pool_state_pda);
     
     Ok(())
 } 

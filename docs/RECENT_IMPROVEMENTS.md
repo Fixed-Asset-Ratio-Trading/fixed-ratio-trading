@@ -193,7 +193,7 @@ Run the comprehensive test suite including new single-instruction pattern tests:
 cargo test
 
 # Run only new pattern tests
-cargo test test_initialize_pool_new_pattern
+cargo test --test test_pool_creation test_process_initialize_pool
 cargo test test_helper_functions_new_pattern
 
 # Run with output

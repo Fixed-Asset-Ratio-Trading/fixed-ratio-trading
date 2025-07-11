@@ -81,10 +81,10 @@ cargo test --test test_utilities
 #### Single Test Function
 ```bash
 # Run a specific test by name
-cargo test test_initialize_pool_new_pattern
+cargo test --test test_pool_creation test_process_initialize_pool
 
 # Run with debug output
-RUST_LOG=debug cargo test test_initialize_pool_new_pattern
+RUST_LOG=debug cargo test --test test_pool_creation test_process_initialize_pool
 ```
 
 #### Pattern-Based Test Selection

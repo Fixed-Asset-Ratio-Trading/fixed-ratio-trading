@@ -199,7 +199,7 @@ solana program deploy target/deploy/fixed_ratio_trading.so \
 ### Create Test Pools Manually
 ```bash
 # Run specific tests to create pools
-cargo test test_initialize_pool_new_pattern --lib
+cargo test --test test_pool_creation test_process_initialize_pool
 cargo test test_basic_deposit_success --lib
 ```
 
