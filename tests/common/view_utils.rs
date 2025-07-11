@@ -52,21 +52,15 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Swaps Paused: {}", pool_state.swaps_paused);
     msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
     
-    // Enhanced operations status with race condition awareness
+    // Enhanced operations status
     msg!("=== OPERATIONS STATUS ===");
     msg!("Deposits: ENABLED");
     msg!("Withdrawals: ENABLED");
     
     if pool_state.swaps_paused {
-        if pool_state.withdrawal_protection_active {
-            msg!("Swaps: TEMPORARILY PAUSED (MEV Protection during large withdrawal)");
-            msg!("  - Auto-clearing protection, not owner action");
-            msg!("  - Will resume automatically after withdrawal completion");
-        } else {
-            msg!("Swaps: PAUSED (Owner Action)");
-            msg!("  - Requires manual unpause by owner");
-            msg!("  - Controlled by pool owner");
-        }
+        msg!("Swaps: PAUSED (Owner Action)");
+        msg!("  - Requires manual unpause by owner");
+        msg!("  - Controlled by pool owner");
     } else {
         msg!("Swaps: ENABLED");
     }
@@ -79,13 +73,8 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
 /// **VIEW INSTRUCTION**: Returns current pool pause status - publicly accessible
 /// 
 /// # Purpose
-/// Provides public visibility into pool operation status, distinguishing between
+/// Provides public visibility into pool operation status and distinguishes between
 /// system-wide pause and pool-specific swap pause for user transparency.
-/// 
-/// **⚠️ RACE CONDITION NOTICE**: This query returns real-time status.
-/// During large withdrawals (≥5% of pool), you may see temporary 
-/// "swaps paused" status due to automatic MEV protection.
-/// This is **expected behavior** and will auto-clear after withdrawal completion.
 /// 
 /// # Account Layout (Read-Only)
 /// 0. Pool State PDA (read-only)
@@ -104,18 +93,10 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
     
     if pool_state_data.swaps_paused {
-        // Distinguish between temporary withdrawal protection and owner pause
-        if pool_state_data.withdrawal_protection_active {
-            msg!("=== TEMPORARY WITHDRAWAL PROTECTION ===");
-            msg!("Swaps temporarily paused during large withdrawal (≥5% of pool)");
-            msg!("Protection will auto-clear after withdrawal completion");
-            msg!("NOTE: This is MEV protection, not an owner action");
-        } else {
-            msg!("=== OWNER PAUSE ===");
-            msg!("Swaps paused by owner action");
-            msg!("Control: Pool owner");
-            msg!("Note: No auto-unpause - requires manual unpause action");
-        }
+        msg!("=== OWNER PAUSE ===");
+        msg!("Swaps paused by owner action");
+        msg!("Control: Pool owner");
+        msg!("Note: No auto-unpause - requires manual unpause action");
     }
     
     msg!("==================");

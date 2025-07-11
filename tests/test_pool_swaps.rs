@@ -39,7 +39,7 @@ Core Swap Tests:
 [✅] test_successful_a_to_b_swap - Core swap functionality A→B
 [✅] test_successful_b_to_a_swap - Core swap functionality B→A
 [✅] test_swap_with_various_ratios - Test different pool ratios
-[✅] test_slippage_protection_boundaries - Slippage protection logic
+[✅] test_fixed_ratio_calculation_boundaries - Fixed ratio calculation logic
 [✅] test_swap_liquidity_constraints - Liquidity availability checks
 [✅] test_swap_edge_cases_and_security - Edge cases and security validation
 [✅] test_process_swap_a_to_b_execution - Low-level swap execution A→B
@@ -963,7 +963,7 @@ async fn test_fixed_ratio_calculation_boundaries() -> TestResult {
     println!();
     println!("🎯 This demonstrates true fixed-ratio trading:");
     println!("   • Predictable outputs with zero variance");
-    println!("   • No slippage protection needed");
+    println!("   • Deterministic exchange rates");
     println!("   • Mathematical precision and consistency");
     println!("   • All-or-nothing execution model");
     
