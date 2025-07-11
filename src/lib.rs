@@ -114,8 +114,10 @@ use crate::processors::{
         process_swap_hft_optimized,
     },
     // security module contains only governance-controlled security architecture documentation
-    system_pause::{
+    process_initialize::{
         process_initialize_program,
+    },
+    system_pause::{
         process_pause_system,
         process_unpause_system,
     },
