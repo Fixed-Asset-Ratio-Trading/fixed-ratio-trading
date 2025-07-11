@@ -58,12 +58,12 @@ use crate::{
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Authority/User Signer** (signer, writable) - User authorizing the swap
-/// 1. **System Program** (readable) - Solana system program
-/// 2. **Pool State PDA** (writable) - Pool state account
-/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault
-/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault
-/// 5. **SPL Token Program** (readable) - Token program
+/// 0. **Authority/User Signer** (signer, writable) - User signer authorizing the swap
+/// 1. **System Program Account** (readable) - Solana system program account
+/// 2. **Pool State PDA** (writable) - Pool state PDA
+/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 5. **SPL Token Program Account** (readable) - Token program account
 /// 6. **User Input Token Account** (writable) - User's input token account
 /// 7. **User Output Token Account** (writable) - User's output token account
 /// 8. **Main Treasury PDA** (writable) - For fee collection
@@ -101,18 +101,18 @@ pub fn process_swap(
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program = &accounts[1];                // Index 1: System Program
-    let pool_state_account = &accounts[2];             // Index 2: Pool State PDA
-    let pool_token_a_vault_account = &accounts[3];     // Index 3: Token A Vault PDA
-    let pool_token_b_vault_account = &accounts[4];     // Index 4: Token B Vault PDA
-    let token_program_account = &accounts[5];          // Index 5: SPL Token Program
+    let _system_program_account = &accounts[1];                // Index 1: System Program Account
+    let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
+    let pool_token_a_vault_pda = &accounts[3];     // Index 3: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[4];     // Index 4: Token B Vault PDA
+    let token_program_account = &accounts[5];          // Index 5: SPL Token Program Account
     let user_input_token_account = &accounts[6];       // Index 6: User Input Token Account
     let user_output_token_account = &accounts[7];      // Index 7: User Output Token Account
-    let main_treasury_account = &accounts[8];          // Index 8: Main Treasury PDA
+    let main_treasury_pda = &accounts[8];          // Index 8: Main Treasury PDA
     // Index 9+: Function-specific accounts (none for basic swap)
     
     // ✅ POOL SWAP PAUSE: Check pool-specific swap pause
-    validate_pool_swaps_not_paused(pool_state_account)?;
+    validate_pool_swaps_not_paused(pool_state_pda)?;
     
     // ✅ BASIC VALIDATION: Essential checks only
     if !user_signer.is_signer {
@@ -125,12 +125,12 @@ pub fn process_swap(
     
     collect_regular_swap_fee_ultra_efficient(
         user_signer,
-        main_treasury_account, // Use main treasury instead of specialized treasury
-        &accounts[1], // system_program is at index 1 in standardized ordering
+        main_treasury_pda, // Use main treasury instead of specialized treasury
+        &accounts[1], // system_program_account is at index 1 in standardized ordering
         program_id,
     )?;
 
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
@@ -155,20 +155,20 @@ pub fn process_swap(
     let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
         if input_token_mint_key == pool_state_data.token_a_mint {
             // A->B swap
-            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault || 
-               *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
+            if *pool_token_a_vault_pda.key != pool_state_data.token_a_vault || 
+               *pool_token_b_vault_pda.key != pool_state_data.token_b_vault {
                 msg!("Invalid pool vault accounts for A->B swap");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_a_vault_account, pool_token_b_vault_account, pool_state_data.token_b_mint, true)
+            (pool_token_a_vault_pda, pool_token_b_vault_pda, pool_state_data.token_b_mint, true)
         } else if input_token_mint_key == pool_state_data.token_b_mint {
             // B->A swap
-            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault || 
-               *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
+            if *pool_token_b_vault_pda.key != pool_state_data.token_b_vault || 
+               *pool_token_a_vault_pda.key != pool_state_data.token_a_vault {
                 msg!("Invalid pool vault accounts for B->A swap");
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_b_vault_account, pool_token_a_vault_account, pool_state_data.token_a_mint, false)
+            (pool_token_b_vault_pda, pool_token_a_vault_pda, pool_state_data.token_a_mint, false)
         } else {
             msg!("Input token mint does not match either pool token");
             return Err(ProgramError::InvalidArgument);
@@ -260,7 +260,7 @@ pub fn process_swap(
         token_program_account.key,
         output_pool_vault_acc.key,
         user_output_token_account.key,
-        pool_state_account.key,
+        pool_state_pda.key,
         &[],
         amount_out,
     )?;
@@ -270,7 +270,7 @@ pub fn process_swap(
         &[
             output_pool_vault_acc.clone(),
             user_output_token_account.clone(),
-            pool_state_account.clone(),
+            pool_state_pda.clone(),
             token_program_account.clone(),
         ],
         &[pool_state_pda_seeds],
@@ -297,13 +297,13 @@ pub fn process_swap(
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
     
-    let mut pool_state_account_data = pool_state_account.data.borrow_mut();
-    if serialized_data.len() > pool_state_account_data.len() {
+    let mut pool_state_pda_data = pool_state_pda.data.borrow_mut();
+    if serialized_data.len() > pool_state_pda_data.len() {
         return Err(ProgramError::AccountDataTooSmall);
     }
     
-    pool_state_account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    drop(pool_state_account_data);
+    pool_state_pda_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    drop(pool_state_pda_data);
 
     msg!("✅ Swap completed successfully with optimized account structure");
     
@@ -324,12 +324,12 @@ pub fn process_swap(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Authority/User Signer** (signer, writable) - User authorizing the swap
-/// 1. **System Program** (readable) - Solana system program
-/// 2. **Pool State PDA** (writable) - Pool state account
-/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault
-/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault
-/// 5. **SPL Token Program** (readable) - Token program
+/// 0. **Authority/User Signer** (signer, writable) - User signer authorizing the swap
+/// 1. **System Program Account** (readable) - Solana system program account
+/// 2. **Pool State PDA** (writable) - Pool state PDA
+/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 5. **SPL Token Program Account** (readable) - Token program account
 /// 6. **User Input Token Account** (writable) - User's input token account
 /// 7. **User Output Token Account** (writable) - User's output token account
 /// 8. **Main Treasury PDA** (writable) - For fee collection
@@ -368,18 +368,18 @@ pub fn process_swap_hft_optimized(
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program = &accounts[1];                // Index 1: System Program
-    let pool_state_account = &accounts[2];             // Index 2: Pool State PDA
-    let pool_token_a_vault_account = &accounts[3];     // Index 3: Token A Vault PDA
-    let pool_token_b_vault_account = &accounts[4];     // Index 4: Token B Vault PDA
-    let token_program_account = &accounts[5];          // Index 5: SPL Token Program
+    let _system_program_account = &accounts[1];                // Index 1: System Program Account
+    let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
+    let pool_token_a_vault_pda = &accounts[3];     // Index 3: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[4];     // Index 4: Token B Vault PDA
+    let token_program_account = &accounts[5];          // Index 5: SPL Token Program Account
     let user_input_token_account = &accounts[6];       // Index 6: User Input Token Account
     let user_output_token_account = &accounts[7];      // Index 7: User Output Token Account
-    let main_treasury_account = &accounts[8];          // Index 8: Main Treasury PDA
+    let main_treasury_pda = &accounts[8];          // Index 8: Main Treasury PDA
     // Index 9+: Function-specific accounts (none for HFT swap)
 
     // 🚀 OPTIMIZATION 3: Pool pause validation (no debug message)
-    validate_pool_swaps_not_paused(pool_state_account)?;
+    validate_pool_swaps_not_paused(pool_state_pda)?;
 
     // 🚀 OPTIMIZATION 4: Early validation checks (fail fast pattern)
     if !user_signer.is_signer {
@@ -391,13 +391,13 @@ pub fn process_swap_hft_optimized(
     
     collect_hft_swap_fee_ultra_efficient(
         user_signer,
-        main_treasury_account, // Use main treasury instead of specialized treasury
-        &accounts[1], // system_program is at index 1 in standardized ordering
+        main_treasury_pda, // Use main treasury instead of specialized treasury
+        &accounts[1], // system_program_account is at index 1 in standardized ordering
         program_id,
     )?;
 
     // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
     if !pool_state_data.is_initialized {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -413,18 +413,18 @@ pub fn process_swap_hft_optimized(
     let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
         if input_token_mint_key == pool_state_data.token_a_mint {
             // A->B swap validation
-            if *pool_token_a_vault_account.key != pool_state_data.token_a_vault || 
-               *pool_token_b_vault_account.key != pool_state_data.token_b_vault {
+            if *pool_token_a_vault_pda.key != pool_state_data.token_a_vault || 
+               *pool_token_b_vault_pda.key != pool_state_data.token_b_vault {
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_a_vault_account, pool_token_b_vault_account, pool_state_data.token_b_mint, true)
+            (pool_token_a_vault_pda, pool_token_b_vault_pda, pool_state_data.token_b_mint, true)
         } else if input_token_mint_key == pool_state_data.token_b_mint {
             // B->A swap validation
-            if *pool_token_b_vault_account.key != pool_state_data.token_b_vault || 
-               *pool_token_a_vault_account.key != pool_state_data.token_a_vault {
+            if *pool_token_b_vault_pda.key != pool_state_data.token_b_vault || 
+               *pool_token_a_vault_pda.key != pool_state_data.token_a_vault {
                 return Err(ProgramError::InvalidAccountData);
             }
-            (pool_token_b_vault_account, pool_token_a_vault_account, pool_state_data.token_a_mint, false)
+            (pool_token_b_vault_pda, pool_token_a_vault_pda, pool_state_data.token_a_mint, false)
         } else {
             return Err(ProgramError::InvalidArgument);
         };
@@ -513,14 +513,14 @@ pub fn process_swap_hft_optimized(
             token_program_account.key,
             output_pool_vault_acc.key,
             user_output_token_account.key,
-            pool_state_account.key,
+            pool_state_pda.key,
             &[],
             amount_out,
         )?,
         &[
             output_pool_vault_acc.clone(),
             user_output_token_account.clone(),
-            pool_state_account.clone(),
+            pool_state_pda.clone(),
             token_program_account.clone(),
         ],
         &[pool_state_pda_seeds],
@@ -547,12 +547,12 @@ pub fn process_swap_hft_optimized(
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
     
-    let mut pool_state_account_data = pool_state_account.data.borrow_mut();
-    if serialized_data.len() > pool_state_account_data.len() {
+    let mut pool_state_pda_data = pool_state_pda.data.borrow_mut();
+    if serialized_data.len() > pool_state_pda_data.len() {
         return Err(ProgramError::AccountDataTooSmall);
     }
     
-    pool_state_account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    pool_state_pda_data[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     Ok(())
 }

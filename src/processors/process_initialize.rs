@@ -33,9 +33,9 @@ use crate::{
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Program Authority** (signer, writable) - MUST match program upgrade authority
-/// 1. **System Program** (readable) - Solana system program
-/// 2. **Rent Sysvar** (readable) - For rent calculations
+/// 0. **Program Authority Signer** (signer, writable) - MUST match program upgrade authority
+/// 1. **System Program Account** (readable) - Solana system program
+/// 2. **Rent Sysvar Account** (readable) - For rent calculations
 /// 3. **System State PDA** (writable) - MUST match derived PDA (validated internally)
 /// 4. **Main Treasury PDA** (writable) - MUST match derived PDA (validated internally)
 /// 5. **Program Data Account** (readable) - Contains the program upgrade authority
@@ -63,38 +63,38 @@ pub fn process_initialize_program(
     }
     
     // ✅ PROGRAM UPGRADE AUTHORITY ACCOUNT EXTRACTION: Extract accounts using upgrade authority indices
-    let program_authority = &accounts[0];      // Index 0: Program Authority (MUST match upgrade authority)
-    let system_program = &accounts[1];         // Index 1: System Program
-    let rent_sysvar = &accounts[2];            // Index 2: Rent Sysvar
-    let system_state_account = &accounts[3];           // Index 3: System State PDA (MUST match derived PDA)
-    let main_treasury = &accounts[4];          // Index 4: Main Treasury PDA (MUST match derived PDA)
+    let program_authority_signer = &accounts[0];      // Index 0: Program Authority Signer (MUST match upgrade authority)
+    let system_program_account = &accounts[1];         // Index 1: System Program Account
+    let rent_sysvar_account = &accounts[2];            // Index 2: Rent Sysvar Account
+    let system_state_pda = &accounts[3];           // Index 3: System State PDA (MUST match derived PDA)
+    let main_treasury_pda = &accounts[4];          // Index 4: Main Treasury PDA (MUST match derived PDA)
     let program_data_account = &accounts[5];           // Index 5: Program Data Account (contains upgrade authority)
     
-    let rent = &Rent::from_account_info(rent_sysvar)?;
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
 
     // ✅ CRITICAL SECURITY: Validate program upgrade authority
     use crate::utils::program_authority::validate_program_upgrade_authority;
     
     msg!("🔍 Program Upgrade Authority Validation:");
-    msg!("   Provided Authority: {}", program_authority.key);
+    msg!("   Provided Authority: {}", program_authority_signer.key);
     msg!("   Program Data Account: {}", program_data_account.key);
     
     // Validate that the provided authority matches the program upgrade authority
-    validate_program_upgrade_authority(program_id, program_data_account, program_authority)?;
+    validate_program_upgrade_authority(program_id, program_data_account, program_authority_signer)?;
 
     // ✅ SECURITY: Derive System State PDA and validate provided account matches
     let system_state_seeds = &[SYSTEM_STATE_SEED_PREFIX];
     let (expected_system_state_pda, system_state_bump) = Pubkey::find_program_address(system_state_seeds, program_id);
     
-    if *system_state_account.key != expected_system_state_pda {
+    if *system_state_pda.key != expected_system_state_pda {
         msg!("❌ SECURITY VIOLATION: System State PDA does not match expected derived PDA");
         msg!("   Expected: {}", expected_system_state_pda);
-        msg!("   Provided: {}", system_state_account.key);
+        msg!("   Provided: {}", system_state_pda.key);
         return Err(ProgramError::InvalidAccountData);
     }
 
     // ✅ SECURITY: Check if program is already initialized
-    if system_state_account.data_len() > 0 && !system_state_account.data_is_empty() {
+    if system_state_pda.data_len() > 0 && !system_state_pda.data_is_empty() {
         msg!("❌ Program already initialized (SystemState exists)");
         return Err(ProgramError::AccountAlreadyInitialized);
     }
@@ -103,10 +103,10 @@ pub fn process_initialize_program(
     let main_treasury_seeds = &[MAIN_TREASURY_SEED_PREFIX];
     let (expected_main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(main_treasury_seeds, program_id);
     
-    if *main_treasury.key != expected_main_treasury_pda {
+    if *main_treasury_pda.key != expected_main_treasury_pda {
         msg!("❌ SECURITY VIOLATION: Main Treasury PDA does not match expected derived PDA");
         msg!("   Expected: {}", expected_main_treasury_pda);
-        msg!("   Provided: {}", main_treasury.key);
+        msg!("   Provided: {}", main_treasury_pda.key);
         return Err(ProgramError::InvalidAccountData);
     }
 
@@ -118,23 +118,23 @@ pub fn process_initialize_program(
     
     invoke_signed(
         &system_instruction::create_account(
-            program_authority.key,
-            system_state_account.key,
+            program_authority_signer.key,
+            system_state_pda.key,
             system_state_rent,
             SystemState::LEN as u64,
             program_id,
         ),
         &[
-            program_authority.clone(),
-            system_state_account.clone(),
-            system_program.clone(),
+            program_authority_signer.clone(),
+            system_state_pda.clone(),
+            system_program_account.clone(),
         ],
         &[system_state_seeds_with_bump],
     )?;
 
     // Initialize SystemState data
-    let system_state_data = SystemState::new(*program_authority.key);
-    serialize_to_account(&system_state_data, system_state_account)?;
+    let system_state_data = SystemState::new(*program_authority_signer.key);
+    serialize_to_account(&system_state_data, system_state_pda)?;
     
     // Create Main Treasury PDA account
     let main_treasury_rent = rent.minimum_balance(MainTreasuryState::get_packed_len());
@@ -142,29 +142,29 @@ pub fn process_initialize_program(
     
     invoke_signed(
         &system_instruction::create_account(
-            program_authority.key,
-            main_treasury.key,
+            program_authority_signer.key,
+            main_treasury_pda.key,
             main_treasury_rent,
             MainTreasuryState::get_packed_len() as u64,
             program_id,
         ),
         &[
-            program_authority.clone(),
-            main_treasury.clone(),
-            system_program.clone(),
+            program_authority_signer.clone(),
+            main_treasury_pda.clone(),
+            system_program_account.clone(),
         ],
         &[main_treasury_seeds_with_bump],
     )?;
 
     // Initialize MainTreasury data
-    let main_treasury_data = MainTreasuryState::new(*program_authority.key);
-    serialize_to_account(&main_treasury_data, main_treasury)?;
+    let main_treasury_data = MainTreasuryState::new(*program_authority_signer.key);
+    serialize_to_account(&main_treasury_data, main_treasury_pda)?;
 
     // ✅ PROGRAM INITIALIZATION COMPLETE
     msg!("✅ PROGRAM INITIALIZED SUCCESSFULLY:");
-    msg!("   • SystemState PDA: {} (validated against derived PDA)", system_state_account.key);
-    msg!("   • MainTreasury PDA: {} (validated against derived PDA)", main_treasury.key);
-    msg!("   • Program Authority: {} (validated against upgrade authority)", program_authority.key);
+    msg!("   • SystemState PDA: {} (validated against derived PDA)", system_state_pda.key);
+    msg!("   • MainTreasury PDA: {} (validated against derived PDA)", main_treasury_pda.key);
+    msg!("   • Program Authority: {} (validated against upgrade authority)", program_authority_signer.key);
     msg!("🔐 Security Benefits:");
     msg!("   • Only program upgrade authority can initialize");
     msg!("   • All PDAs strictly validated against derived addresses");

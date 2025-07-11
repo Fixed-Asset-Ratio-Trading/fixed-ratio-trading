@@ -41,10 +41,10 @@ use crate::{
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority** (signer, writable) - System authority authorizing withdrawal
-/// 1. **System Program** (readable) - Solana system program
-/// 2. **Rent Sysvar** (readable) - For rent calculations
-/// 3. **Main Treasury PDA** (writable) - Main treasury account for withdrawal
+/// 0. **System Authority Signer** (signer, writable) - System authority signer authorizing withdrawal
+/// 1. **System Program Account** (readable) - Solana system program account
+/// 2. **Rent Sysvar Account** (readable) - For rent calculations
+/// 3. **Main Treasury PDA** (writable) - Main treasury PDA for withdrawal
 /// 4. **Destination Account** (writable) - Account receiving the withdrawn SOL
 /// 5. **System State PDA** (readable) - For authority validation
 /// 
@@ -68,16 +68,16 @@ pub fn process_withdraw_treasury_fees(
     }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let system_authority = &accounts[0];              // Index 0: System Authority
-    let system_program = &accounts[1];                // Index 1: System Program
-    let rent_sysvar = &accounts[2];                    // Index 2: Rent Sysvar
-    let main_treasury = &accounts[3];          // Index 3: Main Treasury PDA
+    let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
+    let system_program_account = &accounts[1];                // Index 1: System Program Account
+    let rent_sysvar_account = &accounts[2];                    // Index 2: Rent Sysvar Account
+    let main_treasury_pda = &accounts[3];          // Index 3: Main Treasury PDA
     let destination_account = &accounts[4];            // Index 4: Destination Account
-    let system_state_account = &accounts[5];           // Index 5: System State PDA
+    let system_state_pda = &accounts[5];           // Index 5: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    validate_signer(system_authority, "System authority")?;
-    validate_writable(main_treasury, "Main treasury")?;
+    validate_signer(system_authority_signer, "System authority")?;
+    validate_writable(main_treasury_pda, "Main treasury PDA")?;
     validate_writable(destination_account, "Destination account")?;
     
     // Verify main treasury PDA
@@ -85,29 +85,29 @@ pub fn process_withdraw_treasury_fees(
         &[MAIN_TREASURY_SEED_PREFIX],
         program_id,
     );
-    if *main_treasury.key != expected_main_treasury {
+    if *main_treasury_pda.key != expected_main_treasury {
         msg!("Invalid main treasury PDA. Expected: {}, Got: {}", 
-             expected_main_treasury, main_treasury.key);
+             expected_main_treasury, main_treasury_pda.key);
         return Err(ProgramError::InvalidAccountData);
     }
     
     // Load and validate system state to verify authority
-    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
-    if !system_state.validate_authority(system_authority.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority.key);
+    let system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    if !system_state.validate_authority(system_authority_signer.key) {
+        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
         return Err(PoolError::UnauthorizedAccess.into());
     }
-    msg!("✅ Authority validation passed: {}", system_authority.key);
+    msg!("✅ Authority validation passed: {}", system_authority_signer.key);
     
     // Load main treasury state
-    let mut main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury.data.borrow())?;
+    let mut main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
     // Calculate rent-exempt minimum
-    let rent = &Rent::from_account_info(rent_sysvar)?;
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
     let rent_exempt_minimum = rent.minimum_balance(MainTreasuryState::get_packed_len());
     
     // Calculate available balance for withdrawal
-    let current_balance = main_treasury.lamports();
+    let current_balance = main_treasury_pda.lamports();
     let available_balance = if current_balance > rent_exempt_minimum {
         current_balance - rent_exempt_minimum
     } else {
@@ -139,7 +139,7 @@ pub fn process_withdraw_treasury_fees(
     msg!("   Withdrawing: {} lamports", withdrawal_amount);
     
     // Transfer SOL from treasury to destination account
-    **main_treasury.try_borrow_mut_lamports()? -= withdrawal_amount;
+    **main_treasury_pda.try_borrow_mut_lamports()? -= withdrawal_amount;
     **destination_account.try_borrow_mut_lamports()? += withdrawal_amount;
     
     // Update treasury statistics
@@ -147,11 +147,11 @@ pub fn process_withdraw_treasury_fees(
         .checked_add(withdrawal_amount)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    main_treasury_state.total_balance = main_treasury.lamports();
+    main_treasury_state.total_balance = main_treasury_pda.lamports();
     
     // Serialize updated treasury state
     let serialized_data = main_treasury_state.try_to_vec()?;
-    main_treasury.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    main_treasury_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     msg!("✅ Treasury withdrawal completed successfully");
     msg!("   Amount withdrawn: {} lamports", withdrawal_amount);
@@ -172,7 +172,7 @@ pub fn process_withdraw_treasury_fees(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Main Treasury PDA** (readable) - Main treasury account for info query
+/// 0. **Main Treasury PDA** (readable) - Main treasury PDA for info query
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -193,10 +193,10 @@ pub fn process_get_treasury_info(
     }
     
     // ✅ ACCOUNT EXTRACTION: Single account extraction
-    let main_treasury = &accounts[0]; // Index 0: Main Treasury PDA
+    let main_treasury_pda = &accounts[0]; // Index 0: Main Treasury PDA
     
     // Load main treasury data (real-time data, no consolidation needed)
-    let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury.data.borrow())?;
+    let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
     msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
     msg!("   Authority: {}", main_treasury_state.authority);

@@ -37,8 +37,8 @@ use crate::{
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority** (signer, writable) - System authority account
-/// 1. **System State PDA** (writable) - System state account for pause
+/// 0. **System Authority Signer** (signer, writable) - System authority signer
+/// 1. **System State PDA** (writable) - System state PDA for pause
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -60,19 +60,19 @@ pub fn process_pause_system(
     }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let system_authority = &accounts[0];              // Index 0: System Authority
-    let system_state_account = &accounts[1];           // Index 1: System State PDA
+    let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
+    let system_state_pda = &accounts[1];           // Index 1: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    validate_signer(system_authority, "System authority")?;
-    validate_writable(system_state_account, "System state account")?;
+    validate_signer(system_authority_signer, "System authority")?;
+    validate_writable(system_state_pda, "System state PDA")?;
     
     // Deserialize system state
-    let mut system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
+    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
     
     // Verify authority
-    if !system_state.validate_authority(system_authority.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority.key);
+    if !system_state.validate_authority(system_authority_signer.key) {
+        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
         return Err(PoolError::UnauthorizedAccess.into());
     }
     
@@ -92,11 +92,11 @@ pub fn process_pause_system(
     
     // Serialize updated state back to account
     let serialized_data = system_state.try_to_vec()?;
-    system_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // Log the system pause
     msg!("🛑 SYSTEM PAUSED: All operations blocked");
-    msg!("Authority: {}", system_authority.key);
+    msg!("Authority: {}", system_authority_signer.key);
     msg!("Reason: {}", reason);
     msg!("Timestamp: {}", current_timestamp);
     msg!("System pause takes precedence over all pool pause states");
@@ -117,8 +117,8 @@ pub fn process_pause_system(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority** (signer, writable) - System authority account
-/// 1. **System State PDA** (writable) - System state account for unpause
+/// 0. **System Authority Signer** (signer, writable) - System authority signer
+/// 1. **System State PDA** (writable) - System state PDA for unpause
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -139,19 +139,19 @@ pub fn process_unpause_system(
     }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let system_authority = &accounts[0];              // Index 0: System Authority
-    let system_state_account = &accounts[1];           // Index 1: System State PDA
+    let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
+    let system_state_pda = &accounts[1];           // Index 1: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
-    validate_signer(system_authority, "System authority")?;
-    validate_writable(system_state_account, "System state account")?;
+    validate_signer(system_authority_signer, "System authority")?;
+    validate_writable(system_state_pda, "System state PDA")?;
     
     // Deserialize system state
-    let mut system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
+    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
     
     // Verify authority
-    if !system_state.validate_authority(system_authority.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority.key);
+    if !system_state.validate_authority(system_authority_signer.key) {
+        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
         return Err(PoolError::UnauthorizedAccess.into());
     }
     
@@ -170,11 +170,11 @@ pub fn process_unpause_system(
     
     // Serialize updated state back to account
     let serialized_data = system_state.try_to_vec()?;
-    system_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // Log the system unpause
     msg!("✅ SYSTEM UNPAUSED: All operations resumed");
-    msg!("Authority: {}", system_authority.key);
+    msg!("Authority: {}", system_authority_signer.key);
     msg!("Previous pause reason: {}", pause_reason);
     msg!("Pause duration: {} seconds", pause_duration);
     msg!("Pool-specific pause states remain active if previously set");
