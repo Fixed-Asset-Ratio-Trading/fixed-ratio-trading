@@ -37,11 +37,11 @@ use crate::{
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
 /// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
-/// * `accounts` - Array of accounts in ultra-optimized order (6 accounts minimum)
+/// * `accounts` - Array of accounts in ultra-optimized order (8 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (signer, writable) - System authority signer authorizing withdrawal
+/// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer authorizing withdrawal
 /// 1. **System Program Account** (readable) - Solana system program account
 /// 2. **Pool State PDA** (readable) - Placeholder account (not used in treasury operations)
 /// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in treasury operations)
@@ -49,6 +49,7 @@ use crate::{
 /// 5. **Rent Sysvar Account** (readable) - For rent calculations
 /// 6. **Destination Account** (writable) - Account receiving the withdrawn SOL
 /// 7. **System State PDA** (readable) - For authority validation
+/// 8. **Program Data Account** (readable) - Program data account for authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -56,7 +57,8 @@ use crate::{
 /// # Critical Notes
 /// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead significantly
 /// - **CLIENT INTEGRATION**: Simplified client integration with minimal account requirements
-/// - **AUTHORITY VALIDATION**: Strict system authority validation for all withdrawals
+/// - **AUTHORITY VALIDATION**: Strict system upgrade authority validation for all withdrawals
+/// - **STORAGE OPTIMIZED**: Works with optimized authority-less treasury state
 pub fn process_withdraw_treasury_fees(
     program_id: &Pubkey,
     amount: u64,
@@ -71,13 +73,14 @@ pub fn process_withdraw_treasury_fees(
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
-    let system_program_account = &accounts[1];                // Index 1: System Program Account
-    let _pool_state_pda = &accounts[2];                       // Index 2: Pool State PDA (placeholder)
-    let _spl_token_program_account = &accounts[3];            // Index 3: SPL Token Program Account (placeholder)
-    let main_treasury_pda = &accounts[4];          // Index 4: Main Treasury PDA
-    let rent_sysvar_account = &accounts[5];                    // Index 5: Rent Sysvar Account
-    let destination_account = &accounts[6];            // Index 6: Destination Account
-    let system_state_pda = &accounts[7];           // Index 7: System State PDA
+    let _system_program_account = &accounts[1];              // Index 1: System Program Account
+    let _pool_state_pda = &accounts[2];                      // Index 2: Pool State PDA (placeholder)
+    let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
+    let main_treasury_pda = &accounts[4];                   // Index 4: Main Treasury PDA
+    let rent_sysvar_account = &accounts[5];                  // Index 5: Rent Sysvar Account
+    let destination_account = &accounts[6];                  // Index 6: Destination Account
+    let system_state_pda = &accounts[7];                    // Index 7: System State PDA
+    let program_data_account = &accounts[8];                 // Index 8: Program Data Account
     
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
@@ -97,12 +100,17 @@ pub fn process_withdraw_treasury_fees(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Load and validate system state to verify authority
+    // ✅ AUTHORITY VALIDATION: Use program upgrade authority via SystemState
     let system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
-    if !system_state.validate_authority(system_authority_signer.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
-        return Err(PoolError::UnauthorizedAccess.into());
+    if system_state.is_paused {
+        msg!("❌ SYSTEM PAUSED: Treasury operations blocked during system pause");
+        msg!("Pause code: {}", system_state.pause_reason_code);
+        msg!("Paused at: {}", system_state.pause_timestamp);
+        return Err(PoolError::SystemPaused.into());
     }
+    
+    use crate::utils::program_authority::validate_program_upgrade_authority;
+    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
     msg!("✅ Authority validation passed: {}", system_authority_signer.key);
     
     // Load main treasury state
@@ -213,7 +221,6 @@ pub fn process_get_treasury_info(
     let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
     msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
-    msg!("   Authority: {}", main_treasury_state.authority);
     msg!("   Current Balance: {} lamports ({} SOL)", 
          main_treasury_state.total_balance, 
          main_treasury_state.total_balance as f64 / 1_000_000_000.0);

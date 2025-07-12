@@ -14,7 +14,6 @@
 //! - Single source of truth for all balances
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
 
 /// **PHASE 3: CENTRALIZED MAIN TREASURY**
 /// 
@@ -34,9 +33,6 @@ use solana_program::pubkey::Pubkey;
 /// - All totals: Updated immediately on fee collection
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct MainTreasuryState {
-    /// System authority that can withdraw fees and manage treasury
-    pub authority: Pubkey,
-    
     /// Current SOL balance of the main treasury account (synced with account.lamports())
     pub total_balance: u64,
     
@@ -61,7 +57,6 @@ pub struct MainTreasuryState {
 
 impl MainTreasuryState {
     pub const LEN: usize = 
-        32 +  // authority
         8 +   // total_balance
         8 +   // total_withdrawn
         8 +   // pool_creation_count
@@ -73,14 +68,14 @@ impl MainTreasuryState {
         8 +   // total_regular_swap_fees
         8 +   // total_hft_swap_fees
         8;    // last_update_timestamp
+        // Authority removed: 32 bytes saved, validation handled through SystemState
 
     pub fn get_packed_len() -> usize {
         Self::LEN
     }
 
-    pub fn new(authority: Pubkey) -> Self {
+    pub fn new() -> Self {
         Self {
-            authority,
             total_balance: 0,
             total_withdrawn: 0,
             pool_creation_count: 0,
@@ -136,11 +131,6 @@ impl MainTreasuryState {
 
 /// **PHASE 3: TREASURY MANAGEMENT UTILITIES**
 impl MainTreasuryState {
-    /// Validates authority for treasury operations
-    pub fn validate_authority(&self, authority: &Pubkey) -> bool {
-        self.authority == *authority
-    }
-    
     /// Calculates available balance for withdrawal (total - minimum for rent)
     pub fn available_for_withdrawal(&self, minimum_balance: u64) -> u64 {
         if self.total_balance > minimum_balance {

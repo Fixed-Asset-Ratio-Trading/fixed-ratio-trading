@@ -132,11 +132,14 @@ pub fn process_initialize_program(
         &[system_state_seeds_with_bump],
     )?;
 
-    // Initialize SystemState data
-    let system_state_data = SystemState::new(*program_authority_signer.key);
-    serialize_to_account(&system_state_data, system_state_pda)?;
+    // Create system state data
+    let system_state_data = SystemState::new();
     
-    // Create Main Treasury PDA account
+    // Serialize system state to account
+    let serialized_system_state = system_state_data.try_to_vec()?;
+    system_state_pda.data.borrow_mut()[..serialized_system_state.len()].copy_from_slice(&serialized_system_state);
+    
+    // 🏦 Create main treasury PDA and account (Phase 3: Centralized Treasury)
     let main_treasury_rent = rent.minimum_balance(MainTreasuryState::get_packed_len());
     let main_treasury_seeds_with_bump = &[MAIN_TREASURY_SEED_PREFIX, &[main_treasury_bump]];
     
@@ -156,8 +159,8 @@ pub fn process_initialize_program(
         &[main_treasury_seeds_with_bump],
     )?;
 
-    // Initialize MainTreasury data
-    let main_treasury_data = MainTreasuryState::new(*program_authority_signer.key);
+    // Create main treasury state data
+    let main_treasury_data = MainTreasuryState::new();
     serialize_to_account(&main_treasury_data, main_treasury_pda)?;
 
     // ✅ PROGRAM INITIALIZATION COMPLETE

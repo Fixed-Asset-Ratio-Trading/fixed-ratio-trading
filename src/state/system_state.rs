@@ -4,7 +4,6 @@
 //! managing system-wide operations like emergency pause/unpause.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
 
 /// **PAUSE REASON CODES** (Documentation Only - Not Part of Smart Contract Logic)
 /// 
@@ -34,12 +33,9 @@ use solana_program::pubkey::Pubkey;
 /// 
 /// This state is separate from individual pool states and provides emergency
 /// controls that can override all pool operations when necessary.
-/// Only the contract authority can perform system-wide operations.
+/// Only the program upgrade authority can perform system-wide operations.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct SystemState {
-    /// Authority that can pause/unpause the entire system and perform contract operations
-    pub authority: Pubkey,
-    
     /// Global pause state - when true, all operations are blocked except unpause
     pub is_paused: bool,
     
@@ -53,40 +49,28 @@ pub struct SystemState {
 impl SystemState {
     /// Account space required for SystemState serialization
     /// 
-    /// **ULTRA-OPTIMIZED CALCULATION** (203 bytes saved vs String version):
-    /// - authority: 32 bytes (Pubkey)
+    /// **ULTRA-OPTIMIZED CALCULATION** (235 bytes saved vs original String version):
     /// - is_paused: 1 byte (bool)
     /// - pause_timestamp: 8 bytes (i64)
-    /// - pause_reason_code: 1 byte (u8) [was 204 bytes for String]
+    /// - pause_reason_code: 1 byte (u8)
     /// 
-    /// **TOTAL: 42 bytes** (vs 245 bytes previously - **83% reduction!**)
-    pub const LEN: usize = 32 + 1 + 8 + 1;
+    /// **TOTAL: 10 bytes** (vs 245 bytes originally - **96% reduction!**)
+    /// **Authority removed**: Program upgrade authority used directly (saves 32 additional bytes)
+    pub const LEN: usize = 1 + 8 + 1;
     
-    /// Creates a new SystemState with the specified authority.
-    /// 
-    /// # Arguments
-    /// * `authority` - The pubkey authorized to pause/unpause the system and perform all contract operations
+    /// Creates a new SystemState in unpaused state.
     /// 
     /// # Returns
     /// A new SystemState initialized in unpaused state (code 0)
-    pub fn new(authority: Pubkey) -> Self {
+    /// 
+    /// # Note
+    /// Authority validation is handled through program upgrade authority directly
+    pub fn new() -> Self {
         Self {
-            authority,
             is_paused: false,
             pause_timestamp: 0,
             pause_reason_code: 0, // 0 = No pause active
         }
-    }
-    
-    /// Validates that the provided pubkey has authority to modify system state.
-    /// 
-    /// # Arguments
-    /// * `authority` - The pubkey to validate
-    /// 
-    /// # Returns
-    /// * `true` if the pubkey matches the system authority, `false` otherwise
-    pub fn validate_authority(&self, authority: &Pubkey) -> bool {
-        self.authority == *authority
     }
     
     /// Pauses the system with the specified reason code and timestamp.

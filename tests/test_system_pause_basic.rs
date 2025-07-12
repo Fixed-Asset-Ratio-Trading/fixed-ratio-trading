@@ -45,7 +45,13 @@ mod common;
 
 use common::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use fixed_ratio_trading::{SystemState, PoolInstruction};
+use fixed_ratio_trading::{
+    id,
+    types::instructions::PoolInstruction,
+    state::SystemState,
+    utils::program_authority::get_program_data_address,
+};
+use solana_program_test::*;
 
 // ================================================================================================
 // HELPER FUNCTIONS FOR SYSTEM PAUSE OPERATIONS
@@ -104,27 +110,27 @@ async fn create_empty_system_state_account(
 /// * `system_state_account` - System state account
 /// * `reason` - Reason for pause
 async fn pause_system(
-    banks: &mut BanksClient,
-    authority: &Keypair,
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
     system_state_account: &Pubkey,
     reason_code: u8,
 ) -> TestResult {
     let pause_ix = Instruction {
-        program_id: PROGRAM_ID,
+        program_id: crate::id(),
         accounts: vec![
-            AccountMeta::new(authority.pubkey(), true),              // System authority (signer)
-            AccountMeta::new(*system_state_account, false),         // System state account
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+            AccountMeta::new(payer.pubkey(), true),    // System authority signer
+            AccountMeta::new(*system_state_account, false), // System state PDA
+            AccountMeta::new_readonly(get_program_data_address(&crate::id()), false), // Program data account
         ],
         data: PoolInstruction::PauseSystem {
             reason_code: reason_code,
         }.try_to_vec().unwrap(),
     };
 
-    let mut transaction = Transaction::new_with_payer(&[pause_ix], Some(&authority.pubkey()));
-    transaction.sign(&[authority], recent_blockhash);
-    banks.process_transaction(transaction).await
+    let mut transaction = Transaction::new_with_payer(&[pause_ix], Some(&payer.pubkey()));
+    transaction.sign(&[payer], recent_blockhash);
+    banks_client.process_transaction(transaction).await
 }
 
 /// Unpause the system

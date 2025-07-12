@@ -26,19 +26,20 @@ use crate::{
 /// Processes the PauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Pauses the entire system, blocking all operations except unpause.
-/// Only the system authority can execute this instruction. This provides
+/// Only the system upgrade authority can execute this instruction. This provides
 /// emergency controls for the contract authority with system-wide pause
 /// taking precedence over all pool-specific pause states.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
 /// * `reason_code` - Standardized pause reason code (see SystemState documentation)
-/// * `accounts` - Array of accounts in ultra-optimized order (2 accounts minimum)
+/// * `accounts` - Array of accounts in ultra-optimized order (3 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (signer, writable) - System authority signer
+/// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer
 /// 1. **System State PDA** (writable) - System state PDA for pause
+/// 2. **Program Data Account** (readable) - Program data account for authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -48,8 +49,9 @@ use crate::{
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration
 /// - **EMERGENCY CONTROLS**: System pause takes precedence over all pool pause states
 /// - **STORAGE OPTIMIZED**: Uses single byte code instead of string for efficiency
+/// - **AUTHORITY VALIDATION**: Uses program upgrade authority for maximum flexibility
 pub fn process_pause_system(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     reason_code: u8,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
@@ -62,7 +64,8 @@ pub fn process_pause_system(
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
-    let system_state_pda = &accounts[1];           // Index 1: System State PDA
+    let system_state_pda = &accounts[1];                    // Index 1: System State PDA
+    let program_data_account = &accounts[2];                 // Index 2: Program Data Account
     
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
@@ -70,14 +73,12 @@ pub fn process_pause_system(
     // redundant and waste compute units on every function call.
     validate_writable(system_state_pda, "System state PDA")?;
     
+    // ✅ AUTHORITY VALIDATION: Use program upgrade authority
+    use crate::utils::program_authority::validate_program_upgrade_authority;
+    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
+    
     // Deserialize system state
     let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
-    
-    // Verify authority
-    if !system_state.validate_authority(system_authority_signer.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
-        return Err(PoolError::UnauthorizedAccess.into());
-    }
     
     // Check if already paused
     if system_state.is_paused {
@@ -110,18 +111,19 @@ pub fn process_pause_system(
 /// Processes the UnpauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Unpauses the entire system, allowing all operations to resume.
-/// Only the system authority can execute this instruction. This restores
+/// Only the system upgrade authority can execute this instruction. This restores
 /// normal system operations while maintaining any pool-specific pause states
 /// that were previously set.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `accounts` - Array of accounts in ultra-optimized order (2 accounts minimum)
+/// * `accounts` - Array of accounts in ultra-optimized order (3 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (signer, writable) - System authority signer
+/// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer
 /// 1. **System State PDA** (writable) - System state PDA for unpause
+/// 2. **Program Data Account** (readable) - Program data account for authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -131,8 +133,9 @@ pub fn process_pause_system(
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration
 /// - **POOL STATES**: Pool-specific pause states remain active if previously set
 /// - **STORAGE OPTIMIZED**: Works with optimized pause code system
+/// - **AUTHORITY VALIDATION**: Uses program upgrade authority for maximum flexibility
 pub fn process_unpause_system(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("✅ Processing system unpause");
@@ -144,7 +147,8 @@ pub fn process_unpause_system(
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
-    let system_state_pda = &accounts[1];           // Index 1: System State PDA
+    let system_state_pda = &accounts[1];                    // Index 1: System State PDA
+    let program_data_account = &accounts[2];                 // Index 2: Program Data Account
     
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
@@ -152,14 +156,12 @@ pub fn process_unpause_system(
     // redundant and waste compute units on every function call.
     validate_writable(system_state_pda, "System state PDA")?;
     
+    // ✅ AUTHORITY VALIDATION: Use program upgrade authority
+    use crate::utils::program_authority::validate_program_upgrade_authority;
+    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
+    
     // Deserialize system state
     let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
-    
-    // Verify authority
-    if !system_state.validate_authority(system_authority_signer.key) {
-        msg!("Unauthorized: {} is not the system authority", system_authority_signer.key);
-        return Err(PoolError::UnauthorizedAccess.into());
-    }
     
     // Check if already unpaused
     if !system_state.is_paused {
