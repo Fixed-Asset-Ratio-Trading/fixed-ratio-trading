@@ -336,20 +336,27 @@ pub fn create_swap_instruction_standardized(
     );
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with NEW account ordering (9 accounts for swaps)
+    // Derive System State PDA (required for swap operations)
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
+    // Create instruction with FIXED account ordering (10 accounts for swaps)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // NEW account ordering: Pool State PDA=2, SPL Token Program=3, Main Treasury=4
+            // FIXED account ordering: System State PDA=2, Pool State PDA=3, SPL Token Program=4, Main Treasury=5
             AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 2: Pool State PDA
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program
-            AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
-            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account
-            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account
+            AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 6: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 7: Token B Vault PDA
+            AccountMeta::new(*user_input_token_account, false),                     // Index 8: User Input Token Account
+            AccountMeta::new(*user_output_token_account, false),                    // Index 9: User Output Token Account
         ],
         data: serialized,
     })

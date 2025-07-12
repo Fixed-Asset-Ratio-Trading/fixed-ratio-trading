@@ -395,13 +395,13 @@ async fn test_successful_a_to_b_swap() -> TestResult {
         swap_amount,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction (NEW account ordering: 9 accounts)
-    assert_eq!(swap_ix.accounts.len(), 9, "Swap instruction should have 9 accounts (NEW account ordering)");
+    // Verify instruction construction (FIXED account ordering: 10 accounts)
+    assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (FIXED account ordering)");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ Swap instruction constructed successfully:");
-    println!("    ✓ 9 accounts configured with proper permissions (NEW account ordering)");
+    println!("    ✓ 10 accounts configured with proper permissions (FIXED account ordering)");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ Swap parameters: {} → {} (deterministic output)", swap_amount, expected_output);
@@ -505,13 +505,13 @@ async fn test_successful_b_to_a_swap() -> TestResult {
         swap_amount,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction for B→A swap (NEW account ordering: 9 accounts)
-    assert_eq!(swap_ix.accounts.len(), 9, "B→A swap instruction should have 9 accounts (NEW account ordering)");
+    // Verify instruction construction for B→A swap (FIXED account ordering: 10 accounts)
+    assert_eq!(swap_ix.accounts.len(), 10, "B→A swap instruction should have 10 accounts (FIXED account ordering)");
     assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ B→A swap instruction constructed successfully:");
-    println!("    ✓ 9 accounts configured with proper permissions (NEW account ordering)");
+    println!("    ✓ 10 accounts configured with proper permissions (FIXED account ordering)");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data serialized: {} bytes", swap_ix.data.len());
     println!("    ✓ B→A swap parameters: {} B → {} A (deterministic output)", swap_amount, expected_output);
@@ -788,8 +788,8 @@ async fn test_swap_with_various_ratios() -> TestResult {
             instruction_test_amount,
         ).expect("Failed to create swap instruction");
 
-        // Verify instruction construction (NEW account ordering: 9 accounts)
-        assert_eq!(swap_ix.accounts.len(), 9, "Swap instruction should have 9 accounts (NEW account ordering)");
+        // Verify instruction construction (FIXED account ordering: 10 accounts)
+        assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (FIXED account ordering)");
         assert_eq!(swap_ix.program_id, PROGRAM_ID, "Program ID should match");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
@@ -1047,8 +1047,8 @@ async fn test_swap_liquidity_constraints() -> TestResult {
             swap_amount,
         ).expect("Failed to create swap instruction");
         
-        // Verify instruction construction (NEW account ordering: 9 accounts)
-        assert_eq!(swap_ix.accounts.len(), 9, "Swap instruction should have 9 accounts (NEW account ordering)");
+        // Verify instruction construction (FIXED account ordering: 10 accounts)
+        assert_eq!(swap_ix.accounts.len(), 10, "Swap instruction should have 10 accounts (FIXED account ordering)");
         assert!(!swap_ix.data.is_empty(), "Instruction data should not be empty");
         
         println!("    ✓ Sufficient liquidity swap instruction validated: {} → {} (sufficient)", 
@@ -1370,8 +1370,8 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         1000u64,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction construction works (NEW account ordering: 9 accounts)
-    assert_eq!(pause_validation_ix.accounts.len(), 9, "Pause validation instruction should have 9 accounts (NEW account ordering)");
+    // Verify instruction construction works (FIXED account ordering: 10 accounts)
+    assert_eq!(pause_validation_ix.accounts.len(), 10, "Pause validation instruction should have 10 accounts (FIXED account ordering)");
     assert!(!pause_validation_ix.data.is_empty(), "Pause validation instruction should have data");
     
     println!("✅ Pool pause status validation - owner-only system working correctly");
@@ -1410,8 +1410,8 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         1000u64,
     ).expect("Failed to create swap instruction");
 
-    // Verify instruction properties (NEW account ordering: 9 accounts)
-    assert_eq!(valid_instruction.accounts.len(), 9, "Instruction should have correct account count (NEW account ordering)");
+    // Verify instruction properties (FIXED account ordering: 10 accounts)
+    assert_eq!(valid_instruction.accounts.len(), 10, "Instruction should have correct account count (FIXED account ordering)");
     assert_eq!(valid_instruction.program_id, PROGRAM_ID, "Instruction should have correct program ID");
     assert!(!valid_instruction.data.is_empty(), "Instruction data should not be empty");
     
