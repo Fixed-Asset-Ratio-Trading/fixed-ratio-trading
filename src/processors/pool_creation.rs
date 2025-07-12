@@ -3,12 +3,12 @@
 //! This module contains all the processors for pool creation and initialization operations.
 //! It includes both the legacy two-step pattern and the modern single-step initialization.
 
-use crate::constants::*;
-use crate::types::*;
+use crate::{
+    constants::*,
+    error::PoolError,
+    state::{MainTreasuryState, PoolState, pool_state::RentRequirements},
+};
 use crate::utils::serialization::serialize_to_account;
-use crate::error::PoolError;
-use crate::state::MainTreasuryState;
-use crate::{PoolState, RentRequirements};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
@@ -25,7 +25,6 @@ use spl_token::{
     instruction as token_instruction,
     state::{Account as TokenAccount},
 };
-use crate::utils::account_builders::*;
 
 /// Processes pool initialization with optimized account ordering and fee collection.
 /// 
@@ -128,7 +127,7 @@ pub fn process_initialize_pool(
     let current_timestamp = clock.unix_timestamp;
     
     // Validate fee payment capability
-    let validation_result = validate_fee_payment(user_authority_signer, REGISTRATION_FEE, "Pool Creation");
+    let validation_result = validate_fee_payment(user_authority_signer, REGISTRATION_FEE, VALIDATION_CONTEXT_POOL_CREATION);
     if !validation_result.is_valid {
         return Err(PoolError::InsufficientFeeBalance {
             required: REGISTRATION_FEE,
@@ -142,7 +141,7 @@ pub fn process_initialize_pool(
         &[MAIN_TREASURY_SEED_PREFIX],
         program_id,
     );
-    validate_treasury_account(main_treasury_pda, &expected_main_treasury, "Main Treasury")?;
+    validate_treasury_account(main_treasury_pda, &expected_main_treasury, TREASURY_TYPE_MAIN)?;
     
     // Transfer fee to treasury
     let transfer_instruction = system_instruction::transfer(

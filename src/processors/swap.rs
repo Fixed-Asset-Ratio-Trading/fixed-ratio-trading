@@ -1,9 +1,10 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
-    account_info::{next_account_info, AccountInfo},
+    account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::invoke,
+    program::invoke_signed,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -15,10 +16,8 @@ use spl_token::{
 
 use crate::{
     constants::*,
-    types::*,
     error::PoolError,
-    utils::account_builders::*,
-    PoolState,
+    state::{PoolState},
 };
 
 /// **SWAP OPERATIONS MODULE**
@@ -94,7 +93,7 @@ pub fn process_swap(
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
-    let _system_program_account = &accounts[1];    // Index 1: System Program Account
+    let system_program_account = &accounts[1];     // Index 1: System Program Account
     let system_state_pda = &accounts[2];           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
@@ -126,7 +125,7 @@ pub fn process_swap(
     collect_regular_swap_fee_ultra_efficient(
         user_authority_signer,
         main_treasury_pda, // Use main treasury instead of specialized treasury
-        &accounts[1], // system_program_account is at index 1 in standardized ordering
+        system_program_account, // Required for SOL fee transfer via system_instruction::transfer
         program_id,
     )?;
 
@@ -360,7 +359,7 @@ pub fn process_swap_hft_optimized(
 ) -> ProgramResult {
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
-    let _system_program_account = &accounts[1];    // Index 1: System Program Account
+    let system_program_account = &accounts[1];     // Index 1: System Program Account
     let system_state_pda = &accounts[2];           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
@@ -392,7 +391,7 @@ pub fn process_swap_hft_optimized(
     collect_hft_swap_fee_ultra_efficient(
         user_authority_signer,
         main_treasury_pda, // Use main treasury instead of specialized treasury
-        &accounts[1], // system_program_account is at index 1 in standardized ordering
+        system_program_account, // Required for SOL fee transfer via system_instruction::transfer
         program_id,
     )?;
 

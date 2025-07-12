@@ -139,6 +139,71 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 //
 //=============================================================================
 
+//=============================================================================
+// FEE TYPE CODES (Byte codes for efficient fee tracking)
+//=============================================================================
+// These byte codes are used instead of strings for efficient fee type
+// identification in smart contract operations. Using single bytes instead
+// of strings saves compute units and storage space on-chain.
+
+/// Fee type code for pool creation operations
+/// Used when collecting registration fees during pool initialization
+pub const FEE_TYPE_POOL_CREATION: u8 = 1;
+
+/// Fee type code for liquidity operations (deposits and withdrawals)
+/// Used when collecting fees during deposit and withdrawal operations
+pub const FEE_TYPE_LIQUIDITY_OPERATION: u8 = 2;
+
+/// Fee type code for regular swap operations
+/// Used when collecting fees during standard swap transactions
+pub const FEE_TYPE_REGULAR_SWAP: u8 = 3;
+
+/// Fee type code for HFT (High Frequency Trading) optimized swap operations
+/// Used when collecting fees during compute-optimized swap transactions
+pub const FEE_TYPE_HFT_SWAP: u8 = 4;
+
+//=============================================================================
+// TREASURY TYPE CODES (Byte codes for efficient treasury validation)
+//=============================================================================
+// These byte codes identify different treasury account types for validation
+// without using wasteful string literals in smart contract operations.
+
+/// Treasury type code for main treasury account
+/// Used during main treasury PDA validation
+pub const TREASURY_TYPE_MAIN: u8 = 1;
+
+/// Treasury type code for swap treasury account (legacy, now points to main)
+/// Used for backward compatibility during validation
+pub const TREASURY_TYPE_SWAP: u8 = 2;
+
+/// Treasury type code for HFT treasury account (legacy, now points to main)  
+/// Used for backward compatibility during validation
+pub const TREASURY_TYPE_HFT: u8 = 3;
+
+//=============================================================================
+// VALIDATION CONTEXT CODES (Byte codes for efficient validation context)
+//=============================================================================
+// These byte codes identify different validation contexts without using
+// wasteful string literals for error reporting and logging.
+
+/// Validation context code for general fee validation
+/// Used during pre-flight fee payment validation
+pub const VALIDATION_CONTEXT_FEE: u8 = 1;
+
+/// Validation context code for pool creation validation
+/// Used during pool creation fee validation
+pub const VALIDATION_CONTEXT_POOL_CREATION: u8 = 2;
+
+/// Validation context code for liquidity operation validation
+/// Used during deposit/withdrawal fee validation
+pub const VALIDATION_CONTEXT_LIQUIDITY: u8 = 3;
+
+/// Validation context code for swap operation validation
+/// Used during swap fee validation
+pub const VALIDATION_CONTEXT_SWAP: u8 = 4;
+
+//=============================================================================
+
 /// PDA seed prefix for pool state accounts
 pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
 

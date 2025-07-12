@@ -24,38 +24,40 @@ use crate::{
     constants::*,
     error::PoolError,
     state::{MainTreasuryState, SystemState},
-    utils::validation::{validate_signer, validate_writable},
-    utils::account_builders::*,
+    utils::validation::{validate_writable},
 };
 
-/// Processes treasury fee withdrawal with ultra-optimized account ordering.
+/// Processes treasury fee withdrawal with optimized account structure.
 /// 
-/// This function implements an ultra-optimized account structure by removing all
+/// This function implements an optimized account structure by removing all
 /// placeholder accounts that are not used in treasury operations. This provides
 /// maximum efficiency for treasury management operations with strict authority validation.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
 /// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
-/// * `accounts` - Array of accounts in ultra-optimized order (8 accounts minimum)
+/// * `system_authority_signer` - System upgrade authority signer authorizing withdrawal
+/// * `main_treasury_pda` - Main treasury PDA for withdrawal
+/// * `rent_sysvar_account` - For rent calculations
+/// * `destination_account` - Account receiving the withdrawn SOL
+/// * `system_state_pda` - For authority validation and pause check
+/// * `program_data_account` - Program data account for authority validation
 /// 
-/// # Account Info
+/// # Account Info (Optimized - 6 accounts total)
 /// The accounts must be provided in the following order:
 /// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer authorizing withdrawal
-/// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Pool State PDA** (readable) - Placeholder account (not used in treasury operations)
-/// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in treasury operations)
-/// 4. **Main Treasury PDA** (writable) - Main treasury PDA for withdrawal
-/// 5. **Rent Sysvar Account** (readable) - For rent calculations
-/// 6. **Destination Account** (writable) - Account receiving the withdrawn SOL
-/// 7. **System State PDA** (readable) - For authority validation
-/// 8. **Program Data Account** (readable) - Program data account for authority validation
+/// 1. **Main Treasury PDA** (writable) - Main treasury PDA for withdrawal
+/// 2. **Rent Sysvar Account** (readable) - For rent calculations
+/// 3. **Destination Account** (writable) - Account receiving the withdrawn SOL
+/// 4. **System State PDA** (readable) - For authority validation and pause check
+/// 5. **Program Data Account** (readable) - Program data account for authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
 /// # Critical Notes
-/// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead significantly
+/// - **ACCOUNT OPTIMIZATION**: Reduced from 9 to 6 accounts (33% reduction)
+/// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead
 /// - **CLIENT INTEGRATION**: Simplified client integration with minimal account requirements
 /// - **AUTHORITY VALIDATION**: Strict system upgrade authority validation for all withdrawals
 /// - **STORAGE OPTIMIZED**: Works with optimized authority-less treasury state
@@ -71,16 +73,13 @@ pub fn process_withdraw_treasury_fees(
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
     
-    // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
-    let _system_program_account = &accounts[1];              // Index 1: System Program Account
-    let _pool_state_pda = &accounts[2];                      // Index 2: Pool State PDA (placeholder)
-    let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
-    let main_treasury_pda = &accounts[4];                   // Index 4: Main Treasury PDA
-    let rent_sysvar_account = &accounts[5];                  // Index 5: Rent Sysvar Account
-    let destination_account = &accounts[6];                  // Index 6: Destination Account
-    let system_state_pda = &accounts[7];                    // Index 7: System State PDA
-    let program_data_account = &accounts[8];                 // Index 8: Program Data Account
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Removed 3 unused placeholder accounts
+    let system_authority_signer = &accounts[0];       // Index 0: System Authority Signer
+    let main_treasury_pda = &accounts[1];            // Index 1: Main Treasury PDA
+    let rent_sysvar_account = &accounts[2];          // Index 2: Rent Sysvar Account
+    let destination_account = &accounts[3];          // Index 3: Destination Account
+    let system_state_pda = &accounts[4];            // Index 4: System State PDA
+    let program_data_account = &accounts[5];         // Index 5: Program Data Account
     
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
@@ -174,28 +173,25 @@ pub fn process_withdraw_treasury_fees(
     Ok(())
 }
 
-/// Processes treasury information query with ultra-optimized account ordering.
+/// Processes treasury information query with optimized account structure.
 /// 
-/// This function implements an ultra-optimized account structure by removing all
+/// This function implements an optimized account structure by removing all
 /// placeholder accounts that are not used in treasury information queries. This provides
 /// maximum efficiency for treasury information retrieval with real-time data access.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation (unused, kept for compatibility)
-/// * `accounts` - Array of accounts in ultra-optimized order (1 account minimum)
+/// * `main_treasury_pda` - Main treasury PDA for info query
 /// 
-/// # Account Info
+/// # Account Info (Optimized - 1 account total)
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (readable) - Placeholder account (not used in treasury info)
-/// 1. **System Program Account** (readable) - Placeholder account (not used in treasury info)
-/// 2. **Pool State PDA** (readable) - Placeholder account (not used in treasury info)
-/// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in treasury info)
-/// 4. **Main Treasury PDA** (readable) - Main treasury PDA for info query
+/// 0. **Main Treasury PDA** (readable) - Main treasury PDA for info query
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
 /// # Critical Notes
+/// - **ACCOUNT OPTIMIZATION**: Reduced from 5 to 1 account (80% reduction)
 /// - **COMPUTE SAVINGS**: Estimated compute unit savings of 420-840 CUs per transaction
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration with single account requirement
 /// - **READ-ONLY OPERATION**: Maximum efficiency for information retrieval
@@ -210,12 +206,8 @@ pub fn process_get_treasury_info(
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
     
-    // ✅ ACCOUNT EXTRACTION: Single account extraction
-    let _system_authority_signer = &accounts[0];             // Index 0: System Authority Signer (placeholder)
-    let _system_program_account = &accounts[1];              // Index 1: System Program Account (placeholder)
-    let _pool_state_pda = &accounts[2];                      // Index 2: Pool State PDA (placeholder)
-    let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
-    let main_treasury_pda = &accounts[4]; // Index 4: Main Treasury PDA
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Removed 4 unused placeholder accounts
+    let main_treasury_pda = &accounts[0];            // Index 0: Main Treasury PDA
     
     // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;

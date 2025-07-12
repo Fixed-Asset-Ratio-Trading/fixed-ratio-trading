@@ -60,21 +60,21 @@ async fn test_fee_validation_sufficient_funds() {
     
     // Test various fee amounts
     let test_cases = vec![
-        (REGISTRATION_FEE, "Pool Creation"),
-        (DEPOSIT_WITHDRAWAL_FEE, "Liquidity Operation"),
-        (SWAP_FEE, "Regular Swap"),
-        (HFT_SWAP_FEE, "HFT Swap"),
+        (REGISTRATION_FEE, VALIDATION_CONTEXT_POOL_CREATION),
+        (DEPOSIT_WITHDRAWAL_FEE, VALIDATION_CONTEXT_LIQUIDITY),
+        (SWAP_FEE, VALIDATION_CONTEXT_SWAP),
+        (HFT_SWAP_FEE, VALIDATION_CONTEXT_SWAP),
     ];
     
-    for (fee_amount, fee_type) in test_cases {
-        let result = validate_fee_payment(&payer_info, fee_amount, fee_type);
+    for (fee_amount, validation_context_code) in test_cases {
+        let result = validate_fee_payment(&payer_info, fee_amount, validation_context_code);
         
-        assert!(result.is_valid, "Fee validation should pass for {} fee", fee_type);
+        assert!(result.is_valid, "Fee validation should pass for context code {}", validation_context_code);
         assert_eq!(result.required_amount, fee_amount);
         assert_eq!(result.available_balance, 10_000_000_000u64);
         assert!(result.error_message.is_none());
         
-        println!("✅ {} fee validation passed", fee_type);
+        println!("✅ Context {} fee validation passed", validation_context_code);
     }
 }
 
@@ -108,7 +108,7 @@ async fn test_fee_validation_insufficient_funds() {
     );
     
     // Test validation with insufficient funds
-    let result = validate_fee_payment(&payer_info, REGISTRATION_FEE, "Pool Creation");
+    let result = validate_fee_payment(&payer_info, REGISTRATION_FEE, VALIDATION_CONTEXT_POOL_CREATION);
     
     assert!(!result.is_valid, "Fee validation should fail with insufficient funds");
     assert_eq!(result.required_amount, REGISTRATION_FEE);
@@ -117,7 +117,7 @@ async fn test_fee_validation_insufficient_funds() {
     
     let error_msg = result.error_message.unwrap();
     assert!(error_msg.contains("Insufficient balance"));
-    assert!(error_msg.contains("Pool Creation"));
+    assert!(error_msg.contains("1"));  // Context code 1 for pool creation
     
     println!("✅ Insufficient funds validation failed as expected");
 }
@@ -154,7 +154,7 @@ async fn test_treasury_account_validation_success() {
     let result = validate_treasury_account(
         &treasury_info,
         &treasury_pubkey,
-        "Main Treasury",
+        TREASURY_TYPE_MAIN,
     );
     
     assert!(result.is_ok(), "Treasury validation should pass with matching PDA");
@@ -196,7 +196,7 @@ async fn test_treasury_account_validation_failure() {
     let result = validate_treasury_account(
         &treasury_info,
         &different_pubkey, // Different pubkey
-        "Main Treasury",
+        TREASURY_TYPE_MAIN,
     );
     
     assert!(result.is_err(), "Treasury validation should fail with wrong PDA");
@@ -222,6 +222,7 @@ async fn test_fee_collection_workflow() {
         fee_amount: u64,
         initial_balance: u64,
         should_succeed: bool,
+        validation_context_code: u8,
     }
     
     let test_cases = vec![
@@ -230,30 +231,35 @@ async fn test_fee_collection_workflow() {
             fee_amount: REGISTRATION_FEE,
             initial_balance: 10_000_000_000u64, // 10 SOL
             should_succeed: true,
+            validation_context_code: VALIDATION_CONTEXT_POOL_CREATION,
         },
         FeeTestCase {
             name: "Liquidity Operation (sufficient funds)",
             fee_amount: DEPOSIT_WITHDRAWAL_FEE,
             initial_balance: 10_000_000u64, // 0.01 SOL
             should_succeed: true,
+            validation_context_code: VALIDATION_CONTEXT_LIQUIDITY,
         },
         FeeTestCase {
             name: "Regular Swap (sufficient funds)",
             fee_amount: SWAP_FEE,
             initial_balance: 1_000_000u64, // 0.001 SOL
             should_succeed: true,
+            validation_context_code: VALIDATION_CONTEXT_SWAP,
         },
         FeeTestCase {
             name: "HFT Swap (sufficient funds)",
             fee_amount: HFT_SWAP_FEE,
             initial_balance: 100_000u64, // 0.0001 SOL
             should_succeed: true,
+            validation_context_code: VALIDATION_CONTEXT_SWAP,
         },
         FeeTestCase {
             name: "Pool Creation (insufficient funds)",
             fee_amount: REGISTRATION_FEE,
             initial_balance: 1000u64, // Very small amount
             should_succeed: false,
+            validation_context_code: VALIDATION_CONTEXT_POOL_CREATION,
         },
     ];
     
@@ -285,7 +291,7 @@ async fn test_fee_collection_workflow() {
         );
         
         // Validate fee payment
-        let validation_result = validate_fee_payment(&payer_info, test_case.fee_amount, test_case.name);
+        let validation_result = validate_fee_payment(&payer_info, test_case.fee_amount, test_case.validation_context_code);
         
         if test_case.should_succeed {
             assert!(validation_result.is_valid, "Fee validation should pass for {}", test_case.name);
@@ -403,7 +409,7 @@ async fn test_phase1_implementation_summary() {
     println!("🚀 READY FOR PHASE 2: Consolidation Race Condition Fix");
     
     // Verify all key components are accessible
-    assert!(validate_fee_payment(&create_mock_account_info(), 1000, "Test").is_valid == false); // Insufficient funds
+    assert!(validate_fee_payment(&create_mock_account_info(), 1000, VALIDATION_CONTEXT_FEE).is_valid == false); // Insufficient funds
     
     println!("✅ Phase 1 implementation validation complete");
 }
