@@ -54,20 +54,19 @@ use crate::{
 /// # Arguments
 /// * `program_id` - The program ID
 /// * `amount_in` - The amount of input tokens to swap
-/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (9 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - User signer authorizing the swap
 /// 1. **System Program Account** (readable) - Solana system program account
 /// 2. **Pool State PDA** (writable) - Pool state PDA
-/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 5. **SPL Token Program Account** (readable) - Token program account
-/// 6. **User Input Token Account** (writable) - User's input token account
-/// 7. **User Output Token Account** (writable) - User's output token account
-/// 8. **Main Treasury PDA** (writable) - For fee collection
-/// 9. **[Function-specific accounts]** - Additional accounts as needed
+/// 3. **SPL Token Program Account** (readable) - Token program account
+/// 4. **Main Treasury PDA** (writable) - For fee collection
+/// 5. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 7. **User Input Token Account** (writable) - User's input token account
+/// 8. **User Output Token Account** (writable) - User's output token account
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -92,24 +91,23 @@ pub fn process_swap(
     msg!("Processing Swap with optimized account structure");
     
     // ✅ SYSTEM PAUSE: Check system-wide pause
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 10)?;
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 9)?;
     
     // ✅ OPTIMIZED ACCOUNT VALIDATION: Reduced validation overhead
-    if accounts.len() < 10 {
+    if accounts.len() < 9 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program_account = &accounts[1];                // Index 1: System Program Account
+    let user_signer = &accounts[0];                // Index 0: Authority/User Signer
+    let _system_program_account = &accounts[1];    // Index 1: System Program Account
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
-    let pool_token_a_vault_pda = &accounts[3];     // Index 3: Token A Vault PDA
-    let pool_token_b_vault_pda = &accounts[4];     // Index 4: Token B Vault PDA
-    let token_program_account = &accounts[5];          // Index 5: SPL Token Program Account
-    let user_input_token_account = &accounts[6];       // Index 6: User Input Token Account
-    let user_output_token_account = &accounts[7];      // Index 7: User Output Token Account
-    let main_treasury_pda = &accounts[8];          // Index 8: Main Treasury PDA
-    // Index 9+: Function-specific accounts (none for basic swap)
+    let token_program_account = &accounts[3];      // Index 3: SPL Token Program Account
+    let main_treasury_pda = &accounts[4];          // Index 4: Main Treasury PDA
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
     
     // ✅ POOL SWAP PAUSE: Check pool-specific swap pause
     validate_pool_swaps_not_paused(pool_state_pda)?;
@@ -320,20 +318,19 @@ pub fn process_swap(
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and signing
 /// * `amount_in` - The amount of input tokens to swap (including fees)
-/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (9 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
 /// 0. **Authority/User Signer** (signer, writable) - User signer authorizing the swap
 /// 1. **System Program Account** (readable) - Solana system program account
 /// 2. **Pool State PDA** (writable) - Pool state PDA
-/// 3. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 4. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 5. **SPL Token Program Account** (readable) - Token program account
-/// 6. **User Input Token Account** (writable) - User's input token account
-/// 7. **User Output Token Account** (writable) - User's output token account
-/// 8. **Main Treasury PDA** (writable) - For fee collection
-/// 9. **[Function-specific accounts]** - Additional accounts as needed
+/// 3. **SPL Token Program Account** (readable) - Token program account
+/// 4. **Main Treasury PDA** (writable) - For fee collection
+/// 5. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 7. **User Input Token Account** (writable) - User's input token account
+/// 8. **User Output Token Account** (writable) - User's output token account
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -359,24 +356,23 @@ pub fn process_swap_hft_optimized(
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     // 🚀 OPTIMIZATION 1: System pause validation (no debug message)
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 10)?;
+    crate::utils::validation::validate_system_not_paused_safe(accounts, 9)?;
     
     // 🚀 OPTIMIZATION 2: Minimal account validation (ultra-efficient)
-    if accounts.len() < 10 {
+    if accounts.len() < 9 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let user_signer = &accounts[0];                    // Index 0: Authority/User Signer
-    let _system_program_account = &accounts[1];                // Index 1: System Program Account
+    let user_signer = &accounts[0];                // Index 0: Authority/User Signer
+    let _system_program_account = &accounts[1];    // Index 1: System Program Account
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
-    let pool_token_a_vault_pda = &accounts[3];     // Index 3: Token A Vault PDA
-    let pool_token_b_vault_pda = &accounts[4];     // Index 4: Token B Vault PDA
-    let token_program_account = &accounts[5];          // Index 5: SPL Token Program Account
-    let user_input_token_account = &accounts[6];       // Index 6: User Input Token Account
-    let user_output_token_account = &accounts[7];      // Index 7: User Output Token Account
-    let main_treasury_pda = &accounts[8];          // Index 8: Main Treasury PDA
-    // Index 9+: Function-specific accounts (none for HFT swap)
+    let token_program_account = &accounts[3];      // Index 3: SPL Token Program Account
+    let main_treasury_pda = &accounts[4];          // Index 4: Main Treasury PDA
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
 
     // 🚀 OPTIMIZATION 3: Pool pause validation (no debug message)
     validate_pool_swaps_not_paused(pool_state_pda)?;

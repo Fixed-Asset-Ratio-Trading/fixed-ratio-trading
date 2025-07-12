@@ -43,14 +43,14 @@ use crate::utils::account_builders::*;
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer creating the pool
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Rent Sysvar Account** (readable) - For rent calculations
-/// 3. **Pool State PDA** (writable) - Pool state PDA to create
-/// 4. **Token A Mint Account** (readable) - First token mint account (will be normalized to A or B)
-/// 5. **Token B Mint Account** (readable) - Second token mint account (will be normalized to A or B)
-/// 6. **Token A Vault PDA** (writable) - Token A vault PDA to create
-/// 7. **Token B Vault PDA** (writable) - Token B vault PDA to create
-/// 8. **SPL Token Program Account** (readable) - Token program account
-/// 9. **Main Treasury PDA** (writable) - For registration fee collection
+/// 2. **Pool State PDA** (writable) - Pool state PDA to create
+/// 3. **SPL Token Program Account** (readable) - Token program account
+/// 4. **Main Treasury PDA** (writable) - For registration fee collection
+/// 5. **Rent Sysvar Account** (readable) - For rent calculations
+/// 6. **Token A Mint Account** (readable) - First token mint account (will be normalized to A or B)
+/// 7. **Token B Mint Account** (readable) - Second token mint account (will be normalized to A or B)
+/// 8. **Token A Vault PDA** (writable) - Token A vault PDA to create
+/// 9. **Token B Vault PDA** (writable) - Token B vault PDA to create
 /// 10. **LP Token A Mint PDA** (writable) - LP Token A mint PDA to create
 /// 11. **LP Token B Mint PDA** (writable) - LP Token B mint PDA to create
 /// 
@@ -89,14 +89,14 @@ pub fn process_initialize_pool(
     // ✅ ACCOUNT EXTRACTION: Extract accounts using secure indices
     let user_authority_signer = &accounts[0];                      // Index 0: User Authority Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    let rent_sysvar_account = &accounts[2];        // Index 2: Rent Sysvar Account
-    let pool_state_pda = &accounts[3];     // Index 3: Pool State PDA
-    let token_a_mint_account = &accounts[4];       // Index 4: Token A Mint Account (will be normalized to A or B)
-    let token_b_mint_account = &accounts[5];       // Index 5: Token B Mint Account (will be normalized to A or B)
-    let token_a_vault_pda = &accounts[6];  // Index 6: Token A Vault PDA
-    let token_b_vault_pda = &accounts[7];  // Index 7: Token B Vault PDA
-    let token_program_account = &accounts[8];      // Index 8: SPL Token Program Account
-    let main_treasury_pda = &accounts[9];      // Index 9: Main Treasury PDA
+    let pool_state_pda = &accounts[2];     // Index 2: Pool State PDA
+    let token_program_account = &accounts[3];      // Index 3: SPL Token Program Account
+    let main_treasury_pda = &accounts[4];      // Index 4: Main Treasury PDA
+    let rent_sysvar_account = &accounts[5];        // Index 5: Rent Sysvar Account
+    let token_a_mint_account = &accounts[6];       // Index 6: Token A Mint Account (will be normalized to A or B)
+    let token_b_mint_account = &accounts[7];       // Index 7: Token B Mint Account (will be normalized to A or B)
+    let token_a_vault_pda = &accounts[8];  // Index 8: Token A Vault PDA
+    let token_b_vault_pda = &accounts[9];  // Index 9: Token B Vault PDA
     let lp_token_a_mint_pda = &accounts[10];   // Index 10: LP Token A Mint PDA
     let lp_token_b_mint_pda = &accounts[11];   // Index 11: LP Token B Mint PDA
 

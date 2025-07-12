@@ -220,7 +220,10 @@ pub fn get_token_vault_pdas(
 /// Temporary pause during large withdrawals (≥5% threshold) is expected behavior.
 /// 
 /// # Account Layout (Read-Only)
-/// 0. Pool State PDA (read-only)
+/// 0. **System Authority Signer** (readable) - Placeholder account (not used in pool info)
+/// 1. **System Program Account** (readable) - Placeholder account (not used in pool info)
+/// 2. **Pool State PDA** (read-only) - Pool state PDA for info query
+/// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in pool info)
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive pool information
@@ -234,7 +237,15 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
         true // Read-only operation
     )?;
     
-    let pool_state_account = &accounts[0];
+    // ✅ ACCOUNT VALIDATION: Check minimum account count
+    if accounts.len() < 4 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    let _system_authority_signer = &accounts[0];             // Index 0: System Authority Signer (placeholder)
+    let _system_program_account = &accounts[1];              // Index 1: System Program Account (placeholder)
+    let pool_state_account = &accounts[2];                   // Index 2: Pool State PDA
+    let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
     let pool_state = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
     msg!("=== POOL STATE INFORMATION ===");

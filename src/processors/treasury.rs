@@ -43,10 +43,12 @@ use crate::{
 /// The accounts must be provided in the following order:
 /// 0. **System Authority Signer** (signer, writable) - System authority signer authorizing withdrawal
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Rent Sysvar Account** (readable) - For rent calculations
-/// 3. **Main Treasury PDA** (writable) - Main treasury PDA for withdrawal
-/// 4. **Destination Account** (writable) - Account receiving the withdrawn SOL
-/// 5. **System State PDA** (readable) - For authority validation
+/// 2. **Pool State PDA** (readable) - Placeholder account (not used in treasury operations)
+/// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in treasury operations)
+/// 4. **Main Treasury PDA** (writable) - Main treasury PDA for withdrawal
+/// 5. **Rent Sysvar Account** (readable) - For rent calculations
+/// 6. **Destination Account** (writable) - Account receiving the withdrawn SOL
+/// 7. **System State PDA** (readable) - For authority validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -63,17 +65,19 @@ pub fn process_withdraw_treasury_fees(
     msg!("🏦 Processing treasury fee withdrawal: {} lamports", amount);
     
     // ✅ ACCOUNT VALIDATION: Ultra-reduced account count requirement
-    if accounts.len() < 6 {
+    if accounts.len() < 8 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer
     let system_program_account = &accounts[1];                // Index 1: System Program Account
-    let rent_sysvar_account = &accounts[2];                    // Index 2: Rent Sysvar Account
-    let main_treasury_pda = &accounts[3];          // Index 3: Main Treasury PDA
-    let destination_account = &accounts[4];            // Index 4: Destination Account
-    let system_state_pda = &accounts[5];           // Index 5: System State PDA
+    let _pool_state_pda = &accounts[2];                       // Index 2: Pool State PDA (placeholder)
+    let _spl_token_program_account = &accounts[3];            // Index 3: SPL Token Program Account (placeholder)
+    let main_treasury_pda = &accounts[4];          // Index 4: Main Treasury PDA
+    let rent_sysvar_account = &accounts[5];                    // Index 5: Rent Sysvar Account
+    let destination_account = &accounts[6];            // Index 6: Destination Account
+    let system_state_pda = &accounts[7];           // Index 7: System State PDA
     
     // ✅ EXISTING VALIDATION LOGIC: Maintain all existing validations
     validate_signer(system_authority_signer, "System authority")?;
@@ -172,7 +176,11 @@ pub fn process_withdraw_treasury_fees(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **Main Treasury PDA** (readable) - Main treasury PDA for info query
+/// 0. **System Authority Signer** (readable) - Placeholder account (not used in treasury info)
+/// 1. **System Program Account** (readable) - Placeholder account (not used in treasury info)
+/// 2. **Pool State PDA** (readable) - Placeholder account (not used in treasury info)
+/// 3. **SPL Token Program Account** (readable) - Placeholder account (not used in treasury info)
+/// 4. **Main Treasury PDA** (readable) - Main treasury PDA for info query
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -188,12 +196,16 @@ pub fn process_get_treasury_info(
     msg!("📊 Getting real-time treasury information");
     
     // ✅ ACCOUNT VALIDATION: Ultra-minimal account count requirement
-    if accounts.len() < 1 {
+    if accounts.len() < 5 {
         return Err(ProgramError::NotEnoughAccountKeys);
     }
     
     // ✅ ACCOUNT EXTRACTION: Single account extraction
-    let main_treasury_pda = &accounts[0]; // Index 0: Main Treasury PDA
+    let _system_authority_signer = &accounts[0];             // Index 0: System Authority Signer (placeholder)
+    let _system_program_account = &accounts[1];              // Index 1: System Program Account (placeholder)
+    let _pool_state_pda = &accounts[2];                      // Index 2: Pool State PDA (placeholder)
+    let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
+    let main_treasury_pda = &accounts[4]; // Index 4: Main Treasury PDA
     
     // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;

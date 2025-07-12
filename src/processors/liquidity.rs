@@ -258,15 +258,15 @@ fn create_lp_token_mint_on_demand<'a>(
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer authorizing the deposit
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Clock Sysvar Account** (readable) - For timestamps
-/// 3. **Rent Sysvar Account** (readable) - For rent calculations
-/// 4. **Pool State PDA** (writable) - Pool state PDA
-/// 5. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 7. **SPL Token Program Account** (readable) - Token program account
-/// 8. **User Input Token Account** (writable) - User's input token account
-/// 9. **User Output LP Token Account** (writable) - User's output LP token account
-/// 10. **Main Treasury PDA** (writable) - For fee collection
+/// 2. **Pool State PDA** (writable) - Pool state PDA
+/// 3. **SPL Token Program Account** (readable) - Token program account
+/// 4. **Main Treasury PDA** (writable) - For fee collection
+/// 5. **Clock Sysvar Account** (readable) - For timestamps
+/// 6. **Rent Sysvar Account** (readable) - For rent calculations
+/// 7. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 8. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 9. **User Input Token Account** (writable) - User's input token account
+/// 10. **User Output LP Token Account** (writable) - User's output LP token account
 /// 11. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
 /// 12. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
 /// 
@@ -306,15 +306,15 @@ pub fn process_deposit(
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                    // Index 1: System Program Account
-    let clock_sysvar_account = &accounts[2];                      // Index 2: Clock Sysvar Account
-    let _rent_sysvar_account = &accounts[3];                       // Index 3: Rent Sysvar Account
-    let pool_state_pda = &accounts[4];                // Index 4: Pool State PDA
-    let token_a_vault_pda = &accounts[5];                     // Index 5: Token A Vault PDA
-    let token_b_vault_pda = &accounts[6];                     // Index 6: Token B Vault PDA
-    let spl_token_program_account = &accounts[7];                 // Index 7: SPL Token Program Account
-    let user_input_account = &accounts[8];                // Index 8: User Input Token Account
-    let user_output_account = &accounts[9];               // Index 9: User Output LP Token Account
-    let main_treasury_pda = &accounts[10];                    // Index 10: Main Treasury PDA
+    let pool_state_pda = &accounts[2];                // Index 2: Pool State PDA
+    let spl_token_program_account = &accounts[3];                 // Index 3: SPL Token Program Account
+    let main_treasury_pda = &accounts[4];                    // Index 4: Main Treasury PDA
+    let clock_sysvar_account = &accounts[5];                      // Index 5: Clock Sysvar Account
+    let _rent_sysvar_account = &accounts[6];                       // Index 6: Rent Sysvar Account
+    let token_a_vault_pda = &accounts[7];                     // Index 7: Token A Vault PDA
+    let token_b_vault_pda = &accounts[8];                     // Index 8: Token B Vault PDA
+    let user_input_account = &accounts[9];                // Index 9: User Input Token Account
+    let user_output_account = &accounts[10];               // Index 10: User Output LP Token Account
     
     // ✅ PHASE 10 SECURITY: LP token mint accounts (validated against derived PDAs)
     let lp_token_a_mint_pda = &accounts[11];                  // Index 11: LP Token A Mint PDA (must match PDA)
@@ -607,14 +607,14 @@ pub fn process_deposit(
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer authorizing the withdrawal
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Clock Sysvar Account** (readable) - For timestamps
-/// 3. **Pool State PDA** (writable) - Pool state PDA
-/// 4. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 5. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 6. **SPL Token Program Account** (readable) - Token program account
-/// 7. **User Input LP Token Account** (writable) - User's input LP token account
-/// 8. **User Output Token Account** (writable) - User's output token account
-/// 9. **Main Treasury PDA** (writable) - For fee collection
+/// 2. **Pool State PDA** (writable) - Pool state PDA
+/// 3. **SPL Token Program Account** (readable) - Token program account
+/// 4. **Main Treasury PDA** (writable) - For fee collection
+/// 5. **Clock Sysvar Account** (readable) - For timestamps
+/// 6. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 7. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 8. **User Input LP Token Account** (writable) - User's input LP token account
+/// 9. **User Output Token Account** (writable) - User's output token account
 /// 10. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
 /// 11. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
 ///
@@ -654,14 +654,14 @@ pub fn process_withdraw(
     // ✅ OPTIMIZATION: Extract accounts using optimized indexing
     let user_authority_signer = &accounts[0];                 // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                 // Index 1: System Program Account
-    let clock_sysvar_account = &accounts[2];                   // Index 2: Clock Sysvar Account
-    let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
-    let token_a_vault_pda = &accounts[4];                  // Index 4: Token A Vault PDA
-    let token_b_vault_pda = &accounts[5];                  // Index 5: Token B Vault PDA
-    let spl_token_program_account = &accounts[6];              // Index 6: SPL Token Program Account
-    let user_input_account = &accounts[7];             // Index 7: User Input LP Token Account
-    let user_output_account = &accounts[8];            // Index 8: User Output Token Account
-    let main_treasury_pda = &accounts[9];                  // Index 9: Main Treasury PDA
+    let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
+    let spl_token_program_account = &accounts[3];              // Index 3: SPL Token Program Account
+    let main_treasury_pda = &accounts[4];                  // Index 4: Main Treasury PDA
+    let clock_sysvar_account = &accounts[5];                   // Index 5: Clock Sysvar Account
+    let token_a_vault_pda = &accounts[6];                  // Index 6: Token A Vault PDA
+    let token_b_vault_pda = &accounts[7];                  // Index 7: Token B Vault PDA
+    let user_input_account = &accounts[8];             // Index 8: User Input LP Token Account
+    let user_output_account = &accounts[9];            // Index 9: User Output Token Account
     let lp_token_a_mint_pda = &accounts[10];               // Index 10: LP Token A Mint PDA
     let lp_token_b_mint_pda = &accounts[11];               // Index 11: LP Token B Mint PDA
 
