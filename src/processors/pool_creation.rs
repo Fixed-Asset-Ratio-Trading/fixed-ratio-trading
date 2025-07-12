@@ -35,25 +35,26 @@ use crate::utils::account_builders::*;
 /// token vault setup, and pool state initialization.
 /// 
 /// # Arguments
-/// * `program_id` - The program ID for PDA derivation
-/// * `ratio_a_numerator` - Numerator for token A in the ratio
-/// * `ratio_b_denominator` - Denominator for token B in the ratio  
-/// * `accounts` - Array of accounts in secure order (12 accounts minimum)
+/// * `program_id` - The program ID
+/// * `ratio_a_numerator` - Token A base units in the ratio
+/// * `ratio_b_denominator` - Token B base units in the ratio  
+/// * `accounts` - Array of accounts in secure order (13 accounts minimum)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer creating the pool
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Pool State PDA** (writable) - Pool state PDA to create
-/// 3. **SPL Token Program Account** (readable) - Token program account
-/// 4. **Main Treasury PDA** (writable) - For registration fee collection
-/// 5. **Rent Sysvar Account** (readable) - For rent calculations
-/// 6. **Token A Mint Account** (readable) - First token mint account (will be normalized to A or B)
-/// 7. **Token B Mint Account** (readable) - Second token mint account (will be normalized to A or B)
-/// 8. **Token A Vault PDA** (writable) - Token A vault PDA to create
-/// 9. **Token B Vault PDA** (writable) - Token B vault PDA to create
-/// 10. **LP Token A Mint PDA** (writable) - LP Token A mint PDA to create
-/// 11. **LP Token B Mint PDA** (writable) - LP Token B mint PDA to create
+/// 2. **System State PDA** (readable) - System state PDA for pause validation
+/// 3. **Pool State PDA** (writable) - Pool state PDA to create
+/// 4. **SPL Token Program Account** (readable) - Token program account
+/// 5. **Main Treasury PDA** (writable) - For registration fee collection
+/// 6. **Rent Sysvar Account** (readable) - For rent calculations
+/// 7. **Token A Mint Account** (readable) - First token mint account (will be normalized to A or B)
+/// 8. **Token B Mint Account** (readable) - Second token mint account (will be normalized to A or B)
+/// 9. **Token A Vault PDA** (writable) - Token A vault PDA to create
+/// 10. **Token B Vault PDA** (writable) - Token B vault PDA to create
+/// 11. **LP Token A Mint PDA** (writable) - LP Token A mint PDA to create
+/// 12. **LP Token B Mint PDA** (writable) - LP Token B mint PDA to create
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -62,6 +63,7 @@ use crate::utils::account_builders::*;
 /// 45,000 - 50,000 CUs    2025/7/11 11:11 pm
 /// 
 /// # Critical Notes
+/// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
 /// - **LP TOKEN SECURITY**: LP token mints are created as PDAs during pool creation, preventing user manipulation
 /// - **PDA VALIDATION**: All PDAs strictly validated against derived addresses (no fake PDAs possible)
 /// - **ENHANCED SECURITY**: Enhanced error messages for security violations
@@ -77,32 +79,33 @@ pub fn process_initialize_pool(
     ratio_b_denominator: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing InitializePool with secure account structure");
+    msg!("Processing InitializePool with fixed system pause validation");
     
-    // ✅ SYSTEM PAUSE: Check system-wide pause
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
+    let user_authority_signer = &accounts[0];                      // Index 0: User Authority Signer
+    let system_program_account = &accounts[1];                     // Index 1: System Program Account
+    let system_state_pda = &accounts[2];                           // Index 2: System State PDA
+    let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
+    let token_program_account = &accounts[4];                      // Index 4: SPL Token Program Account
+    let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA
+    let rent_sysvar_account = &accounts[6];                        // Index 6: Rent Sysvar Account
+    let token_a_mint_account = &accounts[7];                       // Index 7: Token A Mint Account
+    let token_b_mint_account = &accounts[8];                       // Index 8: Token B Mint Account
+    let token_a_vault_pda = &accounts[9];                          // Index 9: Token A Vault PDA
+    let token_b_vault_pda = &accounts[10];                         // Index 10: Token B Vault PDA
+    let lp_token_a_mint_pda = &accounts[11];                       // Index 11: LP Token A Mint PDA
+    let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
+
+    let rent = &Rent::from_account_info(rent_sysvar_account)?;
+
+    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
+    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
     
-    // ✅ ACCOUNT EXTRACTION: Extract accounts using secure indices
-    let user_authority_signer = &accounts[0];                      // Index 0: User Authority Signer
-    let system_program_account = &accounts[1];     // Index 1: System Program Account
-    let pool_state_pda = &accounts[2];     // Index 2: Pool State PDA
-    let token_program_account = &accounts[3];      // Index 3: SPL Token Program Account
-    let main_treasury_pda = &accounts[4];      // Index 4: Main Treasury PDA
-    let rent_sysvar_account = &accounts[5];        // Index 5: Rent Sysvar Account
-    let token_a_mint_account = &accounts[6];       // Index 6: Token A Mint Account (will be normalized to A or B)
-    let token_b_mint_account = &accounts[7];       // Index 7: Token B Mint Account (will be normalized to A or B)
-    let token_a_vault_pda = &accounts[8];  // Index 8: Token A Vault PDA
-    let token_b_vault_pda = &accounts[9];  // Index 9: Token B Vault PDA
-    let lp_token_a_mint_pda = &accounts[10];   // Index 10: LP Token A Mint PDA
-    let lp_token_b_mint_pda = &accounts[11];   // Index 11: LP Token B Mint PDA
-
-    let rent = &Rent::from_account_info(rent_sysvar_account)?;
-
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
     // invoke() operations require signatures. Manual signer checks are

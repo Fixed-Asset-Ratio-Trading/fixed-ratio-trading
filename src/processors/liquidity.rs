@@ -259,17 +259,18 @@ fn create_lp_token_mint_on_demand<'a>(
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer authorizing the deposit
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Pool State PDA** (writable) - Pool state PDA
-/// 3. **SPL Token Program Account** (readable) - Token program account
-/// 4. **Main Treasury PDA** (writable) - For fee collection
-/// 5. **Clock Sysvar Account** (readable) - For timestamps
-/// 6. **Rent Sysvar Account** (readable) - For rent calculations
-/// 7. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 8. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 9. **User Input Token Account** (writable) - User's input token account
-/// 10. **User Output LP Token Account** (writable) - User's output LP token account
-/// 11. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
-/// 12. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
+/// 2. **System State PDA** (readable) - System state PDA for pause validation
+/// 3. **Pool State PDA** (writable) - Pool state PDA
+/// 4. **SPL Token Program Account** (readable) - Token program account
+/// 5. **Main Treasury PDA** (writable) - For fee collection
+/// 6. **Clock Sysvar Account** (readable) - For timestamps
+/// 7. **Rent Sysvar Account** (readable) - For rent calculations (placeholder)
+/// 8. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 9. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 10. **User Input Token Account** (writable) - User's input token account
+/// 11. **User Output LP Token Account** (writable) - User's output LP token account
+/// 12. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
+/// 13. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error code
@@ -278,10 +279,11 @@ fn create_lp_token_mint_on_demand<'a>(
 /// 35,000 - 40,000 CUs    2025/7/11 11:11 pm
 /// 
 /// # Critical Notes
+/// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
 /// - **DESERIALIZATION CACHING**: Eliminates redundant TokenAccount::unpack_from_slice() calls
 /// - **DYNAMIC CONSOLIDATION**: Eliminates unused vault accounts from transaction requirements  
 /// - **VALIDATION CONSOLIDATION**: Consolidated validation logic for better maintainability
-/// - **ACCOUNT REDUCTION**: Reduces account count from 15 to 13 accounts (13% reduction)
+/// - **ACCOUNT ADDITION**: Added system state account at index 2 (14 total accounts)
 /// - **TRANSACTION SIZE**: Reduces transaction size by 10-15%
 /// - **COMPUTE SAVINGS**: Current compute unit savings: 30-60 CUs per transaction
 /// - **FUTURE OPTIMIZATION**: Potential additional savings with dynamic accounts: 50-100 CUs total
@@ -294,32 +296,31 @@ pub fn process_deposit(
     deposit_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Deposit with optimized account structure");
+    msg!("Processing Deposit with fixed system pause validation");
     
-    // ✅ SYSTEM PAUSE: Check system pause state before any operations  
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 13)?; // Expected: 13 accounts
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
+    let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
+    let system_program_account = &accounts[1];                    // Index 1: System Program Account
+    let system_state_pda = &accounts[2];                          // Index 2: System State PDA
+    let pool_state_pda = &accounts[3];                            // Index 3: Pool State PDA
+    let spl_token_program_account = &accounts[4];                 // Index 4: SPL Token Program Account
+    let main_treasury_pda = &accounts[5];                         // Index 5: Main Treasury PDA
+    let clock_sysvar_account = &accounts[6];                      // Index 6: Clock Sysvar Account
+    let _rent_sysvar_account = &accounts[7];                      // Index 7: Rent Sysvar Account
+    let token_a_vault_pda = &accounts[8];                         // Index 8: Token A Vault PDA
+    let token_b_vault_pda = &accounts[9];                         // Index 9: Token B Vault PDA
+    let user_input_account = &accounts[10];                       // Index 10: User Input Token Account
+    let user_output_account = &accounts[11];                      // Index 11: User Output LP Token Account
+    let lp_token_a_mint_pda = &accounts[12];                      // Index 12: LP Token A Mint PDA
+    let lp_token_b_mint_pda = &accounts[13];                      // Index 13: LP Token B Mint PDA
+    
+    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
+    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
-    
-    // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
-    let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
-    let system_program_account = &accounts[1];                    // Index 1: System Program Account
-    let pool_state_pda = &accounts[2];                // Index 2: Pool State PDA
-    let spl_token_program_account = &accounts[3];                 // Index 3: SPL Token Program Account
-    let main_treasury_pda = &accounts[4];                    // Index 4: Main Treasury PDA
-    let clock_sysvar_account = &accounts[5];                      // Index 5: Clock Sysvar Account
-    let _rent_sysvar_account = &accounts[6];                       // Index 6: Rent Sysvar Account
-    let token_a_vault_pda = &accounts[7];                     // Index 7: Token A Vault PDA
-    let token_b_vault_pda = &accounts[8];                     // Index 8: Token B Vault PDA
-    let user_input_account = &accounts[9];                // Index 9: User Input Token Account
-    let user_output_account = &accounts[10];               // Index 10: User Output LP Token Account
-    
-    // ✅ PHASE 10 SECURITY: LP token mint accounts (validated against derived PDAs)
-    let lp_token_a_mint_pda = &accounts[11];                  // Index 11: LP Token A Mint PDA (must match PDA)
-    let lp_token_b_mint_pda = &accounts[12];                  // Index 12: LP Token B Mint PDA (must match PDA)
     
     // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
@@ -602,22 +603,23 @@ pub fn process_deposit(
 /// * `program_id` - The program ID
 /// * `lp_amount_to_burn` - Amount of LP tokens to burn for withdrawal
 /// * `withdraw_token_mint_key` - Token mint being withdrawn
-/// * `accounts` - Array of accounts in optimized order (12 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (13 accounts minimum)
 ///
 /// # Account Info
 /// The accounts must be provided in the following order:
 /// 0. **User Authority Signer** (signer, writable) - User signer authorizing the withdrawal
 /// 1. **System Program Account** (readable) - Solana system program account
-/// 2. **Pool State PDA** (writable) - Pool state PDA
-/// 3. **SPL Token Program Account** (readable) - Token program account
-/// 4. **Main Treasury PDA** (writable) - For fee collection
-/// 5. **Clock Sysvar Account** (readable) - For timestamps
-/// 6. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 7. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 8. **User Input LP Token Account** (writable) - User's input LP token account
-/// 9. **User Output Token Account** (writable) - User's output token account
-/// 10. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
-/// 11. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
+/// 2. **System State PDA** (readable) - System state PDA for pause validation
+/// 3. **Pool State PDA** (writable) - Pool state PDA
+/// 4. **SPL Token Program Account** (readable) - Token program account
+/// 5. **Main Treasury PDA** (writable) - For fee collection
+/// 6. **Clock Sysvar Account** (readable) - For timestamps
+/// 7. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 8. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 9. **User Input LP Token Account** (writable) - User's input LP token account
+/// 10. **User Output Token Account** (writable) - User's output token account
+/// 11. **LP Token A Mint PDA** (writable) - LP Token A mint PDA
+/// 12. **LP Token B Mint PDA** (writable) - LP Token B mint PDA
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -626,11 +628,12 @@ pub fn process_deposit(
 /// 30,000 - 35,000 CUs    2025/7/11 11:11 pm
 /// 
 /// # Critical Notes
+/// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
 /// - **SIMPLIFIED PROCESS**: Withdrawal process simplified to remove MEV protection complexity
 /// - **DESERIALIZATION CACHING**: Eliminates redundant TokenAccount::unpack_from_slice() calls
 /// - **DYNAMIC CONSOLIDATION**: Eliminates unused vault accounts from transaction requirements
 /// - **VALIDATION CONSOLIDATION**: Consolidated validation functions for better maintainability
-/// - **ACCOUNT REDUCTION**: Reduces account count from 15 to 12 accounts (20% reduction)
+/// - **ACCOUNT ADDITION**: Added system state account at index 2 (13 total accounts)
 /// - **TRANSACTION SIZE**: Reduces transaction size by 10-15%
 /// - **COMPUTE SAVINGS**: Current compute unit savings: 30-60 CUs per transaction
 /// - **FUTURE OPTIMIZATION**: Potential additional savings with dynamic accounts: 8% reduction in account count
@@ -642,29 +645,30 @@ pub fn process_withdraw(
     withdraw_token_mint_key: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing Withdrawal with optimized account structure");
+    msg!("Processing Withdrawal with fixed system pause validation");
     
-    // ✅ SYSTEM PAUSE: Check system-wide pause first
-    crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
+    // ✅ OPTIMIZATION: Extract accounts using updated indexing
+    let user_authority_signer = &accounts[0];                     // Index 0: User Authority Signer
+    let system_program_account = &accounts[1];                     // Index 1: System Program Account
+    let system_state_pda = &accounts[2];                           // Index 2: System State PDA
+    let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
+    let spl_token_program_account = &accounts[4];                  // Index 4: SPL Token Program Account
+    let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA
+    let clock_sysvar_account = &accounts[6];                       // Index 6: Clock Sysvar Account
+    let token_a_vault_pda = &accounts[7];                          // Index 7: Token A Vault PDA
+    let token_b_vault_pda = &accounts[8];                          // Index 8: Token B Vault PDA
+    let user_input_account = &accounts[9];                         // Index 9: User Input LP Token Account
+    let user_output_account = &accounts[10];                       // Index 10: User Output Token Account
+    let lp_token_a_mint_pda = &accounts[11];                       // Index 11: LP Token A Mint PDA
+    let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
+
+    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
+    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
-    
-    // ✅ OPTIMIZATION: Extract accounts using optimized indexing
-    let user_authority_signer = &accounts[0];                 // Index 0: User Authority Signer
-    let system_program_account = &accounts[1];                 // Index 1: System Program Account
-    let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
-    let spl_token_program_account = &accounts[3];              // Index 3: SPL Token Program Account
-    let main_treasury_pda = &accounts[4];                  // Index 4: Main Treasury PDA
-    let clock_sysvar_account = &accounts[5];                   // Index 5: Clock Sysvar Account
-    let token_a_vault_pda = &accounts[6];                  // Index 6: Token A Vault PDA
-    let token_b_vault_pda = &accounts[7];                  // Index 7: Token B Vault PDA
-    let user_input_account = &accounts[8];             // Index 8: User Input LP Token Account
-    let user_output_account = &accounts[9];            // Index 9: User Output Token Account
-    let lp_token_a_mint_pda = &accounts[10];               // Index 10: LP Token A Mint PDA
-    let lp_token_b_mint_pda = &accounts[11];               // Index 11: LP Token B Mint PDA
 
     // ✅ COLLECT SOL FEES TO CENTRAL TREASURY FIRST
     // SOL fee collection happens before any state changes or token operations

@@ -175,47 +175,6 @@ pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> Program
     Ok(())
 }
 
-/// System pause validation for operations with standardized account ordering.
-/// This function checks for system pause when system state account is provided.
-/// Since the project hasn't been deployed yet, no backward compatibility is needed.
-///
-/// # Arguments
-/// * `accounts` - The full accounts slice
-/// * `expected_min_accounts` - Minimum number of accounts expected for the operation
-///
-/// # Returns
-/// * `ProgramResult` - Success if system is not paused or no system state provided
-pub fn validate_system_not_paused_safe(accounts: &[AccountInfo], _expected_min_accounts: usize) -> ProgramResult {
-    // Check if system state account is provided at standard position (index 15 or 16)
-    // System state is typically at index 15 for most operations, index 16 for treasury withdrawal
-    let system_state_indices = [15, 16];
-    
-    for &index in &system_state_indices {
-        if accounts.len() > index {
-            // Try to validate using account at this index as potential system state
-            let potential_system_state = &accounts[index];
-            
-            // Check if this looks like a system state account by trying to deserialize
-            if let Ok(system_state) = SystemState::try_from_slice(&potential_system_state.data.borrow()) {
-                // Found valid system state - check pause status
-                if system_state.is_paused {
-                    msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
-                    msg!("Pause code: {}", system_state.pause_reason_code);
-                    msg!("Paused at: {}", system_state.pause_timestamp);
-                    msg!("Only system unpause is allowed");
-                    return Err(PoolError::SystemPaused.into());
-                }
-                // System state found and not paused - operation can proceed
-                return Ok(());
-            }
-        }
-    }
-    
-    // No system state account provided - operation can proceed
-    // This is normal for operations that don't include system state (like swaps)
-    Ok(())
-}
-
 /// Validates ratio values and returns pool ID string for PDA derivation.
 ///
 /// # Arguments
