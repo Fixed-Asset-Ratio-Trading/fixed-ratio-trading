@@ -5,6 +5,7 @@
 
 use crate::constants::*;
 use crate::types::*;
+use crate::PoolState;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,

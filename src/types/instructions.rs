@@ -204,9 +204,22 @@ pub enum PoolInstruction {
     
     /// Pause the entire system - blocks all operations except unpause (system authority only)
     /// Takes precedence over all pool-specific pause states
+    /// 
+    /// # Storage Optimization:
+    /// Uses standardized reason codes for efficient storage (42 bytes vs 245 bytes)
+    /// Client applications map codes to human-readable text
+    /// 
+    /// # Standard Pause Codes:
+    /// - 0: No pause active (default state)
+    /// - 1: Temporary consolidation of funds
+    /// - 2: Contract upgrade in progress  
+    /// - 3: Critical security issue detected
+    /// - 4: Routine maintenance and debugging
+    /// - 5: Emergency halt due to unexpected behavior
+    /// - 255: Custom reason (see external documentation)
     PauseSystem {
-        /// Human-readable reason for the system pause
-        reason: String,
+        /// Standardized pause reason code for efficient storage
+        reason_code: u8,
     },
     
     /// Unpause the entire system - allows all operations to resume (system authority only)

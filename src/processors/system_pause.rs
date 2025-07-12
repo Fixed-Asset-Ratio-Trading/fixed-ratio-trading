@@ -32,7 +32,7 @@ use crate::{
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `reason` - Human-readable reason for the system pause
+/// * `reason_code` - Standardized pause reason code (see SystemState documentation)
 /// * `accounts` - Array of accounts in ultra-optimized order (2 accounts minimum)
 /// 
 /// # Account Info
@@ -47,12 +47,13 @@ use crate::{
 /// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration
 /// - **EMERGENCY CONTROLS**: System pause takes precedence over all pool pause states
+/// - **STORAGE OPTIMIZED**: Uses single byte code instead of string for efficiency
 pub fn process_pause_system(
     _program_id: &Pubkey,
-    reason: String,
+    reason_code: u8,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🛑 Processing system pause: {}", reason);
+    msg!("🛑 Processing system pause with code: {}", reason_code);
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -81,7 +82,7 @@ pub fn process_pause_system(
     // Check if already paused
     if system_state.is_paused {
         msg!("System is already paused since timestamp: {}", system_state.pause_timestamp);
-        msg!("Current pause reason: {}", system_state.pause_reason);
+        msg!("Current pause code: {}", system_state.pause_reason_code);
         return Err(PoolError::SystemAlreadyPaused.into());
     }
     
@@ -90,7 +91,7 @@ pub fn process_pause_system(
     let current_timestamp = clock.unix_timestamp;
     
     // Pause the system
-    system_state.pause(reason.clone(), current_timestamp);
+    system_state.pause(reason_code, current_timestamp);
     
     // Serialize updated state back to account
     let serialized_data = system_state.try_to_vec()?;
@@ -99,7 +100,7 @@ pub fn process_pause_system(
     // Log the system pause
     msg!("🛑 SYSTEM PAUSED: All operations blocked");
     msg!("Authority: {}", system_authority_signer.key);
-    msg!("Reason: {}", reason);
+    msg!("Pause code: {}", reason_code);
     msg!("Timestamp: {}", current_timestamp);
     msg!("System pause takes precedence over all pool pause states");
     
@@ -129,6 +130,7 @@ pub fn process_pause_system(
 /// - **TRANSACTION EFFICIENCY**: Minimal transaction size and validation overhead
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration
 /// - **POOL STATES**: Pool-specific pause states remain active if previously set
+/// - **STORAGE OPTIMIZED**: Works with optimized pause code system
 pub fn process_unpause_system(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -167,7 +169,7 @@ pub fn process_unpause_system(
     
     // Store pause info for logging before clearing
     let pause_duration = Clock::get()?.unix_timestamp - system_state.pause_timestamp;
-    let pause_reason = system_state.pause_reason.clone();
+    let previous_pause_code = system_state.pause_reason_code;
     
     // Unpause the system
     system_state.unpause();
@@ -179,7 +181,7 @@ pub fn process_unpause_system(
     // Log the system unpause
     msg!("✅ SYSTEM UNPAUSED: All operations resumed");
     msg!("Authority: {}", system_authority_signer.key);
-    msg!("Previous pause reason: {}", pause_reason);
+    msg!("Previous pause code: {}", previous_pause_code);
     msg!("Pause duration: {} seconds", pause_duration);
     msg!("Pool-specific pause states remain active if previously set");
     

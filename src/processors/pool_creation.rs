@@ -8,6 +8,7 @@ use crate::types::*;
 use crate::utils::serialization::serialize_to_account;
 use crate::error::PoolError;
 use crate::state::MainTreasuryState;
+use crate::{PoolState, RentRequirements};
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,

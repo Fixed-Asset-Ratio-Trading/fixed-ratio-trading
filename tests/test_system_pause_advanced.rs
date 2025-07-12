@@ -141,7 +141,7 @@ async fn pause_system(
     authority: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
     system_state_account: &Pubkey,
-    reason: &str,
+    reason_code: u8,
 ) -> TestResult {
     let pause_ix = Instruction {
         program_id: PROGRAM_ID,
@@ -151,7 +151,7 @@ async fn pause_system(
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
         ],
         data: PoolInstruction::PauseSystem {
-            reason: reason.to_string(),
+            reason_code: reason_code,
         }.try_to_vec().unwrap(),
     };
 
@@ -279,7 +279,7 @@ async fn test_owner_operations_respect_system_pause() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Maintenance",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -328,7 +328,7 @@ async fn test_pool_creation_blocked_when_system_paused() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Maintenance",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -407,7 +407,11 @@ async fn test_read_only_queries_work_when_system_paused() -> TestResult {
             println!("✅ SystemState account exists and contains data:");
             println!("   Authority: {}", state.authority);
             println!("   Is paused: {}", state.is_paused);
-            println!("   Pause reason: '{}'", state.pause_reason);
+            println!("   Pause timestamp: {}", state.pause_timestamp);
+            println!("   Pause code: {}", state.pause_reason_code);
+            println!("   Account data length: {}", state.data.len());
+            println!("   Account lamports: {}", state.lamports);
+            println!("   Account owner: {}", state.owner);
         },
         None => {
             println!("✅ SystemState account exists but contains uninitialized data (as expected)");
@@ -502,13 +506,13 @@ async fn test_system_state_accessible_when_system_paused() -> TestResult {
     println!("🧪 Testing system state accessibility with empty SystemState - demonstrates read operations");
 
     // Try to pause the system (will fail due to uninitialized SystemState)
-    let pause_reason = "Scheduled maintenance";
+    let pause_reason_code = 4u8; // 4 = Routine maintenance and debugging
     let pause_result = pause_system(
         &mut env.banks_client,
         &env.payer,
         env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        pause_reason,
+        pause_reason_code,
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -529,7 +533,11 @@ async fn test_system_state_accessible_when_system_paused() -> TestResult {
             println!("✅ SystemState account is readable (somehow initialized):");
             println!("   Authority: {}", state.authority);
             println!("   Is paused: {}", state.is_paused);
-            println!("   Pause reason: '{}'", state.pause_reason);
+            println!("   Pause timestamp: {}", state.pause_timestamp);
+            println!("   Pause code: {}", state.pause_reason_code);
+            println!("   Account data length: {}", state.data.len());
+            println!("   Account lamports: {}", state.lamports);
+            println!("   Account owner: {}", state.owner);
         },
         None => {
             println!("✅ SystemState account exists but is uninitialized (as expected)");
@@ -595,7 +603,7 @@ async fn test_all_operations_resume_after_unpause() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Maintenance",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -652,13 +660,13 @@ async fn test_system_state_cleared_after_unpause() -> TestResult {
     println!("🧪 Testing system state clearing after unpause - demonstrates state management need");
 
     // Try to pause the system (will fail due to uninitialized SystemState)
-    let pause_reason = "Emergency maintenance";
+    let pause_reason_code = 4u8; // 4 = Routine maintenance and debugging
     let pause_result = pause_system(
         &mut env.banks_client,
         &env.payer,
         env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        pause_reason,
+        pause_reason_code,
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -731,7 +739,7 @@ async fn test_multiple_pause_unpause_cycles() -> TestResult {
 
     // Attempt multiple pause/unpause cycles (reduced from 3 to 2 to prevent timeout issues)
     for cycle in 1..=2 {
-        let pause_reason = format!("Cycle {} maintenance", cycle);
+        let pause_reason_code = 4u8; // 4 = Routine maintenance and debugging
         
         println!("   Attempting cycle {}", cycle);
         
@@ -741,7 +749,7 @@ async fn test_multiple_pause_unpause_cycles() -> TestResult {
             &env.payer,
             env.recent_blockhash,
             &system_state_keypair.pubkey(),
-            &pause_reason,
+            pause_reason_code,
         ).await;
 
         match pause_result {

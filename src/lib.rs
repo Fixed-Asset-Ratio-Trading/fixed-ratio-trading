@@ -217,8 +217,8 @@ pub fn process_instruction(
         PoolInstruction::GetPoolSolBalance {} => get_pool_sol_balance(accounts),
         
         PoolInstruction::PauseSystem {
-            reason,
-        } => process_pause_system(program_id, reason, accounts),
+            reason_code,
+        } => process_pause_system(program_id, reason_code, accounts),
 
         PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
 

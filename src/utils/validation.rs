@@ -15,7 +15,7 @@ use solana_program::{
 use crate::{
     error::PoolError,
     state::SystemState,
-    types::{PoolState},
+    PoolState,
 };
 
 use crate::constants::*;
@@ -166,7 +166,7 @@ pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> Program
     
     if system_state.is_paused {
         msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
-        msg!("Pause reason: {}", system_state.pause_reason);
+        msg!("Pause code: {}", system_state.pause_reason_code);
         msg!("Paused at: {}", system_state.pause_timestamp);
         msg!("Only system unpause is allowed");
         return Err(PoolError::SystemPaused.into());
@@ -200,7 +200,7 @@ pub fn validate_system_not_paused_safe(accounts: &[AccountInfo], _expected_min_a
                 // Found valid system state - check pause status
                 if system_state.is_paused {
                     msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
-                    msg!("Pause reason: {}", system_state.pause_reason);
+                    msg!("Pause code: {}", system_state.pause_reason_code);
                     msg!("Paused at: {}", system_state.pause_timestamp);
                     msg!("Only system unpause is allowed");
                     return Err(PoolError::SystemPaused.into());

@@ -5,8 +5,8 @@ use solana_program::{
     msg,
     program::{invoke, invoke_signed},
     program_error::ProgramError,
-    pubkey::Pubkey,
     program_pack::Pack,
+    pubkey::Pubkey,
 };
 use spl_token::{
     instruction as token_instruction,
@@ -18,6 +18,7 @@ use crate::{
     types::*,
     error::PoolError,
     utils::account_builders::*,
+    PoolState,
 };
 
 /// **SWAP OPERATIONS MODULE**

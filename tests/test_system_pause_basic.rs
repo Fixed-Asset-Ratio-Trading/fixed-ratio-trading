@@ -108,7 +108,7 @@ async fn pause_system(
     authority: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
     system_state_account: &Pubkey,
-    reason: &str,
+    reason_code: u8,
 ) -> TestResult {
     let pause_ix = Instruction {
         program_id: PROGRAM_ID,
@@ -118,7 +118,7 @@ async fn pause_system(
             AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
         ],
         data: PoolInstruction::PauseSystem {
-            reason: reason.to_string(),
+            reason_code: reason_code,
         }.try_to_vec().unwrap(),
     };
 
@@ -235,13 +235,13 @@ async fn test_pause_system_success() -> TestResult {
     println!("🧪 Testing system pause - demonstrates need for SystemState initialization");
 
     // Attempt to pause the system (this will fail because account is uninitialized)
-    let pause_reason = "Emergency maintenance";
+    let pause_reason_code = 4u8; // 4 = Routine maintenance and debugging
     let pause_result = pause_system(
         &mut env.banks_client,
         &env.payer,
         env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        pause_reason,
+        pause_reason_code,
     ).await;
 
     // The operation should fail because the account doesn't have proper SystemState data
@@ -333,7 +333,7 @@ async fn test_pause_system_unauthorized_fails() -> TestResult {
         &unauthorized_user,
         env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Unauthorized attempt",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Should fail because the account isn't properly initialized (not because of authorization)
@@ -366,7 +366,7 @@ async fn test_pause_already_paused_fails() -> TestResult {
         &env.payer,
         env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "First pause",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     assert!(result.is_err(), "Pause should fail due to uninitialized account");
@@ -521,7 +521,7 @@ async fn test_all_liquidity_operations_blocked_when_system_paused() -> TestResul
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Maintenance",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState
@@ -590,7 +590,7 @@ async fn test_all_fee_operations_blocked_when_system_paused() -> TestResult {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         &system_state_keypair.pubkey(),
-        "Maintenance",
+        4u8, // 4 = Routine maintenance and debugging
     ).await;
 
     // Expect the pause to fail due to uninitialized SystemState

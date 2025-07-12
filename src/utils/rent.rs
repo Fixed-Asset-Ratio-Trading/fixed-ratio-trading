@@ -3,17 +3,18 @@
 //! This module contains utilities for managing rent-exempt status and account balance validation.
 //! These functions ensure that program-owned accounts maintain sufficient balance for rent exemption.
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::rent::Rent,
+    rent::Rent,
+    entrypoint::ProgramResult,
+    program_error::ProgramError,
+    msg,
 };
-use borsh::{BorshDeserialize, BorshSerialize};
+
+use crate::PoolState;
 use crate::error::PoolError;
-use crate::types::PoolState;
 
 /// Checks if an account is rent-exempt. For program-owned accounts, uses rent tracking; otherwise, checks minimum balance.
 ///

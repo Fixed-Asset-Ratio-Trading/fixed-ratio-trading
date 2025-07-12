@@ -53,6 +53,7 @@
 //! this architectural complexity entirely.
 
 use crate::{constants::*, types::*};
+use crate::PoolState;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
