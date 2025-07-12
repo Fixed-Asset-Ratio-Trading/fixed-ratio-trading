@@ -1077,7 +1077,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(config.pool_state_pda, false), // Pool state PDA (read-only)
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(config.pool_state_pda, false),                // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1141,7 +1144,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(specific_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(specific_pool_config.pool_state_pda, false),  // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1223,7 +1229,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(operational_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(operational_pool_config.pool_state_pda, false), // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1297,7 +1306,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(owner_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(owner_pool_config.pool_state_pda, false),     // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1360,7 +1372,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(test_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(test_pool_config.pool_state_pda, false),      // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1435,7 +1450,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let instruction = Instruction {
             program_id: PROGRAM_ID,
             accounts: vec![
-                AccountMeta::new_readonly(liquidity_pool_config.pool_state_pda, false),
+                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                AccountMeta::new_readonly(liquidity_pool_config.pool_state_pda, false), // Index 2: Pool State PDA
+                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
             ],
             data: instruction_data.try_to_vec()?,
         };
@@ -1537,7 +1555,10 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             let instruction = Instruction {
                 program_id: PROGRAM_ID,
                 accounts: vec![
-                    AccountMeta::new_readonly(perf_pool_config.pool_state_pda, false),
+                    AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
+                    AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
+                    AccountMeta::new_readonly(perf_pool_config.pool_state_pda, false),      // Index 2: Pool State PDA
+                    AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
                 ],
                 data: instruction_data.try_to_vec()?,
             };
