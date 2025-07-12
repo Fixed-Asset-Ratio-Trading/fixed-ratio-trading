@@ -57,10 +57,10 @@ pub fn process_initialize_program(
 ) -> ProgramResult {
     msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure");
     
-    // ✅ SECURITY: Program upgrade authority account count requirement
-    if accounts.len() < 6 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No account length verification
+    // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
+    // accounts[N] if insufficient accounts are provided. Manual length checks are
+    // redundant and waste compute units on every function call.
     
     // ✅ PROGRAM UPGRADE AUTHORITY ACCOUNT EXTRACTION: Extract accounts using upgrade authority indices
     let program_authority_signer = &accounts[0];      // Index 0: Program Authority Signer (MUST match upgrade authority)

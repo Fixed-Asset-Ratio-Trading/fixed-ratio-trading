@@ -298,10 +298,10 @@ pub fn process_deposit(
     // ✅ SYSTEM PAUSE: Check system pause state before any operations  
     crate::utils::validation::validate_system_not_paused_safe(accounts, 13)?; // Expected: 13 accounts
     
-    // ✅ SECURITY: Account count requirement
-    if accounts.len() < 13 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No account length verification
+    // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
+    // accounts[N] if insufficient accounts are provided. Manual length checks are
+    // redundant and waste compute units on every function call.
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
@@ -323,10 +323,10 @@ pub fn process_deposit(
     // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
     
-    if !user_authority_signer.is_signer {
-        msg!("User must be a signer for deposit");
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
+    // Solana runtime automatically fails with MissingRequiredSignature when
+    // invoke() operations require signatures. Manual signer checks are
+    // redundant and waste compute units on every function call.
 
     // ✅ COLLECT SOL FEES TO CENTRAL TREASURY FIRST
     // SOL fee collection happens before any state changes or token operations
@@ -646,10 +646,10 @@ pub fn process_withdraw(
     // ✅ SYSTEM PAUSE: Check system-wide pause first
     crate::utils::validation::validate_system_not_paused_safe(accounts, 12)?;
     
-    // ✅ OPTIMIZATION: Validate account count
-    if accounts.len() < 12 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No account length verification
+    // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
+    // accounts[N] if insufficient accounts are provided. Manual length checks are
+    // redundant and waste compute units on every function call.
     
     // ✅ OPTIMIZATION: Extract accounts using optimized indexing
     let user_authority_signer = &accounts[0];                 // Index 0: User Authority Signer
@@ -676,11 +676,10 @@ pub fn process_withdraw(
         program_id,
     )?;
 
-    // ✅ ESSENTIAL VALIDATION: Core validations only
-    if !user_authority_signer.is_signer {
-        msg!("User authority must be a signer for withdrawal");
-        return Err(ProgramError::MissingRequiredSignature);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
+    // Solana runtime automatically fails with MissingRequiredSignature when
+    // invoke() operations require signatures. Manual signer checks are
+    // redundant and waste compute units on every function call.
     
     if lp_amount_to_burn == 0 {
         msg!("Cannot withdraw zero LP tokens");

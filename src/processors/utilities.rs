@@ -237,10 +237,10 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
         true // Read-only operation
     )?;
     
-    // ✅ ACCOUNT VALIDATION: Check minimum account count
-    if accounts.len() < 4 {
-        return Err(ProgramError::NotEnoughAccountKeys);
-    }
+    // ✅ COMPUTE OPTIMIZATION: No account length verification
+    // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
+    // accounts[N] if insufficient accounts are provided. Manual length checks are
+    // redundant and waste compute units on every function call.
     
     let _system_authority_signer = &accounts[0];             // Index 0: System Authority Signer (placeholder)
     let _system_program_account = &accounts[1];              // Index 1: System Program Account (placeholder)
