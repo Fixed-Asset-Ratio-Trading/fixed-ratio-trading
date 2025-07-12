@@ -74,11 +74,11 @@ pub fn process_withdraw_treasury_fees(
     // redundant and waste compute units on every function call.
     
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Removed 3 unused placeholder accounts
-    let system_authority_signer = &accounts[0];       // Index 0: System Authority Signer
+    let system_authority_signer = &accounts[0];      // Index 0: System Authority Signer
     let main_treasury_pda = &accounts[1];            // Index 1: Main Treasury PDA
     let rent_sysvar_account = &accounts[2];          // Index 2: Rent Sysvar Account
     let destination_account = &accounts[3];          // Index 3: Destination Account
-    let system_state_pda = &accounts[4];            // Index 4: System State PDA
+    let system_state_pda = &accounts[4];             // Index 4: System State PDA
     let program_data_account = &accounts[5];         // Index 5: Program Data Account
     
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification

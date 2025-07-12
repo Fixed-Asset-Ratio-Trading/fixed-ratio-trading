@@ -301,7 +301,7 @@ pub fn process_deposit(
     // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                    // Index 1: System Program Account
-    let system_state_pda = &accounts[2];                          // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                            // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                 // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];                         // Index 5: Main Treasury PDA
@@ -313,9 +313,6 @@ pub fn process_deposit(
     let user_output_account = &accounts[11];                      // Index 11: User Output LP Token Account
     let lp_token_a_mint_pda = &accounts[12];                      // Index 12: LP Token A Mint PDA
     let lp_token_b_mint_pda = &accounts[13];                      // Index 13: LP Token B Mint PDA
-    
-    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
-    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -650,7 +647,7 @@ pub fn process_withdraw(
     // ✅ OPTIMIZATION: Extract accounts using updated indexing
     let user_authority_signer = &accounts[0];                     // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account
-    let system_state_pda = &accounts[2];                           // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                  // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA
@@ -662,9 +659,6 @@ pub fn process_withdraw(
     let lp_token_a_mint_pda = &accounts[11];                       // Index 11: LP Token A Mint PDA
     let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
 
-    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
-    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
-    
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are

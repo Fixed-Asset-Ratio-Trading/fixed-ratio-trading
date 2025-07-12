@@ -94,7 +94,7 @@ pub fn process_swap(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    let system_state_pda = &accounts[2];           // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
@@ -102,9 +102,6 @@ pub fn process_swap(
     let pool_token_b_vault_pda = &accounts[7];     // Index 7: Token B Vault PDA
     let user_input_token_account = &accounts[8];   // Index 8: User Input Token Account
     let user_output_token_account = &accounts[9];  // Index 9: User Output Token Account
-    
-    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
-    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -360,7 +357,7 @@ pub fn process_swap_hft_optimized(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    let system_state_pda = &accounts[2];           // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
@@ -369,9 +366,6 @@ pub fn process_swap_hft_optimized(
     let user_input_token_account = &accounts[8];   // Index 8: User Input Token Account
     let user_output_token_account = &accounts[9];  // Index 9: User Output Token Account
 
-    // 🚀 OPTIMIZATION 1: Fixed system pause validation (no debug message)
-    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
-    
     // 🚀 COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
@@ -669,11 +663,8 @@ pub fn process_set_swap_fee(
     msg!("Processing SetSwapFee: {} basis points", fee_basis_points);
     
     let owner_authority_signer = &accounts[0];     // Index 0: Pool Owner Authority Signer
-    let system_state_pda = &accounts[1];           // Index 1: System State PDA
+    crate::utils::validation::validate_system_not_paused(&accounts[1])?;   // Index 1: System State PDA
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
-    
-    // ✅ FIXED SYSTEM PAUSE: Direct validation with explicit system state account
-    crate::utils::validation::validate_system_not_paused(system_state_pda)?;
     
     // Load and verify pool state
     let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
