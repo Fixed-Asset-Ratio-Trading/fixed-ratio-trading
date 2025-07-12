@@ -116,7 +116,7 @@ pub async fn setup_swap_test_environment(
     Ok((ctx, config, user, user_primary_account.pubkey(), user_base_account.pubkey()))
 }
 
-/// Helper function to create HFT optimized swap instruction using Phase 6 ultra-optimized 10-account system
+/// Helper function to create HFT optimized swap instruction using standardized 10-account system
 pub fn create_hft_optimized_swap_instruction(
     user: &Pubkey,
     user_input_account: &Pubkey,
@@ -128,7 +128,6 @@ pub fn create_hft_optimized_swap_instruction(
     let instruction_data = PoolInstruction::SwapHftOptimized {
         input_token_mint: *input_token_mint,
         amount_in,
-
     };
 
     // Use the standardized function from liquidity_helpers, but create a custom version for HFT
@@ -139,22 +138,28 @@ pub fn create_hft_optimized_swap_instruction(
         &[MAIN_TREASURY_SEED_PREFIX],
         &PROGRAM_ID,
     );
-    // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with NEW account ordering (9 accounts for HFT swaps)
+    // Derive System State PDA (required for swap operations)
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::SYSTEM_STATE_SEED_PREFIX],
+        &PROGRAM_ID,
+    );
+    
+    // Create instruction with STANDARDIZED account ordering (10 accounts for HFT swaps)
     Ok(Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            // NEW account ordering: Pool State PDA=2, SPL Token Program=3, Main Treasury=4
+            // STANDARDIZED account ordering: System State PDA=2, Pool State PDA=3, SPL Token Program=4, Main Treasury=5
             solana_program::instruction::AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
             solana_program::instruction::AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            solana_program::instruction::AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 2: Pool State PDA
-            solana_program::instruction::AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program
-            solana_program::instruction::AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA
-            solana_program::instruction::AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
-            solana_program::instruction::AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
-            solana_program::instruction::AccountMeta::new(*user_input_account, false),                          // Index 7: User Input Token Account
-            solana_program::instruction::AccountMeta::new(*user_output_account, false),                         // Index 8: User Output Token Account
+            solana_program::instruction::AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
+            solana_program::instruction::AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            solana_program::instruction::AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program
+            solana_program::instruction::AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
+            solana_program::instruction::AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 6: Token A Vault PDA
+            solana_program::instruction::AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 7: Token B Vault PDA
+            solana_program::instruction::AccountMeta::new(*user_input_account, false),                          // Index 8: User Input Token Account
+            solana_program::instruction::AccountMeta::new(*user_output_account, false),                         // Index 9: User Output Token Account
         ],
         data: serialized,
     })
@@ -331,12 +336,12 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
     ).expect("Failed to create HFT conservative swap instruction");
 
     // Verify instruction construction (NEW ordering: 9 accounts)
-    assert_eq!(conservative_ix.accounts.len(), 9, "HFT optimized instruction should have 9 accounts (NEW account ordering)");
+    assert_eq!(conservative_ix.accounts.len(), 10, "HFT optimized instruction should have 10 accounts (STANDARDIZED account ordering)");
     assert_eq!(conservative_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!conservative_ix.data.is_empty(), "Instruction data should not be empty");
     
     println!("✅ HFT optimized instruction constructed successfully:");
-    println!("    ✓ 9 accounts configured (NEW account ordering)");
+    println!("    ✓ 10 accounts configured (STANDARDIZED account ordering)");
     println!("    ✓ Program ID matches: {}", PROGRAM_ID);
     println!("    ✓ Instruction data: {} bytes", conservative_ix.data.len());
 
@@ -352,7 +357,7 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
         swap_amount,
     ).expect("Failed to create HFT B→A swap instruction");
 
-    assert_eq!(b_to_a_ix.accounts.len(), 9, "B→A HFT instruction should have 9 accounts (NEW account ordering)");
+    assert_eq!(b_to_a_ix.accounts.len(), 10, "B→A HFT instruction should have 10 accounts (STANDARDIZED account ordering)");
     assert_eq!(b_to_a_ix.program_id, PROGRAM_ID, "Program ID should match");
     println!("✅ B→A HFT optimized instruction constructed successfully");
 
@@ -416,12 +421,12 @@ async fn test_github_issue_31960_workaround_preservation() -> TestResult {
         1000u64,
     ).expect("Failed to create HFT swap instruction");
 
-    // Verify both instructions reference the same accounts (NEW account ordering)
-    assert_eq!(standard_ix.accounts[2].pubkey, hft_ix.accounts[2].pubkey, "Both should reference same pool state PDA");
-    assert_eq!(standard_ix.accounts[5].pubkey, hft_ix.accounts[5].pubkey, "Both should reference same token A vault");
-    assert_eq!(standard_ix.accounts[6].pubkey, hft_ix.accounts[6].pubkey, "Both should reference same token B vault");
-    assert_eq!(standard_ix.accounts[7].pubkey, hft_ix.accounts[7].pubkey, "Both should reference same user input account");
-    assert_eq!(standard_ix.accounts[8].pubkey, hft_ix.accounts[8].pubkey, "Both should reference same user output account");
+    // Verify both instructions reference the same accounts (STANDARDIZED account ordering)
+    assert_eq!(standard_ix.accounts[3].pubkey, hft_ix.accounts[3].pubkey, "Both should reference same pool state PDA");
+    assert_eq!(standard_ix.accounts[6].pubkey, hft_ix.accounts[6].pubkey, "Both should reference same token A vault");
+    assert_eq!(standard_ix.accounts[7].pubkey, hft_ix.accounts[7].pubkey, "Both should reference same token B vault");
+    assert_eq!(standard_ix.accounts[8].pubkey, hft_ix.accounts[8].pubkey, "Both should reference same user input account");
+    assert_eq!(standard_ix.accounts[9].pubkey, hft_ix.accounts[9].pubkey, "Both should reference same user output account");
 
     println!("✅ Both standard and HFT optimized instructions reference identical pool accounts");
     println!("✅ GitHub Issue #31960 workaround preserved in HFT optimized implementation");
@@ -475,14 +480,14 @@ async fn test_hft_optimized_fee_discount() -> TestResult {
         1000u64,
     ).expect("Failed to create HFT swap instruction");
     
-    // Verify HFT treasury account is included at index 4 (NEW account ordering)
-    let hft_treasury_account = &hft_swap_ix.accounts[4];
+    // Verify HFT treasury account is included at index 5 (STANDARDIZED account ordering)
+    let hft_treasury_account = &hft_swap_ix.accounts[5];
     let (expected_hft_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
         &PROGRAM_ID,
     );
     
-    assert_eq!(hft_treasury_account.pubkey, expected_hft_treasury_pda, "HFT treasury PDA should be at index 4 (NEW account ordering)");
+    assert_eq!(hft_treasury_account.pubkey, expected_hft_treasury_pda, "HFT treasury PDA should be at index 5 (STANDARDIZED account ordering)");
     println!("✅ HFT treasury PDA correctly included in instruction");
     
     // Verify standard swap doesn't have different treasury setup (should use regular swap treasury)
@@ -496,8 +501,8 @@ async fn test_hft_optimized_fee_discount() -> TestResult {
     ).expect("Failed to create standard swap instruction");
     
     // Both should have same treasury accounts but HFT will use different fee calculation
-    let standard_swap_treasury = &standard_ix.accounts[4];
-    let hft_swap_treasury = &hft_swap_ix.accounts[4]; 
+    let standard_swap_treasury = &standard_ix.accounts[5];
+    let hft_swap_treasury = &hft_swap_ix.accounts[5]; 
     assert_eq!(standard_swap_treasury.pubkey, hft_swap_treasury.pubkey, "Both should reference same main treasury PDA");
     
     println!("✅ Treasury account structure verified for both standard and HFT swaps");

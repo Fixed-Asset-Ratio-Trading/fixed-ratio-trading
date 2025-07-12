@@ -67,7 +67,7 @@ pub async fn measure_instruction_cu(
         recent_blockhash,
     );
     
-    // Execute with ULTRA-OPTIMIZED retry logic (NO delays)
+    // Execute with TIMEOUT PROTECTION to prevent DeadlineExceeded errors
     let mut result = CUMeasurementResult {
         instruction_name: instruction_name.to_string(),
         success: false,
@@ -78,19 +78,21 @@ pub async fn measure_instruction_cu(
     };
     
     for attempt in 0..=config.max_retries {
-        match banks_client.process_transaction(transaction.clone()).await {
-            Ok(()) => {
+        // CRITICAL: Add timeout protection to prevent hanging
+        let timeout_duration = tokio::time::Duration::from_millis(2000); // 2 second timeout
+        let process_future = banks_client.process_transaction(transaction.clone());
+        
+        match tokio::time::timeout(timeout_duration, process_future).await {
+            Ok(Ok(())) => {
                 result.success = true;
                 result.transaction_signature = Some(transaction.signatures[0].to_string());
                 
-                // Try to get CU consumption from logs (this is approximate)
-                // Note: In real devnet/mainnet, you'd use transaction logs
                 if config.enable_logging {
                     println!("✅ {} executed successfully (attempt {})", instruction_name, attempt + 1);
                 }
                 break;
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 let error_msg = format!("{:?}", e);
                 result.error = Some(error_msg.clone());
                 
@@ -101,9 +103,19 @@ pub async fn measure_instruction_cu(
                 if attempt == config.max_retries {
                     break;
                 }
+            }
+            Err(_) => {
+                // Timeout occurred - this prevents DeadlineExceeded errors
+                let timeout_msg = format!("Operation timed out after {}ms", timeout_duration.as_millis());
+                result.error = Some(timeout_msg.clone());
                 
-                // REMOVED all delays completely for maximum speed
-                // tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                if config.enable_logging {
+                    println!("⏰ {} timed out (attempt {}): {}", instruction_name, attempt + 1, timeout_msg);
+                }
+                
+                if attempt == config.max_retries {
+                    break;
+                }
             }
         }
     }
@@ -163,6 +175,7 @@ pub async fn benchmark_instruction_cu(
         let instruction = instruction_generator();
         let iteration_name = format!("{}_iteration_{}", instruction_name, i + 1);
         
+        // Use the timeout-protected measure_instruction_cu function
         let result = measure_instruction_cu(
             banks_client,
             payer,
@@ -174,19 +187,26 @@ pub async fn benchmark_instruction_cu(
         
         results.push(result);
         
-        // REMOVED delay between iterations for speed
-        // tokio::time::sleep(tokio::time::Duration::from_millis(25)).await;
+        // No delays between iterations for maximum speed
     }
     
-    // Print summary
+    // Print summary with timeout-aware stats
     if config.enable_logging {
         let successful_runs = results.iter().filter(|r| r.success).count();
         let failed_runs = results.len() - successful_runs;
-        let avg_execution_time = results.iter().map(|r| r.execution_time_ms).sum::<u64>() / results.len() as u64;
+        let timed_out_runs = results.iter().filter(|r| {
+            r.error.as_ref().map_or(false, |e| e.contains("timed out"))
+        }).count();
+        let avg_execution_time = if !results.is_empty() {
+            results.iter().map(|r| r.execution_time_ms).sum::<u64>() / results.len() as u64
+        } else {
+            0
+        };
         
         println!("📊 Benchmark Summary for {}:", instruction_name);
         println!("  Successful runs: {}/{}", successful_runs, results.len());
         println!("  Failed runs: {}", failed_runs);
+        println!("  Timed out runs: {}", timed_out_runs);
         println!("  Average execution time: {}ms", avg_execution_time);
     }
     
