@@ -67,7 +67,7 @@ pub async fn measure_instruction_cu(
         recent_blockhash,
     );
     
-    // Execute with OPTIMIZED retry logic
+    // Execute with ULTRA-OPTIMIZED retry logic (NO delays)
     let mut result = CUMeasurementResult {
         instruction_name: instruction_name.to_string(),
         success: false,
@@ -102,8 +102,8 @@ pub async fn measure_instruction_cu(
                     break;
                 }
                 
-                // REDUCED delay between retries from 100ms to 10ms
-                tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+                // REMOVED all delays completely for maximum speed
+                // tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
             }
         }
     }
