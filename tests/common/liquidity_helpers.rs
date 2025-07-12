@@ -159,10 +159,7 @@ pub async fn create_liquidity_test_foundation(
             owner_pubkey,
         ).await?;
         
-        // Add a small delay every 4 accounts to prevent timeout accumulation
-        if i % 4 == 3 {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        // REMOVED delay for faster test execution
     }
     
     // 10. BATCH OPERATION 6: Mint tokens (reduced amounts for faster processing)
@@ -190,15 +187,11 @@ pub async fn create_liquidity_test_foundation(
             *amount,
         ).await?;
         
-        // Add a small delay every 2 mint operations to prevent timeout accumulation
-        if i % 2 == 1 {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        // REMOVED delay for faster test execution
     }
     
     println!("✅ OPTIMIZED liquidity test foundation created successfully!");
     println!("   - Reduced token amounts for faster processing");
-    println!("   - Added micro-delays to prevent timeout accumulation");
     println!("   - Batched operations to minimize sequential processing");
     
     Ok(LiquidityTestFoundation {
@@ -240,26 +233,34 @@ pub fn create_deposit_instruction_standardized(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
+    
+    // Derive system state PDA for pause validation
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with NEW account ordering (13 accounts total)
+    // Create instruction with CORRECTED account ordering (14 accounts total)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // NEW account ordering: Pool State PDA=2, SPL Token Program=3, Main Treasury=4
-            AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 2: Pool State PDA
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program
-            AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 5: Clock Sysvar
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 6: Rent Sysvar
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 7: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 8: Token B Vault PDA
-            AccountMeta::new(*user_input_token_account, false),                     // Index 9: User Input Token Account
-            AccountMeta::new(*user_output_lp_account, false),                       // Index 10: User Output LP Token Account
-            AccountMeta::new(*lp_token_a_mint, false),                              // Index 11: LP Token A Mint
-            AccountMeta::new(*lp_token_b_mint, false),                              // Index 12: LP Token B Mint
+            // Account ordering matching processor expectations:
+            AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
+            AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 6: Clock Sysvar Account
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 7: Rent Sysvar Account
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 8: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 9: Token B Vault PDA
+            AccountMeta::new(*user_input_token_account, false),                     // Index 10: User Input Token Account
+            AccountMeta::new(*user_output_lp_account, false),                       // Index 11: User Output LP Token Account
+            AccountMeta::new(*lp_token_a_mint, false),                              // Index 12: LP Token A Mint PDA
+            AccountMeta::new(*lp_token_b_mint, false),                              // Index 13: LP Token B Mint PDA
         ],
         data: serialized,
     })
@@ -284,25 +285,33 @@ pub fn create_withdrawal_instruction_standardized(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
+    
+    // Derive system state PDA for pause validation
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with NEW account ordering (12 accounts total)
+    // Create instruction with CORRECTED account ordering (13 accounts total)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // NEW account ordering: Pool State PDA=2, SPL Token Program=3, Main Treasury=4
-            AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 2: Pool State PDA
-            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program
-            AccountMeta::new(main_treasury_pda, false),                             // Index 4: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 5: Clock Sysvar
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 6: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 7: Token B Vault PDA
-            AccountMeta::new(*user_input_lp_account, false),                        // Index 8: User Input LP Token Account
-            AccountMeta::new(*user_output_token_account, false),                    // Index 9: User Output Token Account
-            AccountMeta::new(*lp_token_a_mint, false),                              // Index 10: LP Token A Mint
-            AccountMeta::new(*lp_token_b_mint, false),                              // Index 11: LP Token B Mint
+            // Account ordering matching processor expectations:
+            AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
+            AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 6: Clock Sysvar Account
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 7: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 8: Token B Vault PDA
+            AccountMeta::new(*user_input_lp_account, false),                        // Index 9: User Input LP Token Account
+            AccountMeta::new(*user_output_token_account, false),                    // Index 10: User Output Token Account
+            AccountMeta::new(*lp_token_a_mint, false),                              // Index 11: LP Token A Mint PDA
+            AccountMeta::new(*lp_token_b_mint, false),                              // Index 12: LP Token B Mint PDA
         ],
         data: serialized,
     })
@@ -454,8 +463,8 @@ pub async fn execute_deposit_operation(
     );
     deposit_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    // Execute deposit with timeout handling
-    let timeout_duration = std::time::Duration::from_secs(10);
+    // Execute deposit with REDUCED timeout handling
+    let timeout_duration = std::time::Duration::from_secs(5); // REDUCED from 10 to 5 seconds
     let process_future = foundation.env.banks_client.process_transaction(deposit_tx);
     
     match tokio::time::timeout(timeout_duration, process_future).await {
@@ -539,8 +548,9 @@ pub async fn execute_deposit_operation(
         ).into()),
     }
     
+    // REMOVED delay after operation
     // Small delay to prevent rapid-fire requests
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     
     Ok(())
 }
@@ -580,8 +590,8 @@ pub async fn execute_withdrawal_operation(
     );
     withdrawal_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    // Add timeout handling to prevent deadlocks
-    let timeout_duration = std::time::Duration::from_secs(10); // 10 second timeout
+    // REDUCED timeout handling to prevent deadlocks
+    let timeout_duration = std::time::Duration::from_secs(5); // REDUCED from 10 to 5 seconds
     let process_future = foundation.env.banks_client.process_transaction(withdrawal_tx);
     
     match tokio::time::timeout(timeout_duration, process_future).await {
@@ -591,8 +601,9 @@ pub async fn execute_withdrawal_operation(
         ).into()),
     }
     
+    // REMOVED delay after operation  
     // Small delay to prevent rapid-fire requests
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     
     Ok(())
 }

@@ -222,6 +222,12 @@ pub async fn create_pool_new_pattern(
         &id(),
     );
 
+    // Derive system state PDA for pause validation
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+
     // Derive LP token mint PDAs
     let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
         &[frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
@@ -235,23 +241,24 @@ pub async fn create_pool_new_pattern(
     // Use main treasury for all operations (Phase 3: Centralized Treasury)
     // Old specialized treasuries have been consolidated into main treasury
 
-    // ✅ NEW ACCOUNT ORDERING: Pool State PDA=2, SPL Token Program=3, Main Treasury=4 (12 accounts)
+    // ✅ CORRECTED ACCOUNT ORDERING: Match processor expectations (13 accounts)
     let initialize_pool_ix = Instruction {
         program_id: id(),
         accounts: vec![
-            // NEW account ordering: Pool State PDA=2, SPL Token Program=3, Main Treasury=4
-            AccountMeta::new(payer.pubkey(), true),                          // Index 0: Authority/User Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
-            AccountMeta::new(config.pool_state_pda, false),                  // Index 2: Pool State PDA
-            AccountMeta::new_readonly(spl_token::id(), false),               // Index 3: SPL Token Program
-            AccountMeta::new(main_treasury_pda, false),                      // Index 4: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 5: Rent Sysvar
-            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 6: First Token Mint
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 7: Second Token Mint
-            AccountMeta::new(config.token_a_vault_pda, false),               // Index 8: Token A Vault PDA
-            AccountMeta::new(config.token_b_vault_pda, false),               // Index 9: Token B Vault PDA
-            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 10: LP Token A Mint PDA
-            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 11: LP Token B Mint PDA
+            // Account ordering matching processor documentation:
+            AccountMeta::new(payer.pubkey(), true),                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),              // Index 2: System State PDA
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program Account
+            AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 6: Rent Sysvar Account
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 7: Token A Mint Account
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 8: Token B Mint Account
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 12: LP Token B Mint PDA
         ],
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,

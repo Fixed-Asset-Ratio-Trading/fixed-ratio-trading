@@ -1388,6 +1388,7 @@ version = "0.1.1015"
 dependencies = [
  "bincode",
  "borsh 0.10.4",
+ "chrono",
  "env_logger 0.10.2",
  "num-derive 0.4.2",
  "num-traits",

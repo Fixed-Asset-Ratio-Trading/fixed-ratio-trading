@@ -39,6 +39,7 @@ pub mod liquidity_helpers;
 pub mod client_test_utils;
 pub mod view_utils;
 pub mod utils_test_utils;
+pub mod cu_measurement;
 
 // Re-export commonly used types and functions
 #[allow(unused_imports)]
@@ -55,6 +56,8 @@ pub use client_test_utils::*;
 pub use view_utils::*;
 #[allow(unused_imports)]
 pub use utils_test_utils::*;
+#[allow(unused_imports)]
+pub use cu_measurement::*;
 
 // Re-export external dependencies commonly used in tests
 // Allow unused imports since these are provided for optional use across test modules

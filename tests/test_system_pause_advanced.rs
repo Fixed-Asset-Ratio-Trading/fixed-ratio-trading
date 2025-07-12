@@ -411,13 +411,9 @@ async fn test_read_only_queries_work_when_system_paused() -> TestResult {
     match system_state_result {
         Some(state) => {
             println!("✅ SystemState account exists and contains data:");
-            println!("   Authority: {}", state.authority);
             println!("   Is paused: {}", state.is_paused);
             println!("   Pause timestamp: {}", state.pause_timestamp);
             println!("   Pause code: {}", state.pause_reason_code);
-            println!("   Account data length: {}", state.data.len());
-            println!("   Account lamports: {}", state.lamports);
-            println!("   Account owner: {}", state.owner);
         },
         None => {
             println!("✅ SystemState account exists but contains uninitialized data (as expected)");
@@ -537,13 +533,9 @@ async fn test_system_state_accessible_when_system_paused() -> TestResult {
     match system_state_result {
         Some(state) => {
             println!("✅ SystemState account is readable (somehow initialized):");
-            println!("   Authority: {}", state.authority);
             println!("   Is paused: {}", state.is_paused);
             println!("   Pause timestamp: {}", state.pause_timestamp);
             println!("   Pause code: {}", state.pause_reason_code);
-            println!("   Account data length: {}", state.data.len());
-            println!("   Account lamports: {}", state.lamports);
-            println!("   Account owner: {}", state.owner);
         },
         None => {
             println!("✅ SystemState account exists but is uninitialized (as expected)");
