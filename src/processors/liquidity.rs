@@ -301,7 +301,7 @@ pub fn process_deposit(
     // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                    // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];                            // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                 // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];                         // Index 5: Main Treasury PDA
@@ -647,7 +647,7 @@ pub fn process_withdraw(
     // ✅ OPTIMIZATION: Extract accounts using updated indexing
     let user_authority_signer = &accounts[0];                     // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                  // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA

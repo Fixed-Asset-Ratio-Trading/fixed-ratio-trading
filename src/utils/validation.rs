@@ -155,12 +155,57 @@ pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: 
 /// Validates that the system is not paused for user operations.
 /// This check takes precedence over pool-specific pause checks.
 ///
+/// **SECURITY FIX**: Now validates PDA to prevent fake SystemState accounts.
+///
 /// # Arguments
 /// * `system_state_account` - The system state account to check
+/// * `program_id` - The program ID for PDA derivation
 ///
 /// # Returns
 /// * `ProgramResult` - Success if system is not paused, error if paused
+pub fn validate_system_not_paused_secure(
+    system_state_account: &AccountInfo,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    // 🔒 SECURITY: First validate this is the correct SystemState PDA
+    let (expected_system_state_pda, _) = Pubkey::find_program_address(
+        &[crate::constants::SYSTEM_STATE_SEED_PREFIX], // b"system_state"
+        program_id,
+    );
+    
+    if *system_state_account.key != expected_system_state_pda {
+        msg!("🚨 SECURITY: Invalid SystemState PDA provided");
+        msg!("Expected: {}, Provided: {}", expected_system_state_pda, system_state_account.key);
+        return Err(PoolError::TreasuryValidationFailed {
+            expected: expected_system_state_pda,
+            provided: *system_state_account.key,
+            treasury_type: "SystemState".to_string(),
+        }.into());
+    }
+    
+    // Now safely deserialize and validate pause state
+    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
+    
+    if system_state.is_paused {
+        msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
+        msg!("Pause code: {}", system_state.pause_reason_code);
+        msg!("Paused at: {}", system_state.pause_timestamp);
+        msg!("Only system unpause is allowed");
+        return Err(PoolError::SystemPaused.into());
+    }
+    
+    Ok(())
+}
+
+/// **DEPRECATED - SECURITY VULNERABILITY**: Use validate_system_not_paused_secure instead
+/// 
+/// This function is vulnerable to fake SystemState accounts and should not be used.
+/// It's kept temporarily for backward compatibility but will be removed.
+#[deprecated(note = "Security vulnerability: Use validate_system_not_paused_secure instead")]
 pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> ProgramResult {
+    msg!("⚠️  WARNING: Using deprecated validate_system_not_paused - security vulnerability!");
+    msg!("⚠️  This function does not validate SystemState PDA and can be bypassed!");
+    
     // Deserialize system state
     let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
     

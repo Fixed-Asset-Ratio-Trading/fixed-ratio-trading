@@ -78,7 +78,7 @@ use crate::{
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
 /// - **COMPUTE SAVINGS**: Eliminated ineffective search loop (100-200 CU savings)
-/// - **DIRECT VALIDATION**: Uses direct validate_system_not_paused instead of broken safe version
+/// - **SECURE VALIDATION**: Uses secure validate_system_not_paused_secure with PDA validation
 /// - **DETERMINISTIC OUTPUTS**: Deterministic outputs based on fixed exchange rates
 /// - **CONFIGURABLE FEES**: Configurable trading fees with user expectation validation
 /// - **ACCOUNT ADDITION**: Added system state account at index 2 (10 total accounts)
@@ -94,7 +94,7 @@ pub fn process_swap(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
@@ -357,7 +357,7 @@ pub fn process_swap_hft_optimized(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused(&accounts[2])?;   // Index 2: System State PDA
+    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
@@ -656,14 +656,14 @@ pub fn process_swap_hft_optimized(
 /// 3. Output calculated from net amount using pool ratios
 /// 4. Fee accumulated in pool state for later withdrawal
 pub fn process_set_swap_fee(
-    _program_id: &Pubkey,
+    program_id: &Pubkey,
     fee_basis_points: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing SetSwapFee: {} basis points", fee_basis_points);
     
     let owner_authority_signer = &accounts[0];     // Index 0: Pool Owner Authority Signer
-    crate::utils::validation::validate_system_not_paused(&accounts[1])?;   // Index 1: System State PDA
+    crate::utils::validation::validate_system_not_paused_secure(&accounts[1], program_id)?;   // Index 1: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
     
     // Load and verify pool state
