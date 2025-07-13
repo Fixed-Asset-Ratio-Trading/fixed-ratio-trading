@@ -126,30 +126,86 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
 /// * `ProgramResult` - Success if pool is initialized, error otherwise
 pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
     if !pool_state.is_initialized {
-        msg!("Pool is not yet initialized");
+        msg!("Pool state not initialized");
         return Err(ProgramError::UninitializedAccount);
     }
     Ok(())
 }
 
-/// Validates that a pool is not paused (for user operations).
-/// 
-/// **NEW PAUSE SYSTEM**: Simple pool-level pause validation without auto-unpause.
-/// Pool pause persists indefinitely until manually unpaused by owner action.
+/// Validates that a pool is not paused (pool-specific pause check).
 ///
 /// # Arguments
 /// * `pool_state` - The pool state to validate
-/// * `_current_timestamp` - Timestamp (unused in new system, kept for compatibility)
+/// * `_current_timestamp` - Current timestamp (for future time-based pause logic)
 ///
 /// # Returns
-/// * `ProgramResult` - Success if pool is not paused, error if paused
+/// * `ProgramResult` - Success if pool is not paused, error otherwise
 pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
     if pool_state.paused {
-        msg!("Pool operations are currently paused (indefinite until manual unpause)");
-        msg!("Use owner action to unpause pool operations");
+        msg!("Pool is paused");
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())
+}
+
+/// **SECURITY CRITICAL**: Validates and deserializes PoolState with PDA verification.
+/// 
+/// This function prevents malicious users from passing fake PoolState accounts by:
+/// 1. Deriving the expected PoolState PDA from the pool's token mints and ratio
+/// 2. Validating the provided account matches the expected PDA
+/// 3. Only then deserializing the PoolState data
+/// 
+/// # Arguments
+/// * `pool_state_account` - The pool state account to validate and deserialize
+/// * `program_id` - The program ID for PDA derivation
+/// 
+/// # Returns
+/// * `Result<PoolState, ProgramError>` - The validated and deserialized PoolState or error
+pub fn validate_and_deserialize_pool_state_secure(
+    pool_state_account: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<PoolState, ProgramError> {
+    // First, deserialize to get the token mints and ratio for PDA derivation
+    let pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
+    
+    // Now validate this is the correct PDA for these parameters
+    let (expected_pool_state_pda, _) = Pubkey::find_program_address(
+        &[
+            POOL_STATE_SEED_PREFIX,
+            pool_state_data.token_a_mint.as_ref(),
+            pool_state_data.token_b_mint.as_ref(),
+            &pool_state_data.ratio_a_numerator.to_le_bytes(),
+            &pool_state_data.ratio_b_denominator.to_le_bytes(),
+        ],
+        program_id,
+    );
+    
+    if *pool_state_account.key != expected_pool_state_pda {
+        msg!("🚨 SECURITY: Invalid PoolState PDA provided");
+        msg!("Expected: {}, Provided: {}", expected_pool_state_pda, pool_state_account.key);
+        msg!("Token A: {}, Token B: {}", pool_state_data.token_a_mint, pool_state_data.token_b_mint);
+        msg!("Ratio: {}:{}", pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator);
+        return Err(PoolError::TreasuryValidationFailed {
+            expected: expected_pool_state_pda,
+            provided: *pool_state_account.key,
+            treasury_type: "PoolState".to_string(),
+        }.into());
+    }
+    
+    // PDA validation passed, return the deserialized data
+    Ok(pool_state_data)
+}
+
+/// **DEPRECATED - SECURITY VULNERABILITY**: Use validate_and_deserialize_pool_state_secure instead
+/// 
+/// This function is vulnerable to fake PoolState accounts and should not be used.
+/// It's kept temporarily for backward compatibility but will be removed.
+#[deprecated(note = "Security vulnerability: Use validate_and_deserialize_pool_state_secure instead")]
+pub fn validate_pool_state_unsafe(pool_state_account: &AccountInfo) -> Result<PoolState, ProgramError> {
+    msg!("⚠️  WARNING: Using deprecated validate_pool_state_unsafe - security vulnerability!");
+    msg!("⚠️  This function does not validate PoolState PDA and can be bypassed!");
+    
+    PoolState::deserialize(&mut &pool_state_account.data.borrow()[..]).map_err(|_| ProgramError::InvalidAccountData)
 }
 
 /// Validates that the system is not paused for user operations.

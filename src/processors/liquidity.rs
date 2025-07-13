@@ -340,8 +340,8 @@ pub fn process_deposit(
 
     msg!("✅ Deposit fee collected successfully - proceeding with deposit");
 
-    // Read and validate pool state
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
+    // Read and validate pool state (SECURITY: Now validates PDA)
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
@@ -685,8 +685,8 @@ pub fn process_withdraw(
         return Err(ProgramError::InvalidArgument);
     }
 
-    // ✅ LOAD POOL STATE: Single deserialization 
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
+    // ✅ LOAD POOL STATE: Single deserialization (SECURITY: Now validates PDA)
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
     if !pool_state_data.is_initialized {
         msg!("Pool is not initialized");

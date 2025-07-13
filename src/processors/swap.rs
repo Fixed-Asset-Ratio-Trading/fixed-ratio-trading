@@ -126,7 +126,7 @@ pub fn process_swap(
         program_id,
     )?;
 
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     if !pool_state_data.is_initialized {
         msg!("Pool not initialized");
         return Err(ProgramError::UninitializedAccount);
@@ -389,8 +389,8 @@ pub fn process_swap_hft_optimized(
         program_id,
     )?;
 
-    // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
+    // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation (SECURITY: Now validates PDA)
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     if !pool_state_data.is_initialized {
         return Err(ProgramError::UninitializedAccount);
     }
@@ -666,8 +666,8 @@ pub fn process_set_swap_fee(
     crate::utils::validation::validate_system_not_paused_secure(&accounts[1], program_id)?;   // Index 1: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
     
-    // Load and verify pool state
-    let mut pool_state_data = PoolState::deserialize(&mut &pool_state_pda.data.borrow()[..])?;
+    // Load and verify pool state (SECURITY: Now validates PDA)
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     if *owner_authority_signer.key != pool_state_data.owner {
         msg!("Only pool owner can set swap fees");
         return Err(ProgramError::InvalidAccountData);

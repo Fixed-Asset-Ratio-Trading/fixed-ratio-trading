@@ -30,7 +30,7 @@ pub fn check_rent_exempt(account: &AccountInfo, program_id: &Pubkey, rent: &Rent
     // Check if the account is owned by the program
     if account.owner == program_id {
         // For program-owned accounts, use the new rent tracking mechanism
-        ensure_rent_exempt(account, rent, current_slot)
+        ensure_rent_exempt(account, rent, current_slot, program_id)
     } else {
         // For other accounts, use the simple check
         let minimum_balance = rent.minimum_balance(account.data_len());
@@ -62,10 +62,11 @@ fn ensure_rent_exempt(
     account: &AccountInfo,
     rent: &Rent,
     current_slot: u64,
+    program_id: &Pubkey,
 ) -> ProgramResult {
     // For pool state accounts, use the enhanced tracking
     if account.data_len() >= PoolState::get_packed_len() {
-        let mut pool_state_data = PoolState::deserialize(&mut &account.data.borrow()[..])?;
+        let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(account, program_id)?;
         
         // Update rent requirements if needed
         if pool_state_data.rent_requirements.update_if_needed(rent, current_slot) {
