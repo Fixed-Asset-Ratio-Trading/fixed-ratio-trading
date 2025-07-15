@@ -355,11 +355,11 @@ async fn test_withdrawal_authorization() {
         
         // Calculate available balance (mirrors processor logic)
         let available_balance = if treasury_balance > rent_exempt_minimum {
-            treasury_balance - rent_exempt_minimum
-        } else {
-            0
-        };
-        
+        treasury_balance - rent_exempt_minimum
+    } else {
+        0
+    };
+    
         println!("  Treasury balance: {} lamports", treasury_balance);
         println!("  Available for withdrawal: {} lamports", available_balance);
         
