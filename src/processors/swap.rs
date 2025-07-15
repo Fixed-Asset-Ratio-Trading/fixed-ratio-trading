@@ -54,7 +54,7 @@ use crate::{
 /// # Arguments
 /// * `program_id` - The program ID
 /// * `amount_in` - The amount of input tokens to swap
-/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (9 accounts total)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
@@ -63,11 +63,10 @@ use crate::{
 /// 2. **System State PDA** (readable) - System state PDA for pause validation
 /// 3. **Pool State PDA** (writable) - Pool state PDA
 /// 4. **SPL Token Program Account** (readable) - Token program account
-/// 5. **Main Treasury PDA** (writable) - For fee collection
-/// 6. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 7. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 8. **User Input Token Account** (writable) - User's input token account
-/// 9. **User Output Token Account** (writable) - User's output token account
+/// 5. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 7. **User Input Token Account** (writable) - User's input token account
+/// 8. **User Output Token Account** (writable) - User's output token account
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -94,26 +93,32 @@ pub fn process_swap(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
+    let system_state_pda = &accounts[2];           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
+    
+    // Validate system is not paused
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
-    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA (shifted down)
-    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA (shifted down)
-    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account (shifted down)
-    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account (shifted down)
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
     
-    // ✅ POOL SWAP PAUSE: Check pool-specific swap pause
-    validate_pool_swaps_not_paused(pool_state_pda)?;
-    
     // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
     // invoke() operations require signatures. Manual signer checks are
     // redundant and waste compute units on every function call.
+
+    // ✅ SINGLE DESERIALIZATION: Deserialize pool state once for all validations
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    
+    // ✅ POOL SWAP PAUSE: Check pool-specific swap pause (using already deserialized data)
+    validate_pool_swaps_not_paused(&pool_state_data)?;
 
     // ✅ DISTRIBUTED FEE COLLECTION: Collect to pool state
     use crate::utils::fee_validation::collect_regular_swap_fee_distributed;
@@ -124,8 +129,6 @@ pub fn process_swap(
         system_program_account,
         program_id,
     )?;
-
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
     // If we successfully deserialized pool_state_data, the pool is initialized
 
@@ -313,7 +316,7 @@ pub fn process_swap(
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and signing
 /// * `amount_in` - The amount of input tokens to swap (including fees)
-/// * `accounts` - Array of accounts in optimized order (10 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (9 accounts total)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
@@ -322,11 +325,10 @@ pub fn process_swap(
 /// 2. **System State PDA** (readable) - System state PDA for pause validation
 /// 3. **Pool State PDA** (writable) - Pool state PDA
 /// 4. **SPL Token Program Account** (readable) - Token program account
-/// 5. **Main Treasury PDA** (writable) - For fee collection
-/// 6. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
-/// 7. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
-/// 8. **User Input Token Account** (writable) - User's input token account
-/// 9. **User Output Token Account** (writable) - User's output token account
+/// 5. **Token A Vault PDA** (writable) - Pool's Token A vault PDA
+/// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
+/// 7. **User Input Token Account** (writable) - User's input token account
+/// 8. **User Output Token Account** (writable) - User's output token account
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -354,26 +356,32 @@ pub fn process_swap_hft_optimized(
     // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
+    let system_state_pda = &accounts[2];           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
+    
+    // Validate system is not paused
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
-    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA (shifted down)
-    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA (shifted down)
-    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account (shifted down)
-    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account (shifted down)
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
 
     // 🚀 COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
 
-    // 🚀 OPTIMIZATION 3: Pool pause validation (no debug message)
-    validate_pool_swaps_not_paused(pool_state_pda)?;
-
     // 🚀 COMPUTE OPTIMIZATION: No redundant signer verification
     // Solana runtime automatically fails with MissingRequiredSignature when
     // invoke() operations require signatures. Manual signer checks are
     // redundant and waste compute units on every function call.
+
+    // 🚀 OPTIMIZATION 3: Single pool state deserialization for all validations (SECURITY: Validates PDA)
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+
+    // 🚀 OPTIMIZATION 4: Pool pause validation using already deserialized data (no debug message)
+    validate_pool_swaps_not_paused(&pool_state_data)?;
 
     // ✅ DISTRIBUTED HFT FEE COLLECTION: Collect to pool state
     use crate::utils::fee_validation::collect_hft_swap_fee_distributed;
@@ -384,20 +392,17 @@ pub fn process_swap_hft_optimized(
         system_program_account,
         program_id,
     )?;
-
-    // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation (SECURITY: Now validates PDA)
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
     // If we successfully deserialized pool_state_data, the pool is initialized
 
-    // 🚀 OPTIMIZATION 6: Batch token account data loading (minimize borrow calls)
+    // 🚀 OPTIMIZATION 5: Batch token account data loading (minimize borrow calls)
     let user_input_token_data = TokenAccount::unpack_from_slice(&user_input_token_account.data.borrow())?;
     let user_output_token_data = TokenAccount::unpack_from_slice(&user_output_token_account.data.borrow())?;
 
-    // 🚀 OPTIMIZATION 7: Derive input token mint from user's input token account
+    // 🚀 OPTIMIZATION 6: Derive input token mint from user's input token account
     let input_token_mint_key = user_input_token_data.mint;
 
-    // 🚀 OPTIMIZATION 8: Optimized swap direction detection with validation
+    // 🚀 OPTIMIZATION 7: Optimized swap direction detection with validation
     let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
         if input_token_mint_key == pool_state_data.token_a_mint {
             // A->B swap validation
@@ -417,7 +422,7 @@ pub fn process_swap_hft_optimized(
             return Err(ProgramError::InvalidArgument);
         };
 
-    // 🚀 OPTIMIZATION 9: Batched user account validations (single conditional block)
+    // 🚀 OPTIMIZATION 8: Batched user account validations (single conditional block)
     if user_input_token_data.mint != input_token_mint_key ||
        user_input_token_data.owner != *user_authority_signer.key ||
        user_input_token_data.amount < amount_in ||
@@ -426,12 +431,12 @@ pub fn process_swap_hft_optimized(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    // 🚀 OPTIMIZATION 10: Optimized SPL Token program validation
+    // 🚀 OPTIMIZATION 9: Optimized SPL Token program validation
     if *token_program_account.key != spl_token::id() {
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    // 🚀 OPTIMIZATION 11: Efficient amount calculation with early zero checks
+    // 🚀 OPTIMIZATION 10: Efficient amount calculation with early zero checks
     let (numerator, denominator) = if input_is_token_a {
         if pool_state_data.ratio_a_numerator == 0 {
             return Err(ProgramError::InvalidAccountData);
@@ -457,7 +462,7 @@ pub fn process_swap_hft_optimized(
         }.into());
     }
 
-    // 🚀 OPTIMIZATION 12: Efficient liquidity validation
+    // 🚀 OPTIMIZATION 11: Efficient liquidity validation
     let available_liquidity = if input_is_token_a {
         pool_state_data.total_token_b_liquidity
     } else {
@@ -468,7 +473,7 @@ pub fn process_swap_hft_optimized(
         return Err(ProgramError::InsufficientFunds);
     }
 
-    // 🚀 OPTIMIZATION 13: Streamlined PDA seed construction using pool state data
+    // 🚀 OPTIMIZATION 12: Streamlined PDA seed construction using pool state data
     let pool_state_pda_seeds = &[
         POOL_STATE_SEED_PREFIX,
         pool_state_data.token_a_mint.as_ref(),
@@ -478,7 +483,7 @@ pub fn process_swap_hft_optimized(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    // 🚀 OPTIMIZATION 14: Direct invoke calls (no intermediate instruction creation)
+    // 🚀 OPTIMIZATION 13: Direct invoke calls (no intermediate instruction creation)
     invoke(
         &token_instruction::transfer(
             token_program_account.key,
@@ -514,7 +519,7 @@ pub fn process_swap_hft_optimized(
         &[pool_state_pda_seeds],
     )?;
 
-    // 🚀 OPTIMIZATION 15: Batch liquidity updates (single conditional)
+    // 🚀 OPTIMIZATION 14: Batch liquidity updates (single conditional)
     if input_is_token_a {
         pool_state_data.total_token_a_liquidity = pool_state_data.total_token_a_liquidity
             .checked_add(amount_in)
@@ -531,7 +536,7 @@ pub fn process_swap_hft_optimized(
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
 
-    // 🚀 OPTIMIZATION 16: Single serialization at end (critical for CU savings)
+    // 🚀 OPTIMIZATION 15: Single serialization at end (critical for CU savings)
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
     
@@ -658,11 +663,14 @@ pub fn process_set_swap_fee(
     msg!("Processing SetSwapFee: {} basis points", fee_basis_points);
     
     let owner_authority_signer = &accounts[0];     // Index 0: Pool Owner Authority Signer
-    crate::utils::validation::validate_system_not_paused_secure(&accounts[1], program_id)?;   // Index 1: System State PDA (SECURITY: Now validates PDA)
+    let system_state_pda = &accounts[1];           // Index 1: System State PDA
     let pool_state_pda = &accounts[2];             // Index 2: Pool State PDA
     
+    // Validate system is not paused
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
+    
     // Load and verify pool state (SECURITY: Now validates PDA)
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    let pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     if *owner_authority_signer.key != pool_state_data.owner {
         msg!("Only pool owner can set swap fees");
         return Err(ProgramError::InvalidAccountData);
@@ -718,14 +726,12 @@ pub fn process_set_swap_fee(
 /// owner-initiated pool pause is active.
 /// 
 /// # Arguments
-/// * `pool_state_account` - Pool state PDA account containing pause status
+/// * `pool_state_data` - Already deserialized pool state data
 /// 
 /// # Returns
 /// * `ProgramResult` - Success if swaps are enabled, error if paused
-fn validate_pool_swaps_not_paused(pool_state_account: &AccountInfo) -> ProgramResult {
-    let pool_state_data = PoolState::try_from_slice(&pool_state_account.data.borrow())?;
-    
-    if pool_state_data.swaps_paused {
+fn validate_pool_swaps_not_paused(pool_state_data: &PoolState) -> ProgramResult {
+    if pool_state_data.swaps_paused() {
         msg!("Pool swaps are currently paused by owner");
         msg!("Note: Deposits and withdrawals are still available");
         msg!("Note: Owner can manage pause governance and reasons");

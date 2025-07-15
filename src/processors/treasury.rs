@@ -22,8 +22,7 @@ use solana_program::{
 
 use crate::{
     constants::*,
-    error::PoolError,
-    state::{MainTreasuryState, SystemState},
+    state::{MainTreasuryState},
     utils::validation::{validate_writable},
 };
 
@@ -99,14 +98,8 @@ pub fn process_withdraw_treasury_fees(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // ✅ AUTHORITY VALIDATION: Use program upgrade authority via SystemState
-    let system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
-    if system_state.is_paused {
-        msg!("❌ SYSTEM PAUSED: Treasury operations blocked during system pause");
-        msg!("Pause code: {}", system_state.pause_reason_code);
-        msg!("Paused at: {}", system_state.pause_timestamp);
-        return Err(PoolError::SystemPaused.into());
-    }
+    // ✅ AUTHORITY VALIDATION: Use secure system pause validation
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
     use crate::utils::program_authority::validate_program_upgrade_authority;
     validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;

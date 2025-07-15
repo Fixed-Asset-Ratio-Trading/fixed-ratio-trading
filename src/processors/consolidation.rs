@@ -28,7 +28,7 @@ use crate::{
 /// 
 /// # Flexible Pause Requirements
 /// 1. **System Paused**: If system is paused, all specified pools are consolidated
-/// 2. **System Active**: If system is NOT paused, only pools with both `swaps_paused` AND `paused` set to true are consolidated
+/// 2. **System Active**: If system is NOT paused, only pools with both `swaps_paused` AND `liquidity_paused` set to true are consolidated
 /// 3. **Individual Control**: Allows pausing specific pools without affecting entire system
 /// 4. **Race Protection**: Paused state prevents concurrent operations during consolidation
 /// 
@@ -157,12 +157,12 @@ fn perform_batch_consolidation(
             }
             ConsolidationMode::IndividualPoolPause => {
                 // System active - only pools with both swaps_paused AND paused are eligible
-                if pool_state.swaps_paused && pool_state.paused {
-                    msg!("✅ Pool {} is individually paused (swaps_paused: true, paused: true)", pool_account.key);
+                if pool_state.swaps_paused() && pool_state.liquidity_paused() {
+                    msg!("✅ Pool {} is individually paused (swaps_paused: true, liquidity_paused: true)", pool_account.key);
                     true
                 } else {
-                    msg!("ℹ️ Pool {} not eligible - swaps_paused: {}, paused: {}", 
-                         pool_account.key, pool_state.swaps_paused, pool_state.paused);
+                    msg!("ℹ️ Pool {} not eligible - swaps_paused: {}, liquidity_paused: {}", 
+                         pool_account.key, pool_state.swaps_paused(), pool_state.liquidity_paused());
                     false
                 }
             }
