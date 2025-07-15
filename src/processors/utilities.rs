@@ -260,15 +260,15 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Pool Authority Bump Seed: {}", pool_state.pool_authority_bump_seed);
     msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
-    msg!("Pool Paused: {}", pool_state.paused);
-    msg!("Swaps Paused: {}", pool_state.swaps_paused);
+    msg!("Liquidity Paused: {}", pool_state.liquidity_paused());
+    msg!("Swaps Paused: {}", pool_state.swaps_paused());
     
     // Enhanced operations status
     msg!("=== OPERATIONS STATUS ===");
     msg!("Deposits: ENABLED");
     msg!("Withdrawals: ENABLED");
     
-    if pool_state.swaps_paused {
+    if pool_state.swaps_paused() {
         msg!("Swaps: PAUSED (Owner Action)");
         msg!("  - Requires manual unpause by owner");
         msg!("  - Controlled by pool owner");
@@ -301,11 +301,11 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     
     // Log comprehensive pause status for public visibility
     msg!("=== POOL STATUS ===");
-    msg!("Swaps: {}", if pool_state_data.swaps_paused { "PAUSED" } else { "ENABLED" });
+    msg!("Swaps: {}", if pool_state_data.swaps_paused() { "PAUSED" } else { "ENABLED" });
     msg!("Deposits: ENABLED");  // Always enabled (only system pause affects)
     msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
     
-    if pool_state_data.swaps_paused {
+    if pool_state_data.swaps_paused() {
         msg!("=== OWNER PAUSE ===");
         msg!("Swaps paused by owner action");
         msg!("Control: Pool owner");
@@ -511,10 +511,10 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
 /// validate_pool_initialized is no longer needed as we now use the pool state PDA to check if the pool is initialized.
 /// **PHASE 1 UPDATE**: Pool existence = initialization status
 
-/// Validates that a pool is not paused.
-pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {
-    if pool_state.paused {
-        msg!("Pool operations are currently paused");
+/// Validates that liquidity operations are not paused.
+pub fn validate_liquidity_not_paused(pool_state: &PoolState) -> ProgramResult {
+    if pool_state.liquidity_paused() {
+        msg!("Liquidity operations (deposits/withdrawals) are currently paused");
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

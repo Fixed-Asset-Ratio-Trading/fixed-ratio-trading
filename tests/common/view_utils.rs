@@ -10,7 +10,7 @@ use solana_program::{
     account_info::next_account_info,
 };
 use borsh::BorshDeserialize;
-use fixed_ratio_trading::{PoolState};
+use fixed_ratio_trading::{PoolState, constants::FIXED_SWAP_FEE_BASIS_POINTS};
 
 /// **VIEW INSTRUCTION**: Returns comprehensive pool information
 /// 
@@ -47,17 +47,17 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Pool Authority Bump Seed: {}", pool_state.pool_authority_bump_seed);
     msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
-    msg!("Is Initialized: {}", pool_state.is_initialized);
-    msg!("Pool Paused: {}", pool_state.paused);
-    msg!("Swaps Paused: {}", pool_state.swaps_paused);
-    msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
+    msg!("Is Initialized: {}", true); // Pool existence = initialization
+    msg!("Liquidity Paused: {}", pool_state.liquidity_paused());
+    msg!("Swaps Paused: {}", pool_state.swaps_paused());
+    msg!("Swap Fee Basis Points: {}", FIXED_SWAP_FEE_BASIS_POINTS);
     
     // Enhanced operations status
     msg!("=== OPERATIONS STATUS ===");
     msg!("Deposits: ENABLED");
     msg!("Withdrawals: ENABLED");
     
-    if pool_state.swaps_paused {
+    if pool_state.swaps_paused() {
         msg!("Swaps: PAUSED (Owner Action)");
         msg!("  - Requires manual unpause by owner");
         msg!("  - Controlled by pool owner");
@@ -88,11 +88,11 @@ pub fn get_pool_pause_status(accounts: &[AccountInfo]) -> ProgramResult {
     
     // Log comprehensive pause status for public visibility
     msg!("=== POOL STATUS ===");
-    msg!("Swaps: {}", if pool_state_data.swaps_paused { "PAUSED" } else { "ENABLED" });
+    msg!("Swaps: {}", if pool_state_data.swaps_paused() { "PAUSED" } else { "ENABLED" });
     msg!("Deposits: ENABLED");  // Always enabled (only system pause affects)
     msg!("Withdrawals: ENABLED"); // Always enabled (only system pause affects)
     
-    if pool_state_data.swaps_paused {
+    if pool_state_data.swaps_paused() {
         msg!("=== OWNER PAUSE ===");
         msg!("Swaps paused by owner action");
         msg!("Control: Pool owner");
@@ -164,8 +164,8 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     // Pool fees (percentage-based on tokens)
     msg!("Pool Fees (Trading Fees):");
     msg!("  Current Swap Fee Rate: {} basis points ({:.2}%)", 
-         pool_state.swap_fee_basis_points, 
-         pool_state.swap_fee_basis_points as f64 / 100.0);
+         FIXED_SWAP_FEE_BASIS_POINTS, 
+         FIXED_SWAP_FEE_BASIS_POINTS as f64 / 100.0);
     msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
     msg!("  Collected Token B Fees: {}", pool_state.collected_fees_token_b);
     msg!("  Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);

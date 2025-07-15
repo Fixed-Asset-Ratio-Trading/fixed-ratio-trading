@@ -121,36 +121,12 @@ pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 pub const MINIMUM_RENT_BUFFER: u64 = 1000;
 
 //=============================================================================
-// FEE TYPE CODES
-//=============================================================================
-// These byte codes are used to identify different fee types in validation
-// and tracking functions. They provide efficient fee categorization.
-
-/// Fee type code for pool creation/registration fees
-pub const FEE_TYPE_POOL_CREATION: u8 = 1;
-
-/// Fee type code for liquidity operation fees (deposits and withdrawals)
-pub const FEE_TYPE_LIQUIDITY_OPERATION: u8 = 2;
-
-/// Fee type code for regular swap operation fees
-pub const FEE_TYPE_REGULAR_SWAP: u8 = 3;
-
-/// Fee type code for HFT optimized swap operation fees
-pub const FEE_TYPE_HFT_SWAP: u8 = 4;
-
-//=============================================================================
 // TREASURY TYPE CODES
 //=============================================================================
 // These codes identify different treasury types for validation purposes.
 
 /// Treasury type code for main treasury (all fees)
 pub const TREASURY_TYPE_MAIN: u8 = 1;
-
-/// Treasury type code for swap treasury (legacy - now unused)
-pub const TREASURY_TYPE_SWAP: u8 = 2;
-
-/// Treasury type code for HFT treasury (legacy - now unused) 
-pub const TREASURY_TYPE_HFT: u8 = 3;
 
 //=============================================================================
 // VALIDATION CONTEXT CODES
@@ -162,12 +138,6 @@ pub const VALIDATION_CONTEXT_FEE: u8 = 1;
 
 /// Validation context for pool creation operations
 pub const VALIDATION_CONTEXT_POOL_CREATION: u8 = 2;
-
-/// Validation context for liquidity operations
-pub const VALIDATION_CONTEXT_LIQUIDITY: u8 = 3;
-
-/// Validation context for swap operations
-pub const VALIDATION_CONTEXT_SWAP: u8 = 4;
 
 //=============================================================================
 // PDA SEED PREFIXES
@@ -186,23 +156,11 @@ pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
 /// Main treasury seed prefix for the centralized treasury PDA
 pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
 
-/// Legacy treasury seed prefix (points to main treasury for compatibility)
-pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
-
 pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";
 
 pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
 
-//=============================================================================
-// SYSTEM PAUSE CONFIGURATION
-//=============================================================================
 
-/// Default reason code when system is paused without specific reason
-pub const DEFAULT_PAUSE_REASON: u8 = 0;
-
-/// Maximum time in seconds a system pause can remain active (30 days)
-/// After this time, the system automatically allows unpausing
-pub const MAX_PAUSE_DURATION_SECONDS: i64 = 30 * 24 * 60 * 60; // 30 days
 
 //=============================================================================
 // RENT AND ACCOUNT CONFIGURATION  
@@ -232,30 +190,34 @@ pub const FIXED_SWAP_FEE_BASIS_POINTS: u64 = 25;
 // POOL PAUSE BITWISE FLAGS
 //=============================================================================
 
-/// Pause general pool operations (deposits and withdrawals)
-/// Sets pool_state.paused = true
-pub const PAUSE_FLAG_GENERAL: u8 = 0b01; // 1
+/// Pause liquidity operations (deposits and withdrawals only)
+/// Sets POOL_FLAG_LIQUIDITY_PAUSED in pool_state.flags
+pub const PAUSE_FLAG_LIQUIDITY: u8 = 0b01; // 1
 
 /// Pause swap operations only
-/// Sets pool_state.swaps_paused = true  
+/// Sets POOL_FLAG_SWAPS_PAUSED in pool_state.flags
 pub const PAUSE_FLAG_SWAPS: u8 = 0b10; // 2
 
-/// Pause all operations (general + swaps)
+/// Pause all operations (liquidity + swaps)
 /// Required combination for consolidation eligibility
-pub const PAUSE_FLAG_ALL: u8 = PAUSE_FLAG_GENERAL | PAUSE_FLAG_SWAPS; // 3
-
-/// Maximum valid pause flag value
-pub const PAUSE_FLAG_MAX: u8 = PAUSE_FLAG_ALL;
+pub const PAUSE_FLAG_ALL: u8 = PAUSE_FLAG_LIQUIDITY | PAUSE_FLAG_SWAPS; // 3
 
 //=============================================================================
-// ERROR CODES FOR CONSOLIDATION
+// POOL STATE BITWISE FLAGS
 //=============================================================================
 
-/// Error code for consolidation failures
-pub const ERROR_CONSOLIDATION_FAILED: u32 = 5001;
+/// Pool state flag: One-to-many ratio configuration
+pub const POOL_FLAG_ONE_TO_MANY_RATIO: u8 = 0b00001; // 1
 
-/// Error code for invalid consolidation batch
-pub const ERROR_INVALID_CONSOLIDATION_BATCH: u32 = 5002;
+/// Pool state flag: Liquidity operations paused (deposits/withdrawals only)
+pub const POOL_FLAG_LIQUIDITY_PAUSED: u8 = 0b00010; // 2
 
-/// Error code for consolidation during active operations
-pub const ERROR_CONSOLIDATION_RACE_CONDITION: u32 = 5003;
+/// Pool state flag: Swap operations paused
+pub const POOL_FLAG_SWAPS_PAUSED: u8 = 0b00100; // 4
+
+/// Pool state flag: Withdrawal protection active
+pub const POOL_FLAG_WITHDRAWAL_PROTECTION: u8 = 0b01000; // 8
+
+/// Pool state flag: Single LP token mode (future feature)
+pub const POOL_FLAG_SINGLE_LP_TOKEN: u8 = 0b10000; // 16
+

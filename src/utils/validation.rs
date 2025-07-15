@@ -127,10 +127,10 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
 /// * `_current_timestamp` - Current timestamp (for future time-based pause logic)
 ///
 /// # Returns
-/// * `ProgramResult` - Success if pool is not paused, error otherwise
-pub fn validate_pool_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
-    if pool_state.paused {
-        msg!("Pool is paused");
+/// * `ProgramResult` - Success if liquidity operations are not paused, error otherwise
+pub fn validate_liquidity_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
+    if pool_state.liquidity_paused() {
+        msg!("Liquidity operations (deposits/withdrawals) are paused");
         return Err(PoolError::PoolPaused.into());
     }
     Ok(())

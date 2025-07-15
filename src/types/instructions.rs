@@ -322,7 +322,7 @@ pub enum PoolInstruction {
     /// 
     /// Pauses pool operations using bitwise flags (pool owner only).
     /// Uses bitwise flags to control which operations to pause:
-    /// - PAUSE_FLAG_GENERAL (1): Pause deposits/withdrawals
+    /// - PAUSE_FLAG_LIQUIDITY (1): Pause deposits/withdrawals
     /// - PAUSE_FLAG_SWAPS (2): Pause swaps
     /// - PAUSE_FLAG_ALL (3): Pause both (required for consolidation eligibility)
     /// 
@@ -343,7 +343,7 @@ pub enum PoolInstruction {
     /// 
     /// Unpauses pool operations using bitwise flags (pool owner only).
     /// Uses bitwise flags to control which operations to unpause:
-    /// - PAUSE_FLAG_GENERAL (1): Unpause deposits/withdrawals
+    /// - PAUSE_FLAG_LIQUIDITY (1): Unpause deposits/withdrawals
     /// - PAUSE_FLAG_SWAPS (2): Unpause swaps
     /// - PAUSE_FLAG_ALL (3): Unpause both operations
     /// 

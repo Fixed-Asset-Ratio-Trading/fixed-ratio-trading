@@ -85,7 +85,6 @@ pub struct PoolState {
     pub lp_token_b_mint: Pubkey,
     pub ratio_a_numerator: u64,
     pub ratio_b_denominator: u64,
-    pub one_to_many_ratio: bool,
     pub total_token_a_liquidity: u64,
     pub total_token_b_liquidity: u64,
     pub pool_authority_bump_seed: u8,
@@ -94,18 +93,14 @@ pub struct PoolState {
     pub lp_token_a_mint_bump_seed: u8,
     pub lp_token_b_mint_bump_seed: u8,
     pub rent_requirements: RentRequirements,
-    pub paused: bool, // Liquidity pause (separate from system pause)
-    pub swaps_paused: bool, // Swap-specific pause within this pool
     
-    // Automatic withdrawal protection
-    pub withdrawal_protection_active: bool,
-    
-    // Future feature: Single LP token mode
-    // When implemented, this will allow only LP token A (the "multiple" token) to be issued
-    // for liquidity provision, while still allowing withdrawals of either token A or B
-    // at the fixed ratio. This simplifies LP token management for certain pool configurations.
-    // NOTE: Currently not implemented - remains false regardless of input
-    pub only_lp_token_a_for_both: bool,
+    /// Pool state flags using bitwise operations
+    /// Bit 0 (1): One-to-many ratio configuration
+    /// Bit 1 (2): Liquidity operations paused (deposits/withdrawals only)
+    /// Bit 2 (4): Swap operations paused
+    /// Bit 3 (8): Withdrawal protection active
+    /// Bit 4 (16): Single LP token mode (future feature)
+    pub flags: u8,
     
     // Fee collection and withdrawal tracking (Token fees only)
     pub collected_fees_token_a: u64,
@@ -152,7 +147,6 @@ impl Default for PoolState {
             lp_token_b_mint: Pubkey::default(),
             ratio_a_numerator: 0,
             ratio_b_denominator: 0,
-            one_to_many_ratio: false,
             total_token_a_liquidity: 0,
             total_token_b_liquidity: 0,
             pool_authority_bump_seed: 0,
@@ -161,10 +155,7 @@ impl Default for PoolState {
             lp_token_a_mint_bump_seed: 0,
             lp_token_b_mint_bump_seed: 0,
             rent_requirements: RentRequirements::default(),
-            paused: false,
-            swaps_paused: false,
-            withdrawal_protection_active: false,
-            only_lp_token_a_for_both: false,
+            flags: 0, // All flags start as false (0)
             collected_fees_token_a: 0,
             collected_fees_token_b: 0,
             total_fees_withdrawn_token_a: 0,
@@ -193,7 +184,6 @@ impl PoolState {
         32 + // lp_token_b_mint
         8 +  // ratio_a_numerator
         8 +  // ratio_b_denominator
-        1 +  // one_to_many_ratio
         8 +  // total_token_a_liquidity
         8 +  // total_token_b_liquidity
         1 +  // pool_authority_bump_seed
@@ -202,10 +192,7 @@ impl PoolState {
         1 +  // lp_token_a_mint_bump_seed
         1 +  // lp_token_b_mint_bump_seed
         RentRequirements::get_packed_len() + // rent_requirements
-        1 +  // paused
-        1 +  // swaps_paused
-        1 +  // withdrawal_protection_active
-        1 +  // only_lp_token_a_for_both
+        1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, only_lp_token_a_for_both)
         
         // Fee collection and withdrawal tracking (Token fees)
         8 +  // collected_fees_token_a
@@ -230,6 +217,78 @@ impl PoolState {
         // - collected_pool_creation_fees: u64 (8 bytes) - Pool creation happens only once, goes to MainTreasury
         
         // **NET ADDITION: +39 bytes per pool** (56 added - 17 removed)
+    }
+    
+    // **NEW: BITWISE FLAG HELPER METHODS**
+    
+    /// Checks if one-to-many ratio is configured
+    pub fn one_to_many_ratio(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO != 0
+    }
+    
+    /// Sets or clears the one-to-many ratio flag
+    pub fn set_one_to_many_ratio(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+        }
+    }
+    
+    /// Checks if liquidity operations (deposits/withdrawals) are paused
+    pub fn liquidity_paused(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_LIQUIDITY_PAUSED != 0
+    }
+    
+    /// Sets or clears the liquidity operations pause flag
+    pub fn set_liquidity_paused(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_LIQUIDITY_PAUSED;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_LIQUIDITY_PAUSED;
+        }
+    }
+    
+    /// Checks if swap operations are paused
+    pub fn swaps_paused(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_SWAPS_PAUSED != 0
+    }
+    
+    /// Sets or clears the swap operations pause flag
+    pub fn set_swaps_paused(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_SWAPS_PAUSED;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_SWAPS_PAUSED;
+        }
+    }
+    
+    /// Checks if withdrawal protection is active
+    pub fn withdrawal_protection_active(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_WITHDRAWAL_PROTECTION != 0
+    }
+    
+    /// Sets or clears the withdrawal protection flag
+    pub fn set_withdrawal_protection_active(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_WITHDRAWAL_PROTECTION;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_WITHDRAWAL_PROTECTION;
+        }
+    }
+    
+    /// Checks if single LP token mode is enabled (future feature)
+    pub fn only_lp_token_a_for_both(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_SINGLE_LP_TOKEN != 0
+    }
+    
+    /// Sets or clears the single LP token mode flag
+    pub fn set_only_lp_token_a_for_both(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_SINGLE_LP_TOKEN;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_SINGLE_LP_TOKEN;
+        }
     }
     
     // **NEW: Pool-level fee collection methods with atomic updates**

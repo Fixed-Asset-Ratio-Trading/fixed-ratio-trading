@@ -1354,7 +1354,7 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Failed to get pool state");
 
-    if pool_state.swaps_paused {
+            if pool_state.swaps_paused() {
         println!("    Pool swaps are paused - swaps would be rejected");
     } else {
         println!("    Pool swaps are active - instructions can be constructed normally");

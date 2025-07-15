@@ -4,26 +4,24 @@
 //! that allow pool owners to control their individual pools without affecting
 //! other pools or requiring system-wide authority.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
 use crate::{
     constants::*,
     error::PoolError,
-    state::PoolState,
     utils::validation::{validate_signer, validate_and_deserialize_pool_state_secure},
 };
 
 /// Pauses pool operations using bitwise flags (pool owner only)
 /// 
 /// Uses bitwise flags to control which operations to pause:
-/// - PAUSE_FLAG_GENERAL (1): Pause deposits/withdrawals
+    /// - PAUSE_FLAG_LIQUIDITY (1): Pause deposits/withdrawals
 /// - PAUSE_FLAG_SWAPS (2): Pause swaps
 /// - PAUSE_FLAG_ALL (3): Pause both (required for consolidation eligibility)
 /// 
@@ -45,16 +43,6 @@ pub fn process_pause_pool(
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing PausePool instruction with flags: 0b{:08b} ({})", pause_flags, pause_flags);
-    
-    // Validate flags
-    if pause_flags == 0 {
-        msg!("❌ Invalid pause flags: cannot be zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-    if pause_flags > PAUSE_FLAG_MAX {
-        msg!("❌ Invalid pause flags: {} exceeds maximum {}", pause_flags, PAUSE_FLAG_MAX);
-        return Err(ProgramError::InvalidArgument);
-    }
     
     // Extract accounts
     let pool_owner_signer = &accounts[0];
@@ -81,16 +69,16 @@ pub fn process_pause_pool(
     // Apply pause flags (idempotent - no error if already paused)
     let mut operations_changed = Vec::new();
     
-    if pause_flags & PAUSE_FLAG_GENERAL != 0 {
-        if !pool_state.paused {
-            pool_state.paused = true;
+    if pause_flags & PAUSE_FLAG_LIQUIDITY != 0 {
+        if !pool_state.liquidity_paused() {
+            pool_state.set_liquidity_paused(true);
             operations_changed.push("general operations");
         }
     }
     
     if pause_flags & PAUSE_FLAG_SWAPS != 0 {
-        if !pool_state.swaps_paused {
-            pool_state.swaps_paused = true;
+        if !pool_state.swaps_paused() {
+            pool_state.set_swaps_paused(true);
             operations_changed.push("swaps");
         }
     }
@@ -107,10 +95,10 @@ pub fn process_pause_pool(
     }
     
     msg!("   Pool: {}", pool_state_pda.key);
-    msg!("   General operations: {}", if pool_state.paused { "PAUSED" } else { "ENABLED" });
-    msg!("   Swap operations: {}", if pool_state.swaps_paused { "PAUSED" } else { "ENABLED" });
+    msg!("   Liquidity operations: {}", if pool_state.liquidity_paused() { "PAUSED" } else { "ENABLED" });
+    msg!("   Swap operations: {}", if pool_state.swaps_paused() { "PAUSED" } else { "ENABLED" });
     msg!("   Consolidation eligible: {}", 
-         if pool_state.paused && pool_state.swaps_paused { "YES" } else { "NO" });
+         if pool_state.liquidity_paused() && pool_state.swaps_paused() { "YES" } else { "NO" });
     
     Ok(())
 }
@@ -118,7 +106,7 @@ pub fn process_pause_pool(
 /// Unpauses pool operations using bitwise flags (pool owner only)
 /// 
 /// Uses bitwise flags to control which operations to unpause:
-/// - PAUSE_FLAG_GENERAL (1): Unpause deposits/withdrawals
+    /// - PAUSE_FLAG_LIQUIDITY (1): Unpause deposits/withdrawals
 /// - PAUSE_FLAG_SWAPS (2): Unpause swaps
 /// - PAUSE_FLAG_ALL (3): Unpause both operations
 /// 
@@ -140,16 +128,6 @@ pub fn process_unpause_pool(
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing UnpausePool instruction with flags: 0b{:08b} ({})", unpause_flags, unpause_flags);
-    
-    // Validate flags
-    if unpause_flags == 0 {
-        msg!("❌ Invalid unpause flags: cannot be zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-    if unpause_flags > PAUSE_FLAG_MAX {
-        msg!("❌ Invalid unpause flags: {} exceeds maximum {}", unpause_flags, PAUSE_FLAG_MAX);
-        return Err(ProgramError::InvalidArgument);
-    }
     
     // Extract accounts
     let pool_owner_signer = &accounts[0];
@@ -176,16 +154,16 @@ pub fn process_unpause_pool(
     // Apply unpause flags (idempotent - no error if already unpaused)
     let mut operations_changed = Vec::new();
     
-    if unpause_flags & PAUSE_FLAG_GENERAL != 0 {
-        if pool_state.paused {
-            pool_state.paused = false;
+    if unpause_flags & PAUSE_FLAG_LIQUIDITY != 0 {
+        if pool_state.liquidity_paused() {
+            pool_state.set_liquidity_paused(false);
             operations_changed.push("general operations");
         }
     }
     
     if unpause_flags & PAUSE_FLAG_SWAPS != 0 {
-        if pool_state.swaps_paused {
-            pool_state.swaps_paused = false;
+        if pool_state.swaps_paused() {
+            pool_state.set_swaps_paused(false);
             operations_changed.push("swaps");
         }
     }
@@ -202,10 +180,10 @@ pub fn process_unpause_pool(
     }
     
     msg!("   Pool: {}", pool_state_pda.key);
-    msg!("   General operations: {}", if pool_state.paused { "PAUSED" } else { "ENABLED" });
-    msg!("   Swap operations: {}", if pool_state.swaps_paused { "PAUSED" } else { "ENABLED" });
+    msg!("   Liquidity operations: {}", if pool_state.liquidity_paused() { "PAUSED" } else { "ENABLED" });
+    msg!("   Swap operations: {}", if pool_state.swaps_paused() { "PAUSED" } else { "ENABLED" });
     msg!("   Consolidation eligible: {}", 
-         if pool_state.paused && pool_state.swaps_paused { "YES" } else { "NO" });
+         if pool_state.liquidity_paused() && pool_state.swaps_paused() { "YES" } else { "NO" });
     
     Ok(())
 } 

@@ -83,8 +83,11 @@ pub fn process_initialize_pool(
     // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];                      // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account
-    crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
+    let system_state_pda = &accounts[2];                           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
+    
+    // Validate system is not paused
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let token_program_account = &accounts[4];                      // Index 4: SPL Token Program Account
     let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA
     let rent_sysvar_account = &accounts[6];                        // Index 6: Rent Sysvar Account
@@ -494,9 +497,8 @@ pub fn process_initialize_pool(
         token_b_vault: *token_b_vault_pda.key,
         lp_token_a_mint: lp_token_a_mint_pda_address,
         lp_token_b_mint: lp_token_b_mint_pda_address,
-            ratio_a_numerator,
-            ratio_b_denominator,
-        one_to_many_ratio: ratio_a_numerator > ratio_b_denominator,
+                    ratio_a_numerator,
+        ratio_b_denominator,
         total_token_a_liquidity: 0,
         total_token_b_liquidity: 0,
         pool_authority_bump_seed,
@@ -505,10 +507,11 @@ pub fn process_initialize_pool(
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
         rent_requirements: RentRequirements::new(rent),
-        paused: false,
-        swaps_paused: false,
-        withdrawal_protection_active: false,
-        only_lp_token_a_for_both: false,
+        flags: if ratio_a_numerator > ratio_b_denominator { 
+            crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
+        } else { 
+            0 
+        }, // All other flags start as false
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
         total_fees_withdrawn_token_a: 0,

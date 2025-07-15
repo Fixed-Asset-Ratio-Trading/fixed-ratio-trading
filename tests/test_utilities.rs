@@ -1252,11 +1252,11 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             .expect("Pool state should exist");
         
         // Verify default operational state
-        assert!(pool_state.is_initialized, "Pool should be initialized");
-        assert!(!pool_state.paused, "Pool should not be paused by default");
-        assert!(!pool_state.swaps_paused, "Swaps should not be paused by default");
-        assert!(!pool_state.withdrawal_protection_active, "Withdrawal protection should always be false (not implemented)");
-        assert!(!pool_state.only_lp_token_a_for_both, "Single LP token mode should not be active by default");
+        // Pool existence = initialization (no is_initialized field needed)
+            assert!(!pool_state.liquidity_paused(), "Liquidity operations should not be paused by default");
+    assert!(!pool_state.swaps_paused(), "Swaps should not be paused by default");
+    assert!(!pool_state.withdrawal_protection_active(), "Withdrawal protection should always be false (not implemented)");
+    assert!(!pool_state.only_lp_token_a_for_both(), "Single LP token mode should not be active by default");
         
         // Verify fee structure
         assert_eq!(pool_state.swap_fee_basis_points, 0, "Swap fee should be default value (0)");
