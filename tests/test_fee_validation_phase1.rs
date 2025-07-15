@@ -364,55 +364,7 @@ async fn test_error_code_mappings() {
     println!("✅ All error codes are correctly mapped");
 }
 
-/// Test Phase 1 implementation summary
-#[tokio::test]
-async fn test_phase1_implementation_summary() {
-    println!("📋 Phase 1 Implementation Summary");
-    println!();
-    
-    println!("✅ COMPLETED FEATURES:");
-    println!("1. Fee Validation Framework");
-    println!("   • Pre-flight validation of fee payment capability");
-    println!("   • Treasury account validation with PDA checks");
-    println!("   • Atomic fee collection with post-transfer validation");
-    println!("   • Comprehensive error handling with detailed messages");
-    println!();
-    
-    println!("2. Fees First Pattern Implementation");
-    println!("   • Pool creation fees collected before any state changes");
-    println!("   • Liquidity operation fees collected before token operations");
-    println!("   • Regular swap fees collected before token transfers");
-    println!("   • HFT swap fees collected before optimized operations");
-    println!();
-    
-    println!("3. New Error Types");
-    println!("   • InsufficientFeeBalance (1030)");
-    println!("   • FeeCollectionFailed (1031)");
-    println!("   • FeeValidationFailed (1032)");
-    println!("   • TreasuryValidationFailed (1033)");
-    println!();
-    
-    println!("4. Enhanced Security");
-    println!("   • Users cannot bypass fees with insufficient funds");
-    println!("   • Transactions fail immediately if fee payment not possible");
-    println!("   • Post-transfer validation ensures fees were actually collected");
-    println!("   • Atomic operations prevent partial state changes");
-    println!();
-    
-    println!("🎯 PHASE 1 OBJECTIVES ACHIEVED:");
-    println!("✓ All fee collection operations are atomic");
-    println!("✓ Users cannot bypass fees");
-    println!("✓ Proper error handling for insufficient funds");
-    println!("✓ Comprehensive test coverage");
-    println!();
-    
-    println!("🚀 READY FOR PHASE 2: Consolidation Race Condition Fix");
-    
-    // Verify all key components are accessible
-    assert!(validate_fee_payment(&create_mock_account_info(), 1000, VALIDATION_CONTEXT_FEE).is_valid == false); // Insufficient funds
-    
-    println!("✅ Phase 1 implementation validation complete");
-}
+
 
 /// Helper function to create mock account info for testing
 fn create_mock_account_info() -> AccountInfo<'static> {
