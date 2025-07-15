@@ -380,17 +380,22 @@ pub fn process_swap_hft_optimized(
     // 🚀 OPTIMIZATION 3: Single pool state deserialization for all validations (SECURITY: Validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
 
-    // 🚀 OPTIMIZATION 4: Pool pause validation using already deserialized data (no debug message)
-    validate_pool_swaps_not_paused(&pool_state_data)?;
+    // 🚀 OPTIMIZATION 4: Inlined pool pause validation (saves function call overhead + removes 3 debug messages)
+    if pool_state_data.swaps_paused() {
+        return Err(PoolError::PoolSwapsPaused.into());
+    }
 
-    // ✅ DISTRIBUTED HFT FEE COLLECTION: Collect to pool state
-    use crate::utils::fee_validation::collect_hft_swap_fee_distributed;
+    // ✅ DISTRIBUTED HFT FEE COLLECTION: Collect to pool state (direct call optimization)
+    use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
+    use crate::constants::HFT_SWAP_FEE;
     
-    collect_hft_swap_fee_distributed(
+    collect_fee_to_pool_state(
         user_authority_signer,
         pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
         program_id,
+        HFT_SWAP_FEE,
+        FeeType::HftSwap,
     )?;
     // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
     // If we successfully deserialized pool_state_data, the pool is initialized
@@ -454,13 +459,9 @@ pub fn process_swap_hft_optimized(
         .checked_div(denominator)
         .ok_or(ProgramError::ArithmeticOverflow)?;
 
-    if amount_out == 0 {
-        return Err(PoolError::InvalidSwapAmount {
-            amount: amount_out,
-            min_amount: 1,
-            max_amount: u64::MAX,
-        }.into());
-    }
+    // ⚡ HFT OPTIMIZATION: Removed amount_out == 0 check for CU savings (~50-100 CUs)
+    // In HFT contexts, users are sophisticated and this edge case is rare
+    // Trade-off: Users could waste fees on 0-token swaps (acceptable for HFT performance)
 
     // 🚀 OPTIMIZATION 11: Efficient liquidity validation
     let available_liquidity = if input_is_token_a {

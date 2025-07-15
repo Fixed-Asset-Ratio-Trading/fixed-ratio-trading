@@ -312,8 +312,36 @@ pub fn create_withdrawal_instruction_standardized(
     })
 }
 
-/// Creates a swap instruction with proper standardized account ordering  
-/// This will be used for swap operations (to be implemented)
+/// Creates swap instruction for HFT optimized version (8 accounts - no system state)
+#[allow(dead_code)]
+pub fn create_swap_instruction_hft_optimized(
+    user: &Pubkey,
+    user_input_token_account: &Pubkey,     // Token account being swapped from
+    user_output_token_account: &Pubkey,    // Token account receiving swapped tokens
+    pool_config: &PoolConfig,
+    swap_instruction_data: &PoolInstruction,
+) -> Result<Instruction, Box<dyn std::error::Error>> {
+    let serialized = swap_instruction_data.try_to_vec()?;
+    
+    // Create HFT optimized instruction with 8 accounts (no system state PDA)
+    Ok(Instruction {
+        program_id: id(),
+        accounts: vec![
+            // HFT optimized account ordering (8 accounts total - system state removed)
+            AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 2: Pool State PDA (moved up)
+            AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 4: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 5: Token B Vault PDA
+            AccountMeta::new(*user_input_token_account, false),                     // Index 6: User Input Token Account
+            AccountMeta::new(*user_output_token_account, false),                    // Index 7: User Output Token Account
+        ],
+        data: serialized,
+    })
+}
+
+/// Creates swap instruction for regular swap version (9 accounts - includes system state)
 #[allow(dead_code)]
 pub fn create_swap_instruction_standardized(
     user: &Pubkey,

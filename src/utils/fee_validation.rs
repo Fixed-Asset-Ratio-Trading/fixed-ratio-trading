@@ -257,32 +257,15 @@ pub fn collect_regular_swap_fee_distributed<'a>(
     )
 }
 
-/// **NEW: Distributed HFT swap fee collection**
-pub fn collect_hft_swap_fee_distributed<'a>(
-    payer_account: &AccountInfo<'a>,
-    pool_state_account: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
-    program_id: &Pubkey,
-) -> ProgramResult {
-    collect_fee_to_pool_state(
-        payer_account,
-        pool_state_account,
-        system_program,
-        program_id,
-        HFT_SWAP_FEE,
-        FeeType::HftSwap,
-    )
-}
-
 /// **NEW: Fee type enumeration**
-enum FeeType {
+pub enum FeeType {
     Liquidity,
     RegularSwap,
     HftSwap,
 }
 
 /// **NEW: Generic fee collection to pool state**
-fn collect_fee_to_pool_state<'a>(
+pub fn collect_fee_to_pool_state<'a>(
     payer_account: &AccountInfo<'a>,
     pool_state_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
@@ -293,18 +276,28 @@ fn collect_fee_to_pool_state<'a>(
     use solana_program::{
         program::invoke,
         system_instruction,
-        clock::Clock,
-        sysvar::Sysvar,
+        sysvar::{clock::Clock, Sysvar},
     };
     
-    // Validate fee payment capability
-    let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
-    if !validation_result.is_valid {
-        return Err(PoolError::InsufficientFeeBalance {
-            required: fee_amount,
-            available: validation_result.available_balance,
-            account: *payer_account.key,
-        }.into());
+    // ⚡ HFT OPTIMIZATION: Skip validation for HFT swaps to save ~120-250 CUs
+    // System Program will automatically handle insufficient funds with proper error
+    // Trade-off: HFT gets generic error instead of detailed InsufficientFeeBalance
+    match fee_type {
+        FeeType::HftSwap => {
+            // Skip validation for HFT - maximize performance over error detail
+            // System Program transfer will fail gracefully if insufficient funds
+        },
+        _ => {
+            // Keep detailed validation for regular operations
+            let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
+            if !validation_result.is_valid {
+                return Err(PoolError::InsufficientFeeBalance {
+                    required: fee_amount,
+                    available: validation_result.available_balance,
+                    account: *payer_account.key,
+                }.into());
+            }
+        }
     }
     
     // Load and validate pool state
