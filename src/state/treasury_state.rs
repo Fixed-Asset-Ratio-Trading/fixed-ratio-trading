@@ -6,20 +6,26 @@
 //! directly into the main treasury with real-time counter updates. This eliminates
 //! the complexity of specialized treasuries and consolidation race conditions.
 //!
+//! **PHASE 1: DISTRIBUTED COLLECTION PREPARATION**
+//! 
+//! Enhanced with consolidation tracking for future distributed collection architecture.
+//! Pool creation fees continue to go directly here (optimal for one-time fees).
+//!
 //! Key improvements:
 //! - Single treasury for all fee types
 //! - Real-time counter updates
-//! - No consolidation needed
+//! - Rent exempt balance tracking
+//! - Consolidation preparation
 //! - Simplified architecture
 //! - Single source of truth for all balances
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-/// **PHASE 3: CENTRALIZED MAIN TREASURY**
+/// **PHASE 1: ENHANCED MAIN TREASURY**
 /// 
 /// This is the single treasury that collects ALL contract fees directly.
 /// All fee types are tracked in real-time with immediate counter updates.
-/// No specialized treasuries or consolidation operations are needed.
+/// Enhanced with consolidation tracking for future distributed collection.
 /// 
 /// **Real-time Tracking:**
 /// - Pool creation fees: Collected and counted immediately
@@ -31,10 +37,18 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// - total_balance: Always reflects actual account balance
 /// - All counters: Updated immediately on fee collection
 /// - All totals: Updated immediately on fee collection
+/// 
+/// **NEW: Consolidation Support:**
+/// - Rent exempt minimum tracking
+/// - Consolidation operation counting
+/// - Batch consolidation processing
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct MainTreasuryState {
     /// Current SOL balance of the main treasury account (synced with account.lamports())
     pub total_balance: u64,
+    
+    /// **NEW: Rent-exempt minimum balance requirement**
+    pub rent_exempt_minimum: u64,
     
     /// Total SOL fees withdrawn by authority over time
     pub total_withdrawn: u64,
@@ -53,11 +67,31 @@ pub struct MainTreasuryState {
     
     /// Last update timestamp (replaces consolidation timestamp)
     pub last_update_timestamp: i64,
+    
+    /// **NEW: Consolidation tracking**
+    /// Number of consolidation operations performed
+    pub total_consolidations_performed: u64,
+    
+    /// Timestamp of last consolidation
+    pub last_consolidation_timestamp: i64,
+}
+
+/// **NEW: Consolidated operations data structure**
+/// Used for batch consolidation processing from multiple pools
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
+pub struct ConsolidatedOperations {
+    pub liquidity_fees: u64,
+    pub regular_swap_fees: u64,
+    pub hft_swap_fees: u64,
+    pub liquidity_operation_count: u64,
+    pub regular_swap_count: u64,
+    pub hft_swap_count: u64,
 }
 
 impl MainTreasuryState {
     pub const LEN: usize = 
         8 +   // total_balance
+        8 +   // rent_exempt_minimum ← NEW
         8 +   // total_withdrawn
         8 +   // pool_creation_count
         8 +   // liquidity_operation_count
@@ -67,7 +101,10 @@ impl MainTreasuryState {
         8 +   // total_liquidity_fees
         8 +   // total_regular_swap_fees
         8 +   // total_hft_swap_fees
-        8;    // last_update_timestamp
+        8 +   // last_update_timestamp
+        8 +   // total_consolidations_performed ← NEW
+        8;    // last_consolidation_timestamp ← NEW
+        // **TOTAL ADDITION: +24 bytes**
         // Authority removed: 32 bytes saved, validation handled through SystemState
 
     pub fn get_packed_len() -> usize {
@@ -77,6 +114,7 @@ impl MainTreasuryState {
     pub fn new() -> Self {
         Self {
             total_balance: 0,
+            rent_exempt_minimum: 0,
             total_withdrawn: 0,
             pool_creation_count: 0,
             liquidity_operation_count: 0,
@@ -87,6 +125,28 @@ impl MainTreasuryState {
             total_regular_swap_fees: 0,
             total_hft_swap_fees: 0,
             last_update_timestamp: 0,
+            total_consolidations_performed: 0,
+            last_consolidation_timestamp: 0,
+        }
+    }
+    
+    /// **NEW: Initialize with rent-exempt balance**
+    pub fn new_with_rent_exemption(rent_exempt_minimum: u64) -> Self {
+        Self {
+            total_balance: rent_exempt_minimum, // Start with rent-exempt balance
+            rent_exempt_minimum,
+            total_withdrawn: 0,
+            pool_creation_count: 0,
+            liquidity_operation_count: 0,
+            regular_swap_count: 0,
+            hft_swap_count: 0,
+            total_pool_creation_fees: 0,
+            total_liquidity_fees: 0,
+            total_regular_swap_fees: 0,
+            total_hft_swap_fees: 0,
+            last_update_timestamp: 0,
+            total_consolidations_performed: 0,
+            last_consolidation_timestamp: 0,
         }
     }
     
@@ -122,17 +182,48 @@ impl MainTreasuryState {
         self.last_update_timestamp = timestamp;
     }
     
-    /// **PHASE 3: SIMPLIFIED BALANCE SYNC**
-    /// Updates total_balance to match actual account balance
+    /// **PHASE 3: REAL-TIME BALANCE SYNC**
+    /// Synchronizes internal balance tracking with actual account balance
     pub fn sync_balance_with_account(&mut self, account_lamports: u64) {
         self.total_balance = account_lamports;
     }
+    
+    /// **NEW: Process batch consolidation from multiple pools**
+    pub fn process_batch_consolidation(
+        &mut self,
+        _consolidated_fees: u64,
+        consolidated_operations: &ConsolidatedOperations,
+        timestamp: i64,
+    ) {
+        // Update fee totals (pool creation fees handled during initial creation)
+        self.total_liquidity_fees += consolidated_operations.liquidity_fees;
+        self.total_regular_swap_fees += consolidated_operations.regular_swap_fees;
+        self.total_hft_swap_fees += consolidated_operations.hft_swap_fees;
+        
+        // Update operation counts
+        self.liquidity_operation_count += consolidated_operations.liquidity_operation_count;
+        self.regular_swap_count += consolidated_operations.regular_swap_count;
+        self.hft_swap_count += consolidated_operations.hft_swap_count;
+        
+        // Update consolidation metadata
+        self.total_consolidations_performed += 1;
+        self.last_consolidation_timestamp = timestamp;
+        self.last_update_timestamp = timestamp;
+    }
+    
+    /// **NEW: Calculate available balance for withdrawal (considering rent exemption)**
+    pub fn available_for_withdrawal(&self) -> u64 {
+        if self.total_balance > self.rent_exempt_minimum {
+            self.total_balance - self.rent_exempt_minimum
+        } else {
+            0
+        }
+    }
 }
 
-/// **PHASE 3: TREASURY MANAGEMENT UTILITIES**
 impl MainTreasuryState {
-    /// Calculates available balance for withdrawal (total - minimum for rent)
-    pub fn available_for_withdrawal(&self, minimum_balance: u64) -> u64 {
+    /// Calculate available balance for withdrawal with explicit minimum balance
+    pub fn available_for_withdrawal_with_minimum(&self, minimum_balance: u64) -> u64 {
         if self.total_balance > minimum_balance {
             self.total_balance - minimum_balance
         } else {
@@ -182,22 +273,17 @@ impl MainTreasuryState {
 }
 
 // ============================================================================
-// PHASE 3: SPECIALIZED TREASURY STRUCTURES REMOVED
+// SPECIALIZED TREASURY STRUCTURES 
 // ============================================================================
-// 
-// The following structures have been removed in Phase 3:
-// - SwapTreasuryState: No longer needed, fees go directly to main treasury
-// - HftTreasuryState: No longer needed, fees go directly to main treasury
-// 
 // Benefits of removal:
 // - Eliminates consolidation race conditions
 // - Simplifies architecture significantly
 // - Provides real-time fee tracking
-// - Reduces compute unit usage
-// - Single source of truth for all treasury data
+// - Single source of truth for all treasury operations
+// - Reduces compute unit usage for fee operations
 // 
-// Migration path:
-// - All existing specialized treasury accounts can be closed
-// - Fees are collected directly into main treasury
-// - Real-time counters replace consolidation-based tracking
+// Migration notes:
+// - All specialized treasury accounts can be closed
+// - All fees now route directly to main treasury
+// - Real-time tracking eliminates need for consolidation delays
 // ============================================================================ 

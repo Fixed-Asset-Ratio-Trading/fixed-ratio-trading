@@ -2,7 +2,9 @@
 //! 
 //! This module contains all processor functions organized by functionality.
 
+pub mod consolidation;
 pub mod pool_creation;
+pub mod pool_management;
 pub mod liquidity;
 pub mod swap;
 pub mod system_pause;
@@ -10,8 +12,14 @@ pub mod process_initialize;
 pub mod utilities;
 pub mod treasury;
 
+// Re-export consolidation functions
+pub use consolidation::*;
+
 // Re-export pool creation functions
 pub use pool_creation::*;
+
+// Re-export pool management functions
+pub use pool_management::*;
 
 // Re-export liquidity management functions  
 pub use liquidity::*;

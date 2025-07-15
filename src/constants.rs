@@ -98,188 +98,164 @@ pub const HFT_SWAP_FEE: u64 = 16_290; // 0.0000163 SOL (40% discount)
 /// **Revenue**: Collected by pool and withdrawable by pool owner
 pub const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50; 
 
-/// Denominator for basis point calculations (1 basis point = 0.01%)
+/// Denominator for basis points calculations (1 basis point = 1/10000 = 0.01%)
 /// 
-/// Used to convert basis points to percentages in fee calculations.
-/// Formula: `percentage = basis_points / FEE_BASIS_POINTS_DENOMINATOR`
-/// 
+/// This constant is used to convert basis points to decimal percentages.
+/// **Usage**: `percentage = basis_points / FEE_BASIS_POINTS_DENOMINATOR`
 /// **Examples**:
-/// - 50 basis points / 10000 = 0.005 = 0.5%
-/// - 25 basis points / 10000 = 0.0025 = 0.25%  
-/// - 10 basis points / 10000 = 0.001 = 0.1%
+/// - 25 basis points / 10000 = 0.0025 = 0.25%
+/// - 50 basis points / 10000 = 0.0050 = 0.50%
 pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
 
 //=============================================================================
-// FEE EXAMPLES AND SCENARIOS
-//=============================================================================
-//
-// **Example 1: Pool Creation**
-// - User creates a new USDC/SOL pool
-// - Contract Fee: 1.15 SOL (paid to pool for operational costs)
-// - Pool Fee: Not applicable (no trading yet)
-//
-// **Example 2: Adding Liquidity** 
-// - User deposits 1000 USDC into pool
-// - Contract Fee: 0.0013 SOL (paid to pool)  
-// - Pool Fee: Not applicable (no fee on liquidity operations)
-//
-// **Example 3: Token Swap (0% pool fee)**
-// - User swaps 1000 USDC for SOL
-// - Contract Fee: 0.00002715 SOL (paid to pool)
-// - Pool Fee: 0 USDC (pool fee set to 0%)
-// - User receives: Full SOL amount based on 1000 USDC input
-//
-// **Example 4: Token Swap (0.25% pool fee)**  
-// - User swaps 1000 USDC for SOL
-// - Contract Fee: 0.00002715 SOL (paid to pool)
-// - Pool Fee: 2.5 USDC (1000 * 0.0025 = 2.5 USDC)  
-// - Effective Input: 997.5 USDC (1000 - 2.5 fee)
-// - User receives: SOL amount based on 997.5 USDC
-// - Pool retains: 2.5 USDC as revenue for pool owner
-//
+// RENT AND BUFFER REQUIREMENTS
 //=============================================================================
 
-//=============================================================================
-// FEE TYPE CODES (Byte codes for efficient fee tracking)
-//=============================================================================
-// These byte codes are used instead of strings for efficient fee type
-// identification in smart contract operations. Using single bytes instead
-// of strings saves compute units and storage space on-chain.
-
-/// Fee type code for pool creation operations
-/// Used when collecting registration fees during pool initialization
-pub const FEE_TYPE_POOL_CREATION: u8 = 1;
-
-/// Fee type code for liquidity operations (deposits and withdrawals)
-/// Used when collecting fees during deposit and withdrawal operations
-pub const FEE_TYPE_LIQUIDITY_OPERATION: u8 = 2;
-
-/// Fee type code for regular swap operations
-/// Used when collecting fees during standard swap transactions
-pub const FEE_TYPE_REGULAR_SWAP: u8 = 3;
-
-/// Fee type code for HFT (High Frequency Trading) optimized swap operations
-/// Used when collecting fees during compute-optimized swap transactions
-pub const FEE_TYPE_HFT_SWAP: u8 = 4;
-
-//=============================================================================
-// TREASURY TYPE CODES (Byte codes for efficient treasury validation)
-//=============================================================================
-// These byte codes identify different treasury account types for validation
-// without using wasteful string literals in smart contract operations.
-
-/// Treasury type code for main treasury account
-/// Used during main treasury PDA validation
-pub const TREASURY_TYPE_MAIN: u8 = 1;
-
-/// Treasury type code for swap treasury account (legacy, now points to main)
-/// Used for backward compatibility during validation
-pub const TREASURY_TYPE_SWAP: u8 = 2;
-
-/// Treasury type code for HFT treasury account (legacy, now points to main)  
-/// Used for backward compatibility during validation
-pub const TREASURY_TYPE_HFT: u8 = 3;
-
-//=============================================================================
-// VALIDATION CONTEXT CODES (Byte codes for efficient validation context)
-//=============================================================================
-// These byte codes identify different validation contexts without using
-// wasteful string literals for error reporting and logging.
-
-/// Validation context code for general fee validation
-/// Used during pre-flight fee payment validation
-pub const VALIDATION_CONTEXT_FEE: u8 = 1;
-
-/// Validation context code for pool creation validation
-/// Used during pool creation fee validation
-pub const VALIDATION_CONTEXT_POOL_CREATION: u8 = 2;
-
-/// Validation context code for liquidity operation validation
-/// Used during deposit/withdrawal fee validation
-pub const VALIDATION_CONTEXT_LIQUIDITY: u8 = 3;
-
-/// Validation context code for swap operation validation
-/// Used during swap fee validation
-pub const VALIDATION_CONTEXT_SWAP: u8 = 4;
-
-//=============================================================================
-
-/// PDA seed prefix for pool state accounts
-pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
-
-/// PDA seed prefix for token A vault accounts
-pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
-
-/// PDA seed prefix for token B vault accounts  
-pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
-
-/// PDA seed for system state account
-pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
-
-/// **PHASE 3: CENTRALIZED TREASURY**
-/// PDA seed for the single main treasury account that collects ALL fees
-pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
-
-/// Legacy treasury seed prefix (kept for backward compatibility)
-/// This points to the main treasury for any existing references
-pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
-
-/// PDA seed prefix for LP token A mint accounts
-pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";
-
-/// PDA seed prefix for LP token B mint accounts
-pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
-
-// ============================================================================
-// PHASE 3: REMOVED SPECIALIZED TREASURY CONSTANTS
-// ============================================================================
-// 
-// The following constants have been removed in Phase 3:
-// - SWAP_TREASURY_SEED_PREFIX: No longer needed, fees go to main treasury
-// - HFT_TREASURY_SEED_PREFIX: No longer needed, fees go to main treasury
-// 
-// Benefits:
-// - Simplified architecture with single treasury
-// - Eliminates consolidation race conditions
-// - Reduces complexity and potential for errors
-// - All fees collected in real-time to main treasury
-// ============================================================================
-
-/// Additional buffer for rent calculations to account for potential rent increases
+/// Minimum rent buffer to maintain above Solana's rent-exempt threshold
+/// 
+/// This buffer ensures accounts remain rent-exempt even if rent rates change
+/// slightly between account creation and operations.
+/// 
+/// **Amount**: 1000 lamports (conservative buffer)
+/// **Purpose**: Prevent accidental account closure due to rent calculation variations
 pub const MINIMUM_RENT_BUFFER: u64 = 1000;
 
 //=============================================================================
-// PROGRAM AUTHORITY CONFIGURATION
+// FEE TYPE CODES
 //=============================================================================
-//
-// **CRITICAL SECURITY: PROGRAM UPGRADE AUTHORITY PATTERN**
-// 
-// This program now uses Solana's built-in program upgrade authority mechanism
-// instead of hardcoded authority constants. This provides maximum flexibility:
-// 
-// - Authority can be transferred to PDAs, multisigs, or governance systems
-// - No hardcoded limitations on authority management
-// - Follows Solana best practices for program authority
-// - Enables decentralized governance patterns
-// 
-// **DEPLOYMENT SECURITY:**
-// - Program upgrade authority is set during deployment
-// - Authority can be transferred after deployment
-// - Private key should be stored securely (hardware wallet recommended)
-// - Consider multi-signature setup for production deployments
-// 
-// **AUTHORITY TRANSFER:**
-// Use `solana program set-upgrade-authority` to transfer authority to:
-// - A multisig PDA for enhanced security
-// - A governance program for decentralized control
-// - Another keypair for operational changes
-// - `None` to make the program immutable (irreversible)
-//
-// **SECURITY FEATURES:**
-// - Only the program upgrade authority can initialize the program
-// - Only the program upgrade authority can pause/unpause the entire system
-// - Only the program upgrade authority can withdraw treasury fees
-// - Prevents malicious actors from initializing fake program instances
-// - Authority can be handed over to governance systems for decentralization
-//
+// These byte codes are used to identify different fee types in validation
+// and tracking functions. They provide efficient fee categorization.
+
+/// Fee type code for pool creation/registration fees
+pub const FEE_TYPE_POOL_CREATION: u8 = 1;
+
+/// Fee type code for liquidity operation fees (deposits and withdrawals)
+pub const FEE_TYPE_LIQUIDITY_OPERATION: u8 = 2;
+
+/// Fee type code for regular swap operation fees
+pub const FEE_TYPE_REGULAR_SWAP: u8 = 3;
+
+/// Fee type code for HFT optimized swap operation fees
+pub const FEE_TYPE_HFT_SWAP: u8 = 4;
+
 //=============================================================================
+// TREASURY TYPE CODES
+//=============================================================================
+// These codes identify different treasury types for validation purposes.
+
+/// Treasury type code for main treasury (all fees)
+pub const TREASURY_TYPE_MAIN: u8 = 1;
+
+/// Treasury type code for swap treasury (legacy - now unused)
+pub const TREASURY_TYPE_SWAP: u8 = 2;
+
+/// Treasury type code for HFT treasury (legacy - now unused) 
+pub const TREASURY_TYPE_HFT: u8 = 3;
+
+//=============================================================================
+// VALIDATION CONTEXT CODES
+//=============================================================================
+// These codes provide context for validation operations and error messages.
+
+/// Validation context for general fee operations
+pub const VALIDATION_CONTEXT_FEE: u8 = 1;
+
+/// Validation context for pool creation operations
+pub const VALIDATION_CONTEXT_POOL_CREATION: u8 = 2;
+
+/// Validation context for liquidity operations
+pub const VALIDATION_CONTEXT_LIQUIDITY: u8 = 3;
+
+/// Validation context for swap operations
+pub const VALIDATION_CONTEXT_SWAP: u8 = 4;
+
+//=============================================================================
+// PDA SEED PREFIXES
+//=============================================================================
+// These byte string prefixes are used for Program Derived Address (PDA) generation.
+// Each type of account has a unique prefix to prevent address collisions.
+
+pub const POOL_STATE_SEED_PREFIX: &[u8] = b"pool_state";
+
+pub const TOKEN_A_VAULT_SEED_PREFIX: &[u8] = b"token_a_vault";
+
+pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
+
+pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
+
+/// Main treasury seed prefix for the centralized treasury PDA
+pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
+
+/// Legacy treasury seed prefix (points to main treasury for compatibility)
+pub const TREASURY_SEED_PREFIX: &[u8] = MAIN_TREASURY_SEED_PREFIX;
+
+pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";
+
+pub const LP_TOKEN_B_MINT_SEED_PREFIX: &[u8] = b"lp_token_b_mint";
+
+//=============================================================================
+// SYSTEM PAUSE CONFIGURATION
+//=============================================================================
+
+/// Default reason code when system is paused without specific reason
+pub const DEFAULT_PAUSE_REASON: u8 = 0;
+
+/// Maximum time in seconds a system pause can remain active (30 days)
+/// After this time, the system automatically allows unpausing
+pub const MAX_PAUSE_DURATION_SECONDS: i64 = 30 * 24 * 60 * 60; // 30 days
+
+//=============================================================================
+// RENT AND ACCOUNT CONFIGURATION  
+//=============================================================================
+
+//=============================================================================
+// CONSOLIDATION CONFIGURATION
+//=============================================================================
+
+/// Maximum number of pools that can be consolidated in a single batch
+/// This limit ensures the transaction stays within the 200K CU limit
+pub const MAX_POOLS_PER_CONSOLIDATION_BATCH: u8 = 20;
+
+/// Pause reason code for consolidation operations
+/// This code indicates the system was paused specifically for fee consolidation
+pub const PAUSE_REASON_CONSOLIDATION: u8 = 15;
+
+//=============================================================================
+// FIXED SYSTEM VALUES (MOVED FROM POOLSTATE)
+//=============================================================================
+
+/// Fixed swap fee basis points across all pools (0.25% = 25 basis points)
+/// Since this is a fixed value, no need to store per pool
+pub const FIXED_SWAP_FEE_BASIS_POINTS: u64 = 25;
+
+//=============================================================================
+// POOL PAUSE BITWISE FLAGS
+//=============================================================================
+
+/// Pause general pool operations (deposits and withdrawals)
+/// Sets pool_state.paused = true
+pub const PAUSE_FLAG_GENERAL: u8 = 0b01; // 1
+
+/// Pause swap operations only
+/// Sets pool_state.swaps_paused = true  
+pub const PAUSE_FLAG_SWAPS: u8 = 0b10; // 2
+
+/// Pause all operations (general + swaps)
+/// Required combination for consolidation eligibility
+pub const PAUSE_FLAG_ALL: u8 = PAUSE_FLAG_GENERAL | PAUSE_FLAG_SWAPS; // 3
+
+/// Maximum valid pause flag value
+pub const PAUSE_FLAG_MAX: u8 = PAUSE_FLAG_ALL;
+
+//=============================================================================
+// ERROR CODES FOR CONSOLIDATION
+//=============================================================================
+
+/// Error code for consolidation failures
+pub const ERROR_CONSOLIDATION_FAILED: u32 = 5001;
+
+/// Error code for invalid consolidation batch
+pub const ERROR_INVALID_CONSOLIDATION_BATCH: u32 = 5002;
+
+/// Error code for consolidation during active operations
+pub const ERROR_CONSOLIDATION_RACE_CONDITION: u32 = 5003;

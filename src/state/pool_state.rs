@@ -70,7 +70,10 @@ impl RentRequirements {
 }
 
 /// Main pool state containing all configuration and runtime data.
-/// NOTE: Pool state only contains pool-specific data and owner information.
+/// 
+/// **PHASE 1: DISTRIBUTED COLLECTION ARCHITECTURE**
+/// Updated to support distributed SOL fee collection with batch consolidation.
+/// Pool creation fees still go directly to MainTreasuryState (optimal for one-time fees).
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -90,9 +93,8 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub lp_token_a_mint_bump_seed: u8,
     pub lp_token_b_mint_bump_seed: u8,
-    pub is_initialized: bool,
     pub rent_requirements: RentRequirements,
-    pub paused: bool, // Pool-specific pause (separate from system pause)
+    pub paused: bool, // Liquidity pause (separate from system pause)
     pub swaps_paused: bool, // Swap-specific pause within this pool
     
     // Automatic withdrawal protection
@@ -105,13 +107,37 @@ pub struct PoolState {
     // NOTE: Currently not implemented - remains false regardless of input
     pub only_lp_token_a_for_both: bool,
     
-    // Fee collection and withdrawal tracking
+    // Fee collection and withdrawal tracking (Token fees only)
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
     pub total_fees_withdrawn_token_a: u64,
     pub total_fees_withdrawn_token_b: u64,
-    pub swap_fee_basis_points: u64,
-    // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) moved to central TreasuryState
+    
+    // **NEW: DISTRIBUTED SOL FEE TRACKING**
+    /// SOL fees collected from liquidity operations (accumulated locally)  
+    pub collected_liquidity_fees: u64,
+    
+    /// SOL fees collected from regular swaps (accumulated locally)
+    pub collected_regular_swap_fees: u64,
+    
+    /// SOL fees collected from HFT swaps (accumulated locally)
+    pub collected_hft_swap_fees: u64,
+    
+    // **NEW: LIFETIME SOL FEE TRACKING**
+    /// Total SOL fees collected by this pool since inception (never resets)
+    /// This is the authoritative count of all SOL fees ever collected
+    /// Formula: total_sol_fees_collected = total_fees_consolidated + current_pending_fees
+    pub total_sol_fees_collected: u64,
+    
+    // **NEW: CONSOLIDATION MANAGEMENT**
+    /// Timestamp of last consolidation (0 if never consolidated)
+    pub last_consolidation_timestamp: i64,
+    
+    /// Total number of consolidations performed on this pool
+    pub total_consolidations: u64,
+    
+    /// Total SOL fees transferred to treasury via consolidation
+    pub total_fees_consolidated: u64,
 }
 
 impl Default for PoolState {
@@ -134,7 +160,6 @@ impl Default for PoolState {
             token_b_vault_bump_seed: 0,
             lp_token_a_mint_bump_seed: 0,
             lp_token_b_mint_bump_seed: 0,
-            is_initialized: false,
             rent_requirements: RentRequirements::default(),
             paused: false,
             swaps_paused: false,
@@ -144,7 +169,15 @@ impl Default for PoolState {
             collected_fees_token_b: 0,
             total_fees_withdrawn_token_a: 0,
             total_fees_withdrawn_token_b: 0,
-            swap_fee_basis_points: 0,
+            
+            // Initialize new distributed collection fields
+            collected_liquidity_fees: 0,
+            collected_regular_swap_fees: 0,
+            collected_hft_swap_fees: 0,
+            total_sol_fees_collected: 0,
+            last_consolidation_timestamp: 0,
+            total_consolidations: 0,
+            total_fees_consolidated: 0,
         }
     }
 }
@@ -168,20 +201,286 @@ impl PoolState {
         1 +  // token_b_vault_bump_seed
         1 +  // lp_token_a_mint_bump_seed
         1 +  // lp_token_b_mint_bump_seed
-        1 +  // is_initialized
         RentRequirements::get_packed_len() + // rent_requirements
         1 +  // paused
         1 +  // swaps_paused
         1 +  // withdrawal_protection_active
         1 +  // only_lp_token_a_for_both
         
-        // Fee collection and withdrawal tracking
+        // Fee collection and withdrawal tracking (Token fees)
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
         8 +  // total_fees_withdrawn_token_b
-        8    // swap_fee_basis_points
-        // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) removed
-        // These are now tracked in central TreasuryState (16 bytes removed)
+        
+        // **NEW: DISTRIBUTED SOL FEE TRACKING** (+32 bytes)
+        8 +  // collected_liquidity_fees  
+        8 +  // collected_regular_swap_fees
+        8 +  // collected_hft_swap_fees
+        8 +  // total_sol_fees_collected
+        
+        // **NEW: CONSOLIDATION MANAGEMENT** (+24 bytes)
+        8 +  // last_consolidation_timestamp
+        8 +  // total_consolidations
+        8    // total_fees_consolidated
+        
+        // **REMOVED FIELDS** (-17 bytes):
+        // - is_initialized: bool (1 byte) - Pool existence = initialization
+        // - swap_fee_basis_points: u64 (8 bytes) - Moved to constants as fixed value
+        // - collected_pool_creation_fees: u64 (8 bytes) - Pool creation happens only once, goes to MainTreasury
+        
+        // **NET ADDITION: +39 bytes per pool** (56 added - 17 removed)
+    }
+    
+    // **NEW: Pool-level fee collection methods with atomic updates**
+    
+    /// Records liquidity operation fee collection
+    /// 
+    /// **ATOMIC UPDATE**: Updates both specific fee counter and total in single operation
+    /// to prevent race conditions and ensure consistency.
+    pub fn add_liquidity_fee(&mut self, fee_amount: u64, _timestamp: i64) {
+        // Atomic update: both counters updated together
+        self.collected_liquidity_fees += fee_amount;
+        self.total_sol_fees_collected += fee_amount;
+        
+        // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
+        debug_assert_eq!(
+            self.pending_sol_fees(),
+            self.collected_liquidity_fees + self.collected_regular_swap_fees + self.collected_hft_swap_fees,
+            "Pending fees calculation should match sum of individual pending fee types"
+        );
+    }
+    
+    /// Records regular swap fee collection
+    /// 
+    /// **ATOMIC UPDATE**: Updates both specific fee counter and total in single operation
+    /// to prevent race conditions and ensure consistency.
+    pub fn add_regular_swap_fee(&mut self, fee_amount: u64, _timestamp: i64) {
+        // Atomic update: both counters updated together
+        self.collected_regular_swap_fees += fee_amount;
+        self.total_sol_fees_collected += fee_amount;
+        
+        // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
+        debug_assert_eq!(
+            self.pending_sol_fees(),
+            self.collected_liquidity_fees + self.collected_regular_swap_fees + self.collected_hft_swap_fees,
+            "Pending fees calculation should match sum of individual pending fee types"
+        );
+    }
+    
+    /// Records HFT swap fee collection
+    /// 
+    /// **ATOMIC UPDATE**: Updates both specific fee counter and total in single operation
+    /// to prevent race conditions and ensure consistency.
+    pub fn add_hft_swap_fee(&mut self, fee_amount: u64, _timestamp: i64) {
+        // Atomic update: both counters updated together
+        self.collected_hft_swap_fees += fee_amount;
+        self.total_sol_fees_collected += fee_amount;
+        
+        // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
+        debug_assert_eq!(
+            self.pending_sol_fees(),
+            self.collected_liquidity_fees + self.collected_regular_swap_fees + self.collected_hft_swap_fees,
+            "Pending fees calculation should match sum of individual pending fee types"
+        );
+    }
+    
+    /// Calculates current pending SOL fees awaiting consolidation
+    /// 
+    /// **ACCURATE CALCULATION**: Uses the mathematical relationship:
+    /// pending_fees = total_lifetime_fees - already_consolidated_fees
+    /// 
+    /// This automatically includes ALL fee types (pool creation, liquidity, swaps)
+    /// without needing to track consolidation state of individual fee types.
+    /// 
+    /// **WHY THIS IS BETTER THAN SUMMING INDIVIDUAL FEE TYPES:**
+    /// - Pool creation fees go directly to MainTreasuryState, not to individual pools
+    /// - Previous total_collected_sol_fees() only summed liquidity + swap fees
+    /// - Would need complex logic to determine if pool creation fees were consolidated
+    /// - Mathematical approach is simple, accurate, and includes everything automatically
+    pub fn pending_sol_fees(&self) -> u64 {
+        // Simple and accurate: total collected minus what's been consolidated
+        self.total_sol_fees_collected - self.total_fees_consolidated
+    }
+    
+    /// Calculates total operations since last consolidation using fee constants
+    pub fn total_operations_since_consolidation(&self) -> u64 {
+        use crate::constants::*;
+        
+        let liquidity_ops = self.collected_liquidity_fees / DEPOSIT_WITHDRAWAL_FEE;
+        let regular_swap_ops = self.collected_regular_swap_fees / SWAP_FEE;
+        let hft_swap_ops = self.collected_hft_swap_fees / HFT_SWAP_FEE;
+        
+        liquidity_ops + regular_swap_ops + hft_swap_ops
+    }
+    
+    /// Calculates individual operation counts since last consolidation
+    pub fn operation_counts_since_consolidation(&self) -> (u64, u64, u64) {
+        use crate::constants::*;
+        
+        let liquidity_ops = self.collected_liquidity_fees / DEPOSIT_WITHDRAWAL_FEE;
+        let regular_swap_ops = self.collected_regular_swap_fees / SWAP_FEE;
+        let hft_swap_ops = self.collected_hft_swap_fees / HFT_SWAP_FEE;
+        
+        (liquidity_ops, regular_swap_ops, hft_swap_ops)
+    }
+    
+    /// Resets consolidation counters (called after successful consolidation)
+    /// 
+    /// **RACE CONDITION PROTECTION**: This method performs atomic updates to ensure
+    /// that total_sol_fees_collected remains consistent during consolidation.
+    /// The invariant total_sol_fees_collected = total_fees_consolidated + current_pending_fees
+    /// is maintained throughout the operation.
+    pub fn reset_consolidation_counters(&mut self, timestamp: i64) {
+        // Calculate pending fees before any changes using the accurate mathematical relationship
+        let pending_fees = self.pending_sol_fees();
+        
+        // **ATOMIC CONSOLIDATION UPDATE**: 
+        // Move pending fees from "collected" to "consolidated" state
+        // NOTE: total_sol_fees_collected does NOT change - it's the lifetime total
+        self.total_fees_consolidated += pending_fees;
+        
+        // Reset collected fees (operation counts are calculated from these)
+        self.collected_liquidity_fees = 0;
+        self.collected_regular_swap_fees = 0;
+        self.collected_hft_swap_fees = 0;
+        
+        // Update consolidation metadata
+        self.last_consolidation_timestamp = timestamp;
+        self.total_consolidations += 1;
+        
+        // **INVARIANT VERIFICATION**: Ensure consistency after consolidation
+        debug_assert_eq!(
+            self.pending_sol_fees(),
+            0,
+            "Pending fees should be zero after consolidation"
+        );
+        debug_assert_eq!(
+            self.total_sol_fees_collected,
+            self.total_fees_consolidated,
+            "After consolidation, total collected should equal total consolidated"
+        );
+    }
+    
+    /// **NEW: Validates internal consistency of fee tracking**
+    /// 
+    /// This method can be called periodically to ensure that race conditions
+    /// or bugs haven't corrupted the fee tracking state.
+    pub fn validate_fee_consistency(&self) -> Result<(), &'static str> {
+        // Verify the mathematical relationship: pending = total - consolidated
+        let calculated_pending = self.total_sol_fees_collected.saturating_sub(self.total_fees_consolidated);
+        let actual_pending = self.pending_sol_fees();
+        
+        if calculated_pending != actual_pending {
+            return Err("Pending SOL fees calculation inconsistency");
+        }
+        
+        // Verify individual pending fees sum matches the mathematical pending
+        let individual_sum = self.collected_liquidity_fees + 
+                           self.collected_regular_swap_fees + 
+                           self.collected_hft_swap_fees;
+        
+        if actual_pending != individual_sum {
+            return Err("Individual pending fees don't match calculated pending fees");
+        }
+        
+        // Verify no arithmetic overflow conditions
+        let max_safe_value = u64::MAX / 2; // Conservative check
+        if self.total_sol_fees_collected > max_safe_value {
+            return Err("Total SOL fees approaching overflow risk");
+        }
+        
+        // Verify consolidated fees don't exceed total fees
+        if self.total_fees_consolidated > self.total_sol_fees_collected {
+            return Err("Consolidated fees exceed total collected fees");
+        }
+        
+        Ok(())
+    }
+    
+    /// **NEW: Calculate available balance for consolidation (respecting rent exemption)**
+    /// 
+    /// This method calculates how much SOL can be safely consolidated from a pool state
+    /// without violating rent exemption requirements. It considers both the rent exempt
+    /// minimum and the actual pending fees.
+    /// 
+    /// # Arguments
+    /// * `current_account_balance` - Current lamports balance of the pool state account
+    /// * `rent_exempt_minimum` - Minimum balance required for rent exemption
+    /// 
+    /// # Returns
+    /// * `u64` - Amount of SOL that can be safely consolidated (in lamports)
+    /// 
+    /// # Safety
+    /// This function ensures that consolidation never reduces the pool state balance
+    /// below the rent exempt minimum, preventing account closure due to insufficient funds.
+    pub fn calculate_available_for_consolidation(
+        &self,
+        current_account_balance: u64,
+        rent_exempt_minimum: u64,
+    ) -> u64 {
+        // Calculate pending fees awaiting consolidation
+        let pending_fees = self.pending_sol_fees();
+        
+        // Calculate available balance above rent exempt minimum
+        let available_above_rent_exempt = if current_account_balance > rent_exempt_minimum {
+            current_account_balance - rent_exempt_minimum
+        } else {
+            0
+        };
+        
+        // Return the minimum of available balance and pending fees
+        // This ensures we never:
+        // 1. Take more than what's available above rent exempt minimum
+        // 2. Take more than what's actually owed in pending fees
+        std::cmp::min(available_above_rent_exempt, pending_fees)
+    }
+    
+    /// **NEW: Validate consolidation is safe (respecting rent exemption)**
+    /// 
+    /// This method validates that a proposed consolidation amount is safe and won't
+    /// violate rent exemption requirements or exceed pending fees.
+    /// 
+    /// # Arguments
+    /// * `proposed_consolidation_amount` - Amount of SOL proposed for consolidation
+    /// * `current_account_balance` - Current lamports balance of the pool state account
+    /// * `rent_exempt_minimum` - Minimum balance required for rent exemption
+    /// 
+    /// # Returns
+    /// * `Result<(), &'static str>` - Ok if consolidation is safe, error message if not
+    /// 
+    /// # Safety
+    /// This function provides comprehensive validation to prevent:
+    /// - Account closure due to insufficient rent exempt balance
+    /// - Over-consolidation beyond pending fees
+    /// - Arithmetic underflow in account balance
+    pub fn validate_consolidation_safety(
+        &self,
+        proposed_consolidation_amount: u64,
+        current_account_balance: u64,
+        rent_exempt_minimum: u64,
+    ) -> Result<(), &'static str> {
+        // Check if account would have sufficient balance after consolidation
+        if current_account_balance < proposed_consolidation_amount {
+            return Err("Consolidation amount exceeds current account balance");
+        }
+        
+        let balance_after_consolidation = current_account_balance - proposed_consolidation_amount;
+        if balance_after_consolidation < rent_exempt_minimum {
+            return Err("Consolidation would reduce balance below rent exempt minimum");
+        }
+        
+        // Check if consolidation amount exceeds pending fees
+        let pending_fees = self.pending_sol_fees();
+        if proposed_consolidation_amount > pending_fees {
+            return Err("Consolidation amount exceeds pending fees");
+        }
+        
+        // Check for edge cases
+        if proposed_consolidation_amount == 0 {
+            return Err("Consolidation amount cannot be zero");
+        }
+        
+        Ok(())
     }
 } 

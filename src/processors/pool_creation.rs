@@ -504,7 +504,6 @@ pub fn process_initialize_pool(
         token_b_vault_bump_seed,
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
-        is_initialized: true,
         rent_requirements: RentRequirements::new(rent),
         paused: false,
         swaps_paused: false,
@@ -514,7 +513,15 @@ pub fn process_initialize_pool(
         collected_fees_token_b: 0,
         total_fees_withdrawn_token_a: 0,
         total_fees_withdrawn_token_b: 0,
-        swap_fee_basis_points: 0,
+        
+        // **PHASE 1: NEW DISTRIBUTED COLLECTION FIELDS**
+        collected_liquidity_fees: 0,
+        collected_regular_swap_fees: 0,
+        collected_hft_swap_fees: 0,
+        total_sol_fees_collected: 0,
+        last_consolidation_timestamp: 0,
+        total_consolidations: 0,
+        total_fees_consolidated: 0,
     };
 
     // Fee collection moved to beginning of function (FEES FIRST PATTERN)

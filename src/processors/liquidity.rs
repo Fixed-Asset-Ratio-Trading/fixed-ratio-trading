@@ -298,21 +298,20 @@ pub fn process_deposit(
 ) -> ProgramResult {
     msg!("Processing Deposit with fixed system pause validation");
     
-    // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
+    // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                    // Index 1: System Program Account
     crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];                            // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                 // Index 4: SPL Token Program Account
-    let main_treasury_pda = &accounts[5];                         // Index 5: Main Treasury PDA
-    let clock_sysvar_account = &accounts[6];                      // Index 6: Clock Sysvar Account
-    let _rent_sysvar_account = &accounts[7];                      // Index 7: Rent Sysvar Account
-    let token_a_vault_pda = &accounts[8];                         // Index 8: Token A Vault PDA
-    let token_b_vault_pda = &accounts[9];                         // Index 9: Token B Vault PDA
-    let user_input_account = &accounts[10];                       // Index 10: User Input Token Account
-    let user_output_account = &accounts[11];                      // Index 11: User Output LP Token Account
-    let lp_token_a_mint_pda = &accounts[12];                      // Index 12: LP Token A Mint PDA
-    let lp_token_b_mint_pda = &accounts[13];                      // Index 13: LP Token B Mint PDA
+    let _clock_sysvar_account = &accounts[5];                     // Index 5: Clock Sysvar Account (shifted down)
+    let _rent_sysvar_account = &accounts[6];                      // Index 6: Rent Sysvar Account (shifted down)
+    let token_a_vault_pda = &accounts[7];                         // Index 7: Token A Vault PDA (shifted down)
+    let token_b_vault_pda = &accounts[8];                         // Index 8: Token B Vault PDA (shifted down)
+    let user_input_account = &accounts[9];                        // Index 9: User Input Token Account (shifted down)
+    let user_output_account = &accounts[10];                      // Index 10: User Output LP Token Account (shifted down)
+    let lp_token_a_mint_pda = &accounts[11];                      // Index 11: LP Token A Mint PDA (shifted down)
+    let lp_token_b_mint_pda = &accounts[12];                      // Index 12: LP Token B Mint PDA (shifted down)
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -327,14 +326,13 @@ pub fn process_deposit(
     // invoke() operations require signatures. Manual signer checks are
     // redundant and waste compute units on every function call.
 
-    // ✅ COLLECT SOL FEES TO CENTRAL TREASURY FIRST
+    // ✅ COLLECT SOL FEES TO POOL STATE (DISTRIBUTED COLLECTION)
     // SOL fee collection happens before any state changes or token operations
-    use crate::utils::fee_validation::collect_liquidity_fee;
-    collect_liquidity_fee(
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    collect_liquidity_fee_distributed(
         user_authority_signer,
-        main_treasury_pda,
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
-        clock_sysvar_account,
         program_id,
     )?;
 
@@ -343,10 +341,8 @@ pub fn process_deposit(
     // Read and validate pool state (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
-    if !pool_state_data.is_initialized {
-        msg!("Pool not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
+    // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
+    // If we successfully deserialized pool_state_data, the pool is initialized
 
     // ✅ SECURITY: Determine which side the user is depositing to
     // This must happen before creating LP token mints to avoid creating unnecessary accounts
@@ -644,34 +640,32 @@ pub fn process_withdraw(
 ) -> ProgramResult {
     msg!("Processing Withdrawal with fixed system pause validation");
     
-    // ✅ OPTIMIZATION: Extract accounts using updated indexing
+    // ✅ OPTIMIZATION: Extract accounts using updated indexing (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];                     // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account
     crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
     let spl_token_program_account = &accounts[4];                  // Index 4: SPL Token Program Account
-    let main_treasury_pda = &accounts[5];                          // Index 5: Main Treasury PDA
-    let clock_sysvar_account = &accounts[6];                       // Index 6: Clock Sysvar Account
-    let token_a_vault_pda = &accounts[7];                          // Index 7: Token A Vault PDA
-    let token_b_vault_pda = &accounts[8];                          // Index 8: Token B Vault PDA
-    let user_input_account = &accounts[9];                         // Index 9: User Input LP Token Account
-    let user_output_account = &accounts[10];                       // Index 10: User Output Token Account
-    let lp_token_a_mint_pda = &accounts[11];                       // Index 11: LP Token A Mint PDA
-    let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
+    let _clock_sysvar_account = &accounts[5];                      // Index 5: Clock Sysvar Account (shifted down)
+    let token_a_vault_pda = &accounts[6];                          // Index 6: Token A Vault PDA (shifted down)
+    let token_b_vault_pda = &accounts[7];                          // Index 7: Token B Vault PDA (shifted down)
+    let user_input_account = &accounts[8];                         // Index 8: User Input LP Token Account (shifted down)
+    let user_output_account = &accounts[9];                        // Index 9: User Output Token Account (shifted down)
+    let lp_token_a_mint_pda = &accounts[10];                       // Index 10: LP Token A Mint PDA (shifted down)
+    let lp_token_b_mint_pda = &accounts[11];                       // Index 11: LP Token B Mint PDA (shifted down)
 
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
 
-    // ✅ COLLECT SOL FEES TO CENTRAL TREASURY FIRST
+    // ✅ COLLECT SOL FEES TO POOL STATE (DISTRIBUTED COLLECTION)
     // SOL fee collection happens before any state changes or token operations
-    use crate::utils::fee_validation::collect_liquidity_fee;
-    collect_liquidity_fee(
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    collect_liquidity_fee_distributed(
         user_authority_signer,
-        main_treasury_pda,
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
-        clock_sysvar_account,
         program_id,
     )?;
 
@@ -688,10 +682,8 @@ pub fn process_withdraw(
     // ✅ LOAD POOL STATE: Single deserialization (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
-    if !pool_state_data.is_initialized {
-        msg!("Pool is not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
+    // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
+    // If we successfully deserialized pool_state_data, the pool is initialized
 
     // ✅ SECURITY: Validate LP token mint PDAs match expected derived addresses
     let (lp_token_a_mint_pda_expected, _) = Pubkey::find_program_address(
@@ -793,7 +785,6 @@ pub fn process_withdraw(
         pool_state_pda,
         spl_token_program_account,
         system_program_account,
-        main_treasury_pda,
         program_id,
     );
 
@@ -834,7 +825,6 @@ fn execute_withdrawal_logic<'a>(
     pool_state_account: &AccountInfo<'a>,
     token_program_account: &AccountInfo<'a>,
     _system_program_account: &AccountInfo<'a>,
-    _main_treasury_account: &AccountInfo<'a>,
     _program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};

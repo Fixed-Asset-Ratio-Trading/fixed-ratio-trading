@@ -118,19 +118,7 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
 }
 
 /// Validates that a pool state is properly initialized.
-///
-/// # Arguments
-/// * `pool_state` - The pool state to validate
-///
-/// # Returns
-/// * `ProgramResult` - Success if pool is initialized, error otherwise
-pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
-    if !pool_state.is_initialized {
-        msg!("Pool state not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    Ok(())
-}
+/// validate_pool_initialized removed as we now use the pool state PDA to check if the pool is initialized.
 
 /// Validates that a pool is not paused (pool-specific pause check).
 ///
@@ -358,4 +346,28 @@ pub fn check_one_to_many_ratio(
     let one_equals_one = display_ratio_a == 1 || display_ratio_b == 1;
     
     a_is_whole && b_is_whole && both_positive && one_equals_one
+} 
+
+/// **NEW: Secure system state validation**
+/// Validates that the account is the correct SystemState PDA and deserializes it
+pub fn validate_and_deserialize_system_state_secure(
+    system_state_account: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<SystemState, ProgramError> {
+    // Validate this is the correct SystemState PDA
+    let (expected_system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        program_id,
+    );
+    
+    if *system_state_account.key != expected_system_state_pda {
+        msg!("❌ Invalid SystemState PDA provided");
+        msg!("❌ Expected: {}", expected_system_state_pda);
+        msg!("❌ Got: {}", system_state_account.key);
+        return Err(PoolError::InvalidSystemStatePDA.into());
+    }
+    
+    // Deserialize and return system state
+    SystemState::try_from_slice(&system_state_account.data.borrow())
+        .map_err(|_| PoolError::InvalidSystemStateDeserialization.into())
 } 

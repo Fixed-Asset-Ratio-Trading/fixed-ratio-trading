@@ -135,6 +135,14 @@ use crate::processors::{
         process_withdraw_treasury_fees,
         process_get_treasury_info,
     },
+    consolidation::{
+        process_consolidate_pool_fees,
+        get_consolidation_status,
+    },
+    pool_management::{
+        process_pause_pool,
+        process_unpause_pool,
+    },
 };
 
 /// Main entry point for the fixed-ratio trading pool Solana program.
@@ -230,6 +238,24 @@ pub fn process_instruction(
         } => process_withdraw_treasury_fees(program_id, amount, accounts),
 
         PoolInstruction::GetTreasuryInfo {} => process_get_treasury_info(program_id, accounts),
+        
+        // Consolidation Instructions
+        PoolInstruction::ConsolidatePoolFees {
+            pool_count,
+        } => process_consolidate_pool_fees(program_id, pool_count, accounts),
+        
+        PoolInstruction::GetConsolidationStatus {
+            pool_count,
+        } => get_consolidation_status(program_id, &accounts[..pool_count as usize]),
+        
+        // Pool Management Instructions
+        PoolInstruction::PausePool {
+            pause_flags,
+        } => process_pause_pool(program_id, pause_flags, accounts),
+        
+        PoolInstruction::UnpausePool {
+            unpause_flags,
+        } => process_unpause_pool(program_id, unpause_flags, accounts),
     }
 }
 

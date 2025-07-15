@@ -127,6 +127,30 @@ pub enum PoolError {
         provided: Pubkey,
         treasury_type: String,
     },
+    
+    /// Invalid SystemState PDA provided
+    #[error("Invalid SystemState PDA provided")]
+    InvalidSystemStatePDA,
+    
+    /// SystemState deserialization failed
+    #[error("SystemState deserialization failed")]
+    InvalidSystemStateDeserialization,
+    
+    /// **NEW: Consolidation-related errors**
+    #[error("Consolidation failed: {reason}")]
+    ConsolidationFailed { reason: String },
+    
+    #[error("Invalid consolidation batch: expected {expected} pools, got {actual}")]
+    InvalidConsolidationBatch { expected: u8, actual: u8 },
+    
+    #[error("Pool not eligible for consolidation: {reason}")]
+    PoolNotEligibleForConsolidation { reason: String },
+    
+    #[error("Consolidation race condition detected")]
+    ConsolidationRaceCondition,
+    
+    #[error("No pools eligible for consolidation")]
+    NoPoolsEligibleForConsolidation,
 }
 
 impl PoolError {
@@ -156,6 +180,13 @@ impl PoolError {
             PoolError::FeeCollectionFailed { .. } => 1031,
             PoolError::FeeValidationFailed { .. } => 1032,
             PoolError::TreasuryValidationFailed { .. } => 1033,
+            PoolError::InvalidSystemStatePDA => 1034,
+            PoolError::InvalidSystemStateDeserialization => 1035,
+            PoolError::ConsolidationFailed { .. } => 1036,
+            PoolError::InvalidConsolidationBatch { .. } => 1037,
+            PoolError::PoolNotEligibleForConsolidation { .. } => 1038,
+            PoolError::ConsolidationRaceCondition => 1039,
+            PoolError::NoPoolsEligibleForConsolidation => 1040,
         }
     }
 }

@@ -260,10 +260,8 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Pool Authority Bump Seed: {}", pool_state.pool_authority_bump_seed);
     msg!("Token A Vault Bump Seed: {}", pool_state.token_a_vault_bump_seed);
     msg!("Token B Vault Bump Seed: {}", pool_state.token_b_vault_bump_seed);
-    msg!("Is Initialized: {}", pool_state.is_initialized);
     msg!("Pool Paused: {}", pool_state.paused);
     msg!("Swaps Paused: {}", pool_state.swaps_paused);
-    msg!("Swap Fee Basis Points: {}", pool_state.swap_fee_basis_points);
     
     // Enhanced operations status
     msg!("=== OPERATIONS STATUS ===");
@@ -378,9 +376,6 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     
     // Pool fees (percentage-based on tokens)
     msg!("Pool Fees (Trading Fees):");
-    msg!("  Current Swap Fee Rate: {} basis points ({:.2}%)", 
-         pool_state.swap_fee_basis_points, 
-         pool_state.swap_fee_basis_points as f64 / 100.0);
     msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
     msg!("  Collected Token B Fees: {} ({} tokens)",
          pool_state.collected_fees_token_b,
@@ -513,14 +508,8 @@ pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramR
     Ok(())
 }
 
-/// Validates that a pool is initialized.
-pub fn validate_pool_initialized(pool_state: &PoolState) -> ProgramResult {
-    if !pool_state.is_initialized {
-        msg!("Pool is not yet initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
-    Ok(())
-}
+/// validate_pool_initialized is no longer needed as we now use the pool state PDA to check if the pool is initialized.
+/// **PHASE 1 UPDATE**: Pool existence = initialization status
 
 /// Validates that a pool is not paused.
 pub fn validate_pool_not_paused(pool_state: &PoolState) -> ProgramResult {

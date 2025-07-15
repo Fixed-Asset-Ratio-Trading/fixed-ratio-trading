@@ -490,3 +490,120 @@ pub fn collect_hft_swap_fee_ultra_efficient<'a>(
         &expected_treasury_pda,
     )
 } 
+
+/// **NEW: Distributed liquidity fee collection**
+/// Collects fee directly to the pool state account instead of MainTreasuryState
+pub fn collect_liquidity_fee_distributed<'a>(
+    payer_account: &AccountInfo<'a>,
+    pool_state_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    collect_fee_to_pool_state(
+        payer_account,
+        pool_state_account,
+        system_program,
+        program_id,
+        DEPOSIT_WITHDRAWAL_FEE,
+        FeeType::Liquidity,
+    )
+}
+
+/// **NEW: Distributed swap fee collection**
+pub fn collect_regular_swap_fee_distributed<'a>(
+    payer_account: &AccountInfo<'a>,
+    pool_state_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    collect_fee_to_pool_state(
+        payer_account,
+        pool_state_account,
+        system_program,
+        program_id,
+        SWAP_FEE,
+        FeeType::RegularSwap,
+    )
+}
+
+/// **NEW: Distributed HFT swap fee collection**
+pub fn collect_hft_swap_fee_distributed<'a>(
+    payer_account: &AccountInfo<'a>,
+    pool_state_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+) -> ProgramResult {
+    collect_fee_to_pool_state(
+        payer_account,
+        pool_state_account,
+        system_program,
+        program_id,
+        HFT_SWAP_FEE,
+        FeeType::HftSwap,
+    )
+}
+
+/// **NEW: Fee type enumeration**
+enum FeeType {
+    Liquidity,
+    RegularSwap,
+    HftSwap,
+}
+
+/// **NEW: Generic fee collection to pool state**
+fn collect_fee_to_pool_state<'a>(
+    payer_account: &AccountInfo<'a>,
+    pool_state_account: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+    fee_amount: u64,
+    fee_type: FeeType,
+) -> ProgramResult {
+    use solana_program::{
+        program::invoke,
+        system_instruction,
+        clock::Clock,
+        sysvar::Sysvar,
+    };
+    
+    // Validate fee payment capability
+    let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
+    if !validation_result.is_valid {
+        return Err(PoolError::InsufficientFeeBalance {
+            required: fee_amount,
+            available: validation_result.available_balance,
+            account: *payer_account.key,
+        }.into());
+    }
+    
+    // Load and validate pool state
+    let mut pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
+    
+    // Transfer SOL to pool state account
+    invoke(
+        &system_instruction::transfer(
+            payer_account.key,
+            pool_state_account.key,
+            fee_amount,
+        ),
+        &[
+            payer_account.clone(),
+            pool_state_account.clone(),
+            system_program.clone(),
+        ],
+    )?;
+    
+    // Update pool state based on fee type
+    let current_timestamp = Clock::get()?.unix_timestamp;
+    match fee_type {
+        FeeType::Liquidity => pool_state.add_liquidity_fee(fee_amount, current_timestamp),
+        FeeType::RegularSwap => pool_state.add_regular_swap_fee(fee_amount, current_timestamp),
+        FeeType::HftSwap => pool_state.add_hft_swap_fee(fee_amount, current_timestamp),
+    }
+    
+    // Save updated pool state
+    let serialized_data = pool_state.try_to_vec()?;
+    pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+    
+    Ok(())
+} 

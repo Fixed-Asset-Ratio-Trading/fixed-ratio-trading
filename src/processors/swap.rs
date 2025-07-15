@@ -91,17 +91,16 @@ pub fn process_swap(
 ) -> ProgramResult {
     msg!("Processing Swap with fixed system pause validation");
     
-    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
     crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
-    let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
-    let pool_token_a_vault_pda = &accounts[6];     // Index 6: Token A Vault PDA
-    let pool_token_b_vault_pda = &accounts[7];     // Index 7: Token B Vault PDA
-    let user_input_token_account = &accounts[8];   // Index 8: User Input Token Account
-    let user_output_token_account = &accounts[9];  // Index 9: User Output Token Account
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA (shifted down)
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA (shifted down)
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account (shifted down)
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account (shifted down)
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -116,21 +115,19 @@ pub fn process_swap(
     // invoke() operations require signatures. Manual signer checks are
     // redundant and waste compute units on every function call.
 
-    // ✅ ULTRA-EFFICIENT FEE COLLECTION: Direct to main treasury
-    use crate::utils::fee_validation::collect_regular_swap_fee_ultra_efficient;
+    // ✅ DISTRIBUTED FEE COLLECTION: Collect to pool state
+    use crate::utils::fee_validation::collect_regular_swap_fee_distributed;
     
-    collect_regular_swap_fee_ultra_efficient(
+    collect_regular_swap_fee_distributed(
         user_authority_signer,
-        main_treasury_pda, // Use main treasury instead of specialized treasury
-        system_program_account, // Required for SOL fee transfer via system_instruction::transfer
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
+        system_program_account,
         program_id,
     )?;
 
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
-    if !pool_state_data.is_initialized {
-        msg!("Pool not initialized");
-        return Err(ProgramError::UninitializedAccount);
-    }
+    // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
+    // If we successfully deserialized pool_state_data, the pool is initialized
 
     // ✅ DERIVE INPUT TOKEN MINT: Extract from user's input token account instead of parameter
     let user_input_token_account_data = TokenAccount::unpack_from_slice(&user_input_token_account.data.borrow())?;
@@ -354,17 +351,16 @@ pub fn process_swap_hft_optimized(
     amount_in: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices
+    // ✅ OPTIMIZED ACCOUNT EXTRACTION: Extract accounts using updated indices (Phase 4: Main Treasury removed)
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
     crate::utils::validation::validate_system_not_paused_secure(&accounts[2], program_id)?;   // Index 2: System State PDA (SECURITY: Now validates PDA)
     let pool_state_pda = &accounts[3];             // Index 3: Pool State PDA
     let token_program_account = &accounts[4];      // Index 4: SPL Token Program Account
-    let main_treasury_pda = &accounts[5];          // Index 5: Main Treasury PDA
-    let pool_token_a_vault_pda = &accounts[6];     // Index 6: Token A Vault PDA
-    let pool_token_b_vault_pda = &accounts[7];     // Index 7: Token B Vault PDA
-    let user_input_token_account = &accounts[8];   // Index 8: User Input Token Account
-    let user_output_token_account = &accounts[9];  // Index 9: User Output Token Account
+    let pool_token_a_vault_pda = &accounts[5];     // Index 5: Token A Vault PDA (shifted down)
+    let pool_token_b_vault_pda = &accounts[6];     // Index 6: Token B Vault PDA (shifted down)
+    let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account (shifted down)
+    let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account (shifted down)
 
     // 🚀 COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -379,21 +375,20 @@ pub fn process_swap_hft_optimized(
     // invoke() operations require signatures. Manual signer checks are
     // redundant and waste compute units on every function call.
 
-    // ✅ ULTRA-EFFICIENT HFT FEE COLLECTION: Direct to main treasury
-    use crate::utils::fee_validation::collect_hft_swap_fee_ultra_efficient;
+    // ✅ DISTRIBUTED HFT FEE COLLECTION: Collect to pool state
+    use crate::utils::fee_validation::collect_hft_swap_fee_distributed;
     
-    collect_hft_swap_fee_ultra_efficient(
+    collect_hft_swap_fee_distributed(
         user_authority_signer,
-        main_treasury_pda, // Use main treasury instead of specialized treasury
-        system_program_account, // Required for SOL fee transfer via system_instruction::transfer
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
+        system_program_account,
         program_id,
     )?;
 
     // 🚀 OPTIMIZATION 5: Single pool state deserialization with immediate validation (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
-    if !pool_state_data.is_initialized {
-        return Err(ProgramError::UninitializedAccount);
-    }
+    // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
+    // If we successfully deserialized pool_state_data, the pool is initialized
 
     // 🚀 OPTIMIZATION 6: Batch token account data loading (minimize borrow calls)
     let user_input_token_data = TokenAccount::unpack_from_slice(&user_input_token_account.data.borrow())?;
@@ -680,9 +675,16 @@ pub fn process_set_swap_fee(
         return Err(ProgramError::InvalidArgument);
     }
 
-    // Update swap fee
-    let old_fee = pool_state_data.swap_fee_basis_points;
-    pool_state_data.swap_fee_basis_points = fee_basis_points;
+    // **PHASE 1: FIXED SWAP FEE - NO LONGER CONFIGURABLE PER POOL**
+    // Swap fees are now fixed system-wide via FIXED_SWAP_FEE_BASIS_POINTS constant
+    use crate::constants::FIXED_SWAP_FEE_BASIS_POINTS;
+    
+    let old_fee = FIXED_SWAP_FEE_BASIS_POINTS;
+    if fee_basis_points != FIXED_SWAP_FEE_BASIS_POINTS {
+        msg!("⚠️ Swap fees are now fixed system-wide at {} basis points", FIXED_SWAP_FEE_BASIS_POINTS);
+        msg!("⚠️ Individual pool fee configuration is no longer supported");
+        return Err(ProgramError::InvalidArgument);
+    }
 
     // ========================================================================
     // SOLANA BUFFER SERIALIZATION WORKAROUND FOR PDA DATA CORRUPTION

@@ -265,4 +265,99 @@ pub enum PoolInstruction {
         // No parameters needed - reads main treasury state directly
     },
     
+    /// **PHASE 3: BATCH POOL FEE CONSOLIDATION**
+    /// 
+    /// Consolidates SOL fees from multiple pool states to the MainTreasuryState with
+    /// flexible pause support. Supports both system-wide pause and individual pool pause.
+    /// 
+    /// # Consolidation Modes:
+    /// - **System Paused**: Consolidates all specified pools regardless of individual pause state
+    /// - **System Active**: Only consolidates pools with both `paused=true` AND `swaps_paused=true`
+    /// 
+    /// # Features:
+    /// - Batch processing: 1-20 pools per instruction
+    /// - Rent exempt protection: Never reduces pool balance below rent exempt minimum
+    /// - Partial consolidation: Consolidates available amount if full consolidation would violate rent exemption
+    /// - Atomic operation: All eligible pools processed or entire operation fails
+    /// - Comprehensive logging: Detailed consolidation results and safety checks
+    /// 
+    /// # Arguments:
+    /// - `pool_count`: Number of pools to consolidate (1-20)
+    /// 
+    /// # Account Order:
+    /// - [0] System State PDA (for pause validation)
+    /// - [1] Main Treasury PDA (receives consolidated fees)
+    /// - [2..2+pool_count] Pool State PDAs (pools to consolidate)
+    /// 
+    /// # CU Estimate: 
+    /// - 1 pool: ~5,000 CUs
+    /// - 20 pools: ~109,000 CUs
+    /// - Scales linearly with pool count
+    ConsolidatePoolFees {
+        pool_count: u8,
+    },
+    
+    /// **PHASE 3: CONSOLIDATION STATUS REPORT**
+    /// 
+    /// View-only function that provides detailed consolidation status for multiple pools.
+    /// Useful for determining which pools have fees to consolidate and the potential
+    /// benefits of consolidation.
+    /// 
+    /// # Information Provided:
+    /// - Individual pool fee amounts and operation counts
+    /// - Last consolidation timestamp for each pool
+    /// - Total fees available across all pools
+    /// - Estimated consolidation cost vs. benefit analysis
+    /// 
+    /// # Arguments:
+    /// - `pool_count`: Number of pools to check (1-20)
+    /// 
+    /// # Account Order:
+    /// - [0..pool_count] Pool State PDAs (pools to check)
+    GetConsolidationStatus {
+        pool_count: u8,
+    },
+    
+    /// **PHASE 4: POOL PAUSE OPERATIONS**
+    /// 
+    /// Pauses pool operations using bitwise flags (pool owner only).
+    /// Uses bitwise flags to control which operations to pause:
+    /// - PAUSE_FLAG_GENERAL (1): Pause deposits/withdrawals
+    /// - PAUSE_FLAG_SWAPS (2): Pause swaps
+    /// - PAUSE_FLAG_ALL (3): Pause both (required for consolidation eligibility)
+    /// 
+    /// **Idempotent**: Pausing already paused operations does not cause an error.
+    /// 
+    /// # Arguments:
+    /// - `pause_flags`: Bitwise flags indicating which operations to pause
+    /// 
+    /// # Account Order:
+    /// - [0] Pool Owner Signer (must match pool.owner)
+    /// - [1] System State PDA (for system pause validation)
+    /// - [2] Pool State PDA (writable, to update pause state)
+    PausePool {
+        pause_flags: u8,
+    },
+    
+    /// **PHASE 4: POOL UNPAUSE OPERATIONS**
+    /// 
+    /// Unpauses pool operations using bitwise flags (pool owner only).
+    /// Uses bitwise flags to control which operations to unpause:
+    /// - PAUSE_FLAG_GENERAL (1): Unpause deposits/withdrawals
+    /// - PAUSE_FLAG_SWAPS (2): Unpause swaps
+    /// - PAUSE_FLAG_ALL (3): Unpause both operations
+    /// 
+    /// **Idempotent**: Unpausing already unpaused operations does not cause an error.
+    /// 
+    /// # Arguments:
+    /// - `unpause_flags`: Bitwise flags indicating which operations to unpause
+    /// 
+    /// # Account Order:
+    /// - [0] Pool Owner Signer (must match pool.owner)
+    /// - [1] System State PDA (for system pause validation)
+    /// - [2] Pool State PDA (writable, to update pause state)
+    UnpausePool {
+        unpause_flags: u8,
+    },
+    
 } 
