@@ -72,7 +72,7 @@ use crate::{
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 18,000 - 23,000 CUs    2025/7/11 11:11 pm
+/// 202,500 CUs    2025/7/15 8:24 pm
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
@@ -334,7 +334,7 @@ pub fn process_swap(
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 13,000 - 16,000 CUs    2025/7/11 11:11 pm
+/// 152,500 CUs    2025/7/15 8:24 pm
 /// 
 /// # Critical Notes
 /// - **HFT OPTIMIZED**: Compute-unit optimized version for high-frequency trading applications

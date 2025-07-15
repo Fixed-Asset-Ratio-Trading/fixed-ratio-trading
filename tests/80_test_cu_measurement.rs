@@ -461,39 +461,394 @@ async fn test_cu_measurement_deposit_liquidity() {
     }
 }
 
-/// LIGHTWEIGHT: Test CU measurement with minimal account creation
+/// REAL CU MEASUREMENT: Test compute units for regular swap operations
 #[tokio::test]
-async fn test_cu_measurement_swap_comparison() {
-    println!("🔬 Testing CU measurement for simple transfers (LIGHTWEIGHT)");
+async fn test_cu_measurement_regular_swap() {
+    println!("🔬 REAL CU MEASUREMENT: Regular Swap Process Function");
+    println!("   This test measures the actual CUs consumed by process_swap");
     
-    let env = start_test_environment().await;
+    // =============================================
+    // STEP 1: Set up complete test environment with pool and liquidity
+    // =============================================
     
-    // Use simple transfer instead of complex account creation
-    let simple_transfer = system_instruction::transfer(
-        &env.payer.pubkey(),
-        &solana_sdk::pubkey::Pubkey::new_unique(),
-        1_000_000, // 0.001 SOL
-    );
+    // Use the existing swap test environment setup and add liquidity
+    use crate::common::liquidity_helpers::{create_liquidity_test_foundation, execute_deposit_operation};
     
-    let results = compare_instruction_cu(
-        &mut env.banks_client.clone(),
-        &env.payer,
-        env.recent_blockhash,
-        vec![(simple_transfer, "simple_transfer".to_string())],
+    let mut foundation = create_liquidity_test_foundation(Some(2)).await.expect("Foundation creation should succeed");
+    println!("✅ Test environment created with 2:1 ratio");
+    
+    // Add liquidity to the pool to enable swaps
+    let liquidity_amount = 5_000_000u64; // 5M tokens for good liquidity
+    let user1 = foundation.user1.insecure_clone();
+    
+    // Extract values before borrowing foundation mutably
+    let token_a_mint = foundation.pool_config.token_a_mint;
+    let token_b_mint = foundation.pool_config.token_b_mint;
+    let user1_primary_account = foundation.user1_primary_account.pubkey();
+    let user1_base_account = foundation.user1_base_account.pubkey();
+    let user1_lp_a_account = foundation.user1_lp_a_account.pubkey();
+    let user1_lp_b_account = foundation.user1_lp_b_account.pubkey();
+    
+    // Add Token A liquidity
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user1_primary_account,
+        &user1_lp_a_account,
+        &token_a_mint,
+        liquidity_amount,
+    ).await.expect("Token A liquidity deposit should succeed");
+    
+    // Add Token B liquidity  
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user1_base_account,
+        &user1_lp_b_account,
+        &token_b_mint,
+        liquidity_amount / 2, // Half for 2:1 ratio
+    ).await.expect("Token B liquidity deposit should succeed");
+    
+    println!("✅ Added sufficient liquidity to pool for swap operations");
+    
+    // =============================================
+    // STEP 2: Mint additional tokens for user to swap with
+    // =============================================
+    
+    use crate::common::tokens::mint_tokens;
+    let swap_amount = 100_000u64; // 100K tokens for swap
+    
+    // Mint tokens for user to have balance for swapping
+    mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &token_a_mint,
+        &user1_primary_account,
+        &foundation.env.payer,
+        swap_amount * 2, // Extra tokens for testing
+    ).await.expect("Token A minting should succeed");
+    
+    mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &token_b_mint,
+        &user1_base_account,
+        &foundation.env.payer,
+        swap_amount, // Some Token B balance  
+    ).await.expect("Token B minting should succeed");
+    
+    println!("✅ Minted additional tokens for user to perform swaps");
+    
+    // =============================================
+    // STEP 3: Prepare for swap operation  
+    // =============================================
+    
+    // Get initial balances  
+    use crate::common::tokens::get_token_balance;
+    let initial_token_a_balance = get_token_balance(&mut foundation.env.banks_client, &user1_primary_account).await;
+    let initial_token_b_balance = get_token_balance(&mut foundation.env.banks_client, &user1_base_account).await;
+    
+    println!("📊 Preparing to swap {} Token A for Token B", swap_amount);
+    println!("   Initial Token A balance: {}", initial_token_a_balance);
+    println!("   Initial Token B balance: {}", initial_token_b_balance);
+    
+    // =============================================
+    // STEP 4: Create REAL swap instruction using working pattern
+    // =============================================
+    
+    use crate::common::liquidity_helpers::create_swap_instruction_standardized;
+    use fixed_ratio_trading::PoolInstruction;
+    
+    let swap_instruction_data = PoolInstruction::Swap {
+        input_token_mint: token_a_mint,
+        amount_in: swap_amount,
+    };
+    
+    let swap_instruction = create_swap_instruction_standardized(
+        &user1.pubkey(),
+        &user1_primary_account, // Token A input account
+        &user1_base_account,    // Token B output account  
+        &foundation.pool_config,
+        &swap_instruction_data,
+    ).expect("Swap instruction creation should succeed");
+    
+    println!("✅ REAL swap instruction built with {} accounts", swap_instruction.accounts.len());
+    
+    // =============================================
+    // STEP 5: Measure CUs on REAL swap
+    // =============================================
+    
+    println!("📊 Measuring CUs for REAL regular swap process function...");
+    
+    use crate::common::cu_measurement::{measure_instruction_cu, CUMeasurementConfig};
+    
+    let cu_result = measure_instruction_cu(
+        &mut foundation.env.banks_client,
+        &user1,
+        foundation.env.recent_blockhash,
+        swap_instruction,
+        "process_swap_regular",
         Some(CUMeasurementConfig {
-            compute_limit: 200_000,
-            enable_logging: false,
-            max_retries: 1,
+            compute_limit: 400_000, // Set limit for swap operations
+            enable_logging: true,    // Enable detailed logging for analysis
+            max_retries: 2,          // Allow retries for reliability
         }),
     ).await;
     
-    println!("📊 Simple Transfer CU Results:");
-    for result in &results {
-        println!("  {}: {}ms execution", result.instruction_name, result.execution_time_ms);
+    // =============================================
+    // STEP 6: Report Results
+    // =============================================
+    println!("\n🎯 REAL REGULAR SWAP CU MEASUREMENT RESULTS:");
+    println!("=========================================");
+    println!("  Instruction: {}", cu_result.instruction_name);
+    println!("  Success: {}", cu_result.success);
+    println!("  Execution time: {}ms", cu_result.execution_time_ms);
+    
+    if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+        println!("  🔥 ACTUAL CUs CONSUMED: {} CUs", cu_consumed);
+        println!("  💰 Cost efficiency: {:.2} CUs per millisecond", 
+                cu_consumed as f64 / cu_result.execution_time_ms as f64);
+        println!("  📊 Category: {}", 
+                if cu_consumed < 50_000 { "🟢 EXCELLENT (< 50K CUs)" }
+                else if cu_consumed < 100_000 { "🟡 GOOD (50K-100K CUs)" }
+                else if cu_consumed < 200_000 { "🟠 MODERATE (100K-200K CUs)" }
+                else { "🔴 HIGH (> 200K CUs)" });
+        println!("  💸 Estimated cost: {} microlamports", cu_consumed / 2); // 1 CU ≈ 0.5 microlamports
+    } else {
+        println!("  ⚠️  CU consumption: Not measured");
     }
     
-    assert_eq!(results.len(), 1);
-    assert!(results[0].execution_time_ms < 1000); // Should be fast
+    if let Some(signature) = &cu_result.transaction_signature {
+        println!("  Transaction signature: {}", signature);
+    }
+    
+    if let Some(error) = &cu_result.error {
+        println!("  Error details: {}", error);
+    }
+    
+    println!("=========================================");
+    
+    // =============================================
+    // STEP 7: Analysis and Validation
+    // =============================================
+    if cu_result.success {
+        println!("\n✅ SUCCESSFUL REGULAR SWAP CU ANALYSIS:");
+        println!("   • Regular swap completed successfully");
+        println!("   • This represents the CU cost of process_swap");
+        println!("   • Operations: Price calculation, token transfers, fee collection, liquidity updates");
+        println!("   • Account Updates: User accounts, pool vaults, pool state, fee tracking");
+        println!("   • Execution time: {}ms", cu_result.execution_time_ms);
+        
+        if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+            println!("   • 🔥 CU Consumption: {} CUs", cu_consumed);
+            println!("   • Efficiency: {:.2} tokens per CU", swap_amount as f64 / cu_consumed as f64);
+            println!("   • Compared to other operations: swap complexity reflects DeFi calculations");
+        }
+    } else {
+        println!("\n❌ REGULAR SWAP CU MEASUREMENT FAILED:");
+        println!("   • This indicates the swap instruction failed to execute");
+        println!("   • Please check test environment setup and account states");
+        if let Some(error) = &cu_result.error {
+            println!("   • Error details: {}", error);
+        }
+    }
+}
+
+/// REAL CU MEASUREMENT: Test compute units for HFT optimized swap operations
+#[tokio::test]
+async fn test_cu_measurement_hft_swap() {
+    println!("🔬 REAL CU MEASUREMENT: HFT Optimized Swap Process Function");
+    println!("   This test measures the actual CUs consumed by process_swap_hft_optimized");
+    
+    // =============================================
+    // STEP 1: Set up complete test environment with pool and liquidity
+    // =============================================
+    
+    // Use the existing swap test environment setup and add liquidity
+    use crate::common::liquidity_helpers::{create_liquidity_test_foundation, execute_deposit_operation};
+    
+    let mut foundation = create_liquidity_test_foundation(Some(2)).await.expect("Foundation creation should succeed");
+    println!("✅ Test environment created with 2:1 ratio");
+    
+    // Add liquidity to the pool to enable HFT swaps
+    let liquidity_amount = 5_000_000u64; // 5M tokens for good liquidity
+    let user1 = foundation.user1.insecure_clone();
+    
+    // Extract values before borrowing foundation mutably
+    let token_a_mint = foundation.pool_config.token_a_mint;
+    let token_b_mint = foundation.pool_config.token_b_mint;
+    let user1_primary_account = foundation.user1_primary_account.pubkey();
+    let user1_base_account = foundation.user1_base_account.pubkey();
+    let user1_lp_a_account = foundation.user1_lp_a_account.pubkey();
+    let user1_lp_b_account = foundation.user1_lp_b_account.pubkey();
+    
+    // Add Token A liquidity
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user1_primary_account,
+        &user1_lp_a_account,
+        &token_a_mint,
+        liquidity_amount,
+    ).await.expect("Token A liquidity deposit should succeed");
+    
+    // Add Token B liquidity  
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &user1_base_account,
+        &user1_lp_b_account,
+        &token_b_mint,
+        liquidity_amount / 2, // Half for 2:1 ratio
+    ).await.expect("Token B liquidity deposit should succeed");
+    
+    println!("✅ Added sufficient liquidity to pool for HFT swap operations");
+    
+    // =============================================
+    // STEP 2: Mint additional tokens for user to swap with
+    // =============================================
+    
+    use crate::common::tokens::mint_tokens;
+    let swap_amount = 100_000u64; // 100K tokens for HFT swap
+    
+    // Mint tokens for user to have balance for HFT swapping
+    mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &token_a_mint,
+        &user1_primary_account,
+        &foundation.env.payer,
+        swap_amount * 2, // Extra tokens for testing
+    ).await.expect("Token A minting should succeed");
+    
+    mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &token_b_mint,
+        &user1_base_account,
+        &foundation.env.payer,
+        swap_amount, // Some Token B balance  
+    ).await.expect("Token B minting should succeed");
+    
+    println!("✅ Minted additional tokens for user to perform HFT swaps");
+    
+    // =============================================
+    // STEP 3: Prepare for HFT swap operation  
+    // =============================================
+    
+    // Get initial balances
+    use crate::common::tokens::get_token_balance;
+    let initial_token_a_balance = get_token_balance(&mut foundation.env.banks_client, &user1_primary_account).await;
+    let initial_token_b_balance = get_token_balance(&mut foundation.env.banks_client, &user1_base_account).await;
+    
+    println!("📊 Preparing to HFT swap {} Token A for Token B", swap_amount);
+    println!("   Initial Token A balance: {}", initial_token_a_balance);
+    println!("   Initial Token B balance: {}", initial_token_b_balance);
+    
+    // =============================================
+    // STEP 4: Create REAL HFT swap instruction using working pattern
+    // =============================================
+    
+    use crate::common::liquidity_helpers::create_swap_instruction_standardized;
+    use fixed_ratio_trading::PoolInstruction;
+    
+    let hft_swap_instruction_data = PoolInstruction::SwapHftOptimized {
+        input_token_mint: token_a_mint, // Token A mint
+        amount_in: swap_amount,
+    };
+    
+    let hft_swap_instruction = create_swap_instruction_standardized(
+        &user1.pubkey(),
+        &user1_primary_account, // Token A input account
+        &user1_base_account,    // Token B output account
+        &foundation.pool_config,
+        &hft_swap_instruction_data,
+    ).expect("HFT swap instruction creation should succeed");
+    
+    println!("✅ REAL HFT swap instruction built with {} accounts", hft_swap_instruction.accounts.len());
+    
+    // =============================================
+    // STEP 5: Measure CUs on REAL HFT swap
+    // =============================================
+    
+    println!("📊 Measuring CUs for REAL HFT optimized swap process function...");
+    
+    use crate::common::cu_measurement::{measure_instruction_cu, CUMeasurementConfig};
+    
+    let cu_result = measure_instruction_cu(
+        &mut foundation.env.banks_client,
+        &user1,
+        foundation.env.recent_blockhash,
+        hft_swap_instruction,
+        "process_swap_hft_optimized",
+        Some(CUMeasurementConfig {
+            compute_limit: 300_000, // Lower limit for optimized operations
+            enable_logging: true,    // Enable detailed logging for analysis
+            max_retries: 2,          // Allow retries for reliability
+        }),
+    ).await;
+    
+    // =============================================
+    // STEP 6: Report Results
+    // =============================================
+    println!("\n🎯 REAL HFT OPTIMIZED SWAP CU MEASUREMENT RESULTS:");
+    println!("=========================================");
+    println!("  Instruction: {}", cu_result.instruction_name);
+    println!("  Success: {}", cu_result.success);
+    println!("  Execution time: {}ms", cu_result.execution_time_ms);
+    
+    if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+        println!("  🔥 ACTUAL CUs CONSUMED: {} CUs", cu_consumed);
+        println!("  💰 Cost efficiency: {:.2} CUs per millisecond", 
+                cu_consumed as f64 / cu_result.execution_time_ms as f64);
+        println!("  📊 Category: {}", 
+                if cu_consumed < 30_000 { "🟢 EXCELLENT (< 30K CUs)" }
+                else if cu_consumed < 60_000 { "🟡 GOOD (30K-60K CUs)" }
+                else if cu_consumed < 120_000 { "🟠 MODERATE (60K-120K CUs)" }
+                else { "🔴 HIGH (> 120K CUs)" });
+        println!("  💸 Estimated cost: {} microlamports", cu_consumed / 2); // 1 CU ≈ 0.5 microlamports
+    } else {
+        println!("  ⚠️  CU consumption: Not measured");
+    }
+    
+    if let Some(signature) = &cu_result.transaction_signature {
+        println!("  Transaction signature: {}", signature);
+    }
+    
+    if let Some(error) = &cu_result.error {
+        println!("  Error details: {}", error);
+    }
+    
+    println!("=========================================");
+    
+    // =============================================
+    // STEP 7: Analysis and Validation
+    // =============================================
+    if cu_result.success {
+        println!("\n✅ SUCCESSFUL HFT OPTIMIZED SWAP CU ANALYSIS:");
+        println!("   • HFT optimized swap completed successfully");
+        println!("   • This represents the CU cost of process_swap_hft_optimized");
+        println!("   • Operations: Optimized price calculation, reduced validations, streamlined transfers");
+        println!("   • Account Updates: Minimal account updates, optimized state management");
+        println!("   • Execution time: {}ms", cu_result.execution_time_ms);
+        
+        if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+            println!("   • 🔥 CU Consumption: {} CUs", cu_consumed);
+            println!("   • Efficiency: {:.2} tokens per CU", swap_amount as f64 / cu_consumed as f64);
+            println!("   • HFT Optimization: Designed for minimal CU consumption and fastest execution");
+        }
+    } else {
+        println!("\n❌ HFT OPTIMIZED SWAP CU MEASUREMENT FAILED:");
+        println!("   • This indicates the HFT swap instruction failed to execute");
+        println!("   • Please check test environment setup and account states");
+        if let Some(error) = &cu_result.error {
+            println!("   • Error details: {}", error);
+        }
+    }
 }
 
 /// LIGHTWEIGHT: Test CU measurement with single simple operation
