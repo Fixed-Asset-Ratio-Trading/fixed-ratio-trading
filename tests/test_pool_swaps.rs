@@ -351,7 +351,6 @@ async fn test_successful_a_to_b_swap() -> TestResult {
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Failed to get pool state after creation");
     
-    assert!(pool_state.is_initialized, "Pool should be initialized");
     assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should match");
     println!("✅ Pool created successfully with ratio A:{} B:{}", 
              pool_state.ratio_a_numerator, pool_state.ratio_b_denominator);
@@ -434,7 +433,6 @@ async fn test_successful_b_to_a_swap() -> TestResult {
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Failed to get pool state after creation");
     
-    assert!(pool_state.is_initialized, "Pool should be initialized");
     assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should match");
     println!("✅ Pool created successfully with ratio A:{} B:{}", 
              pool_state.ratio_a_numerator, pool_state.ratio_b_denominator);
@@ -547,13 +545,10 @@ async fn test_governance_fee_management() -> TestResult {
     let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Failed to get pool state");
     
-    assert!(pool_state.is_initialized, "Pool should be initialized");
     assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be set");
-    assert_eq!(pool_state.swap_fee_basis_points, 0, "Initial fee should be 0");
     
     println!("✅ Pool state verified:");
     println!("    ✓ Owner field: {} (preserved for governance)", pool_state.owner);
-    println!("    ✓ Fee rate: {} basis points (controlled by governance)", pool_state.swap_fee_basis_points);
     
     // Test 2: Verify SOL fees flow to treasury system
     println!("\n--- Testing Treasury System Integration ---");
@@ -603,7 +598,6 @@ async fn test_swap_with_various_ratios() -> TestResult {
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
             .expect("Failed to get pool state after creation");
         
-        assert!(pool_state.is_initialized, "Pool should be initialized");
         assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should match");
         println!("✅ Pool created successfully with ratio A:{} B:{}", 
                  pool_state.ratio_a_numerator, pool_state.ratio_b_denominator);
@@ -746,7 +740,7 @@ async fn test_swap_with_various_ratios() -> TestResult {
         // Test fee calculation accuracy independent of ratio complexity
         println!("--- Testing Fee Calculation Independence ---");
         
-        let fee_basis_points = pool_state.swap_fee_basis_points;
+        let fee_basis_points = 25u64; // Fixed system-wide fee rate
         let fee_test_amounts = vec![10_000u64, 100_000u64, 1_000_000u64];
         
         for &amount in &fee_test_amounts {
@@ -982,7 +976,6 @@ async fn test_swap_liquidity_constraints() -> TestResult {
     let initial_pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
         .expect("Failed to get pool state after creation");
     
-    assert!(initial_pool_state.is_initialized, "Pool should be initialized");
     println!("✅ Pool created successfully with 2:1 ratio");
 
     // Mint large amounts to user for swapping
@@ -1713,7 +1706,6 @@ async fn test_governance_fee_architecture() -> TestResult {
     println!("✅ Pool state fee tracking structure:");
     println!("   ✓ collected_fees_token_a: {} (tracked in pool)", pool_state.collected_fees_token_a);
     println!("   ✓ collected_fees_token_b: {} (tracked in pool)", pool_state.collected_fees_token_b);
-    println!("   ✓ swap_fee_basis_points: {} (controlled by governance)", pool_state.swap_fee_basis_points);
     println!("   ✓ owner: {} (preserved for governance reference)", pool_state.owner);
     
     // Test 2: SOL fees flow to treasury system

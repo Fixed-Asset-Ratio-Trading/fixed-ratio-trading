@@ -242,25 +242,22 @@ pub fn create_deposit_instruction_standardized(
     
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with CORRECTED account ordering (14 accounts total)
+    // Create instruction with OPTIMIZED account ordering (11 accounts total)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // Account ordering matching processor expectations:
+            // Account ordering matching optimized processor expectations:
             AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
             AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
             AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
-            AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 6: Clock Sysvar Account
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 7: Rent Sysvar Account
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 8: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 9: Token B Vault PDA
-            AccountMeta::new(*user_input_token_account, false),                     // Index 10: User Input Token Account
-            AccountMeta::new(*user_output_lp_account, false),                       // Index 11: User Output LP Token Account
-            AccountMeta::new(*lp_token_a_mint, false),                              // Index 12: LP Token A Mint PDA
-            AccountMeta::new(*lp_token_b_mint, false),                              // Index 13: LP Token B Mint PDA
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
+            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account
+            AccountMeta::new(*user_output_lp_account, false),                       // Index 8: User Output LP Token Account
+            AccountMeta::new(*lp_token_a_mint, false),                              // Index 9: LP Token A Mint PDA
+            AccountMeta::new(*lp_token_b_mint, false),                              // Index 10: LP Token B Mint PDA
         ],
         data: serialized,
     })
@@ -294,24 +291,22 @@ pub fn create_withdrawal_instruction_standardized(
     
     // Phase 3: Use main treasury for all operations (specialized treasuries consolidated)
     
-    // Create instruction with CORRECTED account ordering (13 accounts total)
+    // Create instruction with OPTIMIZED account ordering (11 accounts total)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // Account ordering matching processor expectations:
+            // Account ordering matching optimized processor expectations:
             AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
             AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
             AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
-            AccountMeta::new(main_treasury_pda, false),                             // Index 5: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false),  // Index 6: Clock Sysvar Account
-            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 7: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 8: Token B Vault PDA
-            AccountMeta::new(*user_input_lp_account, false),                        // Index 9: User Input LP Token Account
-            AccountMeta::new(*user_output_token_account, false),                    // Index 10: User Output Token Account
-            AccountMeta::new(*lp_token_a_mint, false),                              // Index 11: LP Token A Mint PDA
-            AccountMeta::new(*lp_token_b_mint, false),                              // Index 12: LP Token B Mint PDA
+            AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
+            AccountMeta::new(*user_input_lp_account, false),                        // Index 7: User Input LP Token Account
+            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account
+            AccountMeta::new(*lp_token_a_mint, false),                              // Index 9: LP Token A Mint PDA
+            AccountMeta::new(*lp_token_b_mint, false),                              // Index 10: LP Token B Mint PDA
         ],
         data: serialized,
     })

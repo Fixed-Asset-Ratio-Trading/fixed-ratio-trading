@@ -382,7 +382,7 @@ async fn test_github_issue_31960_workaround_preservation() -> TestResult {
         .expect("Pool state should exist after creation");
 
     println!("Pool state verification:");
-    println!("  Initialized: {}", pool_state.is_initialized);
+
     println!("  Owner: {}", pool_state.owner);
     println!("  Token A mint: {}", pool_state.token_a_mint);
     println!("  Token B mint: {}", pool_state.token_b_mint);
@@ -390,7 +390,7 @@ async fn test_github_issue_31960_workaround_preservation() -> TestResult {
     println!("  Ratio B denominator: {}", pool_state.ratio_b_denominator);
 
     // Verify critical pool state fields
-    assert!(pool_state.is_initialized, "Pool should be initialized");
+
     assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should match");
     assert_eq!(pool_state.token_a_mint, config.token_a_mint, "Token A mint should match");
     assert_eq!(pool_state.token_b_mint, config.token_b_mint, "Token B mint should match");

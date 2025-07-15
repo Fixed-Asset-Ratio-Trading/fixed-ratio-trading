@@ -139,6 +139,12 @@ pub const VALIDATION_CONTEXT_FEE: u8 = 1;
 /// Validation context for pool creation operations
 pub const VALIDATION_CONTEXT_POOL_CREATION: u8 = 2;
 
+/// Validation context for liquidity operations (for test compatibility)
+pub const VALIDATION_CONTEXT_LIQUIDITY: u8 = 3;
+
+/// Validation context for swap operations (for test compatibility)
+pub const VALIDATION_CONTEXT_SWAP: u8 = 4;
+
 //=============================================================================
 // PDA SEED PREFIXES
 //=============================================================================

@@ -355,7 +355,6 @@ fn test_pool_state_get_packed_len() {
         32 + // lp_token_b_mint
         8 +  // ratio_a_numerator
         8 +  // ratio_b_denominator
-        1 +  // one_to_many_ratio
         8 +  // total_token_a_liquidity
         8 +  // total_token_b_liquidity
         1 +  // pool_authority_bump_seed
@@ -363,18 +362,29 @@ fn test_pool_state_get_packed_len() {
         1 +  // token_b_vault_bump_seed
         1 +  // lp_token_a_mint_bump_seed
         1 +  // lp_token_b_mint_bump_seed
-        1 +  // is_initialized
-        40 + // rent_requirements
-        1 +  // paused
-        1 +  // swaps_paused
-        1 +  // withdrawal_protection_active
-        1 +  // only_lp_token_a_for_both
+        40 + // rent_requirements (RentRequirements::get_packed_len())
+        1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, etc.)
+        
+        // Fee collection and withdrawal tracking (Token fees)
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
         8 +  // total_fees_withdrawn_token_a
         8 +  // total_fees_withdrawn_token_b
-        8;   // swap_fee_basis_points
-        // Note: SOL fees (collected_sol_fees, total_sol_fees_withdrawn) moved to central TreasuryState
+        
+        // **NEW: DISTRIBUTED SOL FEE TRACKING**
+        8 +  // collected_liquidity_fees  
+        8 +  // collected_regular_swap_fees
+        8 +  // collected_hft_swap_fees
+        8 +  // total_sol_fees_collected
+        
+        // **NEW: CONSOLIDATION MANAGEMENT**
+        8 +  // last_consolidation_timestamp
+        8 +  // total_consolidations
+        8;   // total_fees_consolidated
+        
+        // **REMOVED FIELDS** (these are no longer in PoolState):
+        // - is_initialized: bool (1 byte) - Pool existence = initialization
+        // - swap_fee_basis_points: u64 (8 bytes) - Moved to constants as fixed value
 
     assert_eq!(PoolState::get_packed_len(), expected_size);
 }
@@ -1099,7 +1109,6 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
             .expect("Pool state should exist after creation");
         
-        assert!(pool_state.is_initialized, "Pool should be initialized");
         assert_eq!(pool_state.owner, ctx.env.payer.pubkey(), "Pool owner should be correct");
         assert_eq!(pool_state.token_a_mint, config.token_a_mint, "Token A mint should match");
         assert_eq!(pool_state.token_b_mint, config.token_b_mint, "Token B mint should match");
@@ -1259,7 +1268,6 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
     assert!(!pool_state.only_lp_token_a_for_both(), "Single LP token mode should not be active by default");
         
         // Verify fee structure
-        assert_eq!(pool_state.swap_fee_basis_points, 0, "Swap fee should be default value (0)");
         assert_eq!(pool_state.collected_fees_token_a, 0, "Should have no collected fees initially");
         assert_eq!(pool_state.collected_fees_token_b, 0, "Should have no collected fees initially");
         assert_eq!(pool_state.total_fees_withdrawn_token_a, 0, "Should have no withdrawn fees initially");
@@ -1395,7 +1403,6 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             .expect("Pool state should exist");
         
         // Verify all essential fields are populated
-        assert!(pool_state.is_initialized, "Pool should be initialized");
         assert_ne!(pool_state.owner, Pubkey::default(), "Owner should not be default");
         assert_ne!(pool_state.token_a_mint, Pubkey::default(), "Token A mint should not be default");
         assert_ne!(pool_state.token_b_mint, Pubkey::default(), "Token B mint should not be default");
