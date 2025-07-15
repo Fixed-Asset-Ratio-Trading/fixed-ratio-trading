@@ -266,8 +266,15 @@ pub async fn create_pool_new_pattern(
         }.try_to_vec().unwrap(),
     };
 
-    // ✅ PHASE 9 SECURITY: Send transaction without LP token mint signers (they're now PDAs)
-    let mut transaction = Transaction::new_with_payer(&[initialize_pool_ix], Some(&payer.pubkey()));
+    // ✅ COMPUTE BUDGET: Add compute budget instruction for pool creation (500K CUs)
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    // ✅ PHASE 9 SECURITY: Send transaction with compute budget and pool creation instruction
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&payer.pubkey())
+    );
     let signers = [payer]; // Only payer signs - LP token mints are derived as PDAs
     transaction.sign(&signers[..], recent_blockhash);
     banks.process_transaction(transaction).await?;

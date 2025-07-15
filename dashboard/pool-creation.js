@@ -822,8 +822,15 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             data: instructionData
         });
         
-        // Create transaction
-        const transaction = new solanaWeb3.Transaction().add(createPoolInstruction);
+        // Create compute budget instruction for pool creation (500K CUs)
+        const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
+            units: 500_000
+        });
+        
+        // Create transaction with compute budget and pool creation instruction
+        const transaction = new solanaWeb3.Transaction()
+            .add(computeBudgetInstruction)
+            .add(createPoolInstruction);
         
         // Set recent blockhash and fee payer
         transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
