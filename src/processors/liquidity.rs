@@ -617,7 +617,7 @@ pub fn process_deposit(
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 30,000 - 35,000 CUs    2025/7/11 11:11 pm
+/// 102,500 - 120,000 CUs    2025/7/15 7:24 pm
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account

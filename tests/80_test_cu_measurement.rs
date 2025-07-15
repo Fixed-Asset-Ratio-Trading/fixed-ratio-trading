@@ -674,3 +674,165 @@ async fn test_cu_measurement_comprehensive_report() {
     assert!(!results.is_empty());
     assert!(results[0].execution_time_ms < 1000); // Should be very fast
 } 
+
+/// REAL CU MEASUREMENT: Test compute units for withdrawal liquidity operations
+#[tokio::test]
+async fn test_cu_measurement_withdrawal_liquidity() {
+    println!("🔬 REAL CU MEASUREMENT: Withdrawal Liquidity Process Function");
+    println!("   This test measures the actual CUs consumed by process_withdraw");
+    
+    // =============================================
+    // STEP 1: Set up complete test environment with pool and initial deposit
+    // =============================================
+    
+    // Use the same foundation setup as working withdrawal tests
+    use crate::common::liquidity_helpers::create_liquidity_test_foundation;
+    
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await.expect("Foundation creation should succeed");
+    println!("✅ Test environment created with 3:1 ratio");
+    
+    // =============================================
+    // STEP 2: Perform initial deposit to get LP tokens for withdrawal
+    // =============================================
+    
+    let deposit_amount = 1_000_000u64; // 1M tokens
+    let user1 = foundation.user1.insecure_clone();
+    
+    let (deposit_mint, deposit_input_account, deposit_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+        // Depositing Token A (multiple) - use primary token account, get LP A tokens
+        (
+            foundation.pool_config.token_a_mint,
+            foundation.user1_primary_account.pubkey(),
+            foundation.user1_lp_a_account.pubkey(),
+        )
+    } else {
+        // Depositing Token B (base) - use base token account, get LP B tokens
+        (
+            foundation.pool_config.token_b_mint,
+            foundation.user1_base_account.pubkey(),
+            foundation.user1_lp_b_account.pubkey(),
+        )
+    };
+    
+    use crate::common::liquidity_helpers::execute_deposit_operation;
+    
+    // Execute deposit to get LP tokens for withdrawal test
+    execute_deposit_operation(
+        &mut foundation,
+        &user1,
+        &deposit_input_account,
+        &deposit_output_lp_account,
+        &deposit_mint,
+        deposit_amount,
+    ).await.expect("Initial deposit should succeed");
+    
+    use crate::common::tokens::get_token_balance;
+    let lp_balance = get_token_balance(&mut foundation.env.banks_client, &deposit_output_lp_account).await;
+    println!("✅ Initial deposit completed: {} LP tokens available for withdrawal", lp_balance);
+    
+    // =============================================
+    // STEP 3: Create REAL withdrawal instruction using working pattern
+    // =============================================
+    
+    let withdraw_amount = lp_balance / 2; // Withdraw half the LP tokens
+    println!("📊 Preparing to withdraw {} LP tokens (measuring CUs)", withdraw_amount);
+    
+    use crate::common::liquidity_helpers::create_withdrawal_instruction_standardized;
+    use fixed_ratio_trading::PoolInstruction;
+    
+    let withdrawal_instruction_data = PoolInstruction::Withdraw {
+        withdraw_token_mint: deposit_mint,
+        lp_amount_to_burn: withdraw_amount,
+    };
+    
+    let withdrawal_instruction = create_withdrawal_instruction_standardized(
+        &user1.pubkey(),
+        &deposit_output_lp_account,      // LP account being burned
+        &deposit_input_account,          // Token account receiving tokens
+        &foundation.pool_config,
+        &foundation.lp_token_a_mint_pda,
+        &foundation.lp_token_b_mint_pda,
+        &withdrawal_instruction_data,
+    ).expect("Withdrawal instruction creation should succeed");
+    
+    println!("✅ REAL withdrawal instruction built with {} accounts", withdrawal_instruction.accounts.len());
+    
+    // =============================================
+    // STEP 4: Measure CUs on REAL withdrawal
+    // =============================================
+    
+    println!("📊 Measuring CUs for REAL withdrawal liquidity process function...");
+    
+    use crate::common::cu_measurement::{measure_instruction_cu, CUMeasurementConfig};
+    
+    let cu_result = measure_instruction_cu(
+        &mut foundation.env.banks_client,
+        &user1,
+        foundation.env.recent_blockhash,
+        withdrawal_instruction,
+        "process_withdraw_REAL",
+        Some(CUMeasurementConfig {
+            compute_limit: 200_000, // Set limit for withdrawal operations
+            enable_logging: true,    // Enable detailed logging for analysis
+            max_retries: 2,          // Allow retries for reliability
+        }),
+    ).await;
+    
+    // =============================================
+    // STEP 5: Report Results
+    // =============================================
+    println!("\n🎯 REAL WITHDRAWAL LIQUIDITY CU MEASUREMENT RESULTS:");
+    println!("=========================================");
+    println!("  Instruction: {}", cu_result.instruction_name);
+    println!("  Success: {}", cu_result.success);
+    println!("  Execution time: {}ms", cu_result.execution_time_ms);
+    
+    if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+        println!("  🔥 ACTUAL CUs CONSUMED: {} CUs", cu_consumed);
+        println!("  💰 Cost efficiency: {:.2} CUs per millisecond", 
+                cu_consumed as f64 / cu_result.execution_time_ms as f64);
+        println!("  📊 Category: {}", 
+                if cu_consumed < 20_000 { "🟢 EXCELLENT (< 20K CUs)" }
+                else if cu_consumed < 50_000 { "🟡 GOOD (20K-50K CUs)" }
+                else if cu_consumed < 100_000 { "🟠 MODERATE (50K-100K CUs)" }
+                else { "🔴 HIGH (> 100K CUs)" });
+        println!("  💸 Estimated cost: {} microlamports", cu_consumed / 2); // 1 CU ≈ 0.5 microlamports
+    } else {
+        println!("  ⚠️  CU consumption: Not measured");
+    }
+    
+    if let Some(signature) = &cu_result.transaction_signature {
+        println!("  Transaction signature: {}", signature);
+    }
+    
+    if let Some(error) = &cu_result.error {
+        println!("  Error details: {}", error);
+    }
+    
+    println!("=========================================");
+    
+    // =============================================
+    // STEP 6: Analysis and Validation
+    // =============================================
+    if cu_result.success {
+        println!("\n✅ SUCCESSFUL WITHDRAWAL CU ANALYSIS:");
+        println!("   • Withdrawal completed successfully");
+        println!("   • This represents the CU cost of process_withdraw");
+        println!("   • Operations: LP token burning, token transfers, fee collection, validation");
+        println!("   • Account Updates: User LP account, user token account, pool vaults, pool state");
+        println!("   • Execution time: {}ms", cu_result.execution_time_ms);
+        
+        if let Some(cu_consumed) = cu_result.estimated_cu_consumed {
+            println!("   • 🔥 CU Consumption: {} CUs", cu_consumed);
+            println!("   • Efficiency: {:.2} tokens per CU", withdraw_amount as f64 / cu_consumed as f64);
+            println!("   • Compared to deposit: withdrawal typically requires similar CU usage");
+        }
+    } else {
+        println!("\n❌ WITHDRAWAL CU MEASUREMENT FAILED:");
+        println!("   • This indicates the withdrawal instruction failed to execute");
+        println!("   • Please check test environment setup and account states");
+        if let Some(error) = &cu_result.error {
+            println!("   • Error details: {}", error);
+        }
+    }
+}
