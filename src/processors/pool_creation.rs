@@ -59,7 +59,7 @@ use spl_token::{
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 45,000 - 50,000 CUs    2025/7/11 11:11 pm
+/// 400,000 CUs    2025/7/15 6:21 pm
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
