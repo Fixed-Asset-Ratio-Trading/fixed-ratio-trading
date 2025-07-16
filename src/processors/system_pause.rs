@@ -13,14 +13,14 @@ use solana_program::{
     clock::Clock,
     entrypoint::ProgramResult,
     msg,
-    program_error::ProgramError,
+
     pubkey::Pubkey,
     sysvar::Sysvar,
 };
 use crate::{
     error::PoolError,
     state::SystemState,
-    utils::validation::{validate_signer, validate_writable},
+    utils::validation::{validate_writable},
 };
 
 /// Processes the PauseSystem instruction with ultra-optimized account ordering.

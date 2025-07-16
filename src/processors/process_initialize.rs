@@ -3,7 +3,7 @@
 //! This module handles the program initialization process that sets up
 //! the core system infrastructure including system state and treasury.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,

@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -17,7 +17,7 @@ use spl_token::{
 use crate::{
     constants::*,
     error::PoolError,
-    state::{PoolState},
+
 };
 
 
@@ -489,24 +489,4 @@ pub fn process_set_swap_fee(
 }
 
 
-/// Validates that pool swaps are not paused (granular pool check)
-/// 
-/// This function provides pool-specific swap pause validation, separate from system-wide pause.
-/// It allows deposits and withdrawals to continue while blocking only swap operations when
-/// owner-initiated pool pause is active.
-/// 
-/// # Arguments
-/// * `pool_state_data` - Already deserialized pool state data
-/// 
-/// # Returns
-/// * `ProgramResult` - Success if swaps are enabled, error if paused
-fn validate_pool_swaps_not_paused(pool_state_data: &PoolState) -> ProgramResult {
-    if pool_state_data.swaps_paused() {
-        msg!("Pool swaps are currently paused by owner");
-        msg!("Note: Deposits and withdrawals are still available");
-        msg!("Note: Owner can manage pause governance and reasons");
-        return Err(PoolError::PoolSwapsPaused.into());
-    }
-    
-    Ok(())
-} 
+ 

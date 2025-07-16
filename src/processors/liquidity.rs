@@ -54,7 +54,7 @@
 
 use crate::{constants::*, types::*};
 use crate::PoolState;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -62,7 +62,7 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::{rent::Rent, Sysvar},
+
     program_pack::Pack,
 };
 use spl_token::{
@@ -72,175 +72,11 @@ use spl_token::{
 use crate::utils::validation::validate_non_zero_amount;
 
 /// **PHASE 10: USER LP TOKEN ACCOUNT ON-DEMAND CREATION**
-/// 
-/// Creates the user's LP token account if it doesn't exist yet.
-/// This is called after the LP token mint has been created.
-/// 
-/// # Arguments
-/// * `user_authority` - User who will own the LP token account
-/// * `user_lp_account` - The user's LP token account to create
-/// * `lp_token_mint` - The LP token mint for the account
-/// * `system_program` - System program account
-/// * `spl_token_program` - SPL token program account
-/// * `rent_sysvar` - Rent sysvar account
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-fn create_user_lp_token_account_on_demand<'a>(
-    user_authority_signer: &AccountInfo<'a>,
-    user_lp_account: &AccountInfo<'a>,
-    lp_token_mint: &Pubkey,
-    system_program_account: &AccountInfo<'a>,
-    spl_token_program_account: &AccountInfo<'a>,
-    rent_sysvar_account: &AccountInfo<'a>,
-) -> ProgramResult {
-    let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let account_space = spl_token::state::Account::LEN;
-    let account_rent = rent.minimum_balance(account_space);
-    
-    use solana_program::{program::invoke, system_instruction};
-    use spl_token::instruction as token_instruction;
-    
-    msg!("Creating user LP token account: {}", user_lp_account.key);
-    
-    // Create the account
-    invoke(
-        &system_instruction::create_account(
-            user_authority_signer.key,
-            user_lp_account.key,
-            account_rent,
-            account_space as u64,
-            &spl_token::id(),
-        ),
-        &[user_authority_signer.clone(), user_lp_account.clone(), system_program_account.clone()],
-    )?;
-    
-    // Initialize the account
-    invoke(
-        &token_instruction::initialize_account(
-            spl_token_program_account.key,
-            user_lp_account.key,
-            lp_token_mint,
-            user_authority_signer.key,
-        )?,
-        &[user_lp_account.clone(), spl_token_program_account.clone(), rent_sysvar_account.clone()],
-    )?;
-    
-    msg!("✅ User LP token account created: {}", user_lp_account.key);
-    Ok(())
-}
+
 
  
 
-/// **PHASE 10: ON-DEMAND LP TOKEN MINT CREATION**
-/// 
-/// Creates the specific LP token mint as a PDA on-demand during deposit operations.
-/// This ensures LP token mints are controlled entirely by the smart contract
-/// and prevents users from providing fake LP token mints to drain pools.
-/// 
-/// **OPTIMIZATION**: Only creates the LP token mint for the specific side of the pool
-/// being deposited to (Token A OR Token B), not both sides unnecessarily.
-/// 
-/// # Arguments
-/// * `program_id` - Program ID for PDA derivation
-/// * `pool_state_pda` - Pool state PDA
-/// * `payer` - Account paying for LP token mint creation
-/// * `system_program` - System program account
-/// * `spl_token_program` - SPL token program account
-/// * `rent_sysvar` - Rent sysvar account
-/// * `lp_token_mint_account` - The LP token mint account to create
-/// * `is_token_a` - Whether to create LP token mint for Token A (true) or Token B (false)
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-fn create_lp_token_mint_on_demand<'a>(
-    program_id: &Pubkey,
-    pool_state_pda: &AccountInfo<'a>,
-    payer: &AccountInfo<'a>,
-    system_program_account: &AccountInfo<'a>,
-    spl_token_program_account: &AccountInfo<'a>,
-    rent_sysvar_account: &AccountInfo<'a>,
-    lp_token_mint_account: &AccountInfo<'a>,
-    is_token_a: bool,
-) -> ProgramResult {
-    use solana_program::{program::invoke_signed, system_instruction};
-    use spl_token::instruction as token_instruction;
-    
-    // Check if the account already exists
-    if lp_token_mint_account.data_len() > 0 {
-        msg!("✅ LP token mint already exists: {}", lp_token_mint_account.key);
-        return Ok(());
-    }
-    
-    let rent = &Rent::from_account_info(rent_sysvar_account)?;
-    let mint_space = spl_token::state::Mint::LEN;
-    let mint_rent = rent.minimum_balance(mint_space);
-    
-    // Derive the expected PDA and bump seed
-    let (expected_pda, bump_seed) = if is_token_a {
-        Pubkey::find_program_address(
-            &[LP_TOKEN_A_MINT_SEED_PREFIX, pool_state_pda.key.as_ref()],
-            program_id,
-        )
-    } else {
-        Pubkey::find_program_address(
-            &[LP_TOKEN_B_MINT_SEED_PREFIX, pool_state_pda.key.as_ref()],
-            program_id,
-        )
-    };
-    
-    // Verify that the provided account matches the expected PDA
-    if *lp_token_mint_account.key != expected_pda {
-        msg!("❌ Provided LP token mint account doesn't match expected PDA");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // Create the signing seeds
-    let seeds = if is_token_a {
-        &[
-            LP_TOKEN_A_MINT_SEED_PREFIX,
-            pool_state_pda.key.as_ref(),
-            &[bump_seed],
-        ]
-    } else {
-        &[
-            LP_TOKEN_B_MINT_SEED_PREFIX,
-            pool_state_pda.key.as_ref(),
-            &[bump_seed],
-        ]
-    };
-    
-    msg!("Creating LP token mint on-demand: {}", lp_token_mint_account.key);
-    
-    // Create the account
-    invoke_signed(
-        &system_instruction::create_account(
-            payer.key,
-            lp_token_mint_account.key,
-            mint_rent,
-            mint_space as u64,
-            &spl_token::id(),
-        ),
-        &[payer.clone(), lp_token_mint_account.clone(), system_program_account.clone()],
-        &[seeds],
-    )?;
-    
-    // Initialize the mint
-    invoke_signed(
-        &token_instruction::initialize_mint(
-            spl_token_program_account.key,
-            lp_token_mint_account.key,
-            pool_state_pda.key,
-            None,
-            6, // Decimals
-        )?,
-        &[lp_token_mint_account.clone(), spl_token_program_account.clone(), rent_sysvar_account.clone()],
-        &[seeds],
-    )?;
-    
-    msg!("✅ LP token mint created: {}", lp_token_mint_account.key);
-    Ok(())
-}
+
 
 /// Handles user deposits into the trading pool using optimized account ordering.
 ///
@@ -1212,65 +1048,7 @@ fn validate_withdrawal_lp_correspondence(
 // PHASE 9 OPTIMIZATION 3: DYNAMIC ACCOUNT CONSOLIDATION (FUTURE)
 //=============================================================================
 
-/// **PHASE 9 OPTIMIZATION 3: DYNAMIC ACCOUNT CONSOLIDATION DEMONSTRATION**
-/// 
-/// This function demonstrates how dynamic account consolidation would work in a future
-/// implementation. It shows the logic for determining which accounts are actually needed
-/// for a given operation, enabling client-side optimization.
-/// 
-/// **Future Implementation Benefits:**
-/// - Could dynamically select only required accounts based on operation
-/// - Eliminates unused vault from transaction requirements  
-/// - Further reduces transaction size by 5-10%
-/// - Optimizes bandwidth and compute unit usage
-/// 
-/// **Client Integration Requirements:**
-/// - Client must determine deposit token mint before transaction construction
-/// - Client passes only the relevant vault and LP mint for the operation
-/// - Requires updated client SDKs to support dynamic account selection
-/// 
-/// # Arguments
-/// * `deposit_token_mint` - The token being deposited
-/// * `pool_state` - Current pool state
-/// 
-/// # Returns
-/// * `(bool, usize, usize)` - (is_token_a, vault_index, lp_mint_index) for dynamic account ordering
-/// 
-/// # Example Usage (Future)
-/// ```rust,ignore
-/// // Client-side logic for dynamic account selection
-/// let (is_token_a, vault_idx, lp_mint_idx) = determine_dynamic_accounts(&deposit_mint, &pool_state);
-/// 
-/// // Construct optimized account array (11 accounts instead of 12)
-/// let accounts = vec![
-///     user_authority,           // 0
-///     system_program,          // 1
-///     clock_sysvar,           // 2
-///     pool_state_pda,         // 3
-///     target_vault,           // 4 (only relevant vault)
-///     spl_token_program,      // 5
-///     user_input_account,     // 6
-///     user_output_account,    // 7
-///     main_treasury,          // 8
-///     target_lp_mint,         // 9 (only relevant LP mint)
-///     other_lp_mint,          // 10 (for validation only)
-/// ];
-/// ```
-fn determine_dynamic_accounts(
-    deposit_token_mint: &Pubkey,
-    pool_state: &PoolState,
-) -> Result<(bool, usize, usize), ProgramError> {
-    if *deposit_token_mint == pool_state.token_a_mint {
-        // Depositing Token A: need Token A vault and LP Token A mint
-        Ok((true, 4, 9)) // vault at index 4, LP mint at index 9
-    } else if *deposit_token_mint == pool_state.token_b_mint {
-        // Depositing Token B: need Token B vault and LP Token B mint
-        Ok((false, 4, 9)) // vault at index 4, LP mint at index 9
-    } else {
-        msg!("Invalid deposit token mint for dynamic account selection");
-        Err(ProgramError::InvalidArgument)
-    }
-}
+
 
 /// **PHASE 9 SUMMARY: IMPLEMENTED OPTIMIZATIONS**
 /// 

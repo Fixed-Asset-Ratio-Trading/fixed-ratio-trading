@@ -3,7 +3,7 @@
 //! This module contains utilities for managing rent-exempt status and account balance validation.
 //! These functions ensure that program-owned accounts maintain sufficient balance for rent exemption.
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     pubkey::Pubkey,

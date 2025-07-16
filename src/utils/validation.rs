@@ -20,22 +20,7 @@ use crate::{
 
 use crate::constants::*;
 
-/// Validates that an account is owned by the expected program.
-///
-/// # Arguments
-/// * `account` - The account to validate
-/// * `expected_owner` - The expected owner program ID
-///
-/// # Returns
-/// * `ProgramResult` - Success if ownership is correct, error otherwise
-pub fn validate_account_owner(account: &AccountInfo, expected_owner: &Pubkey) -> ProgramResult {
-    if account.owner != expected_owner {
-        msg!("Account {} has incorrect owner. Expected: {}, Actual: {}", 
-             account.key, expected_owner, account.owner);
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    Ok(())
-}
+
 
 /// Validates that an account is a signer.
 ///
@@ -69,21 +54,7 @@ pub fn validate_writable(account: &AccountInfo, context: &str) -> ProgramResult 
     Ok(())
 }
 
-/// Validates swap fee basis points are within allowed range.
-///
-/// # Arguments
-/// * `fee_basis_points` - The fee in basis points to validate
-///
-/// # Returns
-/// * `ProgramResult` - Success if fee is valid, error otherwise
-pub fn validate_swap_fee(fee_basis_points: u16) -> ProgramResult {
-    if u64::from(fee_basis_points) > MAX_SWAP_FEE_BASIS_POINTS {
-        msg!("Swap fee {} basis points exceeds maximum of {}", 
-             fee_basis_points, MAX_SWAP_FEE_BASIS_POINTS);
-        return Err(ProgramError::InvalidArgument);
-    }
-    Ok(())
-}
+
 
 /// Validates that a token amount is non-zero.
 ///
@@ -101,21 +72,7 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
     Ok(())
 }
 
-/// Validates that two token mints are different (prevents same-token pools).
-///
-/// # Arguments
-/// * `token_a` - First token mint
-/// * `token_b` - Second token mint
-///
-/// # Returns
-/// * `ProgramResult` - Success if tokens are different, error otherwise
-pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramResult {
-    if token_a == token_b {
-        msg!("Cannot create pool with identical tokens: {}", token_a);
-        return Err(ProgramError::InvalidArgument);
-    }
-    Ok(())
-}
+
 
 /// Validates that a pool state is properly initialized.
 /// validate_pool_initialized removed as we now use the pool state PDA to check if the pool is initialized.

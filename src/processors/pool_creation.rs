@@ -14,11 +14,11 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::{invoke, invoke_signed},
+    program::{invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{rent::Rent, clock::Clock, Sysvar},
+
+    sysvar::rent::Rent,
     program_pack::Pack,
 };
 use spl_token::{

@@ -25,12 +25,12 @@ SOFTWARE.
 //! # Fixed Ratio Trading Pool - Client SDK
 //! 
 //! This module provides a high-level client SDK for interacting with the Fixed Ratio Trading Pool program.
-//! It simplifies the process of creating pools, managing liquidity, and performing swaps.
+//! It simplifies the process of configuring pools and deriving addresses.
 //!
 //! ## Features
-//! - Pool creation and configuration
+//! - Pool configuration and validation
 //! - Address derivation for PDAs (Program Derived Addresses)
-//! - Instruction building for all pool operations
+//! - Pool ID calculation
 //! - Error handling and validation
 //! - Type-safe pool configuration
 //!
@@ -46,26 +46,29 @@ SOFTWARE.
 //! let program_id = Pubkey::new_unique();
 //! let multiple_token_mint = Pubkey::new_unique();
 //! let base_token_mint = Pubkey::new_unique();
-//! let payer = Pubkey::new_unique();
-//! let lp_token_a_mint = Pubkey::new_unique();
-//! let lp_token_b_mint = Pubkey::new_unique();
 //! 
 //! // Create a pool client
 //! let client = PoolClient::new(program_id);
 //! 
 //! // Configure a pool
-//! let config = PoolConfig {
+//! let config = PoolConfig::new(
 //!     multiple_token_mint,
 //!     base_token_mint,
-//!     ratio_a_numerator: 2,
-//!     ratio_b_denominator: 1,
-//! };
+//!     1000, // ratio_a_numerator
+//!     1,    // ratio_b_denominator
+//! )?;
 //! 
 //! // Derive pool addresses
 //! let addresses = client.derive_pool_addresses(&config);
 //! 
-//! // Create pool instruction
-//! let instruction_data = PoolInstruction::InitializePool { ratio_a_numerator: 1000, ratio_b_denominator: 1 };
+//! // Get pool ID
+//! let pool_id = client.derive_pool_id(&config);
+//! 
+//! // Create instruction data (for use with solana_program::instruction::Instruction)
+//! let instruction_data = PoolInstruction::InitializePool { 
+//!     ratio_a_numerator: 1000, 
+//!     ratio_b_denominator: 1 
+//! };
 //! # Ok(())
 //! # }
 //! ```
@@ -196,12 +199,11 @@ pub struct PoolAddresses {
 
 /// High-level client for interacting with Fixed Ratio Trading Pools
 /// 
-/// This client provides convenient methods for all pool operations including:
-/// - Creating new pools
-/// - Deriving addresses
-/// - Building instructions
-/// - Managing liquidity
-/// - Performing swaps
+/// This client provides convenient methods for pool configuration and address derivation:
+/// - Pool configuration and validation
+/// - Address derivation for PDAs (Program Derived Addresses)
+/// - Pool ID calculation
+/// - Type-safe pool parameter handling
 pub struct PoolClient {
     /// The program ID of the deployed pool program
     program_id: Pubkey,
@@ -288,29 +290,6 @@ impl PoolClient {
         }
     }
     
-    /// Creates a pool initialization instruction with standardized account ordering.
-    /// 
-    /// This function creates the instruction needed to initialize a new trading pool
-    /// with the specified configuration. All PDA bump seeds are derived automatically.
-    /// 
-    /// # Arguments
-    /// * `payer` - Account that will pay for pool creation and sign the transaction
-    /// * `config` - Pool configuration containing token mints and ratio
-    /// * `lp_token_a_mint` - LP token mint for token A liquidity providers
-    /// * `lp_token_b_mint` - LP token mint for token B liquidity providers
-    /// 
-    /// # Returns
-    /// * `Result<Instruction, PoolClientError>` - The pool creation instruction or an error
-    /// 
-
-    
-
-    
-
-    
-
-
-
 
     /// Derives the unique Pool ID for given pool parameters.
     /// 

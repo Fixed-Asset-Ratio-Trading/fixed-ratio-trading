@@ -4,7 +4,7 @@
 //! PDA derivation, and debugging/testing support functions.
 
 use crate::constants::*;
-use crate::types::*;
+
 use crate::PoolState;
 use solana_program::{
     account_info::AccountInfo,
