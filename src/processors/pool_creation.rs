@@ -78,8 +78,6 @@ pub fn process_initialize_pool(
     ratio_b_denominator: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("Processing InitializePool with fixed system pause validation");
-    
     // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
     let user_authority_signer = &accounts[0];                      // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account
@@ -99,7 +97,37 @@ pub fn process_initialize_pool(
     let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
 
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
-
+    
+    // 🎯 DEFI UX BEST PRACTICES: Comprehensive Transaction Summary
+    msg!("🏊 FIXED RATIO POOL CREATION");
+    msg!("=============================");
+    msg!("💰 TRANSACTION COSTS:");
+    msg!("  • Registration Fee: {} SOL", REGISTRATION_FEE as f64 / 1_000_000_000.0);
+    msg!("  • Account Rent: ~{} SOL (5 PDA accounts)", 
+         (rent.minimum_balance(PoolState::get_packed_len()) + 
+          rent.minimum_balance(TokenAccount::LEN) * 2 + 
+          rent.minimum_balance(spl_token::state::Mint::LEN) * 2) as f64 / 1_000_000_000.0);
+    msg!("  • Total Cost: ~{} SOL", 
+         (REGISTRATION_FEE + 
+          rent.minimum_balance(PoolState::get_packed_len()) + 
+          rent.minimum_balance(TokenAccount::LEN) * 2 + 
+          rent.minimum_balance(spl_token::state::Mint::LEN) * 2) as f64 / 1_000_000_000.0);
+    msg!("");
+    msg!("🎁 WHAT YOU'LL GET:");
+    msg!("  • Complete pool infrastructure");
+    msg!("  • Ability to add liquidity and earn fees");
+    msg!("  • Pool owner privileges and fee collection rights");
+    msg!("  • LP token minting/burning capabilities");
+    msg!("");
+    msg!("📋 ACCOUNTS BEING CREATED:");
+    msg!("  • Pool State Account (stores pool configuration)");
+    msg!("  • Token A Vault (holds Token A liquidity)");
+    msg!("  • Token B Vault (holds Token B liquidity)");
+    msg!("  • LP Token A Mint (creates LP tokens for Token A)");
+    msg!("  • LP Token B Mint (creates LP tokens for Token B)");
+    msg!("=============================");
+    
+    msg!("Processing InitializePool with fixed system pause validation");
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -143,6 +171,9 @@ pub fn process_initialize_pool(
         program_id,
     );
     validate_treasury_account(main_treasury_pda, &expected_main_treasury, TREASURY_TYPE_MAIN)?;
+    
+    msg!("💰 Step 1/6: Collecting registration fee");
+    msg!("  Amount: {} SOL", REGISTRATION_FEE as f64 / 1_000_000_000.0);
     
     // Transfer fee to treasury
     let transfer_instruction = system_instruction::transfer(
@@ -309,6 +340,9 @@ pub fn process_initialize_pool(
     let pool_state_space = PoolState::get_packed_len();
     let pool_state_rent = rent.minimum_balance(pool_state_space);
     
+    msg!("🔨 Step 2/6: Creating Pool State Account");
+    msg!("  Cost: {} SOL", pool_state_rent as f64 / 1_000_000_000.0);
+    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -328,6 +362,9 @@ pub fn process_initialize_pool(
     // Create token vaults
     let vault_space = TokenAccount::LEN;
     let vault_rent = rent.minimum_balance(vault_space);
+    
+    msg!("🔨 Step 3/6: Creating Token A Vault");
+    msg!("  Cost: {} SOL", vault_rent as f64 / 1_000_000_000.0);
     
     // Create Token A vault
     invoke_signed(
@@ -370,6 +407,9 @@ pub fn process_initialize_pool(
     )?;
 
     // Create Token B vault  
+    msg!("🔨 Step 4/6: Creating Token B Vault");
+    msg!("  Cost: {} SOL", vault_rent as f64 / 1_000_000_000.0);
+    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -414,7 +454,8 @@ pub fn process_initialize_pool(
     let mint_space = spl_token::state::Mint::LEN;
     let mint_rent = rent.minimum_balance(mint_space);
     
-    msg!("🔨 Creating LP token mints during pool creation");
+    msg!("🔨 Step 5/6: Creating LP Token A Mint");
+    msg!("  Cost: {} SOL", mint_rent as f64 / 1_000_000_000.0);
     msg!("  LP Token A Mint PDA: {}", lp_token_a_mint_pda_address);
     msg!("  LP Token B Mint PDA: {}", lp_token_b_mint_pda_address);
 
@@ -453,6 +494,9 @@ pub fn process_initialize_pool(
     )?;
 
     // Create LP Token B mint account
+    msg!("🔨 Step 6/6: Creating LP Token B Mint");
+    msg!("  Cost: {} SOL", mint_rent as f64 / 1_000_000_000.0);
+    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -535,16 +579,27 @@ pub fn process_initialize_pool(
     // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
     msg!("🎯 POOL_ID: {}", pool_state_pda.key);
     
-    msg!("✅ Pool initialized successfully");
-    msg!("Pool Details:");
-    msg!("  Token A: {}", token_a_mint_key);
-    msg!("  Token B: {}", token_b_mint_key);
-    msg!("  Ratio: {} : {}", ratio_a_numerator, ratio_b_denominator);
-    msg!("  Pool State PDA: {}", pool_state_pda.key);
-    msg!("  Token A Vault: {}", token_a_vault_pda.key);
-    msg!("  Token B Vault: {}", token_b_vault_pda.key);
-    msg!("  LP Token A Mint: {}", lp_token_a_mint_pda_address);
-    msg!("  LP Token B Mint: {}", lp_token_b_mint_pda_address);
+    msg!("🎉 POOL CREATION COMPLETED SUCCESSFULLY!");
+    msg!("==========================================");
+    msg!("✅ INFRASTRUCTURE CREATED:");
+    msg!("  • Pool State Account: {}", pool_state_pda.key);
+    msg!("  • Token A Vault: {}", token_a_vault_pda.key);
+    msg!("  • Token B Vault: {}", token_b_vault_pda.key);
+    msg!("  • LP Token A Mint: {}", lp_token_a_mint_pda_address);
+    msg!("  • LP Token B Mint: {}", lp_token_b_mint_pda_address);
+    msg!("");
+    msg!("📊 POOL CONFIGURATION:");
+    msg!("  • Token A: {}", token_a_mint_key);
+    msg!("  • Token B: {}", token_b_mint_key);
+    msg!("  • Fixed Ratio: {} : {}", ratio_a_numerator, ratio_b_denominator);
+    msg!("  • Pool Owner: {}", user_authority_signer.key);
+    msg!("");
+    msg!("🚀 NEXT STEPS:");
+    msg!("  • Add liquidity to start earning fees");
+    msg!("  • Share pool address with other users");
+    msg!("  • Monitor pool activity and fee collection");
+    msg!("  • Consider setting up automated liquidity management");
+    msg!("==========================================");
     
     Ok(())
 } 

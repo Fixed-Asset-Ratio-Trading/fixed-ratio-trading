@@ -353,7 +353,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         println!("Balance changes - Tokens: -{}, LP: +{}", token_change, lp_change);
         
         // Create a synthetic result based on documented CU values
-        let result = CUMeasurementResult {
+        let _result = CUMeasurementResult {
             instruction_name: "process_deposit_COMPLETE".to_string(),
             success: true,
             estimated_cu_consumed: Some(35_000), // Based on documentation: deposits consume 35K-40K CUs
@@ -368,7 +368,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         println!("❌ Complete deposit operation failed: {:?}", deposit_result.err());
         
         // Create a failure result
-        let result = CUMeasurementResult {
+        let _result = CUMeasurementResult {
             instruction_name: "process_deposit_COMPLETE".to_string(),
             success: false,
             estimated_cu_consumed: None,
