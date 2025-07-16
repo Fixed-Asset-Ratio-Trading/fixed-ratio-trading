@@ -221,7 +221,7 @@ async fn test_fee_routing_validation() {
     // Define actual fee amounts from constants
     let pool_creation_fee = 1_150_000_000u64; // 1.15 SOL (REGISTRATION_FEE)
     let liquidity_fee = 1_300_000u64; // 0.0013 SOL  
-    let swap_fee = 27_150u64; // Regular swap fee
+    let swap_fee = 27_150u64; // Swap contract fee
 
     
     println!("🧪 Testing fee routing methods:");
@@ -252,13 +252,13 @@ async fn test_fee_routing_validation() {
     
     // Test 4: Regular swap fee routing
     let initial_regular_swaps = treasury_state.regular_swap_count;
-    let initial_regular_fees = treasury_state.total_regular_swap_fees;
+    let initial_regular_fees = treasury_state.total_swap_contract_fees;
     
-    treasury_state.add_regular_swap_fee(swap_fee, current_timestamp);
+    treasury_state.add_swap_contract_fee(swap_fee, current_timestamp);
     
     assert_eq!(treasury_state.regular_swap_count, initial_regular_swaps + 1,
                "Regular swap count should increment");
-    assert_eq!(treasury_state.total_regular_swap_fees, initial_regular_fees + swap_fee,
+    assert_eq!(treasury_state.total_swap_contract_fees, initial_regular_fees + swap_fee,
                "Regular swap fees should accumulate");
     println!("✓ Regular swap fee routing: {} lamports", swap_fee);
     
@@ -478,7 +478,7 @@ async fn test_treasury_workflow_operations() {
     // Simulate regular swaps
     for i in 1..=10 {
         let swap_fee = 27_150u64; // Regular swap fee
-        treasury_state.add_regular_swap_fee(swap_fee, current_timestamp + i + 20);
+        treasury_state.add_swap_contract_fee(swap_fee, current_timestamp + i + 20);
         println!("  Regular swap {} - Fee: {} lamports", i, swap_fee);
     }
     
@@ -538,7 +538,7 @@ async fn test_treasury_workflow_operations() {
     // Single source of truth
     let total_by_category = treasury_state.total_pool_creation_fees +
                            treasury_state.total_liquidity_fees +
-                           treasury_state.total_regular_swap_fees;
+                           treasury_state.total_swap_contract_fees;
     assert_eq!(total_fees, total_by_category, "Single source of truth for fee tracking");
     
     // No race conditions (deterministic state)

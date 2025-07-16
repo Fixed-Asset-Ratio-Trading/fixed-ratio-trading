@@ -62,8 +62,8 @@ async fn test_fee_validation_sufficient_funds() {
     let test_cases = vec![
         (REGISTRATION_FEE, VALIDATION_CONTEXT_POOL_CREATION),
         (DEPOSIT_WITHDRAWAL_FEE, VALIDATION_CONTEXT_LIQUIDITY),
-        (SWAP_FEE, VALIDATION_CONTEXT_SWAP),
-        (SWAP_FEE, VALIDATION_CONTEXT_SWAP),
+        (SWAP_CONTRACT_FEE, VALIDATION_CONTEXT_SWAP),
+        (SWAP_CONTRACT_FEE, VALIDATION_CONTEXT_SWAP),
     ];
     
     for (fee_amount, validation_context_code) in test_cases {
@@ -242,14 +242,14 @@ async fn test_fee_collection_workflow() {
         },
         FeeTestCase {
             name: "Regular Swap (sufficient funds)",
-            fee_amount: SWAP_FEE,
+            fee_amount: SWAP_CONTRACT_FEE,
             initial_balance: 1_000_000u64, // 0.001 SOL
             should_succeed: true,
             validation_context_code: VALIDATION_CONTEXT_SWAP,
         },
         FeeTestCase {
                     name: "Swap (sufficient funds)",
-        fee_amount: SWAP_FEE,
+        fee_amount: SWAP_CONTRACT_FEE,
             initial_balance: 100_000u64, // 0.0001 SOL
             should_succeed: true,
             validation_context_code: VALIDATION_CONTEXT_SWAP,
@@ -314,12 +314,12 @@ async fn test_fee_amounts_consistency() {
     // Verify fee amounts match constants
     assert_eq!(REGISTRATION_FEE, 1_150_000_000u64, "Pool creation fee should be 1.15 SOL");
     assert_eq!(DEPOSIT_WITHDRAWAL_FEE, 1_300_000u64, "Liquidity fee should be 0.0013 SOL");
-    assert_eq!(SWAP_FEE, 27_150u64, "Regular swap fee should be 0.00002715 SOL");
-        assert_eq!(SWAP_FEE, 27_150u64, "Swap fee should be 0.00002715 SOL");
+    assert_eq!(SWAP_CONTRACT_FEE, 27_150u64, "Regular swap fee should be 0.00002715 SOL");
+        assert_eq!(SWAP_CONTRACT_FEE, 27_150u64, "Swap fee should be 0.00002715 SOL");
     
     // Verify fee relationships
     assert!(REGISTRATION_FEE > DEPOSIT_WITHDRAWAL_FEE, "Pool creation fee should be higher than liquidity fee");
-    assert!(DEPOSIT_WITHDRAWAL_FEE > SWAP_FEE, "Liquidity fee should be higher than swap fee");
+    assert!(DEPOSIT_WITHDRAWAL_FEE > SWAP_CONTRACT_FEE, "Liquidity fee should be higher than swap fee");
 
     
     println!("✅ All fee amounts are consistent");

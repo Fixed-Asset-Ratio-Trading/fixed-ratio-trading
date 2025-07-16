@@ -112,8 +112,9 @@ pub struct PoolState {
     /// SOL fees collected from liquidity operations (accumulated locally)  
     pub collected_liquidity_fees: u64,
     
-    /// SOL fees collected from swaps (accumulated locally)
-    pub collected_regular_swap_fees: u64,
+    /// Total collected swap contract fees (fixed SOL amounts) accumulated from swap operations
+    /// These are the fixed SOL fees charged per swap to cover computational costs
+    pub collected_swap_contract_fees: u64,
     
     // **NEW: LIFETIME SOL FEE TRACKING**
     /// Total SOL fees collected by this pool since inception (never resets)
@@ -160,7 +161,7 @@ impl Default for PoolState {
             
             // Initialize new distributed collection fields
             collected_liquidity_fees: 0,
-            collected_regular_swap_fees: 0,
+            collected_swap_contract_fees: 0,
             total_sol_fees_collected: 0,
             last_consolidation_timestamp: 0,
             total_consolidations: 0,
@@ -198,7 +199,7 @@ impl PoolState {
         
         // **NEW: DISTRIBUTED SOL FEE TRACKING** (+32 bytes)
         8 +  // collected_liquidity_fees  
-        8 +  // collected_regular_swap_fees
+        8 +  // collected_swap_contract_fees
         8 +  // total_sol_fees_collected
         
         // **NEW: CONSOLIDATION MANAGEMENT** (+24 bytes)
@@ -300,24 +301,28 @@ impl PoolState {
         // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
         debug_assert_eq!(
             self.pending_sol_fees(),
-            self.collected_liquidity_fees + self.collected_regular_swap_fees,
+            self.collected_liquidity_fees + self.collected_swap_contract_fees,
             "Pending fees calculation should match sum of individual pending fee types"
         );
     }
     
-    /// Records regular swap fee collection
+    /// Adds a swap contract fee to the accumulated fees
     /// 
-    /// **ATOMIC UPDATE**: Updates both specific fee counter and total in single operation
-    /// to prevent race conditions and ensure consistency.
-    pub fn add_regular_swap_fee(&mut self, fee_amount: u64, _timestamp: i64) {
+    /// This function records a swap contract fee (fixed SOL amount) collected during
+    /// swap operations. These fees cover computational costs.
+    /// 
+    /// # Arguments
+    /// * `fee_amount` - The swap contract fee amount in lamports
+    /// * `_timestamp` - Timestamp of the fee collection (currently unused)
+    pub fn add_swap_contract_fee(&mut self, fee_amount: u64, _timestamp: i64) {
         // Atomic update: both counters updated together
-        self.collected_regular_swap_fees += fee_amount;
+        self.collected_swap_contract_fees += fee_amount;
         self.total_sol_fees_collected += fee_amount;
         
         // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
         debug_assert_eq!(
             self.pending_sol_fees(),
-            self.collected_liquidity_fees + self.collected_regular_swap_fees,
+            self.collected_liquidity_fees + self.collected_swap_contract_fees,
             "Pending fees calculation should match sum of individual pending fee types"
         );
     }
@@ -347,7 +352,7 @@ impl PoolState {
         use crate::constants::*;
         
         let liquidity_ops = self.collected_liquidity_fees / DEPOSIT_WITHDRAWAL_FEE;
-        let regular_swap_ops = self.collected_regular_swap_fees / SWAP_FEE;
+        let regular_swap_ops = self.collected_swap_contract_fees / SWAP_CONTRACT_FEE;
         
         liquidity_ops + regular_swap_ops
     }
@@ -357,7 +362,7 @@ impl PoolState {
         use crate::constants::*;
         
         let liquidity_ops = self.collected_liquidity_fees / DEPOSIT_WITHDRAWAL_FEE;
-        let regular_swap_ops = self.collected_regular_swap_fees / SWAP_FEE;
+        let regular_swap_ops = self.collected_swap_contract_fees / SWAP_CONTRACT_FEE;
         
         (liquidity_ops, regular_swap_ops)
     }
@@ -379,7 +384,7 @@ impl PoolState {
         
         // Reset collected fees (operation counts are calculated from these)
         self.collected_liquidity_fees = 0;
-        self.collected_regular_swap_fees = 0;
+        self.collected_swap_contract_fees = 0;
         
         // Update consolidation metadata
         self.last_consolidation_timestamp = timestamp;
@@ -413,7 +418,7 @@ impl PoolState {
         
         // Verify individual pending fees sum matches the mathematical pending
         let individual_sum = self.collected_liquidity_fees + 
-                           self.collected_regular_swap_fees;
+                           self.collected_swap_contract_fees;
         
         if actual_pending != individual_sum {
             return Err("Individual pending fees don't match calculated pending fees");

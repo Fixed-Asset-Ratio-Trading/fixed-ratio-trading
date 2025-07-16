@@ -63,6 +63,10 @@ pub struct MainTreasuryState {
     pub total_liquidity_fees: u64,
     pub total_regular_swap_fees: u64,
     
+    /// Total swap contract fees collected across all pools
+    /// These are fixed SOL fees charged per swap to cover computational costs
+    pub total_swap_contract_fees: u64,
+    
     /// Last update timestamp (replaces consolidation timestamp)
     pub last_update_timestamp: i64,
     
@@ -106,6 +110,7 @@ impl MainTreasuryState {
         8 +   // total_pool_creation_fees
         8 +   // total_liquidity_fees
         8 +   // total_regular_swap_fees
+        8 +   // total_swap_contract_fees ← NEW
         8 +   // last_update_timestamp
         8 +   // total_consolidations_performed ← NEW
         8;    // last_consolidation_timestamp ← NEW
@@ -127,6 +132,7 @@ impl MainTreasuryState {
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
+            total_swap_contract_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_consolidation_timestamp: 0,
@@ -145,6 +151,7 @@ impl MainTreasuryState {
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
+            total_swap_contract_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_consolidation_timestamp: 0,
@@ -167,16 +174,32 @@ impl MainTreasuryState {
         self.last_update_timestamp = timestamp;
     }
     
-    /// **PHASE 3: REAL-TIME FEE TRACKING**
-    /// Records a regular swap fee immediately when collected
-    pub fn add_regular_swap_fee(&mut self, fee_amount: u64, timestamp: i64) {
-        self.regular_swap_count += 1;
-        self.total_regular_swap_fees += fee_amount;
+    /// Adds a swap contract fee to the treasury tracking
+    /// 
+    /// This function records a swap contract fee (fixed SOL amount) collected during
+    /// swap operations. These fees cover computational costs.
+    /// 
+    /// # Arguments  
+    /// * `fee_amount` - The swap contract fee amount in lamports
+    /// * `timestamp` - Timestamp of the fee collection
+    pub fn add_swap_contract_fee(&mut self, fee_amount: u64, timestamp: i64) {
+        self.regular_swap_count += 1;  // Increment the operation count
+        self.total_swap_contract_fees += fee_amount;
         self.last_update_timestamp = timestamp;
+        
+        // Also update the legacy regular_swap_fees for backward compatibility
+        // TODO: Remove this after migration period
+        self.total_regular_swap_fees += fee_amount;
     }
-    
-    /// **PHASE 3: REAL-TIME FEE TRACKING**
 
+    /// Adds a regular swap fee to the treasury (legacy method)
+    /// 
+    /// **DEPRECATED**: Use add_swap_contract_fee instead for new code.
+    /// This method is maintained for backward compatibility only.
+    pub fn add_regular_swap_fee(&mut self, fee_amount: u64, timestamp: i64) {
+        // Delegate to the new method to ensure consistency
+        self.add_swap_contract_fee(fee_amount, timestamp);
+    }
     
     /// **PHASE 3: REAL-TIME BALANCE SYNC**
     /// Synchronizes internal balance tracking with actual account balance
@@ -194,6 +217,7 @@ impl MainTreasuryState {
         // Update fee totals (pool creation fees handled during initial creation)
         self.total_liquidity_fees += consolidated_operations.liquidity_fees;
         self.total_regular_swap_fees += consolidated_operations.regular_swap_fees;
+        self.total_swap_contract_fees += consolidated_operations.regular_swap_fees; // Same fees, different tracking
         
         // Update operation counts
         self.liquidity_operation_count += consolidated_operations.liquidity_operation_count;
@@ -261,6 +285,25 @@ impl MainTreasuryState {
         } else {
             0.0
         }
+    }
+
+    /// Records consolidated fee operations from pool states
+    /// 
+    /// This function processes consolidated operations from pool fee collection,
+    /// updating the treasury's tracking of all fee types and operation counts.
+    pub fn record_consolidated_operations(&mut self, consolidated_operations: &ConsolidatedOperations, timestamp: i64) {
+        // Add all fee types
+        self.total_liquidity_fees += consolidated_operations.liquidity_fees;
+        self.total_regular_swap_fees += consolidated_operations.regular_swap_fees;
+        self.total_swap_contract_fees += consolidated_operations.regular_swap_fees; // Same fees, different tracking
+        
+        // Update operation counts using correct field names
+        self.liquidity_operation_count += consolidated_operations.liquidity_operation_count;
+        self.regular_swap_count += consolidated_operations.regular_swap_count;
+        
+        // Update metadata
+        self.last_update_timestamp = timestamp;
+        self.total_consolidations_performed += 1;
     }
 }
 

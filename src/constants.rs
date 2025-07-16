@@ -50,32 +50,40 @@ pub const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 /// **Purpose**: Cover transaction processing costs for liquidity operations
 pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 
-/// Fee charged for swap operations in lamports (0.00002715 SOL)
+//-----------------------------------------------------------------------------
+// SWAP CONTRACT FEES (Fixed SOL amounts)
+//-----------------------------------------------------------------------------
+// These are fixed SOL fees charged for computational costs and transaction processing.
+// Contract fees cover the operational costs of running swap operations on-chain.
+
+/// Swap contract fee charged for computational costs during token swaps.
 /// 
 /// This fee covers the computational cost of token swaps including ratio calculations,
 /// token transfers, pool balance updates, and fee collection tracking.
 /// 
-/// **Type**: Contract Fee (Fixed SOL amount)
+/// **Type**: Swap Contract Fee (Fixed SOL amount)
 /// **When Charged**: During `Swap` operations  
 /// **Amount**: 0.00002715 SOL (27,150 lamports)
 /// **Purpose**: Cover transaction processing costs for swap operations
-pub const SWAP_FEE: u64 = 27_150; // 0.00002715 SOL
+/// **Goes To**: Pool state for operational cost coverage
+/// **Cannot Be Changed**: This is a fixed operational cost
+pub const SWAP_CONTRACT_FEE: u64 = 27_150; // 0.00002715 SOL
 
 
 
 //-----------------------------------------------------------------------------
-// POOL FEES (Percentage-based on traded assets)
+// SWAP TRADING FEES (Percentage-based on traded assets)
 //-----------------------------------------------------------------------------
 // These fees are charged as a percentage of the tokens being traded and can
-// be configured by the pool owner to generate revenue.
+// be configured by the pool owner to generate revenue from trading activity.
 
-/// Maximum allowed swap fee in basis points (0.5% maximum)
+/// Maximum allowed swap trading fee in basis points (0.5% maximum)
 /// 
 /// This represents the maximum percentage fee that can be charged on the input
-/// token amount during swap operations. Pool owners can set any fee rate from
+/// token amount during swap operations. Pool owners can set any trading fee rate from
 /// 0% (no fees) up to this maximum.
 /// 
-/// **Type**: Pool Fee (Percentage-based)
+/// **Type**: Swap Trading Fee (Percentage-based)
 /// **Applied To**: Input token amount during swaps
 /// **Range**: 0 to 50 basis points (0% to 0.5%)
 /// **Examples**:
@@ -86,7 +94,7 @@ pub const SWAP_FEE: u64 = 27_150; // 0.00002715 SOL
 /// 
 /// **Calculation**: `fee_amount = input_amount * fee_basis_points / 10000`
 /// **Revenue**: Collected by pool and withdrawable by pool owner
-pub const MAX_SWAP_FEE_BASIS_POINTS: u64 = 50; 
+pub const MAX_SWAP_TRADING_FEE_BASIS_POINTS: u64 = 50;
 
 /// Denominator for basis points calculations (1 basis point = 1/10000 = 0.01%)
 /// 
@@ -175,12 +183,21 @@ pub const MAX_POOLS_PER_CONSOLIDATION_BATCH: u8 = 20;
 pub const PAUSE_REASON_CONSOLIDATION: u8 = 15;
 
 //=============================================================================
-// FIXED SYSTEM VALUES (MOVED FROM POOLSTATE)
+// SWAP TRADING FEE SYSTEM VALUES
 //=============================================================================
 
-/// Fixed swap fee basis points across all pools (0.25% = 25 basis points)
-/// Since this is a fixed value, no need to store per pool
-pub const FIXED_SWAP_FEE_BASIS_POINTS: u64 = 25;
+/// Current swap trading fee basis points across all pools (0% = 0 basis points)
+/// 
+/// This represents the current system-wide swap trading fee rate applied to all pools.
+/// Pool owners can request changes through the SetSwapFee instruction, but the current
+/// implementation enforces this fixed rate across all pools.
+/// 
+/// **Type**: Swap Trading Fee (Percentage-based)
+/// **Current Rate**: 0% (no trading fees)
+/// **Maximum Allowed**: 0.5% (50 basis points via MAX_SWAP_TRADING_FEE_BASIS_POINTS)
+/// **Applied To**: Input token amount during swaps
+/// **Revenue**: Would be collected by pool and withdrawable by pool owner (when > 0)
+pub const FIXED_SWAP_TRADING_FEE_BASIS_POINTS: u64 = 0;
 
 //=============================================================================
 // POOL PAUSE BITWISE FLAGS

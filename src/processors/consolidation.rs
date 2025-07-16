@@ -232,7 +232,7 @@ fn perform_batch_consolidation(
         
         // Apply consolidation ratio to fee breakdown
         let liquidity_fees_consolidated = (pool_state.collected_liquidity_fees as f64 * consolidation_ratio) as u64;
-        let regular_swap_fees_consolidated = (pool_state.collected_regular_swap_fees as f64 * consolidation_ratio) as u64;
+        let regular_swap_fees_consolidated = (pool_state.collected_swap_contract_fees as f64 * consolidation_ratio) as u64;
         
         // Accumulate consolidated data
         consolidated_ops.liquidity_fees += liquidity_fees_consolidated;
@@ -240,7 +240,7 @@ fn perform_batch_consolidation(
         
         // Calculate operation counts from consolidated fees (using fixed fee constants)
         let liquidity_ops = liquidity_fees_consolidated / DEPOSIT_WITHDRAWAL_FEE;
-        let regular_ops = regular_swap_fees_consolidated / SWAP_FEE;
+        let regular_ops = regular_swap_fees_consolidated / SWAP_CONTRACT_FEE;
         
         consolidated_ops.liquidity_operation_count += liquidity_ops;
         consolidated_ops.regular_swap_count += regular_ops;
@@ -254,7 +254,7 @@ fn perform_batch_consolidation(
         } else {
             // Partial consolidation - reduce counters proportionally
             pool_state.collected_liquidity_fees -= liquidity_fees_consolidated;
-            pool_state.collected_regular_swap_fees -= regular_swap_fees_consolidated;
+            pool_state.collected_swap_contract_fees -= regular_swap_fees_consolidated;
             
             // Update total consolidated amount
             pool_state.total_fees_consolidated += available_for_consolidation;
