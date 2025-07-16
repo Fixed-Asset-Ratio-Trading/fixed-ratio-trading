@@ -38,6 +38,7 @@ SOFTWARE.
 //! 
 //! ```rust,no_run
 //! use fixed_ratio_trading::client_sdk::{PoolClient, PoolConfig};
+//! use fixed_ratio_trading::PoolInstruction;
 //! use solana_program::pubkey::Pubkey;
 //! 
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {

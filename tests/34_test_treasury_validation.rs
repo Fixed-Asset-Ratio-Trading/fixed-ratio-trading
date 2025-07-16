@@ -222,7 +222,7 @@ async fn test_fee_routing_validation() {
     let pool_creation_fee = 1_150_000_000u64; // 1.15 SOL (REGISTRATION_FEE)
     let liquidity_fee = 1_300_000u64; // 0.0013 SOL  
     let swap_fee = 27_150u64; // Regular swap fee
-    let hft_fee = 16_290u64; // HFT swap fee
+
     
     println!("🧪 Testing fee routing methods:");
     
@@ -262,33 +262,22 @@ async fn test_fee_routing_validation() {
                "Regular swap fees should accumulate");
     println!("✓ Regular swap fee routing: {} lamports", swap_fee);
     
-    // Test 5: HFT swap fee routing
-    let initial_hft_swaps = treasury_state.hft_swap_count;
-    let initial_hft_fees = treasury_state.total_hft_swap_fees;
-    
-    treasury_state.add_hft_swap_fee(hft_fee, current_timestamp);
-    
-    assert_eq!(treasury_state.hft_swap_count, initial_hft_swaps + 1,
-               "HFT swap count should increment");
-    assert_eq!(treasury_state.total_hft_swap_fees, initial_hft_fees + hft_fee,
-               "HFT swap fees should accumulate");
-    println!("✓ HFT swap fee routing: {} lamports", hft_fee);
+
     
     // Test 6: Validate fee relationships (business logic)
     assert!(pool_creation_fee > liquidity_fee, 
             "Pool creation should cost more than liquidity operations");
     assert!(liquidity_fee > swap_fee, 
             "Liquidity operations should cost more than regular swaps");
-    assert!(swap_fee > hft_fee, 
-            "Regular swaps should cost more than HFT swaps");
+
     
     // Test 7: Treasury analytics methods
     let total_operations = treasury_state.total_operations_processed();
     let total_fees = treasury_state.total_fees_collected();
     let average_fee = treasury_state.average_fee_per_operation();
     
-    assert_eq!(total_operations, 4, "Should have processed 4 operations");
-    assert_eq!(total_fees, pool_creation_fee + liquidity_fee + swap_fee + hft_fee,
+    assert_eq!(total_operations, 3, "Should have processed 3 operations");
+    assert_eq!(total_fees, pool_creation_fee + liquidity_fee + swap_fee,
                "Total fees should be sum of all fees");
     assert_eq!(average_fee, total_fees as f64 / total_operations as f64,
                "Average fee calculation should be correct");
@@ -306,7 +295,7 @@ async fn test_fee_routing_validation() {
     println!("  ✓ Pool creation fees route correctly to treasury");
     println!("  ✓ Liquidity fees route correctly to treasury");
     println!("  ✓ Swap fees route correctly to treasury");
-    println!("  ✓ HFT fees route correctly to treasury");
+
     println!("  ✓ Fee relationships maintain business logic");
     println!("  ✓ Treasury analytics calculate correctly");
     println!("  ✓ Timestamp tracking works properly");
@@ -493,12 +482,7 @@ async fn test_treasury_workflow_operations() {
         println!("  Regular swap {} - Fee: {} lamports", i, swap_fee);
     }
     
-    // Simulate HFT swaps
-    for i in 1..=15 {
-        let hft_fee = 16_290u64; // HFT swap fee
-        treasury_state.add_hft_swap_fee(hft_fee, current_timestamp + i + 30);
-        println!("  HFT swap {} - Fee: {} lamports", i, hft_fee);
-    }
+
     
     // Test 3: Validate workflow state
     println!("\n📊 Phase 3: Workflow State Validation");
@@ -510,13 +494,12 @@ async fn test_treasury_workflow_operations() {
     assert_eq!(treasury_state.pool_creation_count, 3, "Should have 3 pool creations");
     assert_eq!(treasury_state.liquidity_operation_count, 5, "Should have 5 liquidity operations");
     assert_eq!(treasury_state.regular_swap_count, 10, "Should have 10 regular swaps");
-    assert_eq!(treasury_state.hft_swap_count, 15, "Should have 15 HFT swaps");
-    assert_eq!(total_operations, 33, "Should have 33 total operations");
+    assert_eq!(total_operations, 18, "Should have 18 total operations");
     
     println!("  ✓ Pool creations: {}", treasury_state.pool_creation_count);
     println!("  ✓ Liquidity operations: {}", treasury_state.liquidity_operation_count);
     println!("  ✓ Regular swaps: {}", treasury_state.regular_swap_count);
-    println!("  ✓ HFT swaps: {}", treasury_state.hft_swap_count);
+
     println!("  ✓ Total operations: {}", total_operations);
     println!("  ✓ Total fees collected: {} lamports", total_fees);
     println!("  ✓ Average fee per operation: {:.2} lamports", average_fee);
@@ -555,15 +538,13 @@ async fn test_treasury_workflow_operations() {
     // Single source of truth
     let total_by_category = treasury_state.total_pool_creation_fees +
                            treasury_state.total_liquidity_fees +
-                           treasury_state.total_regular_swap_fees +
-                           treasury_state.total_hft_swap_fees;
+                           treasury_state.total_regular_swap_fees;
     assert_eq!(total_fees, total_by_category, "Single source of truth for fee tracking");
     
     // No race conditions (deterministic state)
     let recalculated_operations = treasury_state.pool_creation_count +
                                 treasury_state.liquidity_operation_count +
-                                treasury_state.regular_swap_count +
-                                treasury_state.hft_swap_count;
+                                treasury_state.regular_swap_count;
     assert_eq!(total_operations, recalculated_operations, "Deterministic operation counting");
     
     println!("  ✓ Real-time data tracking works");

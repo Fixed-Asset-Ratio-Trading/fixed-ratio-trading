@@ -374,7 +374,7 @@ fn test_pool_state_get_packed_len() {
         // **NEW: DISTRIBUTED SOL FEE TRACKING**
         8 +  // collected_liquidity_fees  
         8 +  // collected_regular_swap_fees
-        8 +  // collected_hft_swap_fees
+    
         8 +  // total_sol_fees_collected
         
         // **NEW: CONSOLIDATION MANAGEMENT**

@@ -557,7 +557,7 @@ async fn test_governance_fee_management() -> TestResult {
     println!("    ✓ Pool creation fees → MainTreasury PDA");
     println!("    ✓ Liquidity operation fees → MainTreasury PDA");
     println!("    ✓ Regular swap fees → SwapTreasury PDA");
-    println!("    ✓ HFT swap fees → HftTreasury PDA");
+    
     
     // Test 3: Verify governance authority model
     println!("\n--- Testing Governance Authority Model ---");
@@ -1715,7 +1715,7 @@ async fn test_governance_fee_architecture() -> TestResult {
     println!("   ✓ Pool creation fees: 1.15 SOL → MainTreasury PDA");
     println!("   ✓ Liquidity operation fees: 0.0013 SOL → MainTreasury PDA");
     println!("   ✓ Regular swap fees: 0.00002715 SOL → SwapTreasury PDA");
-    println!("   ✓ HFT swap fees: 0.00001358 SOL → HftTreasury PDA");
+    
     
     // Test 3: Mathematical validation of fee formulas (still accurate)
     println!("\n--- Test 3: Fee Formula Mathematical Validation ---");

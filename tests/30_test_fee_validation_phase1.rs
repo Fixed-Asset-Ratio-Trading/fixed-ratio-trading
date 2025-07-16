@@ -63,7 +63,7 @@ async fn test_fee_validation_sufficient_funds() {
         (REGISTRATION_FEE, VALIDATION_CONTEXT_POOL_CREATION),
         (DEPOSIT_WITHDRAWAL_FEE, VALIDATION_CONTEXT_LIQUIDITY),
         (SWAP_FEE, VALIDATION_CONTEXT_SWAP),
-        (HFT_SWAP_FEE, VALIDATION_CONTEXT_SWAP),
+        (SWAP_FEE, VALIDATION_CONTEXT_SWAP),
     ];
     
     for (fee_amount, validation_context_code) in test_cases {
@@ -248,8 +248,8 @@ async fn test_fee_collection_workflow() {
             validation_context_code: VALIDATION_CONTEXT_SWAP,
         },
         FeeTestCase {
-            name: "HFT Swap (sufficient funds)",
-            fee_amount: HFT_SWAP_FEE,
+                    name: "Swap (sufficient funds)",
+        fee_amount: SWAP_FEE,
             initial_balance: 100_000u64, // 0.0001 SOL
             should_succeed: true,
             validation_context_code: VALIDATION_CONTEXT_SWAP,
@@ -315,16 +315,12 @@ async fn test_fee_amounts_consistency() {
     assert_eq!(REGISTRATION_FEE, 1_150_000_000u64, "Pool creation fee should be 1.15 SOL");
     assert_eq!(DEPOSIT_WITHDRAWAL_FEE, 1_300_000u64, "Liquidity fee should be 0.0013 SOL");
     assert_eq!(SWAP_FEE, 27_150u64, "Regular swap fee should be 0.00002715 SOL");
-    assert_eq!(HFT_SWAP_FEE, 16_290u64, "HFT swap fee should be 0.0000163 SOL");
-    
-    // Verify HFT discount is correct (40% discount = 60% of original)
-    let expected_hft_fee = (SWAP_FEE * 60) / 100;
-    assert_eq!(HFT_SWAP_FEE, expected_hft_fee, "HFT fee should be 60% of regular swap fee");
+        assert_eq!(SWAP_FEE, 27_150u64, "Swap fee should be 0.00002715 SOL");
     
     // Verify fee relationships
     assert!(REGISTRATION_FEE > DEPOSIT_WITHDRAWAL_FEE, "Pool creation fee should be higher than liquidity fee");
     assert!(DEPOSIT_WITHDRAWAL_FEE > SWAP_FEE, "Liquidity fee should be higher than swap fee");
-    assert!(SWAP_FEE > HFT_SWAP_FEE, "Regular swap fee should be higher than HFT swap fee");
+
     
     println!("✅ All fee amounts are consistent");
 }
