@@ -297,10 +297,10 @@ async fn test_cu_measurement_deposit_liquidity() {
         )
     };
     
-    let depositor = foundation.user1.insecure_clone();
+    let depositor_pubkey = foundation.user1.pubkey();
     
     println!("✅ Depositor setup completed");
-    println!("   Depositor: {}", depositor.pubkey());
+    println!("   Depositor: {}", depositor_pubkey);
     println!("   Deposit amount: {} tokens", deposit_amount);
     println!("   Deposit mint: {}", deposit_mint);
     
@@ -325,7 +325,7 @@ async fn test_cu_measurement_deposit_liquidity() {
     // Execute the complete deposit operation
     let deposit_result = execute_deposit_operation(
         &mut foundation,
-        &depositor,
+        &depositor_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -479,11 +479,11 @@ async fn test_cu_measurement_regular_swap() {
     
     // Add liquidity to the pool to enable swaps
     let liquidity_amount = 5_000_000u64; // 5M tokens for good liquidity
-    let user1 = foundation.user1.insecure_clone();
     
     // Extract values before borrowing foundation mutably
     let token_a_mint = foundation.pool_config.token_a_mint;
     let token_b_mint = foundation.pool_config.token_b_mint;
+    let user1_pubkey = foundation.user1.pubkey();
     let user1_primary_account = foundation.user1_primary_account.pubkey();
     let user1_base_account = foundation.user1_base_account.pubkey();
     let user1_lp_a_account = foundation.user1_lp_a_account.pubkey();
@@ -492,7 +492,7 @@ async fn test_cu_measurement_regular_swap() {
     // Add Token A liquidity
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user1_primary_account,
         &user1_lp_a_account,
         &token_a_mint,
@@ -502,7 +502,7 @@ async fn test_cu_measurement_regular_swap() {
     // Add Token B liquidity  
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user1_base_account,
         &user1_lp_b_account,
         &token_b_mint,
@@ -567,7 +567,7 @@ async fn test_cu_measurement_regular_swap() {
     };
     
     let swap_instruction = create_swap_instruction_standardized(
-        &user1.pubkey(),
+        &user1_pubkey,
         &user1_primary_account, // Token A input account
         &user1_base_account,    // Token B output account  
         &foundation.pool_config,
@@ -586,7 +586,7 @@ async fn test_cu_measurement_regular_swap() {
     
     let cu_result = measure_instruction_cu(
         &mut foundation.env.banks_client,
-        &user1,
+        &foundation.user1,
         foundation.env.recent_blockhash,
         swap_instruction,
         "process_swap_regular",
@@ -858,7 +858,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     // =============================================
     
     let deposit_amount = 1_000_000u64; // 1M tokens
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     
     let (deposit_mint, deposit_input_account, deposit_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
         // Depositing Token A (multiple) - use primary token account, get LP A tokens
@@ -881,7 +881,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     // Execute deposit to get LP tokens for withdrawal test
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &deposit_input_account,
         &deposit_output_lp_account,
         &deposit_mint,
@@ -908,7 +908,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     };
     
     let withdrawal_instruction = create_withdrawal_instruction_standardized(
-        &user1.pubkey(),
+        &user1_pubkey,
         &deposit_output_lp_account,      // LP account being burned
         &deposit_input_account,          // Token account receiving tokens
         &foundation.pool_config,
@@ -929,7 +929,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     
     let cu_result = measure_instruction_cu(
         &mut foundation.env.banks_client,
-        &user1,
+        &foundation.user1,
         foundation.env.recent_blockhash,
         withdrawal_instruction,
         "process_withdraw_REAL",

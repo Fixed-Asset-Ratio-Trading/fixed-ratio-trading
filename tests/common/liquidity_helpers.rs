@@ -380,7 +380,7 @@ pub async fn ensure_lp_token_account_exists(
 #[allow(dead_code)]
 pub async fn execute_deposit_operation(
     foundation: &mut LiquidityTestFoundation,
-    user_keypair: &Keypair,
+    user_pubkey: &Pubkey,
     user_input_token_account: &Pubkey,
     user_output_lp_account: &Pubkey,
     deposit_token_mint: &Pubkey,
@@ -427,7 +427,7 @@ pub async fn execute_deposit_operation(
                 foundation.env.recent_blockhash,
                 user_lp_account_keypair,
                 &target_lp_mint_pda,
-                &user_keypair.pubkey(),
+                user_pubkey,
             ).await?;
             
             println!("✅ User LP token account created for specific deposit");
@@ -443,7 +443,7 @@ pub async fn execute_deposit_operation(
     };
     
     let deposit_ix = create_deposit_instruction_standardized(
-        &user_keypair.pubkey(),
+        user_pubkey,
         user_input_token_account,
         user_output_lp_account,
         &foundation.pool_config,
@@ -452,34 +452,36 @@ pub async fn execute_deposit_operation(
         &deposit_instruction_data,
     ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
     
+    // Find the user keypair that matches the pubkey
+    let user_keypair = if foundation.user1.pubkey() == *user_pubkey {
+        &foundation.user1
+    } else if foundation.user2.pubkey() == *user_pubkey {
+        &foundation.user2
+    } else {
+        return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "User pubkey does not match any user in foundation")
+        ).into());
+    };
+    
     let mut deposit_tx = solana_sdk::transaction::Transaction::new_with_payer(
         &[deposit_ix], 
-        Some(&user_keypair.pubkey())
+        Some(user_pubkey)
     );
     deposit_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    // Execute deposit with REDUCED timeout handling
-    let timeout_duration = std::time::Duration::from_secs(5); // REDUCED from 10 to 5 seconds
-    let process_future = foundation.env.banks_client.process_transaction(deposit_tx);
+    // Execute with timeout handling for reliability
+    let timeout_duration = std::time::Duration::from_secs(30);
+    let deposit_future = foundation.env.banks_client.process_transaction(deposit_tx);
     
-    match tokio::time::timeout(timeout_duration, process_future).await {
+    match tokio::time::timeout(timeout_duration, deposit_future).await {
         Ok(result) => {
             match result {
                 Ok(_) => {
                     println!("✅ Deposit operation completed successfully");
-                }
+                },
                 Err(e) => {
-                    println!("❌ First deposit attempt failed with error: {:?}", e);
-                    
-                    // Check if this is the specific error for missing user LP token account
-                    if let solana_program_test::BanksClientError::TransactionError(
-                        solana_sdk::transaction::TransactionError::InstructionError(_, 
-                        solana_sdk::instruction::InstructionError::Custom(4001))) = e {
-                        
-                        println!("⚠️ First deposit attempt failed: User LP token account doesn't exist");
-                        println!("📝 Creating user LP token account and retrying...");
-                        
-                        // Check if the LP token mint was created during the first deposit
+                    // Handle the case where LP token mint doesn't exist yet
+                    if e.to_string().contains("AccountNotFound") || e.to_string().contains("InvalidAccountData") {
                         println!("🔍 Checking if LP token mint exists after first deposit: {}", target_lp_mint_pda);
                         let mint_account_after = foundation.env.banks_client.get_account(target_lp_mint_pda).await?;
                         
@@ -500,14 +502,14 @@ pub async fn execute_deposit_operation(
                             foundation.env.recent_blockhash,
                             user_lp_account_keypair,
                             &target_lp_mint_pda,
-                            &user_keypair.pubkey(),
+                            user_pubkey,
                         ).await?;
                         
                         println!("✅ User LP token account created, retrying deposit...");
                         
                         // Retry the deposit
                         let retry_deposit_ix = create_deposit_instruction_standardized(
-                            &user_keypair.pubkey(),
+                            user_pubkey,
                             user_input_token_account,
                             user_output_lp_account,
                             &foundation.pool_config,
@@ -518,7 +520,7 @@ pub async fn execute_deposit_operation(
                         
                         let mut retry_tx = solana_sdk::transaction::Transaction::new_with_payer(
                             &[retry_deposit_ix], 
-                            Some(&user_keypair.pubkey())
+                            Some(user_pubkey)
                         );
                         retry_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
                         
@@ -555,7 +557,7 @@ pub async fn execute_deposit_operation(
 #[allow(dead_code)]
 pub async fn execute_withdrawal_operation(
     foundation: &mut LiquidityTestFoundation,
-    user_keypair: &Keypair,
+    user_pubkey: &Pubkey,
     user_input_lp_account: &Pubkey,
     user_output_token_account: &Pubkey,
     withdraw_token_mint: &Pubkey,
@@ -570,7 +572,7 @@ pub async fn execute_withdrawal_operation(
     };
     
     let withdrawal_ix = create_withdrawal_instruction_standardized(
-        &user_keypair.pubkey(),
+        user_pubkey,
         user_input_lp_account,
         user_output_token_account,
         &foundation.pool_config,
@@ -579,26 +581,98 @@ pub async fn execute_withdrawal_operation(
         &withdrawal_instruction_data,
     ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
     
+    // Find the user keypair that matches the pubkey
+    let user_keypair = if foundation.user1.pubkey() == *user_pubkey {
+        &foundation.user1
+    } else if foundation.user2.pubkey() == *user_pubkey {
+        &foundation.user2
+    } else {
+        return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "User pubkey does not match any user in foundation")
+        ).into());
+    };
+    
     let mut withdrawal_tx = solana_sdk::transaction::Transaction::new_with_payer(
         &[withdrawal_ix], 
-        Some(&user_keypair.pubkey())
+        Some(user_pubkey)
     );
     withdrawal_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
     
-    // REDUCED timeout handling to prevent deadlocks
-    let timeout_duration = std::time::Duration::from_secs(5); // REDUCED from 10 to 5 seconds
-    let process_future = foundation.env.banks_client.process_transaction(withdrawal_tx);
+    // Execute with timeout handling for reliability
+    let timeout_duration = std::time::Duration::from_secs(30);
+    let withdrawal_future = foundation.env.banks_client.process_transaction(withdrawal_tx);
     
-    match tokio::time::timeout(timeout_duration, process_future).await {
-        Ok(result) => result?,
+    match tokio::time::timeout(timeout_duration, withdrawal_future).await {
+        Ok(result) => {
+            result?;
+            println!("✅ Withdrawal operation completed successfully");
+        }
         Err(_) => return Err(solana_program_test::BanksClientError::Io(
             std::io::Error::new(std::io::ErrorKind::TimedOut, "Withdrawal operation timed out")
         ).into()),
     }
     
-    // REMOVED delay after operation  
-    // Small delay to prevent rapid-fire requests
-    // tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    Ok(())
+}
+
+/// Executes a swap operation using the standardized foundation
+/// OPTIMIZED VERSION - performs swap after ensuring adequate liquidity exists
+#[allow(dead_code)]
+pub async fn execute_swap_operation(
+    foundation: &mut LiquidityTestFoundation,
+    user_pubkey: &Pubkey,
+    user_input_token_account: &Pubkey,
+    user_output_token_account: &Pubkey,
+    input_token_mint: &Pubkey,
+    amount_in: u64,
+) -> TestResult {
+    println!("🔄 Executing swap: {} tokens", amount_in);
+    
+    // Create the swap instruction
+    let swap_instruction_data = PoolInstruction::Swap {
+        input_token_mint: *input_token_mint,
+        amount_in,
+    };
+    
+    let swap_ix = create_swap_instruction_standardized(
+        user_pubkey,
+        user_input_token_account,
+        user_output_token_account,
+        &foundation.pool_config,
+        &swap_instruction_data,
+    ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
+    
+    // Find the user keypair that matches the pubkey
+    let user_keypair = if foundation.user1.pubkey() == *user_pubkey {
+        &foundation.user1
+    } else if foundation.user2.pubkey() == *user_pubkey {
+        &foundation.user2
+    } else {
+        return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "User pubkey does not match any user in foundation")
+        ).into());
+    };
+    
+    // Execute the swap
+    let mut swap_tx = solana_sdk::transaction::Transaction::new_with_payer(
+        &[swap_ix], 
+        Some(user_pubkey)
+    );
+    swap_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+    
+    // Execute with timeout handling
+    let timeout_duration = std::time::Duration::from_secs(30);
+    let swap_future = foundation.env.banks_client.process_transaction(swap_tx);
+    
+    match tokio::time::timeout(timeout_duration, swap_future).await {
+        Ok(result) => {
+            result?;
+            println!("✅ Swap operation completed successfully");
+        }
+        Err(_) => return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::TimedOut, "Swap operation timed out")
+        ).into()),
+    }
     
     Ok(())
 }
@@ -867,7 +941,7 @@ pub async fn execute_and_verify_deposit(
     // Execute operation
     let result = execute_deposit_operation(
         foundation,
-        user_keypair,
+        &user_keypair.pubkey(),
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,

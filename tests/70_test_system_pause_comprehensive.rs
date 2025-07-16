@@ -726,10 +726,10 @@ async fn test_deposit_blocked_when_paused() -> TestResult {
         )
     };
     
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let deposit_result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -781,10 +781,10 @@ async fn test_withdrawal_blocked_when_paused() -> TestResult {
         )
     };
     
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -812,7 +812,7 @@ async fn test_withdrawal_blocked_when_paused() -> TestResult {
     let withdraw_amount = deposit_amount / 2; // Withdraw half
     let withdrawal_result = execute_withdrawal_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_output_lp_account,      // LP account being burned
         &user_input_account,          // Token account receiving tokens
         &deposit_mint,                // Token mint being withdrawn
@@ -864,10 +864,10 @@ async fn test_swap_blocked_when_paused() -> TestResult {
         )
     };
     
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,

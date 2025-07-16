@@ -92,10 +92,10 @@ async fn test_deposit_ux_hints() -> TestResult {
 
     // Execute deposit using the standardized helper
     println!("🔄 Executing deposit transaction...");
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -180,10 +180,10 @@ async fn test_withdrawal_ux_hints() -> TestResult {
     let deposit_amount = 2_000_000u64;
     println!("🔄 Step 1: Depositing {} tokens to create LP position...", deposit_amount);
 
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -220,7 +220,7 @@ async fn test_withdrawal_ux_hints() -> TestResult {
     println!("🔄 Executing withdrawal transaction...");
     let result = execute_withdrawal_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_output_lp_account,      // LP account being burned
         &user_input_account,          // Token account receiving tokens
         &deposit_mint,                // Token mint being withdrawn
@@ -309,10 +309,10 @@ async fn test_liquidity_progress_indicators() -> TestResult {
     println!("   ⏳ Calculating fees and outputs...");
     
     // Execute deposit with progress tracking
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let deposit_result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -334,7 +334,7 @@ async fn test_liquidity_progress_indicators() -> TestResult {
             
             let withdrawal_result = execute_withdrawal_operation(
                 &mut foundation,
-                &user1,
+                &user1_pubkey,
                 &user_output_lp_account,
                 &user_input_account,
                 &deposit_mint,

@@ -199,10 +199,10 @@ async fn test_basic_deposit_success() -> TestResult {
 
     // Execute deposit using the standardized helper
     // Extract values to avoid borrow checker issues
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -276,10 +276,10 @@ async fn test_deposit_zero_amount_fails() -> TestResult {
     };
 
     // Attempt to deposit zero tokens using the optimized helper
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -335,10 +335,10 @@ async fn test_deposit_insufficient_tokens_fails() -> TestResult {
     println!("User balance: {}, attempting to deposit: {}", user_balance, excessive_amount);
 
     // Attempt to deposit more tokens than available
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     let result = execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &user_input_account,
         &user_output_lp_account,
         &deposit_mint,
@@ -394,12 +394,12 @@ async fn test_basic_withdrawal_success() -> TestResult {
     };
 
     println!("🪙 Step 1: Depositing {} tokens to get LP tokens...", deposit_amount);
-    let user1 = foundation.user1.insecure_clone();
+    let user1_pubkey = foundation.user1.pubkey();
     
     // Execute deposit using the standardized helper
     execute_deposit_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &deposit_input_account,
         &deposit_output_lp_account,
         &deposit_mint,
@@ -425,7 +425,7 @@ async fn test_basic_withdrawal_success() -> TestResult {
     // Execute withdrawal using the standardized helper
     let result = execute_withdrawal_operation(
         &mut foundation,
-        &user1,
+        &user1_pubkey,
         &deposit_output_lp_account,      // LP account being burned
         &deposit_input_account,          // Token account receiving tokens
         &deposit_mint,                   // Token mint being withdrawn
