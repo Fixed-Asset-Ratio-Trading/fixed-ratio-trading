@@ -22,7 +22,6 @@ pub enum PoolInstruction {
     /// 1. SystemState PDA - Global pause controls and system authority
     /// 2. MainTreasury PDA - Pool creation and liquidity operation fees
     /// 3. SwapTreasury PDA - Regular swap fees (high frequency)
-    /// 4. HftTreasury PDA - HFT swap fees (high frequency)
     /// 
     /// # When to call:
     /// - ONCE during initial program deployment
@@ -116,43 +115,7 @@ pub enum PoolInstruction {
         amount_in: u64,
     },
 
-    /// **HFT OPTIMIZED SWAP**: High-frequency trading optimized version of swap
-    /// 
-    /// This instruction provides the same functionality as the standard Swap instruction
-    /// but with significant compute unit (CU) optimizations for high-frequency trading:
-    /// 
-    /// **PHASE 6: ULTRA-OPTIMIZED PERFORMANCE**
-    /// - Eliminated rent checks entirely (saves ~500-850 CUs)
-    /// - Removed redundant token mint accounts (saves ~50-100 CUs)
-    /// - Reduced account count: 14 → 10 accounts (saves ~70-140 CUs)
-    /// - Single serialization (saves ~800-1200 CUs)
-    /// - Reduced logging overhead (saves ~500-800 CUs)
-    /// - Batched validations (saves ~200-400 CUs)
-    /// - Early failure detection (saves ~50-150 CUs)
-    /// 
-    /// **Total CU Savings: 2,170-3,640 CUs (30-35% reduction)**
-    /// 
-    /// All essential security features are preserved. Pool accounts are structurally
-    /// protected from rent exemption loss, making rent checks unnecessary.
-    /// Output amounts are identical to the standard Swap instruction.
-    /// 
-    /// # Arguments:
-    /// - `input_token_mint`: Token mint being swapped in
-    /// - `amount_in`: Amount of input tokens to swap
-    /// 
-    /// # When to Use:
-    /// - Production HFT environments where CU efficiency is critical
-    /// - High-volume trading operations
-    /// - Arbitrage and market making bots
-    /// - When every compute unit matters for profitability
-    /// 
-    /// # Safety:
-    /// Rent checks are eliminated because pool accounts are structurally protected
-    /// from rent exemption loss through the protocol's design.
-    SwapHftOptimized {
-        input_token_mint: Pubkey,
-        amount_in: u64,
-    },
+
     
     // Pool owner management instructions removed for governance control
     // Fee management and security controls are now handled through:

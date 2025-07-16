@@ -233,21 +233,17 @@ fn perform_batch_consolidation(
         // Apply consolidation ratio to fee breakdown
         let liquidity_fees_consolidated = (pool_state.collected_liquidity_fees as f64 * consolidation_ratio) as u64;
         let regular_swap_fees_consolidated = (pool_state.collected_regular_swap_fees as f64 * consolidation_ratio) as u64;
-        let hft_swap_fees_consolidated = (pool_state.collected_hft_swap_fees as f64 * consolidation_ratio) as u64;
         
         // Accumulate consolidated data
         consolidated_ops.liquidity_fees += liquidity_fees_consolidated;
         consolidated_ops.regular_swap_fees += regular_swap_fees_consolidated;
-        consolidated_ops.hft_swap_fees += hft_swap_fees_consolidated;
         
         // Calculate operation counts from consolidated fees (using fixed fee constants)
         let liquidity_ops = liquidity_fees_consolidated / DEPOSIT_WITHDRAWAL_FEE;
         let regular_ops = regular_swap_fees_consolidated / SWAP_FEE;
-        let hft_ops = hft_swap_fees_consolidated / HFT_SWAP_FEE;
         
         consolidated_ops.liquidity_operation_count += liquidity_ops;
         consolidated_ops.regular_swap_count += regular_ops;
-        consolidated_ops.hft_swap_count += hft_ops;
         
         total_sol_collected += available_for_consolidation;
         
@@ -259,7 +255,6 @@ fn perform_batch_consolidation(
             // Partial consolidation - reduce counters proportionally
             pool_state.collected_liquidity_fees -= liquidity_fees_consolidated;
             pool_state.collected_regular_swap_fees -= regular_swap_fees_consolidated;
-            pool_state.collected_hft_swap_fees -= hft_swap_fees_consolidated;
             
             // Update total consolidated amount
             pool_state.total_fees_consolidated += available_for_consolidation;
@@ -317,8 +312,7 @@ fn perform_batch_consolidation(
          total_sol_collected, total_sol_collected as f64 / 1_000_000_000.0);
     msg!("   Total operations: {}", 
          consolidated_ops.liquidity_operation_count + 
-         consolidated_ops.regular_swap_count + 
-         consolidated_ops.hft_swap_count);
+         consolidated_ops.regular_swap_count);
     msg!("   🛡️ Rent exempt SOL protected in all pools");
     
     // Handle case where no pools were eligible/processed

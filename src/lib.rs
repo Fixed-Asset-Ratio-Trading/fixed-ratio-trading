@@ -111,7 +111,6 @@ use crate::processors::{
     // fees module contains only governance-controlled fee architecture documentation
     swap::{
         process_swap,
-        process_swap_hft_optimized,
     },
     // security module contains only governance-controlled security architecture documentation
     process_initialize::{
@@ -197,10 +196,7 @@ pub fn process_instruction(
             amount_in,
         } => process_swap(program_id, amount_in, accounts),
 
-        PoolInstruction::SwapHftOptimized {
-            input_token_mint: _,
-            amount_in,
-        } => process_swap_hft_optimized(program_id, amount_in, accounts),
+
 
         // Pool owner management instructions not implemented (governance-controlled architecture)
 

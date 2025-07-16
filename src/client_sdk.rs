@@ -340,12 +340,11 @@ impl PoolClient {
         );
         // Phase 3: Specialized treasuries removed - all fees go to main treasury
         let swap_treasury_pda = main_treasury_pda; // Placeholder for compatibility
-        let hft_treasury_pda = main_treasury_pda;  // Placeholder for compatibility
 
         Ok(Instruction {
             program_id: self.program_id,
             accounts: vec![
-                // Standardized account ordering (17 accounts minimum)
+                // Standardized account ordering (16 accounts minimum)
                 AccountMeta::new(*payer, true),                         // Index 0: Authority/User Signer
                 AccountMeta::new_readonly(system_program::id(), false), // Index 1: System Program
                 AccountMeta::new_readonly(rent::id(), false),           // Index 2: Rent Sysvar
@@ -360,9 +359,8 @@ impl PoolClient {
                 AccountMeta::new(*payer, false),                        // Index 11: User Output Token Account (placeholder)
                 AccountMeta::new(main_treasury_pda, false),             // Index 12: Main Treasury PDA
                 AccountMeta::new(swap_treasury_pda, false),             // Index 13: Swap Treasury PDA (placeholder)
-                AccountMeta::new(hft_treasury_pda, false),              // Index 14: HFT Treasury PDA (placeholder)
-                AccountMeta::new(*lp_token_a_mint, true),               // Index 15: LP Token A Mint (signer)
-                AccountMeta::new(*lp_token_b_mint, true),               // Index 16: LP Token B Mint (signer)
+                AccountMeta::new(*lp_token_a_mint, true),               // Index 14: LP Token A Mint (signer)
+                AccountMeta::new(*lp_token_b_mint, true),               // Index 15: LP Token B Mint (signer)
             ],
             data,
         })

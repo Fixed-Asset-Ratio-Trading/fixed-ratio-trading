@@ -57,13 +57,11 @@ pub struct MainTreasuryState {
     pub pool_creation_count: u64,
     pub liquidity_operation_count: u64,
     pub regular_swap_count: u64,
-    pub hft_swap_count: u64,
     
     /// **PHASE 3: REAL-TIME TOTALS** - Updated immediately on fee collection
     pub total_pool_creation_fees: u64,
     pub total_liquidity_fees: u64,
     pub total_regular_swap_fees: u64,
-    pub total_hft_swap_fees: u64,
     
     /// Last update timestamp (replaces consolidation timestamp)
     pub last_update_timestamp: i64,
@@ -78,14 +76,23 @@ pub struct MainTreasuryState {
 
 /// **NEW: Consolidated operations data structure**
 /// Used for batch consolidation processing from multiple pools
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct ConsolidatedOperations {
     pub liquidity_fees: u64,
     pub regular_swap_fees: u64,
-    pub hft_swap_fees: u64,
     pub liquidity_operation_count: u64,
     pub regular_swap_count: u64,
-    pub hft_swap_count: u64,
+}
+
+impl Default for ConsolidatedOperations {
+    fn default() -> Self {
+        Self {
+            liquidity_fees: 0,
+            regular_swap_fees: 0,
+            liquidity_operation_count: 0,
+            regular_swap_count: 0,
+        }
+    }
 }
 
 impl MainTreasuryState {
@@ -96,11 +103,9 @@ impl MainTreasuryState {
         8 +   // pool_creation_count
         8 +   // liquidity_operation_count
         8 +   // regular_swap_count
-        8 +   // hft_swap_count
         8 +   // total_pool_creation_fees
         8 +   // total_liquidity_fees
         8 +   // total_regular_swap_fees
-        8 +   // total_hft_swap_fees
         8 +   // last_update_timestamp
         8 +   // total_consolidations_performed ← NEW
         8;    // last_consolidation_timestamp ← NEW
@@ -119,11 +124,9 @@ impl MainTreasuryState {
             pool_creation_count: 0,
             liquidity_operation_count: 0,
             regular_swap_count: 0,
-            hft_swap_count: 0,
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
-            total_hft_swap_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_consolidation_timestamp: 0,
@@ -139,11 +142,9 @@ impl MainTreasuryState {
             pool_creation_count: 0,
             liquidity_operation_count: 0,
             regular_swap_count: 0,
-            hft_swap_count: 0,
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
-            total_hft_swap_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_consolidation_timestamp: 0,
@@ -175,12 +176,7 @@ impl MainTreasuryState {
     }
     
     /// **PHASE 3: REAL-TIME FEE TRACKING**
-    /// Records an HFT swap fee immediately when collected
-    pub fn add_hft_swap_fee(&mut self, fee_amount: u64, timestamp: i64) {
-        self.hft_swap_count += 1;
-        self.total_hft_swap_fees += fee_amount;
-        self.last_update_timestamp = timestamp;
-    }
+
     
     /// **PHASE 3: REAL-TIME BALANCE SYNC**
     /// Synchronizes internal balance tracking with actual account balance
@@ -198,12 +194,10 @@ impl MainTreasuryState {
         // Update fee totals (pool creation fees handled during initial creation)
         self.total_liquidity_fees += consolidated_operations.liquidity_fees;
         self.total_regular_swap_fees += consolidated_operations.regular_swap_fees;
-        self.total_hft_swap_fees += consolidated_operations.hft_swap_fees;
         
         // Update operation counts
         self.liquidity_operation_count += consolidated_operations.liquidity_operation_count;
         self.regular_swap_count += consolidated_operations.regular_swap_count;
-        self.hft_swap_count += consolidated_operations.hft_swap_count;
         
         // Update consolidation metadata
         self.total_consolidations_performed += 1;
@@ -247,8 +241,7 @@ impl MainTreasuryState {
     pub fn total_fees_collected(&self) -> u64 {
         self.total_pool_creation_fees +
         self.total_liquidity_fees +
-        self.total_regular_swap_fees +
-        self.total_hft_swap_fees
+        self.total_regular_swap_fees
     }
     
     /// **PHASE 3: ANALYTICS METHODS**
@@ -256,8 +249,7 @@ impl MainTreasuryState {
     pub fn total_operations_processed(&self) -> u64 {
         self.pool_creation_count +
         self.liquidity_operation_count +
-        self.regular_swap_count +
-        self.hft_swap_count
+        self.regular_swap_count
     }
     
     /// **PHASE 3: ANALYTICS METHODS**

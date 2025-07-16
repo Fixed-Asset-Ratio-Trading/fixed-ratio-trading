@@ -220,8 +220,6 @@ pub fn process_get_treasury_info(
          main_treasury_state.liquidity_operation_count, main_treasury_state.total_liquidity_fees);
     msg!("   Regular Swaps: {} (Total fees: {} lamports)", 
          main_treasury_state.regular_swap_count, main_treasury_state.total_regular_swap_fees);
-    msg!("   HFT Swaps: {} (Total fees: {} lamports)", 
-         main_treasury_state.hft_swap_count, main_treasury_state.total_hft_swap_fees);
     msg!("");
     msg!("📊 ANALYTICS:");
     msg!("   Total Operations: {}", main_treasury_state.total_operations_processed());

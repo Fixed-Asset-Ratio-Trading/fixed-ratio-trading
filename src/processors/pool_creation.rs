@@ -564,7 +564,7 @@ pub fn process_initialize_pool(
         // **PHASE 1: NEW DISTRIBUTED COLLECTION FIELDS**
         collected_liquidity_fees: 0,
         collected_regular_swap_fees: 0,
-        collected_hft_swap_fees: 0,
+        
         total_sol_fees_collected: 0,
         last_consolidation_timestamp: 0,
         total_consolidations: 0,

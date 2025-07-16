@@ -257,11 +257,10 @@ pub fn collect_regular_swap_fee_distributed<'a>(
     )
 }
 
-/// **NEW: Fee type enumeration**
+/// Fee type enumeration for different operation types
 pub enum FeeType {
     Liquidity,
     RegularSwap,
-    HftSwap,
 }
 
 /// **NEW: Generic fee collection to pool state**
@@ -279,25 +278,14 @@ pub fn collect_fee_to_pool_state<'a>(
         sysvar::{clock::Clock, Sysvar},
     };
     
-    // ⚡ HFT OPTIMIZATION: Skip validation for HFT swaps to save ~120-250 CUs
-    // System Program will automatically handle insufficient funds with proper error
-    // Trade-off: HFT gets generic error instead of detailed InsufficientFeeBalance
-    match fee_type {
-        FeeType::HftSwap => {
-            // Skip validation for HFT - maximize performance over error detail
-            // System Program transfer will fail gracefully if insufficient funds
-        },
-        _ => {
-            // Keep detailed validation for regular operations
-            let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
-            if !validation_result.is_valid {
-                return Err(PoolError::InsufficientFeeBalance {
-                    required: fee_amount,
-                    available: validation_result.available_balance,
-                    account: *payer_account.key,
-                }.into());
-            }
-        }
+    // Validate payer has sufficient SOL balance for fee payment
+    let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
+    if !validation_result.is_valid {
+        return Err(PoolError::InsufficientFeeBalance {
+            required: fee_amount,
+            available: validation_result.available_balance,
+            account: *payer_account.key,
+        }.into());
     }
     
     // Load and validate pool state
@@ -322,7 +310,6 @@ pub fn collect_fee_to_pool_state<'a>(
     match fee_type {
         FeeType::Liquidity => pool_state.add_liquidity_fee(fee_amount, current_timestamp),
         FeeType::RegularSwap => pool_state.add_regular_swap_fee(fee_amount, current_timestamp),
-        FeeType::HftSwap => pool_state.add_hft_swap_fee(fee_amount, current_timestamp),
     }
     
     // Save updated pool state
