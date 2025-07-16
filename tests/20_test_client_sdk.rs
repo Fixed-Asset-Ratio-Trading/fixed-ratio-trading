@@ -32,7 +32,7 @@ mod common;
 use common::*;
 use fixed_ratio_trading::{
     client_sdk::{PoolClient, PoolConfig, PoolClientError},
-    PoolInstruction,
+    types::instructions::PoolInstruction,
     ID as PROGRAM_ID,
 };
 use solana_program::{
@@ -41,6 +41,7 @@ use solana_program::{
     sysvar,
     instruction::AccountMeta,
 };
+use crate::common::client_test_utils::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Test PoolClient initialization and configuration (SDK-001)
@@ -343,9 +344,9 @@ async fn test_get_pool_state_success() -> TestResult {
     // In a real implementation, we would create a pool and retrieve its state
     println!("✅ Derived pool addresses successfully");
     
-    // 1. Test the expected structure of PoolState
-    // Create a mock PoolState to verify its structure
-    let mock_pool_state_data = fixed_ratio_trading::client_sdk::PoolState {
+    // 1. Test the expected structure of TestPoolState
+    // Create a mock TestPoolState to verify its structure
+    let mock_pool_state_data = TestPoolState {
         token_a_mint: lp_token_a_mint,
         token_b_mint: lp_token_b_mint,
         ratio_a_numerator: 1000,
@@ -356,16 +357,16 @@ async fn test_get_pool_state_success() -> TestResult {
     
     // 2. Verify the structure is as expected
     assert_eq!(mock_pool_state_data.token_a_mint, lp_token_a_mint,
-        "PoolState token_a_mint field should work correctly");
+        "TestPoolState token_a_mint field should work correctly");
     assert_eq!(mock_pool_state_data.token_b_mint, lp_token_b_mint,
-        "PoolState token_b_mint field should work correctly");
+        "TestPoolState token_b_mint field should work correctly");
     assert_eq!(mock_pool_state_data.ratio_a_numerator, 1000, 
-        "PoolState ratio_a_numerator field should work correctly");
+        "TestPoolState ratio_a_numerator field should work correctly");
         assert!(!mock_pool_state_data.paused,
-        "PoolState paused field should work correctly");
+        "TestPoolState paused field should work correctly");
     
     // 3. Test a modified pool state data structure (e.g., for a paused pool)
-    let mock_paused_pool_state_data = fixed_ratio_trading::client_sdk::PoolState {
+    let mock_paused_pool_state_data = TestPoolState {
         token_a_mint: lp_token_a_mint,
         token_b_mint: lp_token_b_mint,
         ratio_a_numerator: 1000,
@@ -376,9 +377,9 @@ async fn test_get_pool_state_success() -> TestResult {
     
     // Verify paused state is correctly represented
     assert!(mock_paused_pool_state_data.paused, 
-        "Client SDK should correctly represent a paused pool");
+        "TestPoolState should correctly represent a paused pool");
     
-    println!("✅ PoolState structure validated");
+    println!("✅ TestPoolState structure validated");
     println!("✅ SDK-004 test completed successfully");
     Ok(())
 }
@@ -394,7 +395,7 @@ async fn test_get_pool_state_not_found() -> TestResult {
     let _random_pool_state_pda = Pubkey::new_unique();
     
     // Attempt to call additional operations, expecting a NotImplemented error
-    let result = pool_client.additional_operations();
+    let result = additional_operations(&pool_client);
     
     match result {
         Err(PoolClientError::NotImplemented) => {

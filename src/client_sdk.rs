@@ -69,19 +69,10 @@ SOFTWARE.
 //! # }
 //! ```
 
-use borsh::BorshSerialize;
-use solana_program::{
-    instruction::{AccountMeta, Instruction},
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    system_program,
-    sysvar::{self, rent, clock},
-};
-use spl_token;
+use solana_program::pubkey::Pubkey;
 
 use crate::{
     constants::{POOL_STATE_SEED_PREFIX, TOKEN_A_VAULT_SEED_PREFIX, TOKEN_B_VAULT_SEED_PREFIX},
-    types::instructions::PoolInstruction,
 };
 
 /// Errors that can occur when using the pool client
@@ -224,6 +215,14 @@ impl PoolClient {
         Self { program_id }
     }
     
+    /// Gets the program ID of this client.
+    /// 
+    /// # Returns
+    /// * `Pubkey` - The program ID
+    pub fn program_id(&self) -> Pubkey {
+        self.program_id
+    }
+    
     /// Derives all addresses for a pool configuration.
     /// 
     /// This function calculates all the program-derived addresses (PDAs) for a given
@@ -304,164 +303,13 @@ impl PoolClient {
     /// 
 
     
-    /// Creates a deposit instruction for adding liquidity to a pool.
-    /// 
-    /// # Arguments
-    /// * `user` - The user performing the deposit
-    /// * `config` - Pool configuration
-    /// * `deposit_token_mint` - Token being deposited
-    /// * `amount` - Amount to deposit
-    /// * `user_source_account` - User's token account
-    /// * `user_lp_account` - User's LP token account
-    /// 
-    /// # Returns
-    /// * `Result<Instruction, PoolClientError>` - The deposit instruction or an error
-    pub fn deposit_instruction(
-        &self,
-        user: &Pubkey,
-        config: &PoolConfig,
-        deposit_token_mint: &Pubkey,
-        amount: u64,
-        user_source_account: &Pubkey,
-        user_lp_account: &Pubkey,
-    ) -> Result<Instruction, PoolClientError> {
-        let addresses = self.derive_pool_addresses(config);
-        
-        // Validate deposit token
-        if *deposit_token_mint != config.multiple_token_mint && *deposit_token_mint != config.base_token_mint {
-            return Err(PoolClientError::InvalidDepositToken);
-        }
 
-        let instruction_data = PoolInstruction::Deposit {
-            deposit_token_mint: *deposit_token_mint,
-            amount,
-        };
-
-        let data = instruction_data.try_to_vec()?;
-
-        Ok(Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(*user, true),                          // User (signer)
-                AccountMeta::new(addresses.pool_state, false),          // Pool state
-                AccountMeta::new(*user_source_account, false),          // User source token account
-                AccountMeta::new(*user_lp_account, false),              // User LP token account
-                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
-                AccountMeta::new_readonly(system_program::id(), false), // System program
-                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
-                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
-                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
-            ],
-            data,
-        })
-    }
     
 
     
-    /// Creates a withdraw instruction for removing liquidity from a pool.
-    /// 
-    /// # Arguments
-    /// * `user` - The user performing the withdrawal
-    /// * `config` - Pool configuration
-    /// * `withdraw_token_mint` - Token being withdrawn
-    /// * `lp_amount_to_burn` - Amount of LP tokens to burn
-    /// * `user_destination_account` - User's destination token account
-    /// * `user_lp_account` - User's LP token account
-    /// 
-    /// # Returns
-    /// * `Result<Instruction, PoolClientError>` - The withdraw instruction or an error
-    pub fn withdraw_instruction(
-        &self,
-        user: &Pubkey,
-        config: &PoolConfig,
-        withdraw_token_mint: &Pubkey,
-        lp_amount_to_burn: u64,
-        user_destination_account: &Pubkey,
-        user_lp_account: &Pubkey,
-    ) -> Result<Instruction, PoolClientError> {
-        let addresses = self.derive_pool_addresses(config);
 
-        let instruction_data = PoolInstruction::Withdraw {
-            withdraw_token_mint: *withdraw_token_mint,
-            lp_amount_to_burn,
-        };
 
-        let data = instruction_data.try_to_vec()?;
 
-        Ok(Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                AccountMeta::new(*user, true),                          // User (signer)
-                AccountMeta::new(addresses.pool_state, false),          // Pool state
-                AccountMeta::new(*user_destination_account, false),     // User destination token account
-                AccountMeta::new(*user_lp_account, false),              // User LP token account
-                AccountMeta::new(addresses.token_a_vault, false),       // Token A vault
-                AccountMeta::new(addresses.token_b_vault, false),       // Token B vault
-                AccountMeta::new_readonly(system_program::id(), false), // System program
-                AccountMeta::new_readonly(spl_token::id(), false),      // SPL Token program
-                AccountMeta::new_readonly(rent::id(), false),           // Rent sysvar
-                AccountMeta::new_readonly(clock::id(), false),          // Clock sysvar
-            ],
-            data,
-        })
-    }
-
-    /// Creates a Swap instruction
-    /// 
-    /// # Arguments
-    /// * `user_signer` - User account performing the swap
-    /// * `user_input_token_account` - User's input token account
-    /// * `user_output_token_account` - User's output token account  
-    /// * `pool_state_pda` - Pool state PDA account
-    /// * `token_a_mint` - Token A mint account
-    /// * `token_b_mint` - Token B mint account
-    /// * `pool_token_a_vault` - Pool's Token A vault
-    /// * `pool_token_b_vault` - Pool's Token B vault
-    /// * `input_token_mint` - Mint of the token being swapped in
-    /// * `amount_in` - Amount of input tokens to swap
-    /// 
-    /// # Returns
-    /// * `Result<Instruction, ProgramError>` - The swap instruction or error
-    pub fn create_swap_instruction(
-        &self,
-        user_signer: &Pubkey,
-        user_input_token_account: &Pubkey,
-        user_output_token_account: &Pubkey,
-        pool_state_pda: &Pubkey,
-        token_a_mint: &Pubkey,
-        token_b_mint: &Pubkey,
-        pool_token_a_vault: &Pubkey,
-        pool_token_b_vault: &Pubkey,
-        input_token_mint: Pubkey,
-        amount_in: u64,
-    ) -> Result<Instruction, ProgramError> {
-        let instruction_data = PoolInstruction::Swap {
-            input_token_mint,
-            amount_in,
-        };
-
-        let accounts = vec![
-            AccountMeta::new(*user_signer, true),                     // User (signer)
-            AccountMeta::new(*user_input_token_account, false),       // User input token account
-            AccountMeta::new(*user_output_token_account, false),      // User output token account
-            AccountMeta::new(*pool_state_pda, false),                 // Pool state PDA
-            AccountMeta::new_readonly(*token_a_mint, false),          // Token A mint (for PDA seeds)
-            AccountMeta::new_readonly(*token_b_mint, false),          // Token B mint (for PDA seeds)
-            AccountMeta::new(*pool_token_a_vault, false),             // Pool Token A vault
-            AccountMeta::new(*pool_token_b_vault, false),             // Pool Token B vault
-            AccountMeta::new_readonly(system_program::id(), false),   // System program
-            AccountMeta::new_readonly(spl_token::id(), false),        // SPL Token program
-            AccountMeta::new_readonly(sysvar::rent::id(), false),     // Rent sysvar
-            AccountMeta::new_readonly(sysvar::clock::id(), false),    // Clock sysvar
-        ];
-
-        Ok(Instruction {
-            program_id: self.program_id,
-            accounts,
-            data: instruction_data.try_to_vec()?,
-        })
-    }
 
     /// Derives the unique Pool ID for given pool parameters.
     /// 
@@ -496,26 +344,8 @@ impl PoolClient {
         addresses.pool_state  // The pool state PDA serves as the unique pool ID
     }
 
-    /// Placeholder for additional pool operations.
-    /// 
-    /// # Returns
-    /// * `Result<(), PoolClientError>` - Currently returns NotImplemented
-    pub fn additional_operations(&self) -> Result<(), PoolClientError> {
-        Err(PoolClientError::NotImplemented)
-    }
 }
 
-/// Pool state information for debugging and testing
-#[derive(Debug)]
-pub struct PoolState {
-    pub token_a_mint: Pubkey,
-    pub token_b_mint: Pubkey,
-    pub ratio_a_numerator: u64,
-    pub ratio_b_denominator: u64,
-    pub paused: bool,
-    /// Future feature: Single LP token mode
-    /// NOTE: Currently not implemented - remains false regardless of input
-    pub only_lp_token_a_for_both: bool,
-}
+
 
  
