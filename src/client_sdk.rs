@@ -64,7 +64,7 @@ SOFTWARE.
 //! let addresses = client.derive_pool_addresses(&config);
 //! 
 //! // Create pool instruction
-//! let instruction = client.create_pool_instruction(&payer, &config, &lp_token_a_mint, &lp_token_b_mint)?;
+//! let instruction_data = PoolInstruction::InitializePool { ratio_a_numerator: 1000, ratio_b_denominator: 1 };
 //! # Ok(())
 //! # }
 //! ```
@@ -302,69 +302,7 @@ impl PoolClient {
     /// # Returns
     /// * `Result<Instruction, PoolClientError>` - The pool creation instruction or an error
     /// 
-    /// # Errors
-    /// * `InvalidRatio` - If the ratio in config is 0
-    /// * `SerializationError` - If instruction data serialization fails
-    /// 
-    /// # Note
-    /// - Uses standardized account ordering for consistency across operations
-    /// - Bump seeds for all PDAs are derived internally
-    pub fn create_pool_instruction(
-        &self,
-        payer: &Pubkey,
-        config: &PoolConfig,
-        lp_token_a_mint: &Pubkey,
-        lp_token_b_mint: &Pubkey,
-    ) -> Result<Instruction, PoolClientError> {
-        let addresses = self.derive_pool_addresses(config);
-        
-        // Validate inputs
-        if config.ratio_a_numerator == 0 || config.ratio_b_denominator == 0 {
-            return Err(PoolClientError::InvalidRatio);
-        }
-        
-        // Create instruction
-        let instruction_data = PoolInstruction::InitializePool {
-            ratio_a_numerator: addresses.ratio_a_numerator,
-            ratio_b_denominator: addresses.ratio_b_denominator,
-        };
-        
-        let data = instruction_data
-            .try_to_vec()
-            .map_err(|_| PoolClientError::SerializationError)?;
-        
-        // Derive treasury accounts
-        let (main_treasury_pda, _) = Pubkey::find_program_address(
-            &[crate::constants::MAIN_TREASURY_SEED_PREFIX],
-            &self.program_id,
-        );
-        // Phase 3: Specialized treasuries removed - all fees go to main treasury
-        let swap_treasury_pda = main_treasury_pda; // Placeholder for compatibility
 
-        Ok(Instruction {
-            program_id: self.program_id,
-            accounts: vec![
-                // Standardized account ordering (16 accounts minimum)
-                AccountMeta::new(*payer, true),                         // Index 0: Authority/User Signer
-                AccountMeta::new_readonly(system_program::id(), false), // Index 1: System Program
-                AccountMeta::new_readonly(rent::id(), false),           // Index 2: Rent Sysvar
-                AccountMeta::new_readonly(clock::id(), false),          // Index 3: Clock Sysvar
-                AccountMeta::new(addresses.pool_state, false),          // Index 4: Pool State PDA
-                AccountMeta::new_readonly(addresses.token_a_mint, false), // Index 5: Token A Mint
-                AccountMeta::new_readonly(addresses.token_b_mint, false), // Index 6: Token B Mint
-                AccountMeta::new(addresses.token_a_vault, false),       // Index 7: Token A Vault PDA
-                AccountMeta::new(addresses.token_b_vault, false),       // Index 8: Token B Vault PDA
-                AccountMeta::new_readonly(spl_token::id(), false),      // Index 9: SPL Token Program
-                AccountMeta::new(*payer, false),                        // Index 10: User Input Token Account (placeholder)
-                AccountMeta::new(*payer, false),                        // Index 11: User Output Token Account (placeholder)
-                AccountMeta::new(main_treasury_pda, false),             // Index 12: Main Treasury PDA
-                AccountMeta::new(swap_treasury_pda, false),             // Index 13: Swap Treasury PDA (placeholder)
-                AccountMeta::new(*lp_token_a_mint, true),               // Index 14: LP Token A Mint (signer)
-                AccountMeta::new(*lp_token_b_mint, true),               // Index 15: LP Token B Mint (signer)
-            ],
-            data,
-        })
-    }
     
     /// Creates a deposit instruction for adding liquidity to a pool.
     /// 
