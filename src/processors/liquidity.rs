@@ -137,7 +137,6 @@ pub fn process_deposit(
     msg!("💰 FEE BREAKDOWN:");
     msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
     msg!("   • Protocol Fee: {} lamports ({} SOL)", crate::constants::DEPOSIT_WITHDRAWAL_FEE, crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    msg!("   • Priority Fee: Variable (recommended: 0.000001 SOL for fast confirmation)");
     msg!("   • Account Creation: May require ~0.00203928 SOL rent if LP token account doesn't exist");
     
     msg!("📈 EXPECTED OUTCOMES:");
@@ -549,7 +548,6 @@ pub fn process_withdraw(
     msg!("💰 FEE BREAKDOWN:");
     msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
     msg!("   • Protocol Fee: {} lamports ({} SOL)", crate::constants::DEPOSIT_WITHDRAWAL_FEE, crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    msg!("   • Priority Fee: Variable (recommended: 0.000001 SOL for fast confirmation)");
     msg!("   • No account creation fees (withdrawing to existing accounts)");
     
     msg!("📈 EXPECTED OUTCOMES:");
