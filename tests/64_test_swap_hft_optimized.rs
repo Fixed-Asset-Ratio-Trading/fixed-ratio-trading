@@ -335,8 +335,8 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
         swap_amount,
     ).expect("Failed to create HFT conservative swap instruction");
 
-    // Verify instruction construction (NEW ordering: 9 accounts)
-    assert_eq!(conservative_ix.accounts.len(), 10, "HFT optimized instruction should have 10 accounts (STANDARDIZED account ordering)");
+    // Verify instruction construction (HFT optimized: 10 accounts including Main Treasury PDA)
+    assert_eq!(conservative_ix.accounts.len(), 10, "HFT optimized instruction should have 10 accounts (includes Main Treasury PDA)");
     assert_eq!(conservative_ix.program_id, PROGRAM_ID, "Program ID should match");
     assert!(!conservative_ix.data.is_empty(), "Instruction data should not be empty");
     
@@ -357,7 +357,7 @@ async fn test_hft_optimized_swap_instruction_construction() -> TestResult {
         swap_amount,
     ).expect("Failed to create HFT B→A swap instruction");
 
-    assert_eq!(b_to_a_ix.accounts.len(), 10, "B→A HFT instruction should have 10 accounts (STANDARDIZED account ordering)");
+    assert_eq!(b_to_a_ix.accounts.len(), 10, "B→A HFT instruction should have 10 accounts (includes Main Treasury PDA)");
     assert_eq!(b_to_a_ix.program_id, PROGRAM_ID, "Program ID should match");
     println!("✅ B→A HFT optimized instruction constructed successfully");
 
@@ -421,12 +421,12 @@ async fn test_github_issue_31960_workaround_preservation() -> TestResult {
         1000u64,
     ).expect("Failed to create HFT swap instruction");
 
-    // Verify both instructions reference the same accounts (STANDARDIZED account ordering)
+    // Verify both instructions reference the same accounts (account ordering differs: standard=9, HFT=10)
     assert_eq!(standard_ix.accounts[3].pubkey, hft_ix.accounts[3].pubkey, "Both should reference same pool state PDA");
-    assert_eq!(standard_ix.accounts[6].pubkey, hft_ix.accounts[6].pubkey, "Both should reference same token A vault");
-    assert_eq!(standard_ix.accounts[7].pubkey, hft_ix.accounts[7].pubkey, "Both should reference same token B vault");
-    assert_eq!(standard_ix.accounts[8].pubkey, hft_ix.accounts[8].pubkey, "Both should reference same user input account");
-    assert_eq!(standard_ix.accounts[9].pubkey, hft_ix.accounts[9].pubkey, "Both should reference same user output account");
+    assert_eq!(standard_ix.accounts[5].pubkey, hft_ix.accounts[6].pubkey, "Both should reference same token A vault (standard[5] = HFT[6])");
+    assert_eq!(standard_ix.accounts[6].pubkey, hft_ix.accounts[7].pubkey, "Both should reference same token B vault (standard[6] = HFT[7])");
+    assert_eq!(standard_ix.accounts[7].pubkey, hft_ix.accounts[8].pubkey, "Both should reference same user input account (standard[7] = HFT[8])");
+    assert_eq!(standard_ix.accounts[8].pubkey, hft_ix.accounts[9].pubkey, "Both should reference same user output account (standard[8] = HFT[9])");
 
     println!("✅ Both standard and HFT optimized instructions reference identical pool accounts");
     println!("✅ GitHub Issue #31960 workaround preserved in HFT optimized implementation");
@@ -500,10 +500,11 @@ async fn test_hft_optimized_fee_discount() -> TestResult {
         1000u64,
     ).expect("Failed to create standard swap instruction");
     
-    // Both should have same treasury accounts but HFT will use different fee calculation
-    let standard_swap_treasury = &standard_ix.accounts[5];
+    // HFT optimized swap includes Main Treasury PDA at index 5, standard swap doesn't include it
+    // Standard swap (9 accounts): no treasury account
+    // HFT swap (10 accounts): Main Treasury PDA at index 5
     let hft_swap_treasury = &hft_swap_ix.accounts[5]; 
-    assert_eq!(standard_swap_treasury.pubkey, hft_swap_treasury.pubkey, "Both should reference same main treasury PDA");
+    assert_eq!(hft_swap_treasury.pubkey, expected_hft_treasury_pda, "HFT swap should reference Main Treasury PDA at index 5");
     
     println!("✅ Treasury account structure verified for both standard and HFT swaps");
     
