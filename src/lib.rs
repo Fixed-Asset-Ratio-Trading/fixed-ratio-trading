@@ -111,6 +111,7 @@ use crate::processors::{
     // fees module contains only governance-controlled fee architecture documentation
     swap::{
         process_swap,
+        process_set_swap_owner_only,
     },
     // security module contains only governance-controlled security architecture documentation
     process_initialize::{
@@ -195,6 +196,11 @@ pub fn process_instruction(
             input_token_mint: _,
             amount_in,
         } => process_swap(program_id, amount_in, accounts),
+
+        PoolInstruction::SetSwapOwnerOnly {
+            enable_restriction,
+            designated_owner,
+        } => process_set_swap_owner_only(program_id, enable_restriction, designated_owner, accounts),
 
 
 

@@ -221,3 +221,16 @@ pub const POOL_FLAG_SINGLE_LP_TOKEN: u8 = 0b10000; // 16
 /// **Use Case**: Pool owners deploy custom fee-collecting contracts and route swaps through them
 pub const POOL_FLAG_SWAP_FOR_OWNERS_ONLY: u8 = 0b100000; // 32
 
+//-----------------------------------------------------------------------------
+// Testing Constants
+//-----------------------------------------------------------------------------
+
+/// Test environment program upgrade authority
+/// 
+/// This constant is used in test environments to validate program upgrade authority
+/// when the program is not deployed with the BPF Loader Upgradeable. It should match
+/// the keypair created by `create_test_program_authority_keypair()` in test setup.
+/// 
+/// **IMPORTANT**: This is only used in test environments and should be removed in production
+pub const TEST_PROGRAM_UPGRADE_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn";
+

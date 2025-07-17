@@ -71,6 +71,7 @@ pub fn get_program_data_address(program_id: &Pubkey) -> Pubkey {
     Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id()).0
 }
 
+
 /// Validate that the provided signer is the program upgrade authority
 /// 
 /// This function checks if the provided signer account matches the program's
@@ -91,9 +92,9 @@ pub fn validate_program_upgrade_authority(
     // Check if the account is owned by the upgradeable loader
     if *program_data_account.owner != bpf_loader_upgradeable::id() {
         // This is likely a test environment where the program is not deployed with
-        // the BPF Loader Upgradeable. In this case, we fall back to basic validation.
+        // the BPF Loader Upgradeable. In this case, we use controlled test validation.
         msg!("⚠️  Program data account not owned by upgradeable loader");
-        msg!("   This is likely a test environment - using basic authority validation");
+        msg!("   This is likely a test environment - using controlled authority validation");
         
         // Basic validation: ensure the authority is a signer
         if !authority_account.is_signer {
@@ -101,7 +102,20 @@ pub fn validate_program_upgrade_authority(
             return Err(ProgramError::MissingRequiredSignature);
         }
         
-        msg!("✅ Test environment: Program authority validated as signer: {}", authority_account.key);
+        // Test environment validation: check against known test authority
+        // This allows tests to properly validate authority restrictions
+        use crate::constants::TEST_PROGRAM_UPGRADE_AUTHORITY;
+        let test_authority_pubkey = TEST_PROGRAM_UPGRADE_AUTHORITY.parse::<Pubkey>()
+            .map_err(|_| ProgramError::InvalidAccountData)?;
+        
+        if *authority_account.key != test_authority_pubkey {
+            msg!("❌ UNAUTHORIZED: Test environment authority validation failed");
+            msg!("   Expected test authority: {}", test_authority_pubkey);
+            msg!("   Provided authority: {}", authority_account.key);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
+        msg!("✅ Test environment: Program authority validated: {}", authority_account.key);
         return Ok(());
     }
 

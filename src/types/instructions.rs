@@ -323,4 +323,42 @@ pub enum PoolInstruction {
         unpause_flags: u8,
     },
     
+    /// **SWAP ACCESS CONTROL**: Enable/disable restrictions and delegate ownership control
+    /// 
+    /// This instruction allows the contract owner (program upgrade authority) to control
+    /// swap access for a specific pool and delegate control to any specified entity.
+    /// When enabled, only the designated owner can perform swap operations on that pool.
+    /// 
+    /// # Enhanced Flexibility:
+    /// - Program Upgrade Authority retains exclusive right to call this instruction
+    /// - Can delegate swap control to any authorized entity (not just Program Upgrade Authority)
+    /// - Enables complex operational scenarios with specialized swap controllers
+    /// - Maintains security through centralized authority validation
+    /// 
+    /// # Purpose
+    /// - Enables custom fee structures by restricting direct pool access
+    /// - Allows delegation of swap control to trusted specialized entities
+    /// - Supports complex operational scenarios (treasury management, automated strategies)
+    /// - Provides flexibility for different fee models and operational patterns
+    /// - Maintains compatibility with standard AMM operation when disabled
+    /// 
+    /// # Security
+    /// - Only the Program Upgrade Authority can call this instruction
+    /// - Delegation does not transfer the ability to change restrictions
+    /// - Program Upgrade Authority maintains ultimate control over all pools
+    /// 
+    /// # Arguments:
+    /// - `enable_restriction`: True to enable owner-only mode, false to disable
+    /// - `designated_owner`: The pubkey that will have swap control when restrictions are enabled
+    /// 
+    /// # Account Order:
+    /// - [0] Contract Owner Signer (must be program upgrade authority)
+    /// - [1] System State PDA (for system pause validation)
+    /// - [2] Pool State PDA (writable, to update swap access flag and owner)
+    /// - [3] Program Data Account (for upgrade authority validation)
+    SetSwapOwnerOnly {
+        enable_restriction: bool,
+        designated_owner: Pubkey,
+    },
+    
 } 
