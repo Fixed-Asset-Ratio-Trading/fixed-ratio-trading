@@ -69,41 +69,34 @@ pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 /// **Cannot Be Changed**: This is a fixed operational cost
 pub const SWAP_CONTRACT_FEE: u64 = 27_150; // 0.00002715 SOL
 
-
-
-//-----------------------------------------------------------------------------
-// SWAP TRADING FEES (Percentage-based on traded assets)
-//-----------------------------------------------------------------------------
-// These fees are charged as a percentage of the tokens being traded and can
-// be configured by the pool owner to generate revenue from trading activity.
-
-/// Maximum allowed swap trading fee in basis points (0.5% maximum)
-/// 
-/// This represents the maximum percentage fee that can be charged on the input
-/// token amount during swap operations. Pool owners can set any trading fee rate from
-/// 0% (no fees) up to this maximum.
-/// 
-/// **Type**: Swap Trading Fee (Percentage-based)
-/// **Applied To**: Input token amount during swaps
-/// **Range**: 0 to 50 basis points (0% to 0.5%)
-/// **Examples**:
-/// - 0 basis points = 0% fee (default, no trading fees)
-/// - 10 basis points = 0.1% fee  
-/// - 25 basis points = 0.25% fee
-/// - 50 basis points = 0.5% fee (maximum allowed)
-/// 
-/// **Calculation**: `fee_amount = input_amount * fee_basis_points / 10000`
-/// **Revenue**: Collected by pool and withdrawable by pool owner
-pub const MAX_SWAP_TRADING_FEE_BASIS_POINTS: u64 = 50;
-
-/// Denominator for basis points calculations (1 basis point = 1/10000 = 0.01%)
-/// 
-/// This constant is used to convert basis points to decimal percentages.
-/// **Usage**: `percentage = basis_points / FEE_BASIS_POINTS_DENOMINATOR`
-/// **Examples**:
-/// - 25 basis points / 10000 = 0.0025 = 0.25%
-/// - 50 basis points / 10000 = 0.0050 = 0.50%
-pub const FEE_BASIS_POINTS_DENOMINATOR: u64 = 10000;
+//=============================================================================
+// CUSTOM FEE STRUCTURE APPROACH
+//=============================================================================
+// **ARCHITECTURAL DECISION**: Trading Fee System Removed
+//
+// This system no longer implements percentage-based trading fees at the protocol level.
+// Instead, it provides granular swap access control through the SWAP_FOR_OWNERS_ONLY flag,
+// enabling flexible custom fee structures through separate contracts.
+//
+// **Benefits of This Approach**:
+// - Pool owners can implement any fee structure in separate contracts
+// - Contract owners have granular control over swap permissions
+// - Eliminates protocol-level fee complexity and potential bugs
+// - Allows for sophisticated fee models (dynamic fees, tiered fees, etc.)
+// - Maintains protocol simplicity while enabling maximum flexibility
+//
+// **Implementation Strategy**:
+// - Use SWAP_FOR_OWNERS_ONLY flag to restrict swap access when needed
+// - Custom fee collection handled by external contracts that interface with pools
+// - Pool owners can route swaps through their own fee-collecting contracts
+// - Contract owners can enable/disable owner-only mode for specific pools
+//
+// **Migration Path**:
+// - Existing pools continue to operate normally (no trading fees)
+// - Pool owners wanting custom fees deploy separate fee-collecting contracts
+// - Those contracts can be granted special access via owner-only mode
+// - This provides backward compatibility while enabling advanced fee structures
+//=============================================================================
 
 //=============================================================================
 // RENT AND BUFFER REQUIREMENTS
@@ -183,23 +176,6 @@ pub const MAX_POOLS_PER_CONSOLIDATION_BATCH: u8 = 20;
 pub const PAUSE_REASON_CONSOLIDATION: u8 = 15;
 
 //=============================================================================
-// SWAP TRADING FEE SYSTEM VALUES
-//=============================================================================
-
-/// Current swap trading fee basis points across all pools (0% = 0 basis points)
-/// 
-/// This represents the current system-wide swap trading fee rate applied to all pools.
-/// Pool owners can request changes through the SetSwapFee instruction, but the current
-/// implementation enforces this fixed rate across all pools.
-/// 
-/// **Type**: Swap Trading Fee (Percentage-based)
-/// **Current Rate**: 0% (no trading fees)
-/// **Maximum Allowed**: 0.5% (50 basis points via MAX_SWAP_TRADING_FEE_BASIS_POINTS)
-/// **Applied To**: Input token amount during swaps
-/// **Revenue**: Would be collected by pool and withdrawable by pool owner (when > 0)
-pub const FIXED_SWAP_TRADING_FEE_BASIS_POINTS: u64 = 0;
-
-//=============================================================================
 // POOL PAUSE BITWISE FLAGS
 //=============================================================================
 
@@ -233,4 +209,15 @@ pub const POOL_FLAG_WITHDRAWAL_PROTECTION: u8 = 0b01000; // 8
 
 /// Pool state flag: Single LP token mode (future feature)
 pub const POOL_FLAG_SINGLE_LP_TOKEN: u8 = 0b10000; // 16
+
+/// Pool state flag: Swap operations restricted to owners only
+/// 
+/// When this flag is set, only the pool owner and contract owner can perform swap operations.
+/// This enables custom fee structures to be implemented through separate contracts while
+/// maintaining granular control over swap access permissions.
+/// 
+/// **Purpose**: Enables custom fee collection through external contracts
+/// **Control**: Only contract owner can enable/disable this flag (not pool owner)
+/// **Use Case**: Pool owners deploy custom fee-collecting contracts and route swaps through them
+pub const POOL_FLAG_SWAP_FOR_OWNERS_ONLY: u8 = 0b100000; // 32
 

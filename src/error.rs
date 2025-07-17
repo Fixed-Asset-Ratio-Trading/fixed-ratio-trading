@@ -90,6 +90,10 @@ pub enum PoolError {
     #[error("Pool swaps are currently paused by owner")]
     PoolSwapsPaused,
     
+    /// Swap access is restricted to owners only
+    #[error("Swap access is restricted to owners only")]
+    SwapAccessRestricted,
+    
     /// Pool swaps are already paused
     #[error("Pool swaps are already paused")]
     PoolSwapsAlreadyPaused,
@@ -174,19 +178,20 @@ impl PoolError {
             PoolError::SystemNotPaused => 1025,
             PoolError::UnauthorizedAccess => 1026,
             PoolError::PoolSwapsPaused => 1027,
-            PoolError::PoolSwapsAlreadyPaused => 1028,
-            PoolError::PoolSwapsNotPaused => 1029,
-            PoolError::InsufficientFeeBalance { .. } => 1030,
-            PoolError::FeeCollectionFailed { .. } => 1031,
-            PoolError::FeeValidationFailed { .. } => 1032,
-            PoolError::TreasuryValidationFailed { .. } => 1033,
-            PoolError::InvalidSystemStatePDA => 1034,
-            PoolError::InvalidSystemStateDeserialization => 1035,
-            PoolError::ConsolidationFailed { .. } => 1036,
-            PoolError::InvalidConsolidationBatch { .. } => 1037,
-            PoolError::PoolNotEligibleForConsolidation { .. } => 1038,
-            PoolError::ConsolidationRaceCondition => 1039,
-            PoolError::NoPoolsEligibleForConsolidation => 1040,
+            PoolError::SwapAccessRestricted => 1028,
+            PoolError::PoolSwapsAlreadyPaused => 1029,
+            PoolError::PoolSwapsNotPaused => 1030,
+            PoolError::InsufficientFeeBalance { .. } => 1031,
+            PoolError::FeeCollectionFailed { .. } => 1032,
+            PoolError::FeeValidationFailed { .. } => 1033,
+            PoolError::TreasuryValidationFailed { .. } => 1034,
+            PoolError::InvalidSystemStatePDA => 1035,
+            PoolError::InvalidSystemStateDeserialization => 1036,
+            PoolError::ConsolidationFailed { .. } => 1037,
+            PoolError::InvalidConsolidationBatch { .. } => 1038,
+            PoolError::PoolNotEligibleForConsolidation { .. } => 1039,
+            PoolError::ConsolidationRaceCondition => 1040,
+            PoolError::NoPoolsEligibleForConsolidation => 1041,
         }
     }
 }

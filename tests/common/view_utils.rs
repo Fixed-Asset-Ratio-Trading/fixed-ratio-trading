@@ -10,7 +10,7 @@ use solana_program::{
     account_info::next_account_info,
 };
 use borsh::BorshDeserialize;
-use fixed_ratio_trading::{PoolState, constants::FIXED_SWAP_TRADING_FEE_BASIS_POINTS};
+use fixed_ratio_trading::PoolState;
 
 /// **VIEW INSTRUCTION**: Returns comprehensive pool information
 /// 
@@ -50,7 +50,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Is Initialized: {}", true); // Pool existence = initialization
     msg!("Liquidity Paused: {}", pool_state.liquidity_paused());
     msg!("Swaps Paused: {}", pool_state.swaps_paused());
-    msg!("Swap Fee Basis Points: {}", FIXED_SWAP_TRADING_FEE_BASIS_POINTS);
+    msg!("Swap Owner-Only Mode: {}", pool_state.swap_for_owners_only());
     
     // Enhanced operations status
     msg!("=== OPERATIONS STATUS ===");
@@ -162,10 +162,10 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("=== FEE INFORMATION ===");
     
     // Pool fees (percentage-based on tokens)
-    msg!("Pool Fees (Trading Fees):");
-    msg!("  Current Swap Fee Rate: {} basis points ({:.2}%)", 
-         FIXED_SWAP_TRADING_FEE_BASIS_POINTS, 
-         FIXED_SWAP_TRADING_FEE_BASIS_POINTS as f64 / 100.0);
+    msg!("Pool Custom Fee Structure:");
+    msg!("  Owner-Only Swaps: {}", if pool_state.swap_for_owners_only() { "ENABLED" } else { "DISABLED" });
+    msg!("  Custom Fee Collection: {}", if pool_state.swap_for_owners_only() { "Available through external contracts" } else { "Not enabled" });
+    msg!("  Fixed Contract Fee: 27,150 lamports per swap");
     msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
     msg!("  Collected Token B Fees: {}", pool_state.collected_fees_token_b);
     msg!("  Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);

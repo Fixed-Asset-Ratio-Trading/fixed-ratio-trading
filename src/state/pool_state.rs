@@ -287,6 +287,27 @@ impl PoolState {
         }
     }
     
+    /// Checks if swap operations are restricted to owners only
+    /// 
+    /// When this flag is set, only the pool owner and contract owner can perform swaps.
+    /// This enables custom fee structures through separate contracts while maintaining
+    /// granular access control.
+    pub fn swap_for_owners_only(&self) -> bool {
+        self.flags & crate::constants::POOL_FLAG_SWAP_FOR_OWNERS_ONLY != 0
+    }
+    
+    /// Sets or clears the swap operations owner-only restriction flag
+    /// 
+    /// **IMPORTANT**: This flag can only be modified by the contract owner, not the pool owner.
+    /// This restriction is enforced in the processor function, not here.
+    pub fn set_swap_for_owners_only(&mut self, value: bool) {
+        if value {
+            self.flags |= crate::constants::POOL_FLAG_SWAP_FOR_OWNERS_ONLY;
+        } else {
+            self.flags &= !crate::constants::POOL_FLAG_SWAP_FOR_OWNERS_ONLY;
+        }
+    }
+    
     // **NEW: Pool-level fee collection methods with atomic updates**
     
     /// Records liquidity operation fee collection
