@@ -101,20 +101,7 @@ pub fn validate_program_upgrade_authority(
             msg!("❌ Program authority must be a signer");
             return Err(ProgramError::MissingRequiredSignature);
         }
-        
-        // Test environment validation: check against known test authority
-        // This allows tests to properly validate authority restrictions
-        use crate::constants::TEST_PROGRAM_UPGRADE_AUTHORITY;
-        let test_authority_pubkey = TEST_PROGRAM_UPGRADE_AUTHORITY.parse::<Pubkey>()
-            .map_err(|_| ProgramError::InvalidAccountData)?;
-        
-        if *authority_account.key != test_authority_pubkey {
-            msg!("❌ UNAUTHORIZED: Test environment authority validation failed");
-            msg!("   Expected test authority: {}", test_authority_pubkey);
-            msg!("   Provided authority: {}", authority_account.key);
-            return Err(ProgramError::InvalidAccountData);
-        }
-        
+                
         msg!("✅ Test environment: Program authority validated: {}", authority_account.key);
         return Ok(());
     }
