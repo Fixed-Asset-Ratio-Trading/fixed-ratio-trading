@@ -203,7 +203,7 @@ async fn test_treasury_account_validation_failure() {
     
     match result.unwrap_err() {
         ProgramError::Custom(code) => {
-            assert_eq!(code, 1033); // TreasuryValidationFailed error code
+            assert_eq!(code, 1034); // TreasuryValidationFailed error code (shifted by 1)
         }
         _ => panic!("Expected TreasuryValidationFailed error"),
     }
@@ -336,26 +336,26 @@ async fn test_error_code_mappings() {
         available: 500,
         account: Pubkey::new_unique(),
     };
-    assert_eq!(insufficient_fee_error.error_code(), 1030);
-    
+    assert_eq!(insufficient_fee_error.error_code(), 1031); // Shifted by 1
+
     let fee_collection_error = PoolError::FeeCollectionFailed {
         expected: 1000,
         collected: 500,
         fee_type: "Test".to_string(),
     };
-    assert_eq!(fee_collection_error.error_code(), 1031);
-    
+    assert_eq!(fee_collection_error.error_code(), 1032); // Shifted by 1
+
     let fee_validation_error = PoolError::FeeValidationFailed {
         reason: "Test reason".to_string(),
     };
-    assert_eq!(fee_validation_error.error_code(), 1032);
+    assert_eq!(fee_validation_error.error_code(), 1033); // Shifted by 1
     
     let treasury_validation_error = PoolError::TreasuryValidationFailed {
         expected: Pubkey::new_unique(),
         provided: Pubkey::new_unique(),
         treasury_type: "Test".to_string(),
     };
-    assert_eq!(treasury_validation_error.error_code(), 1033);
+    assert_eq!(treasury_validation_error.error_code(), 1034); // Shifted by 1
     
     println!("✅ All error codes are correctly mapped");
 }

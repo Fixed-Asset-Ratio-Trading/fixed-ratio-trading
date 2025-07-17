@@ -204,7 +204,7 @@ pub const POOL_FLAG_LIQUIDITY_PAUSED: u8 = 0b00010; // 2
 /// Pool state flag: Swap operations paused
 pub const POOL_FLAG_SWAPS_PAUSED: u8 = 0b00100; // 4
 
-/// Pool state flag: Withdrawal protection active
+/// Pool state flag: Withdrawal protection active (future feature)
 pub const POOL_FLAG_WITHDRAWAL_PROTECTION: u8 = 0b01000; // 8
 
 /// Pool state flag: Single LP token mode (future feature)
