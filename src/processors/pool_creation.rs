@@ -7,8 +7,8 @@ use crate::{
     constants::*,
     error::PoolError,
     state::{MainTreasuryState, PoolState, pool_state::RentRequirements},
+    utils::{serialization::serialize_to_account, validation::check_one_to_many_ratio},
 };
-use crate::utils::serialization::serialize_to_account;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::AccountInfo,
@@ -532,8 +532,35 @@ pub fn process_initialize_pool(
 
     msg!("✅ LP token mints created and controlled by smart contract");
 
-    // Initialize pool state data
-    let pool_state_data = PoolState {
+    // ✅ EXTRACT TOKEN DECIMALS: Extract decimals from token mint accounts for one-to-many ratio calculation
+    let token_a_mint_data = token_a_mint_account.try_borrow_data()?;
+    let token_a_mint = spl_token::state::Mint::unpack(&token_a_mint_data)?;
+    let token_a_decimals = token_a_mint.decimals;
+    
+    let token_b_mint_data = token_b_mint_account.try_borrow_data()?;
+    let token_b_mint = spl_token::state::Mint::unpack(&token_b_mint_data)?;
+    let token_b_decimals = token_b_mint.decimals;
+
+    // ✅ ONE-TO-MANY RATIO FLAG: Determine if this pool qualifies for the one-to-many ratio flag
+    // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
+    // and both ratios represent whole numbers only (no fractional amounts)
+    let is_one_to_many_ratio = check_one_to_many_ratio(
+        ratio_a_numerator,
+        ratio_b_denominator,
+        token_a_decimals,
+        token_b_decimals
+    );
+    
+    msg!("🔍 One-to-Many Ratio Analysis:");
+    msg!("  Token A: {} base units ({} decimals)", ratio_a_numerator, token_a_decimals);
+    msg!("  Token B: {} base units ({} decimals)", ratio_b_denominator, token_b_decimals);
+    msg!("  Display Ratio: {} : {}", 
+         ratio_a_numerator / (10_u64.pow(token_a_decimals as u32)),
+         ratio_b_denominator / (10_u64.pow(token_b_decimals as u32)));
+    msg!("  One-to-Many Flag: {}", if is_one_to_many_ratio { "✅ SET" } else { "❌ NOT SET" });
+
+    // ✅ POOL STATE: Create pool state with comprehensive configuration
+    let pool_state = PoolState {
         owner: *user_authority_signer.key,
         token_a_mint: *token_a_mint_key,
         token_b_mint: *token_b_mint_key,
@@ -541,7 +568,7 @@ pub fn process_initialize_pool(
         token_b_vault: *token_b_vault_pda.key,
         lp_token_a_mint: lp_token_a_mint_pda_address,
         lp_token_b_mint: lp_token_b_mint_pda_address,
-                    ratio_a_numerator,
+        ratio_a_numerator,
         ratio_b_denominator,
         total_token_a_liquidity: 0,
         total_token_b_liquidity: 0,
@@ -551,11 +578,11 @@ pub fn process_initialize_pool(
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
         rent_requirements: RentRequirements::new(rent),
-        flags: if ratio_a_numerator > ratio_b_denominator { 
+        flags: if is_one_to_many_ratio { 
             crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
         } else { 
             0 
-        }, // All other flags start as false
+        }, // Set ONE_TO_MANY_RATIO flag based on proper validation logic
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
         total_fees_withdrawn_token_a: 0,
@@ -574,7 +601,7 @@ pub fn process_initialize_pool(
     // Fee collection moved to beginning of function (FEES FIRST PATTERN)
 
     // Serialize pool state to account
-    serialize_to_account(&pool_state_data, pool_state_pda)?;
+    serialize_to_account(&pool_state, pool_state_pda)?;
 
     // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
     msg!("🎯 POOL_ID: {}", pool_state_pda.key);

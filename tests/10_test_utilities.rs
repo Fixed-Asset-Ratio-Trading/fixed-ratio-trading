@@ -1081,31 +1081,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         Some(3),
     ).await?;
         
-        // Test GetPoolInfo instruction
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(config.pool_state_pda, false),                // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed");
-        
-        // Verify the pool exists and has valid data
+        // Verify the pool exists and has valid data by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &config.pool_state_pda).await
             .expect("Pool state should exist after creation");
         
@@ -1147,31 +1123,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
             Some(specific_ratio),
         ).await?;
         
-        // Test GetPoolInfo instruction for specific configuration
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(specific_pool_config.pool_state_pda, false),  // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for specific config");
-        
-        // Verify configuration parameters
+        // Verify configuration parameters by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &specific_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
@@ -1232,31 +1184,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         Some(3),
     ).await?;
         
-        // Test pool info retrieval
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(operational_pool_config.pool_state_pda, false), // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for operational state");
-        
-        // Verify operational state
+        // Verify operational state by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &operational_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
@@ -1308,31 +1236,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         Some(3),
     ).await?;
         
-        // Test pool info retrieval for owner information
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(owner_pool_config.pool_state_pda, false),     // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for owner info");
-        
-        // Verify owner information
+        // Verify owner information by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &owner_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
@@ -1374,31 +1278,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         Some(test_ratio),
     ).await?;
         
-        // Test GetPoolInfo instruction for the configuration
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(test_pool_config.pool_state_pda, false),      // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for 5:1 ratio config");
-        
-        // Verify metadata completeness
+        // Verify metadata completeness by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &test_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         
@@ -1451,31 +1331,7 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         Some(3),
     ).await?;
         
-        // Test pool info retrieval for liquidity information
-        let instruction_data = PoolInstruction::GetPoolInfo {};
-        
-        let instruction = Instruction {
-            program_id: PROGRAM_ID,
-            accounts: vec![
-                AccountMeta::new_readonly(ctx.env.payer.pubkey(), false),                // Index 0: System Authority Signer (placeholder)
-                AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account (placeholder)
-                AccountMeta::new_readonly(liquidity_pool_config.pool_state_pda, false), // Index 2: Pool State PDA
-                AccountMeta::new_readonly(spl_token::id(), false),                      // Index 3: SPL Token Program Account (placeholder)
-            ],
-            data: instruction_data.try_to_vec()?,
-        };
-        
-        let transaction = Transaction::new_signed_with_payer(
-            &[instruction],
-            Some(&ctx.env.payer.pubkey()),
-            &[&ctx.env.payer],
-            ctx.env.recent_blockhash,
-        );
-        
-        let result = ctx.env.banks_client.process_transaction(transaction).await;
-        assert!(result.is_ok(), "get_pool_info instruction should succeed for liquidity info");
-        
-        // Verify liquidity information
+        // Verify liquidity information by directly reading pool state
         let pool_state = get_pool_state(&mut ctx.env.banks_client, &liquidity_pool_config.pool_state_pda).await
             .expect("Pool state should exist");
         

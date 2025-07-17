@@ -243,42 +243,71 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
     Ok(())
 }
 
-/// Determines if a pool has a clean one-to-many ratio based on the provided ratios and token decimals.
+/// **POOL_FLAG_ONE_TO_MANY_RATIO Validation Function**
 /// 
-/// A pool is considered one-to-many if:
-/// - Both ratios represent whole numbers (no fractional parts when converted to display units)
-/// - One of the tokens has exactly 1.0 ratio in display units
-/// - Both ratios are positive (greater than zero)
+/// Determines if a pool qualifies for the POOL_FLAG_ONE_TO_MANY_RATIO flag based on
+/// specific whole-number ratio patterns. This function analyzes token ratios in display
+/// units to identify pools suitable for applications targeting these specific patterns.
+///
+/// **Flag Logic Definition**: The flag should be set when the pool has a token ratio where:
+/// * One or both tokens have a ratio value of exactly 1 (representing 1 whole token, not fractional)
+/// * The corresponding token(s) must have whole number values only (no fractional amounts)
+/// * Both ratios must be positive (greater than zero)
+///
+/// **Technical Implementation**:
+/// 1. Converts base units to display units using token decimal factors
+/// 2. Validates both ratios represent whole numbers (no fractional parts)
+/// 3. Ensures both ratios are positive
+/// 4. Checks if one of the ratios equals exactly 1.0 in display units
+///
+/// **Valid Examples** (returns true):
+/// * ✅ 1 SOL = 160 USDT (one token equals exactly 1, other is whole number)
+/// * ✅ 1000 DOGE = 1 USDC (one token equals exactly 1, other is whole number)
+/// * ✅ 1 BTC = 50000 USDT (one token equals exactly 1, other is whole number)
+///
+/// **Invalid Examples** (returns false):
+/// * ❌ 1 SOL = 160.55 USDT (fractional value violates whole-number requirement)
+/// * ❌ 0.5 BTC = 1 ETH (fractional value violates whole-number requirement)
+/// * ❌ 2 TokenA = 3 TokenB (neither token equals exactly 1)
+/// * ❌ 2.5 TokenA = 3.7 TokenB (fractional values violate whole-number requirement)
+///
+/// **Application Purpose**: This flag serves as a filtering mechanism for applications
+/// that specifically target pools with these whole-number ratios. Other applications
+/// remain free to implement different ratio types as needed.
+///
+/// **Usage in Pool Creation**: This function is called during pool creation in
+/// `process_initialize_pool()` to automatically set the POOL_FLAG_ONE_TO_MANY_RATIO
+/// flag based on the provided token ratios and their decimal configurations.
 ///
 /// # Arguments
-/// * `ratio_a_numerator` - Token A base units
-/// * `ratio_b_denominator` - Token B base units
-/// * `token_a_decimals` - Number of decimal places for token A
-/// * `token_b_decimals` - Number of decimal places for token B
+/// * `ratio_a_numerator` - Token A base units in the ratio
+/// * `ratio_b_denominator` - Token B base units in the ratio
+/// * `token_a_decimals` - Number of decimal places for token A (used for display conversion)
+/// * `token_b_decimals` - Number of decimal places for token B (used for display conversion)
 ///
 /// # Returns
-/// * `bool` - true if the pool qualifies as one-to-many, false otherwise
+/// * `bool` - true if the pool qualifies for POOL_FLAG_ONE_TO_MANY_RATIO, false otherwise
 ///
 /// # Examples
 /// ```
 /// use fixed_ratio_trading::utils::validation::check_one_to_many_ratio;
 /// 
-/// // 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
+/// // ✅ Valid: 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
 ///     1_000_000_000,  // 1.0 SOL in base units
 ///     2_000_000,      // 2.0 USDC in base units
 ///     9,              // SOL decimals
 ///     6               // USDC decimals
-/// ); // Returns true
+/// ); // Returns true - one token equals 1, both are whole numbers
 /// assert!(is_one_to_many);
 /// 
-/// // 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
+/// // ❌ Invalid: 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
 ///     100_000_000,    // 1.0 BTC in base units
 ///     1_010_000,      // 1.01 USDT in base units
 ///     8,              // BTC decimals
 ///     6               // USDT decimals
-/// ); // Returns false (1.01 is not a whole number)
+/// ); // Returns false - 1.01 is not a whole number
 /// assert!(!is_one_to_many);
 /// ```
 pub fn check_one_to_many_ratio(

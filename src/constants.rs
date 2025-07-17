@@ -196,6 +196,38 @@ pub const PAUSE_FLAG_ALL: u8 = PAUSE_FLAG_LIQUIDITY | PAUSE_FLAG_SWAPS; // 3
 //=============================================================================
 
 /// Pool state flag: One-to-many ratio configuration
+/// 
+/// **Purpose**: This flag identifies pools with specific whole-number ratio patterns
+/// where one or both tokens have a ratio value of exactly 1 (representing 1 whole token).
+/// This serves as a filtering mechanism for applications that specifically target 
+/// pools with these whole-number ratios.
+///
+/// **Flag Logic Definition**: This flag should be set when the pool has a token ratio where:
+/// * One or both tokens have a ratio value of exactly 1 (representing 1 whole token, not fractional)
+/// * The corresponding token(s) must have whole number values only (no fractional amounts)
+/// * Both ratios must be positive (greater than zero)
+///
+/// **Valid Examples** (flag should be SET):
+/// * ✅ 1 SOL = 160 USDT (one token equals exactly 1, other is whole number)
+/// * ✅ 1000 DOGE = 1 USDC (one token equals exactly 1, other is whole number)
+/// * ✅ 1 BTC = 50000 USDT (one token equals exactly 1, other is whole number)
+///
+/// **Invalid Examples** (flag should NOT be set):
+/// * ❌ 1 SOL = 160.55 USDT (fractional value violates whole-number requirement)
+/// * ❌ 0.5 BTC = 1 ETH (fractional value violates whole-number requirement)
+/// * ❌ 2 TokenA = 3 TokenB (neither token equals exactly 1)
+/// * ❌ 2.5 TokenA = 3.7 TokenB (fractional values violate whole-number requirement)
+///
+/// **Technical Implementation**: 
+/// The flag is determined by the `check_one_to_many_ratio()` function in `utils::validation`,
+/// which converts base units to display units considering token decimals and validates:
+/// 1. Both ratios represent whole numbers (no fractional parts)
+/// 2. Both ratios are positive 
+/// 3. One of the ratios equals exactly 1.0 in display units
+///
+/// **Application Usage**: This flag enables applications to filter and identify pools
+/// that follow this specific ratio pattern, while other applications remain free to
+/// implement different ratio types as needed.
 pub const POOL_FLAG_ONE_TO_MANY_RATIO: u8 = 0b00001; // 1
 
 /// Pool state flag: Liquidity operations paused (deposits/withdrawals only)

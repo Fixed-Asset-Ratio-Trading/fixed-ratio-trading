@@ -218,11 +218,42 @@ impl PoolState {
     // **NEW: BITWISE FLAG HELPER METHODS**
     
     /// Checks if one-to-many ratio is configured
+    /// 
+    /// **Purpose**: This flag identifies pools with specific whole-number ratio patterns
+    /// where one or both tokens have a ratio value of exactly 1 (representing 1 whole token).
+    /// 
+    /// **Flag Logic**: Returns true when the pool has a token ratio where:
+    /// * One or both tokens have a ratio value of exactly 1 (representing 1 whole token, not fractional)
+    /// * The corresponding token(s) must have whole number values only (no fractional amounts)
+    /// * Both ratios must be positive (greater than zero)
+    /// 
+    /// **Valid Examples** (flag is SET):
+    /// * ✅ 1 SOL = 160 USDT → Returns true
+    /// * ✅ 1000 DOGE = 1 USDC → Returns true
+    /// * ✅ 1 BTC = 50000 USDT → Returns true
+    /// 
+    /// **Invalid Examples** (flag is NOT set):
+    /// * ❌ 1 SOL = 160.55 USDT → Returns false (fractional value)
+    /// * ❌ 2 TokenA = 3 TokenB → Returns false (neither equals 1)
+    /// 
+    /// **Application Usage**: This enables filtering pools for applications that specifically
+    /// target whole-number ratio patterns, while other applications remain free to
+    /// implement different ratio types as needed.
     pub fn one_to_many_ratio(&self) -> bool {
         self.flags & crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO != 0
     }
     
     /// Sets or clears the one-to-many ratio flag
+    /// 
+    /// **Important**: This flag should only be set during pool creation based on the
+    /// `check_one_to_many_ratio()` validation function. Manual modification after pool
+    /// creation is not recommended as it may create inconsistencies.
+    /// 
+    /// **Technical Note**: The flag is determined by analyzing token decimals and ratios
+    /// to ensure both display values are whole numbers and one equals exactly 1.0.
+    /// 
+    /// # Arguments
+    /// * `value` - true to set the flag, false to clear it
     pub fn set_one_to_many_ratio(&mut self, value: bool) {
         if value {
             self.flags |= crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
