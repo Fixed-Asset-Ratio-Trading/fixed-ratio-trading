@@ -452,16 +452,6 @@ pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 
-/// Validates that an account is owned by the expected program.
-pub fn validate_account_owner(account: &AccountInfo, expected_owner: &Pubkey) -> ProgramResult {
-    if account.owner != expected_owner {
-        msg!("Account {} has incorrect owner. Expected: {}, Actual: {}", 
-             account.key, expected_owner, account.owner);
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    Ok(())
-}
-
 /// Validates that an account is a signer.
 pub fn validate_signer(account: &AccountInfo, context: &str) -> ProgramResult {
     if !account.is_signer {
@@ -480,29 +470,10 @@ pub fn validate_writable(account: &AccountInfo, context: &str) -> ProgramResult 
     Ok(())
 }
 
-/// Validates that a swap fee is within allowed bounds.
-pub fn validate_swap_fee(fee_basis_points: u16) -> ProgramResult {
-    if fee_basis_points > 50 { // 0.5% maximum fee
-        msg!("Swap fee {} basis points exceeds maximum of {}", 
-             fee_basis_points, 50);
-        return Err(ProgramError::InvalidArgument);
-    }
-    Ok(())
-}
-
 /// Validates that an amount is non-zero.
 pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
     if amount == 0 {
         msg!("{} amount cannot be zero", context);
-        return Err(ProgramError::InvalidArgument);
-    }
-    Ok(())
-}
-
-/// Validates that two tokens are different.
-pub fn validate_different_tokens(token_a: &Pubkey, token_b: &Pubkey) -> ProgramResult {
-    if token_a == token_b {
-        msg!("Cannot create pool with identical tokens: {}", token_a);
         return Err(ProgramError::InvalidArgument);
     }
     Ok(())
