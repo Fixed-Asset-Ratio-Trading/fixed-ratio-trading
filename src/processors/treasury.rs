@@ -17,7 +17,7 @@ use solana_program::{
     msg,
     program_error::ProgramError,
     pubkey::Pubkey,
-    sysvar::{rent::Rent, Sysvar},
+    sysvar::{rent::Rent},
 };
 
 use crate::{
@@ -148,10 +148,11 @@ pub fn process_withdraw_treasury_fees(
     **main_treasury_pda.try_borrow_mut_lamports()? -= withdrawal_amount;
     **destination_account.try_borrow_mut_lamports()? += withdrawal_amount;
     
-    // Update treasury statistics
-    main_treasury_state.total_withdrawn = main_treasury_state.total_withdrawn
-        .checked_add(withdrawal_amount)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+    // Update treasury statistics with new counter tracking
+    use solana_program::clock::Clock;
+    use solana_program::sysvar::Sysvar;
+    let clock = Clock::get()?;
+    main_treasury_state.add_treasury_withdrawal(withdrawal_amount, clock.unix_timestamp);
     
     main_treasury_state.total_balance = main_treasury_pda.lamports();
     
@@ -205,17 +206,7 @@ pub fn process_get_treasury_info(
     // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
-    // 🔍 DEBUG: Show detailed counter analysis for troubleshooting
-    msg!("🔍 DETAILED COUNTER ANALYSIS (DEBUG):");
-    msg!("   Data size: {} bytes", main_treasury_pda.data.borrow().len());
-    msg!("   Treasury PDA owner: {}", main_treasury_pda.owner);
-    msg!("   Treasury PDA key: {}", main_treasury_pda.key);
-    msg!("   Raw counter values:");
-    msg!("     pool_creation_count: {}", main_treasury_state.pool_creation_count);
-    msg!("     liquidity_operation_count: {}", main_treasury_state.liquidity_operation_count);
-    msg!("     regular_swap_count: {}", main_treasury_state.regular_swap_count);
-    msg!("     total_consolidations_performed: {}", main_treasury_state.total_consolidations_performed);
-    msg!("");
+    // Load and display treasury information
     
     msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
     msg!("   Current Balance: {} lamports ({} SOL)", 
@@ -225,17 +216,33 @@ pub fn process_get_treasury_info(
          main_treasury_state.total_withdrawn,
          main_treasury_state.total_withdrawn as f64 / 1_000_000_000.0);
     msg!("");
-    msg!("📈 REAL-TIME FEE STATISTICS:");
-    msg!("   Pool Creations: {} (Total fees: {} lamports)", 
-         main_treasury_state.pool_creation_count, main_treasury_state.total_pool_creation_fees);
-    msg!("   Liquidity Operations: {} (Total fees: {} lamports)", 
-         main_treasury_state.liquidity_operation_count, main_treasury_state.total_liquidity_fees);
-    msg!("   Regular Swaps: {} (Total fees: {} lamports)", 
-         main_treasury_state.regular_swap_count, main_treasury_state.total_regular_swap_fees);
+    msg!("📈 OPERATION STATISTICS:");
+    msg!("   Pool Creations: {} (Total fees: {} lamports, Avg: {:.2})", 
+         main_treasury_state.pool_creation_count, 
+         main_treasury_state.total_pool_creation_fees,
+         main_treasury_state.average_pool_creation_fee());
+    msg!("   Liquidity Operations: {} (Total fees: {} lamports, Avg: {:.2})", 
+         main_treasury_state.liquidity_operation_count, 
+         main_treasury_state.total_liquidity_fees,
+         main_treasury_state.average_liquidity_fee());
+    msg!("   Regular Swaps: {} (Total fees: {} lamports, Avg: {:.2})", 
+         main_treasury_state.regular_swap_count, 
+         main_treasury_state.total_regular_swap_fees,
+         main_treasury_state.average_swap_fee());
+    msg!("   Treasury Withdrawals: {} (Total: {} lamports)", 
+         main_treasury_state.treasury_withdrawal_count, 
+         main_treasury_state.total_withdrawn);
+    msg!("   Consolidations: {} (Last: {})", 
+         main_treasury_state.total_consolidations_performed,
+         main_treasury_state.last_consolidation_timestamp);
     msg!("");
-    msg!("📊 ANALYTICS:");
-    msg!("   Total Operations: {}", main_treasury_state.total_operations_processed());
-    msg!("   Total Fees Collected: {} lamports", main_treasury_state.total_fees_collected());
+    msg!("📊 ENHANCED ANALYTICS:");
+    msg!("   Total Successful Operations: {}", main_treasury_state.total_successful_operations());
+    msg!("   Failed Operations: {}", main_treasury_state.failed_operation_count);
+    msg!("   Success Rate: {:.2}%", main_treasury_state.success_rate_percentage());
+    msg!("   Total Fees Collected: {} lamports ({:.4} SOL)", 
+         main_treasury_state.total_fees_collected(),
+         main_treasury_state.total_fees_collected() as f64 / 1_000_000_000.0);
     msg!("   Average Fee per Operation: {:.2} lamports", main_treasury_state.average_fee_per_operation());
     msg!("");
     msg!("⏰ TIMING INFORMATION:");

@@ -58,6 +58,10 @@ pub struct MainTreasuryState {
     pub liquidity_operation_count: u64,
     pub regular_swap_count: u64,
     
+    /// **NEW: EXTENDED COUNTERS** - Additional operation tracking
+    pub treasury_withdrawal_count: u64,
+    pub failed_operation_count: u64,
+    
     /// **PHASE 3: REAL-TIME TOTALS** - Updated immediately on fee collection
     pub total_pool_creation_fees: u64,
     pub total_liquidity_fees: u64,
@@ -107,6 +111,8 @@ impl MainTreasuryState {
         8 +   // pool_creation_count
         8 +   // liquidity_operation_count
         8 +   // regular_swap_count
+        8 +   // treasury_withdrawal_count ← NEW
+        8 +   // failed_operation_count ← NEW
         8 +   // total_pool_creation_fees
         8 +   // total_liquidity_fees
         8 +   // total_regular_swap_fees
@@ -129,6 +135,8 @@ impl MainTreasuryState {
             pool_creation_count: 0,
             liquidity_operation_count: 0,
             regular_swap_count: 0,
+            treasury_withdrawal_count: 0,
+            failed_operation_count: 0,
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
@@ -148,6 +156,8 @@ impl MainTreasuryState {
             pool_creation_count: 0,
             liquidity_operation_count: 0,
             regular_swap_count: 0,
+            treasury_withdrawal_count: 0,
+            failed_operation_count: 0,
             total_pool_creation_fees: 0,
             total_liquidity_fees: 0,
             total_regular_swap_fees: 0,
@@ -199,6 +209,63 @@ impl MainTreasuryState {
     pub fn add_regular_swap_fee(&mut self, fee_amount: u64, timestamp: i64) {
         // Delegate to the new method to ensure consistency
         self.add_swap_contract_fee(fee_amount, timestamp);
+    }
+    
+    /// **NEW: Records a treasury withdrawal operation**
+    pub fn add_treasury_withdrawal(&mut self, withdrawal_amount: u64, timestamp: i64) {
+        self.treasury_withdrawal_count += 1;
+        self.total_withdrawn += withdrawal_amount;
+        self.last_update_timestamp = timestamp;
+    }
+    
+    /// **NEW: Records a failed operation for debugging and analytics**
+    pub fn add_failed_operation(&mut self, timestamp: i64) {
+        self.failed_operation_count += 1;
+        self.last_update_timestamp = timestamp;
+    }
+    
+    /// **NEW: Calculate total successful operations across all types**
+    pub fn total_successful_operations(&self) -> u64 {
+        self.pool_creation_count + 
+        self.liquidity_operation_count + 
+        self.regular_swap_count + 
+        self.treasury_withdrawal_count +
+        self.total_consolidations_performed
+    }
+    
+    /// **NEW: Calculate success rate (successful vs failed operations)**
+    pub fn success_rate_percentage(&self) -> f64 {
+        let total_operations = self.total_successful_operations() + self.failed_operation_count;
+        if total_operations == 0 {
+            100.0 // No operations yet, consider 100% success rate
+        } else {
+            (self.total_successful_operations() as f64 / total_operations as f64) * 100.0
+        }
+    }
+    
+    /// **NEW: Calculate average fees per operation type**
+    pub fn average_pool_creation_fee(&self) -> f64 {
+        if self.pool_creation_count == 0 {
+            0.0
+        } else {
+            self.total_pool_creation_fees as f64 / self.pool_creation_count as f64
+        }
+    }
+    
+    pub fn average_liquidity_fee(&self) -> f64 {
+        if self.liquidity_operation_count == 0 {
+            0.0
+        } else {
+            self.total_liquidity_fees as f64 / self.liquidity_operation_count as f64
+        }
+    }
+    
+    pub fn average_swap_fee(&self) -> f64 {
+        if self.regular_swap_count == 0 {
+            0.0
+        } else {
+            self.total_regular_swap_fees as f64 / self.regular_swap_count as f64
+        }
     }
     
     /// **PHASE 3: REAL-TIME BALANCE SYNC**

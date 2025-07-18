@@ -193,19 +193,8 @@ pub fn process_initialize_pool(
     
     // Update treasury state with real-time tracking
     let mut treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
-    
-    // 🔍 DEBUG: Show counter values before and after increment
-    msg!("🔍 POOL CREATION COUNTER DEBUG:");
-    msg!("   Before increment - pool_creation_count: {}", treasury_state.pool_creation_count);
-    msg!("   Before increment - total_pool_creation_fees: {}", treasury_state.total_pool_creation_fees);
-    msg!("   Adding fee: {} lamports", REGISTRATION_FEE);
-    
     treasury_state.add_pool_creation_fee(REGISTRATION_FEE, current_timestamp);
     treasury_state.sync_balance_with_account(main_treasury_pda.lamports());
-    
-    msg!("   After increment - pool_creation_count: {}", treasury_state.pool_creation_count);
-    msg!("   After increment - total_pool_creation_fees: {}", treasury_state.total_pool_creation_fees);
-    msg!("   Total balance after sync: {}", treasury_state.total_balance);
     
     // Save updated treasury state
     let serialized_data = treasury_state.try_to_vec()?;

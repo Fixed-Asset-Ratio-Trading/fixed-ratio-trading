@@ -437,7 +437,7 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
     println!("   - System State PDA: {}", system_state_pda);
     println!("   - Program Data Address: {}", program_data_address);
     
-    // Test 2: State structure validation
+    // Test 2: State structure validation with new counter fields
     let treasury_state = MainTreasuryState {
         total_balance: 1_000_000_000,
         rent_exempt_minimum: 500_000_000,
@@ -445,6 +445,8 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
         pool_creation_count: 5,
         liquidity_operation_count: 10,
         regular_swap_count: 3,
+        treasury_withdrawal_count: 1,
+        failed_operation_count: 0,
         total_pool_creation_fees: 50_000_000,
         total_liquidity_fees: 30_000_000,
         total_regular_swap_fees: 15_000_000,
@@ -920,7 +922,7 @@ fn test_process_get_treasury_info_direct() -> Result<(), Box<dyn std::error::Err
     };
     use borsh::BorshSerialize;
     
-    // Create a mock treasury state with all required fields
+    // Create a mock treasury state with all required fields including new counters
     let treasury_state = MainTreasuryState {
         total_balance: 1_000_000_000,  // 1 SOL
         rent_exempt_minimum: 2_039_280, // Rent exempt minimum
@@ -928,6 +930,8 @@ fn test_process_get_treasury_info_direct() -> Result<(), Box<dyn std::error::Err
         pool_creation_count: 5,
         liquidity_operation_count: 10,
         regular_swap_count: 25,
+        treasury_withdrawal_count: 3,
+        failed_operation_count: 2,
         total_pool_creation_fees: 100_000_000,
         total_liquidity_fees: 200_000_000,
         total_regular_swap_fees: 300_000_000,
