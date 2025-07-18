@@ -240,22 +240,7 @@ pub fn collect_liquidity_fee_distributed<'a>(
     )
 }
 
-/// **NEW: Distributed swap fee collection**
-pub fn collect_regular_swap_fee_distributed<'a>(
-    payer_account: &AccountInfo<'a>,
-    pool_state_pda: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
-    program_id: &Pubkey,
-) -> ProgramResult {
-    collect_fee_to_pool_state(
-        payer_account,
-        pool_state_pda,
-        system_program,
-        program_id,
-        SWAP_CONTRACT_FEE,
-        FeeType::RegularSwap,
-    )
-}
+
 
 /// Fee type enumeration for different operation types
 pub enum FeeType {
