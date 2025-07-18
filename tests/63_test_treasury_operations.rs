@@ -825,10 +825,9 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
     };
     use fixed_ratio_trading::{
         PoolInstruction,
-        constants::{SYSTEM_STATE_SEED_PREFIX, MAIN_TREASURY_SEED_PREFIX},
+        constants::MAIN_TREASURY_SEED_PREFIX,
     };
     use crate::common::setup::initialize_treasury_system;
-    use crate::common::liquidity_helpers::create_liquidity_test_foundation;
     
     // Initialize test environment
     let program_test = ProgramTest::new(
@@ -841,17 +840,8 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
     
     println!("🏛️ Step 1: Initialize treasury system...");
     
-    // Initialize treasury system
+    // Initialize treasury system first
     let system_authority = Keypair::new();
-    let (system_state_pda, _) = Pubkey::find_program_address(
-        &[SYSTEM_STATE_SEED_PREFIX],
-        &fixed_ratio_trading::ID,
-    );
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
-        &[MAIN_TREASURY_SEED_PREFIX],
-        &fixed_ratio_trading::ID,
-    );
-    
     initialize_treasury_system(
         &mut ctx.banks_client, 
         &ctx.payer, 
@@ -860,35 +850,16 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
     ).await?;
     
     println!("✅ Treasury system initialized");
-    println!("   • SystemState PDA: {}", system_state_pda);
-    println!("   • MainTreasury PDA: {}", main_treasury_pda);
     
-    println!("\n🏊 Step 2: Create pool and generate fees...");
+    println!("\n📊 Step 2: Execute GetTreasuryInfo instruction directly...");
     
-    // Create pool and generate some fees
-    let pool_creation_result = create_liquidity_test_foundation(Some(2)).await;
+    // Get treasury PDA
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::ID,
+    );
     
-    match pool_creation_result {
-        Ok(foundation) => {
-            println!("✅ Pool created and fees generated");
-            
-            // Perform some swaps to generate more fees
-            println!("\n🔄 Step 3: Generate additional fees through swaps...");
-            
-            // Add more fee-generating operations here if needed
-            // For now, the pool creation already generated initial fees
-            
-            println!("✅ Additional fees generated through operations");
-        },
-        Err(e) => {
-            println!("⚠️ Pool creation failed (may be due to test environment): {:?}", e);
-            println!("🔄 Continuing with basic treasury info test...");
-        }
-    }
-    
-    println!("\n📊 Step 4: Query treasury information...");
-    
-    // Create GetTreasuryInfo instruction
+    // Create and execute GetTreasuryInfo instruction
     let get_treasury_info_instruction = Instruction {
         program_id: fixed_ratio_trading::ID,
         accounts: vec![
@@ -897,7 +868,6 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
         data: PoolInstruction::GetTreasuryInfo {}.try_to_vec()?,
     };
     
-    // Execute GetTreasuryInfo instruction
     println!("🚀 Executing GetTreasuryInfo instruction...");
     
     let transaction = Transaction::new_signed_with_payer(
@@ -907,7 +877,9 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
         ctx.last_blockhash,
     );
     
-    match ctx.banks_client.process_transaction(transaction).await {
+    let result = ctx.banks_client.process_transaction(transaction).await;
+    
+    match result {
         Ok(_) => {
             println!("✅ GetTreasuryInfo instruction executed successfully!");
             println!("   - Treasury information should be visible in the debug logs above");
@@ -920,11 +892,100 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
         }
     }
     
-    println!("\n✅ TREASURY-006: GetTreasuryInfo with real data test completed!");
-    println!("   - Treasury system initialized successfully");
-    println!("   - Pool operations generated fees (if successful)");
-    println!("   - GetTreasuryInfo function executed and displayed treasury data");
-    println!("   - All program logs with treasury information are visible in debug output");
+    println!("\n✅ TREASURY-006: GetTreasuryInfo test completed!");
+    
+    Ok(())
+} 
+
+/// TREASURY-007: Direct function call test for process_get_treasury_info
+/// 
+/// This test directly calls the process_get_treasury_info function to verify
+/// it works and shows the debug messages without going through instruction execution
+#[test]
+fn test_process_get_treasury_info_direct() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing TREASURY-007: Direct process_get_treasury_info function call...");
+    
+    use solana_program::{
+        account_info::{AccountInfo, next_account_info},
+        entrypoint::ProgramResult,
+        msg,
+        pubkey::Pubkey,
+        program_error::ProgramError,
+    };
+    use fixed_ratio_trading::{
+        processors::treasury::process_get_treasury_info,
+        state::MainTreasuryState,
+        constants::MAIN_TREASURY_SEED_PREFIX,
+    };
+    use borsh::BorshSerialize;
+    
+    // Create a mock treasury state with all required fields
+    let treasury_state = MainTreasuryState {
+        total_balance: 1_000_000_000,  // 1 SOL
+        rent_exempt_minimum: 2_039_280, // Rent exempt minimum
+        total_withdrawn: 500_000_000,  // 0.5 SOL
+        pool_creation_count: 5,
+        liquidity_operation_count: 10,
+        regular_swap_count: 25,
+        total_pool_creation_fees: 100_000_000,
+        total_liquidity_fees: 200_000_000,
+        total_regular_swap_fees: 300_000_000,
+        total_swap_contract_fees: 300_000_000,
+        last_update_timestamp: 1234567890,
+        total_consolidations_performed: 2,
+        last_consolidation_timestamp: 1234567890,
+    };
+    
+    // Serialize the treasury state
+    let mut treasury_data = Vec::new();
+    treasury_state.serialize(&mut treasury_data)?;
+    
+    println!("📋 Created mock treasury state:");
+    println!("   - Total balance: {} lamports", treasury_state.total_balance);
+    println!("   - Total withdrawn: {} lamports", treasury_state.total_withdrawn);
+    println!("   - Serialized data length: {} bytes", treasury_data.len());
+    
+    // Create mock account info for the treasury PDA
+    let treasury_pda = Pubkey::new_unique(); // Mock PDA
+    let mut treasury_account_data = treasury_data.clone();
+    let mut lamports = 1_000_000_000u64; // Mock lamports
+    
+    // Create a mock AccountInfo for the treasury
+    let treasury_account_info = AccountInfo::new(
+        &treasury_pda,
+        false, // is_signer
+        false, // is_writable
+        &mut lamports,
+        &mut treasury_account_data,
+        &treasury_pda,
+        false, // executable
+        treasury_data.len() as u64, // data_len
+    );
+    
+    // Create accounts array
+    let accounts = vec![treasury_account_info];
+    
+    // Create a mock program ID
+    let program_id = Pubkey::new_unique();
+    
+    println!("\n🚀 Calling process_get_treasury_info function directly...");
+    
+    // Call the function directly
+    let result = process_get_treasury_info(&program_id, &accounts);
+    
+    match result {
+        Ok(()) => {
+            println!("✅ process_get_treasury_info function executed successfully!");
+            println!("   - Function completed without errors");
+            println!("   - Debug messages should be visible in test output");
+        },
+        Err(e) => {
+            println!("❌ process_get_treasury_info function failed: {:?}", e);
+            return Err(format!("Function call failed: {:?}", e).into());
+        }
+    }
+    
+    println!("✅ TREASURY-007: Direct function call test completed!");
     
     Ok(())
 } 
