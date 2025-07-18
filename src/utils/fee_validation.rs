@@ -13,21 +13,18 @@
 //! - Atomic fee collection with state updates
 //! - Proper error handling with rollback capabilities
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
-    program::invoke,
     pubkey::Pubkey,
-    system_instruction,
-    sysvar::{clock::Clock, Sysvar},
 };
 
 use crate::{
     constants::*,
     error::PoolError,
-    state::MainTreasuryState,
+
 };
 
 /// Fee collection context for tracking and validation
@@ -122,62 +119,7 @@ pub fn validate_treasury_account(
 
 
 
-/// **POOL CREATION FEE COLLECTION**
-/// Collects pool creation fee directly to main treasury with real-time tracking
-pub fn collect_pool_creation_fee<'a>(
-    payer_account: &AccountInfo<'a>,
-    treasury_account: &AccountInfo<'a>,
-    system_program: &AccountInfo<'a>,
-    clock_sysvar: &AccountInfo<'a>,
-    program_id: &Pubkey,
-) -> ProgramResult {
-    let (expected_treasury_pda, _) = Pubkey::find_program_address(
-        &[MAIN_TREASURY_SEED_PREFIX],
-        program_id,
-    );
-    
-    // 1. Pre-flight validation
-    let validation_result = validate_fee_payment(payer_account, REGISTRATION_FEE, VALIDATION_CONTEXT_FEE);
-    if !validation_result.is_valid {
-        return Err(PoolError::InsufficientFeeBalance {
-            required: REGISTRATION_FEE,
-            available: validation_result.available_balance,
-            account: *payer_account.key,
-        }.into());
-    }
-    
-    // 2. Treasury account validation
-    validate_treasury_account(treasury_account, &expected_treasury_pda, TREASURY_TYPE_MAIN)?;
-    
-    // 3. Get current timestamp
-    let clock = Clock::from_account_info(clock_sysvar)?;
-    let current_timestamp = clock.unix_timestamp;
-    
-    // 4. Atomic fee transfer
-    invoke(
-        &system_instruction::transfer(
-            payer_account.key,
-            treasury_account.key,
-            REGISTRATION_FEE,
-        ),
-        &[
-            payer_account.clone(),
-            treasury_account.clone(),
-            system_program.clone(),
-        ],
-    )?;
-    
-    // 5. Real-time treasury state update
-    let mut treasury_state = MainTreasuryState::try_from_slice(&treasury_account.data.borrow())?;
-    treasury_state.add_pool_creation_fee(REGISTRATION_FEE, current_timestamp);
-    treasury_state.sync_balance_with_account(treasury_account.lamports());
-    
-    // Save updated state
-    let serialized_data = treasury_state.try_to_vec()?;
-    treasury_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
-    
-    Ok(())
-}
+
 
 
 
@@ -291,14 +233,27 @@ pub fn collect_fee_to_pool_state<'a>(
     )?;
     
     // Update pool state based on fee type
-    let current_timestamp = Clock::get()?.unix_timestamp;
+    let current_timestamp = Clock::get()
+        .map_err(|e| PoolError::FeeValidationFailed {
+            reason: format!("Failed to get system clock: {:?}", e),
+        })?
+        .unix_timestamp;
     match fee_type {
         FeeType::Liquidity => pool_state.add_liquidity_fee(fee_amount, current_timestamp),
         FeeType::RegularSwap => pool_state.add_swap_contract_fee(fee_amount, current_timestamp),
     }
     
-    // Save updated pool state
+    // Save updated pool state with bounds checking
     let serialized_data = pool_state.try_to_vec()?;
+    if pool_state_account.data_len() < serialized_data.len() {
+        return Err(PoolError::FeeValidationFailed {
+            reason: format!(
+                "Pool state account too small for serialized data: account size {}, required {}",
+                pool_state_account.data_len(),
+                serialized_data.len()
+            ),
+        }.into());
+    }
     pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     Ok(())
