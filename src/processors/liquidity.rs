@@ -52,7 +52,7 @@
 //! Consider separating authority and data storage into different PDAs to eliminate
 //! this architectural complexity entirely.
 
-use crate::{constants::*, types::*};
+use crate::constants::*;
 use crate::PoolState;
 use borsh::BorshSerialize;
 use solana_program::{
@@ -70,6 +70,7 @@ use spl_token::{
     state::{Account as TokenAccount},
 };
 use crate::utils::validation::validate_non_zero_amount;
+use crate::processors::utilities::validate_liquidity_not_paused;
 
 /// **PHASE 10: USER LP TOKEN ACCOUNT ON-DEMAND CREATION**
 
@@ -1079,26 +1080,7 @@ fn validate_withdrawal_lp_correspondence(
 /// - Backward compatibility: All existing clients continue to work unchanged
 /// - Foundation: Sets up architecture for future optimizations
 
-/// Validates that liquidity operations are not paused.
-/// 
-/// This function checks the pool state to ensure liquidity operations 
-/// (deposits and withdrawals) are not paused by the pool owner.
-/// 
-/// # Arguments
-/// * `pool_state_data` - Already deserialized pool state data
-/// 
-/// # Returns
-/// * `ProgramResult` - Success if liquidity operations are enabled, error if paused
-fn validate_liquidity_not_paused(pool_state_data: &PoolState) -> ProgramResult {
-    if pool_state_data.liquidity_paused() {
-        msg!("Liquidity operations (deposits/withdrawals) are currently paused by owner");
-        msg!("Note: Swaps may still be available");
-        msg!("Note: Owner can manage pause governance and reasons");
-        return Err(PoolError::PoolPaused.into());
-    }
-    
-    Ok(())
-}
+
 /// - Transaction efficiency: Smaller, faster, more cost-effective liquidity operations
 #[allow(dead_code)]
 const PHASE_9_OPTIMIZATION_SUMMARY: &str = "Phase 9 liquidity optimizations successfully implemented"; 

@@ -84,14 +84,7 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
 /// * `_current_timestamp` - Current timestamp (for future time-based pause logic)
 ///
 /// # Returns
-/// * `ProgramResult` - Success if liquidity operations are not paused, error otherwise
-pub fn validate_liquidity_not_paused(pool_state: &mut PoolState, _current_timestamp: i64) -> ProgramResult {
-    if pool_state.liquidity_paused() {
-        msg!("Liquidity operations (deposits/withdrawals) are paused");
-        return Err(PoolError::PoolPaused.into());
-    }
-    Ok(())
-}
+
 
 /// **SECURITY CRITICAL**: Validates and deserializes PoolState with PDA verification.
 /// 
