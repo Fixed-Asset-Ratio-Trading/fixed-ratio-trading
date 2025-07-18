@@ -134,17 +134,7 @@ pub fn validate_and_deserialize_pool_state_secure(
     Ok(pool_state_data)
 }
 
-/// **DEPRECATED - SECURITY VULNERABILITY**: Use validate_and_deserialize_pool_state_secure instead
-/// 
-/// This function is vulnerable to fake PoolState accounts and should not be used.
-/// It's kept temporarily for backward compatibility but will be removed.
-#[deprecated(note = "Security vulnerability: Use validate_and_deserialize_pool_state_secure instead")]
-pub fn validate_pool_state_unsafe(pool_state_account: &AccountInfo) -> Result<PoolState, ProgramError> {
-    msg!("⚠️  WARNING: Using deprecated validate_pool_state_unsafe - security vulnerability!");
-    msg!("⚠️  This function does not validate PoolState PDA and can be bypassed!");
-    
-    PoolState::deserialize(&mut &pool_state_account.data.borrow()[..]).map_err(|_| ProgramError::InvalidAccountData)
-}
+
 
 /// Validates that the system is not paused for user operations.
 /// This check takes precedence over pool-specific pause checks.
@@ -191,28 +181,7 @@ pub fn validate_system_not_paused_secure(
     Ok(())
 }
 
-/// **DEPRECATED - SECURITY VULNERABILITY**: Use validate_system_not_paused_secure instead
-/// 
-/// This function is vulnerable to fake SystemState accounts and should not be used.
-/// It's kept temporarily for backward compatibility but will be removed.
-#[deprecated(note = "Security vulnerability: Use validate_system_not_paused_secure instead")]
-pub fn validate_system_not_paused(system_state_account: &AccountInfo) -> ProgramResult {
-    msg!("⚠️  WARNING: Using deprecated validate_system_not_paused - security vulnerability!");
-    msg!("⚠️  This function does not validate SystemState PDA and can be bypassed!");
-    
-    // Deserialize system state
-    let system_state = SystemState::try_from_slice(&system_state_account.data.borrow())?;
-    
-    if system_state.is_paused {
-        msg!("🛑 SYSTEM PAUSED: All operations blocked (overrides pool pause state)");
-        msg!("Pause code: {}", system_state.pause_reason_code);
-        msg!("Paused at: {}", system_state.pause_timestamp);
-        msg!("Only system unpause is allowed");
-        return Err(PoolError::SystemPaused.into());
-    }
-    
-    Ok(())
-}
+
 
 /// Validates ratio values and returns pool ID string for PDA derivation.
 ///
