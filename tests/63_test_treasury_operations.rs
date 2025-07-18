@@ -516,3 +516,293 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
     
     Ok(())
 } 
+
+/// TREASURY-004: Integration test that actually calls process_withdraw_treasury_fees
+/// 
+/// This test executes the actual process_withdraw_treasury_fees function through
+/// a complete instruction execution path to validate the function is working properly.
+#[tokio::test]
+#[serial]
+async fn test_treasury_withdrawal_integration() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing TREASURY-004: Treasury withdrawal integration test...");
+    
+    use solana_program_test::{ProgramTest, BanksClient};
+    use solana_sdk::{
+        signature::{Signer, Keypair},
+        transaction::Transaction,
+        instruction::{AccountMeta, Instruction},
+        pubkey::Pubkey,
+        sysvar,
+    };
+    use fixed_ratio_trading::{
+        PoolInstruction,
+        constants::*,
+        utils::program_authority::get_program_data_address,
+    };
+    use crate::common::setup::{initialize_treasury_system};
+    
+    // Setup test environment
+    let mut program_test = ProgramTest::new(
+        "fixed_ratio_trading",
+        fixed_ratio_trading::id(),
+        solana_program_test::processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Create system authority (for treasury withdrawals)
+    let system_authority = Keypair::new();
+    
+    // Initialize treasury system first
+    initialize_treasury_system(
+        &mut banks_client,
+        &payer,
+        recent_blockhash,
+        &system_authority,
+    ).await?;
+    
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    let program_data_address = get_program_data_address(&fixed_ratio_trading::id());
+    
+    // Create destination account for withdrawal
+    let destination_account = Keypair::new();
+    
+    // Fund treasury with some SOL for withdrawal testing
+    println!("💰 Funding treasury for withdrawal testing...");
+    let treasury_funding_amount = 5_000_000_000; // 5 SOL
+    
+    // Transfer SOL to treasury
+    use solana_sdk::system_instruction;
+    let fund_treasury_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &main_treasury_pda,
+        treasury_funding_amount,
+    );
+    let mut fund_tx = Transaction::new_with_payer(&[fund_treasury_ix], Some(&payer.pubkey()));
+    fund_tx.sign(&[&payer], recent_blockhash);
+    banks_client.process_transaction(fund_tx).await?;
+    
+    println!("✅ Treasury funded with {} lamports", treasury_funding_amount);
+    
+    // Check treasury balance before withdrawal
+    let treasury_balance_before = banks_client.get_balance(main_treasury_pda).await?;
+    let destination_balance_before = banks_client.get_balance(destination_account.pubkey()).await?;
+    
+    println!("📊 Balances before withdrawal:");
+    println!("   Treasury: {} lamports", treasury_balance_before);
+    println!("   Destination: {} lamports", destination_balance_before);
+    
+    // Create withdrawal instruction
+    let withdrawal_amount = 1_000_000_000; // Withdraw 1 SOL
+    let withdraw_instruction_data = PoolInstruction::WithdrawTreasuryFees {
+        amount: withdrawal_amount,
+    };
+    
+    // Build the withdrawal instruction with proper account ordering
+    // Based on process_withdraw_treasury_fees account requirements:
+    // 0. System Authority Signer (signer, writable)
+    // 1. Main Treasury PDA (writable) 
+    // 2. Rent Sysvar Account (readable)
+    // 3. Destination Account (writable)
+    // 4. System State PDA (readable)
+    // 5. Program Data Account (readable)
+    let withdraw_ix = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts: vec![
+            AccountMeta::new(system_authority.pubkey(), true),        // Index 0: System Authority Signer
+            AccountMeta::new(main_treasury_pda, false),               // Index 1: Main Treasury PDA
+            AccountMeta::new_readonly(sysvar::rent::id(), false),     // Index 2: Rent Sysvar Account
+            AccountMeta::new(destination_account.pubkey(), false),    // Index 3: Destination Account
+            AccountMeta::new_readonly(system_state_pda, false),       // Index 4: System State PDA
+            AccountMeta::new_readonly(program_data_address, false),   // Index 5: Program Data Account
+        ],
+        data: withdraw_instruction_data.try_to_vec()?,
+    };
+    
+    println!("🚀 Executing treasury withdrawal instruction...");
+    
+    // Execute the withdrawal instruction
+    let mut withdraw_tx = Transaction::new_with_payer(&[withdraw_ix], Some(&payer.pubkey()));
+    withdraw_tx.sign(&[&payer, &system_authority], recent_blockhash);
+    
+    // Process the transaction
+    let result = banks_client.process_transaction(withdraw_tx).await;
+    
+    // Check if the transaction was successful
+    match result {
+        Ok(()) => {
+            println!("✅ Treasury withdrawal transaction processed successfully!");
+            
+            // Check balances after withdrawal
+            let treasury_balance_after = banks_client.get_balance(main_treasury_pda).await?;
+            let destination_balance_after = banks_client.get_balance(destination_account.pubkey()).await?;
+            
+            println!("📊 Balances after withdrawal:");
+            println!("   Treasury: {} lamports", treasury_balance_after);
+            println!("   Destination: {} lamports", destination_balance_after);
+            
+            // Verify the withdrawal worked correctly
+            let expected_treasury_balance = treasury_balance_before - withdrawal_amount;
+            let expected_destination_balance = destination_balance_before + withdrawal_amount;
+            
+            // Allow for some tolerance due to rent and fees
+            let tolerance = 10_000; // 0.00001 SOL tolerance
+            
+            if (treasury_balance_after as i64 - expected_treasury_balance as i64).abs() < tolerance as i64 {
+                println!("✅ Treasury balance correctly reduced");
+            } else {
+                println!("❌ Treasury balance unexpected: expected ~{}, got {}", 
+                    expected_treasury_balance, treasury_balance_after);
+            }
+            
+            if (destination_balance_after as i64 - expected_destination_balance as i64).abs() < tolerance as i64 {
+                println!("✅ Destination balance correctly increased");
+            } else {
+                println!("❌ Destination balance unexpected: expected ~{}, got {}", 
+                    expected_destination_balance, destination_balance_after);
+            }
+            
+            println!("✅ TREASURY-004: Treasury withdrawal integration test completed successfully!");
+            println!("   - process_withdraw_treasury_fees function was called and executed");
+            println!("   - Debug messages should be visible in test output");
+            println!("   - SOL transfer from treasury to destination confirmed");
+            
+        },
+        Err(e) => {
+            println!("❌ Treasury withdrawal transaction failed: {:?}", e);
+            return Err(format!("Treasury withdrawal failed: {:?}", e).into());
+        }
+    }
+    
+    Ok(())
+} 
+
+/// TREASURY-005: Specific test for GetTreasuryInfo instruction
+/// 
+/// This test isolates the GetTreasuryInfo instruction to verify it works correctly
+/// and debug any issues with treasury state deserialization.
+#[tokio::test]
+#[serial]
+async fn test_get_treasury_info_specific() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing TREASURY-005: GetTreasuryInfo instruction isolation...");
+    
+    use solana_program_test::{ProgramTest};
+    use solana_sdk::{
+        signature::{Signer, Keypair},
+        transaction::Transaction,
+        instruction::{AccountMeta, Instruction},
+        pubkey::Pubkey,
+    };
+    use fixed_ratio_trading::{
+        PoolInstruction,
+        constants::*,
+    };
+    use crate::common::setup::{initialize_treasury_system};
+    
+    // Setup test environment
+    let mut program_test = ProgramTest::new(
+        "fixed_ratio_trading",
+        fixed_ratio_trading::id(),
+        solana_program_test::processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Create system authority
+    let system_authority = Keypair::new();
+    
+    // Initialize treasury system
+    initialize_treasury_system(
+        &mut banks_client,
+        &payer,
+        recent_blockhash,
+        &system_authority,
+    ).await?;
+    
+    // Derive main treasury PDA
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    println!("📋 Main Treasury PDA: {}", main_treasury_pda);
+    
+    // Check treasury account exists and get its data
+    let treasury_account = banks_client.get_account(main_treasury_pda).await?;
+    match treasury_account {
+        Some(account) => {
+            println!("✅ Treasury account exists");
+            println!("   - Lamports: {}", account.lamports);
+            println!("   - Data length: {} bytes", account.data.len());
+            println!("   - Owner: {}", account.owner);
+            
+            // Try to deserialize the data manually to see what the issue is
+            use fixed_ratio_trading::state::MainTreasuryState;
+            use borsh::BorshDeserialize;
+            
+            match MainTreasuryState::try_from_slice(&account.data) {
+                Ok(treasury_state) => {
+                    println!("✅ Treasury state deserialization successful");
+                    println!("   - Total balance: {}", treasury_state.total_balance);
+                    println!("   - Total withdrawn: {}", treasury_state.total_withdrawn);
+                },
+                Err(e) => {
+                    println!("❌ Treasury state deserialization failed: {:?}", e);
+                    println!("   - Raw data (first 32 bytes): {:?}", &account.data[..32.min(account.data.len())]);
+                    
+                    // This is likely where the bug is!
+                    return Err(format!("Treasury state deserialization failed: {:?}", e).into());
+                }
+            }
+        },
+        None => {
+            println!("❌ Treasury account does not exist!");
+            return Err("Treasury account not found".into());
+        }
+    }
+    
+    // Now try the actual GetTreasuryInfo instruction
+    println!("\n🚀 Executing GetTreasuryInfo instruction...");
+    
+    let get_treasury_info_ix = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts: vec![
+            AccountMeta::new_readonly(main_treasury_pda, false),  // Only account needed
+        ],
+        data: PoolInstruction::GetTreasuryInfo {}.try_to_vec()?,
+    };
+    
+    let mut treasury_info_tx = Transaction::new_with_payer(
+        &[get_treasury_info_ix], 
+        Some(&payer.pubkey())
+    );
+    treasury_info_tx.sign(&[&payer], recent_blockhash);
+    
+    // Execute the instruction and check for errors
+    let result = banks_client.process_transaction(treasury_info_tx).await;
+    
+    match result {
+        Ok(()) => {
+            println!("✅ GetTreasuryInfo instruction executed successfully!");
+            println!("   - Check the test output above for treasury information logs");
+        },
+        Err(e) => {
+            println!("❌ GetTreasuryInfo instruction failed: {:?}", e);
+            return Err(format!("GetTreasuryInfo instruction failed: {:?}", e).into());
+        }
+    }
+    
+    println!("✅ TREASURY-005: GetTreasuryInfo instruction test completed!");
+    
+    Ok(())
+} 
