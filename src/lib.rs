@@ -264,5 +264,5 @@ pub fn process_instruction(
 pub use crate::types::errors::PoolError;
 
 // Public utilities
-pub use crate::processors::utilities::derive_pool_id;
+
 

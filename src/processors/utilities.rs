@@ -102,67 +102,7 @@ pub fn get_pool_state_pda(
     Ok(())
 }
 
-/// **UTILITY**: Derive the unique Pool ID (Pool State PDA) for given parameters.
-/// 
-/// This function allows clients to calculate the unique pool identifier without
-/// creating the pool. The Pool ID is deterministically derived from the normalized
-/// pool parameters, ensuring consistency across all operations.
-/// 
-/// # Arguments
-/// * `program_id` - The program ID
-/// * `token_mint_1` - First token mint (will be normalized to lexicographic order)
-/// * `token_mint_2` - Second token mint (will be normalized to lexicographic order)
-/// * `ratio_a_numerator` - Token A base units
-/// * `ratio_b_denominator` - Token B base units
-/// 
-/// # Returns
-/// * `(Pubkey, u8)` - The Pool ID (PDA) and its bump seed
-/// 
-/// # Example
-/// ```rust
-/// use fixed_ratio_trading::processors::utilities::derive_pool_id;
-/// use solana_program::pubkey::Pubkey;
-/// 
-/// let program_id = Pubkey::new_unique();
-/// let token_mint_1 = Pubkey::new_unique();
-/// let token_mint_2 = Pubkey::new_unique();
-/// 
-/// let (pool_id, _bump) = derive_pool_id(
-///     &program_id,
-///     &token_mint_1,
-///     &token_mint_2,
-///     1000,  // ratio_a_numerator
-///     1,     // ratio_b_denominator
-/// );
-/// println!("Pool ID: {}", pool_id);
-/// ```
-pub fn derive_pool_id(
-    program_id: &Pubkey,
-    token_mint_1: &Pubkey,
-    token_mint_2: &Pubkey,
-    ratio_a_numerator: u64,
-    ratio_b_denominator: u64,
-) -> (Pubkey, u8) {
-    // Normalize tokens to lexicographic order (same as in process_initialize_pool)
-    let (token_a_mint_key, token_b_mint_key) = 
-        if token_mint_1 < token_mint_2 {
-            (token_mint_1, token_mint_2)
-        } else {
-            (token_mint_2, token_mint_1)
-        };
 
-    // Derive the Pool State PDA (which serves as the unique Pool ID)
-    Pubkey::find_program_address(
-        &[
-            POOL_STATE_SEED_PREFIX,
-            token_a_mint_key.as_ref(),
-            token_b_mint_key.as_ref(),
-            &ratio_a_numerator.to_le_bytes(),
-            &ratio_b_denominator.to_le_bytes(),
-        ],
-        program_id,
-    )
-}
 
 /// **PDA HELPER**: Computes and returns Token Vault PDA addresses for a given pool.
 /// 
