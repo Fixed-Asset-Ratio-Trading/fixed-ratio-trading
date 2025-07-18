@@ -1009,12 +1009,14 @@ async fn test_comprehensive_fee_generation_and_consolidation() -> Result<(), Box
     use fixed_ratio_trading::{
         PoolInstruction,
         constants::MAIN_TREASURY_SEED_PREFIX,
+        state::MainTreasuryState,
     };
     use crate::common::{
         setup::{initialize_treasury_system, start_test_environment},
         pool_helpers::create_pool_new_pattern,
         tokens::create_mint,
     };
+    use borsh::BorshDeserialize;
     
     // Initialize test environment
     let mut env = start_test_environment().await;
@@ -1042,6 +1044,15 @@ async fn test_comprehensive_fee_generation_and_consolidation() -> Result<(), Box
     let initial_treasury_balance = env.banks_client.get_balance(main_treasury_pda).await?;
     println!("💰 Initial treasury balance: {} lamports", initial_treasury_balance);
     
+    // 🔍 Get initial treasury state and counters
+    let initial_treasury_account = env.banks_client.get_account(main_treasury_pda).await?.unwrap();
+    let initial_treasury_state = MainTreasuryState::try_from_slice(&initial_treasury_account.data)?;
+    
+    println!("🔍 Initial treasury state:");
+    println!("   - pool_creation_count: {}", initial_treasury_state.pool_creation_count);
+    println!("   - total_pool_creation_fees: {}", initial_treasury_state.total_pool_creation_fees);
+    println!("   - total_balance: {}", initial_treasury_state.total_balance);
+    
     println!("\n🏊 Step 2: Create pool (generates pool creation fees)...");
     
     // Create token mints
@@ -1052,7 +1063,7 @@ async fn test_comprehensive_fee_generation_and_consolidation() -> Result<(), Box
     create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await?;
     
     // Create pool with 2:1 ratio
-    let pool_config = create_pool_new_pattern(
+    let _pool_config = create_pool_new_pattern(
         &mut env.banks_client,
         &env.payer,
         env.recent_blockhash,
@@ -1067,6 +1078,25 @@ async fn test_comprehensive_fee_generation_and_consolidation() -> Result<(), Box
     let post_creation_balance = env.banks_client.get_balance(main_treasury_pda).await?;
     let creation_fees = post_creation_balance - initial_treasury_balance;
     println!("💰 Treasury balance after pool creation: {} lamports (+{} lamports)", post_creation_balance, creation_fees);
+    
+    // 🔍 Get updated treasury state and check counters
+    let updated_treasury_account = env.banks_client.get_account(main_treasury_pda).await?.unwrap();
+    let updated_treasury_state = MainTreasuryState::try_from_slice(&updated_treasury_account.data)?;
+    
+    println!("\n🔍 Updated treasury state after pool creation:");
+    println!("   - pool_creation_count: {} (was {})", updated_treasury_state.pool_creation_count, initial_treasury_state.pool_creation_count);
+    println!("   - total_pool_creation_fees: {} (was {})", updated_treasury_state.total_pool_creation_fees, initial_treasury_state.total_pool_creation_fees);
+    println!("   - total_balance: {} (was {})", updated_treasury_state.total_balance, initial_treasury_state.total_balance);
+    
+    // Verify counter increments
+    let counter_increment = updated_treasury_state.pool_creation_count - initial_treasury_state.pool_creation_count;
+    let fee_increment = updated_treasury_state.total_pool_creation_fees - initial_treasury_state.total_pool_creation_fees;
+    let balance_increment = updated_treasury_state.total_balance - initial_treasury_state.total_balance;
+    
+    println!("\n📊 Counter Analysis:");
+    println!("   - Counter increment: {}", counter_increment);
+    println!("   - Fee increment: {} lamports", fee_increment);
+    println!("   - Balance increment: {} lamports", balance_increment);
     
     println!("\n📊 Step 3: Check treasury info to verify counters...");
     
@@ -1111,7 +1141,29 @@ async fn test_comprehensive_fee_generation_and_consolidation() -> Result<(), Box
     println!("   - Total Fees Collected should increase");
     println!("   - Should see '📊 Getting real-time treasury information' message");
     
-    // Verify that fees were actually collected
+    // ✅ VERIFICATION: Check that treasury counters work correctly
+    if counter_increment == 1 {
+        println!("✅ SUCCESS: Pool creation counter incremented correctly!");
+        println!("   - Expected: 1 increment");
+        println!("   - Actual: {} increment", counter_increment);
+    } else {
+        println!("❌ ISSUE: Pool creation counter did not increment correctly");
+        println!("   - Expected: 1 increment");
+        println!("   - Actual: {} increment", counter_increment);
+        return Err("Pool creation counter issue detected".into());
+    }
+    
+    if fee_increment > 0 {
+        println!("✅ SUCCESS: Pool creation fees tracked correctly!");
+        println!("   - Expected: >0 lamports");
+        println!("   - Actual: {} lamports", fee_increment);
+    } else {
+        println!("❌ ISSUE: Pool creation fees not tracked correctly");
+        println!("   - Expected: >0 lamports");
+        println!("   - Actual: {} lamports", fee_increment);
+        return Err("Pool creation fee tracking issue detected".into());
+    }
+    
     if creation_fees > 0 {
         println!("✅ SUCCESS: Pool creation fees were collected correctly!");
         println!("   - Expected: Pool creation should generate fees");

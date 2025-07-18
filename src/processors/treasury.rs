@@ -205,6 +205,18 @@ pub fn process_get_treasury_info(
     // Load main treasury data (real-time data, no consolidation needed)
     let main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
+    // 🔍 DEBUG: Show detailed counter analysis for troubleshooting
+    msg!("🔍 DETAILED COUNTER ANALYSIS (DEBUG):");
+    msg!("   Data size: {} bytes", main_treasury_pda.data.borrow().len());
+    msg!("   Treasury PDA owner: {}", main_treasury_pda.owner);
+    msg!("   Treasury PDA key: {}", main_treasury_pda.key);
+    msg!("   Raw counter values:");
+    msg!("     pool_creation_count: {}", main_treasury_state.pool_creation_count);
+    msg!("     liquidity_operation_count: {}", main_treasury_state.liquidity_operation_count);
+    msg!("     regular_swap_count: {}", main_treasury_state.regular_swap_count);
+    msg!("     total_consolidations_performed: {}", main_treasury_state.total_consolidations_performed);
+    msg!("");
+    
     msg!("🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):");
     msg!("   Current Balance: {} lamports ({} SOL)", 
          main_treasury_state.total_balance, 
