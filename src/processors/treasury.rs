@@ -54,12 +54,7 @@ use crate::{
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
-/// # Critical Notes
-/// - **ACCOUNT OPTIMIZATION**: Reduced from 9 to 6 accounts (33% reduction)
-/// - **TRANSACTION EFFICIENCY**: Reduced transaction size and validation overhead
-/// - **CLIENT INTEGRATION**: Simplified client integration with minimal account requirements
-/// - **AUTHORITY VALIDATION**: Strict system upgrade authority validation for all withdrawals
-/// - **STORAGE OPTIMIZED**: Works with optimized authority-less treasury state
+
 pub fn process_withdraw_treasury_fees(
     program_id: &Pubkey,
     amount: u64,
@@ -239,11 +234,6 @@ pub fn process_withdraw_treasury_fees(
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
-/// # Critical Notes
-/// - **ACCOUNT OPTIMIZATION**: Reduced from 5 to 1 account (80% reduction)
-/// - **COMPUTE SAVINGS**: Estimated compute unit savings of 420-840 CUs per transaction
-/// - **CLIENT INTEGRATION**: Extremely simplified client integration with single account requirement
-/// - **READ-ONLY OPERATION**: Maximum efficiency for information retrieval
 pub fn process_get_treasury_info(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -333,25 +323,3 @@ pub fn process_get_treasury_info(
     
     Ok(())
 }
-
-// ============================================================================
-// REMOVED FUNCTIONS
-// ============================================================================
-// 
-// The following functions have been removed for simplification:
-// 
-// - process_consolidate_treasuries(): No longer needed, fees go directly to main treasury
-// - process_get_specialized_treasury_balances(): No specialized treasuries exist
-// 
-// Benefits of removal:
-// - Eliminates consolidation race conditions completely
-// - Reduces code complexity by ~200 lines
-// - Improves performance (no consolidation overhead)
-// - Provides real-time data without delays
-// - Single source of truth for all treasury operations
-// 
-// Migration impact:
-// - External apps no longer need to call consolidation
-// - Treasury info is always up-to-date and real-time
-// - Specialized treasury accounts can be closed and SOL reclaimed
-// ============================================================================ 
