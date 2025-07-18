@@ -6,6 +6,7 @@
 use solana_sdk::pubkey::Pubkey;
 use fixed_ratio_trading::PoolInstruction;
 use borsh::BorshSerialize;
+use serial_test::serial;
 
 mod common;
 use common::*;
@@ -560,4 +561,153 @@ async fn test_treasury_workflow_operations() {
     println!("  ✓ Withdrawal workflow logic is sound");
     println!("  ✓ System benefits are validated");
     println!("  ✓ End-to-end workflow operates correctly");
+} 
+
+/// TREASURY-VALIDATION-004: Phase 1.1 Enhanced Treasury Validation with Real Operations
+/// 
+/// This test uses Phase 1.1 enhanced helpers to perform legitimate treasury validation
+/// with real blockchain operations rather than mock data
+#[tokio::test]
+#[serial]
+async fn test_phase_1_1_enhanced_treasury_validation() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing TREASURY-VALIDATION-004: Phase 1.1 Enhanced Treasury Validation...");
+    
+    use crate::common::{
+        setup::{initialize_treasury_system, start_test_environment},
+        pool_helpers::{execute_pool_creation_with_counter_verification, verify_pool_creation_fee_collection},
+    };
+    use solana_sdk::signature::Keypair;
+    use fixed_ratio_trading::{
+        constants::MAIN_TREASURY_SEED_PREFIX,
+        state::MainTreasuryState,
+    };
+    use borsh::BorshDeserialize;
+    
+    // Initialize test environment
+    let mut env = start_test_environment().await;
+    
+    println!("🏛️ Step 1: Initialize treasury system for validation...");
+    
+    // Initialize treasury system
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &system_authority,
+    ).await?;
+    
+    println!("✅ Treasury system initialized");
+    
+    // Get treasury PDA for validation
+    let (main_treasury_pda, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::ID,
+    );
+    
+    println!("\n📊 Step 2: Validate initial treasury state...");
+    
+    // Get initial state for validation
+    let initial_account = env.banks_client.get_account(main_treasury_pda).await?.unwrap();
+    let initial_treasury_state = MainTreasuryState::try_from_slice(&initial_account.data)?;
+    let initial_balance = env.banks_client.get_balance(main_treasury_pda).await?;
+    
+    println!("🔍 Initial treasury validation:");
+    println!("   - Pool creation count: {}", initial_treasury_state.pool_creation_count);
+    println!("   - Total pool creation fees: {}", initial_treasury_state.total_pool_creation_fees);
+    println!("   - Treasury balance: {} lamports", initial_balance);
+    println!("   - Total balance in state: {}", initial_treasury_state.total_balance);
+    
+    // Validate initial state consistency
+    assert_eq!(initial_treasury_state.pool_creation_count, 0, "Initial pool creation count should be 0");
+    assert_eq!(initial_treasury_state.total_pool_creation_fees, 0, "Initial pool creation fees should be 0");
+    assert!(initial_balance > 0, "Treasury should have rent-exempt balance");
+    
+    println!("\n🏊 Step 3: Execute pool creation and validate treasury changes...");
+    
+    // Use Phase 1.1 enhanced helper to create pool and validate
+    let pool_result = execute_pool_creation_with_counter_verification(
+        &mut env,
+        2500,  // ratio_a_numerator 
+        3,     // ratio_b_denominator
+    ).await?;
+    
+    println!("✅ Pool creation with validation completed!");
+    
+    println!("\n🔍 Step 4: Comprehensive treasury validation...");
+    
+    // Get post-creation state for validation
+    let post_account = env.banks_client.get_account(main_treasury_pda).await?.unwrap();
+    let post_treasury_state = MainTreasuryState::try_from_slice(&post_account.data)?;
+    let post_balance = env.banks_client.get_balance(main_treasury_pda).await?;
+    
+    println!("🔍 Post-creation treasury validation:");
+    println!("   - Pool creation count: {} (increment: {})", 
+             post_treasury_state.pool_creation_count,
+             post_treasury_state.pool_creation_count - initial_treasury_state.pool_creation_count);
+    println!("   - Total pool creation fees: {} (increment: {})", 
+             post_treasury_state.total_pool_creation_fees,
+             post_treasury_state.total_pool_creation_fees - initial_treasury_state.total_pool_creation_fees);
+    println!("   - Treasury balance: {} lamports (increment: {})", 
+             post_balance, post_balance - initial_balance);
+    
+    // Validate treasury changes are correct
+    let counter_increment = post_treasury_state.pool_creation_count - initial_treasury_state.pool_creation_count;
+    let fee_increment = post_treasury_state.total_pool_creation_fees - initial_treasury_state.total_pool_creation_fees;
+    let balance_increment = post_balance - initial_balance;
+    
+    assert_eq!(counter_increment, 1, "Pool creation counter should increment by exactly 1");
+    assert!(fee_increment > 0, "Pool creation fees should be collected");
+    assert!(balance_increment > 0, "Treasury balance should increase");
+    assert_eq!(fee_increment, pool_result.fee_collected, "Fee increment should match result");
+    assert_eq!(balance_increment, fee_increment, "Balance increment should equal fee increment");
+    
+    println!("\n🔍 Step 5: Validate treasury state consistency...");
+    
+    // Validate internal state consistency
+    assert_eq!(post_treasury_state.total_balance, post_balance, 
+               "Internal balance tracking should match actual balance");
+    
+    // Use Phase 1.1 helper for additional verification
+    let fee_verification = verify_pool_creation_fee_collection(
+        &mut env,
+        &initial_treasury_state,
+    ).await?;
+    
+    assert_eq!(fee_verification, pool_result.fee_collected, 
+               "Fee verification should match pool result");
+    
+    println!("✅ Treasury state consistency validation:");
+    println!("   - Counter increment: {} ✅", counter_increment);
+    println!("   - Fee collection: {} lamports ✅", fee_increment);
+    println!("   - Balance update: {} lamports ✅", balance_increment);
+    println!("   - State consistency: ✅");
+    println!("   - Fee verification: {} lamports ✅", fee_verification);
+    
+    println!("\n🔍 Step 6: Validate enhanced analytics methods...");
+    
+    // Test the enhanced analytics methods from our treasury enhancements
+    let total_operations = post_treasury_state.total_successful_operations();
+    let success_rate = post_treasury_state.success_rate_percentage();
+    
+    println!("📊 Enhanced analytics validation:");
+    println!("   - Total successful operations: {}", total_operations);
+    println!("   - Success rate percentage: {:.2}%", success_rate);
+    
+    // Validate analytics make sense
+    assert_eq!(total_operations, 1, "Should have 1 successful operation (pool creation)");
+    assert_eq!(success_rate, 100.0, "Success rate should be 100% with no failures");
+    
+    println!("\n✅ TREASURY-VALIDATION-004: Phase 1.1 Enhanced Treasury Validation successful!");
+    println!("📋 Legitimate Treasury Validation Verified:");
+    println!("   1. ✅ Treasury state initialization validation");
+    println!("   2. ✅ Real blockchain operation execution and validation");
+    println!("   3. ✅ Counter increment validation with actual operations");
+    println!("   4. ✅ Fee collection validation with real fees");
+    println!("   5. ✅ Treasury state consistency validation");
+    println!("   6. ✅ Enhanced analytics method validation");
+    println!("   7. ✅ Phase 1.1 helper integration for comprehensive validation");
+    println!("   8. ✅ No mock data - all validations use real blockchain state");
+    
+    Ok(())
 } 

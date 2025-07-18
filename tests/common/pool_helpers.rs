@@ -435,3 +435,279 @@ pub async fn verify_pool_state(
 
     Ok(())
 } 
+
+// # Phase 1.1: Enhanced Pool Creation Helpers
+// 
+// These functions provide comprehensive pool creation with treasury counter verification
+// and detailed result tracking for legitimate integration testing.
+
+use fixed_ratio_trading::state::MainTreasuryState;
+use fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX;
+use borsh::BorshDeserialize;
+
+/// Result structure for enhanced pool creation operations
+#[derive(Debug, Clone)]
+pub struct PoolCreationResult {
+    /// The created pool's PDA
+    pub pool_pda: Pubkey,
+    /// Treasury state before pool creation
+    pub initial_treasury_state: MainTreasuryState,
+    /// Treasury state after pool creation
+    pub post_creation_treasury_state: MainTreasuryState,
+    /// Amount of fees collected during pool creation
+    pub fee_collected: u64,
+    /// The pool configuration used
+    pub pool_config: PoolConfig,
+    /// Whether the pool creation was successful
+    pub creation_successful: bool,
+}
+
+/// Result structure for multiple pool creation operations
+#[derive(Debug, Clone)]
+pub struct MultiPoolResult {
+    /// Results from individual pool creations
+    pub pool_results: Vec<PoolCreationResult>,
+    /// Total fees collected across all pool creations
+    pub total_fees_collected: u64,
+    /// Total pools created successfully
+    pub successful_pools: u32,
+    /// Failed pool creation attempts
+    pub failed_pools: u32,
+}
+
+/// **Phase 1.1: Enhanced pool creation with comprehensive treasury counter verification**
+/// 
+/// This function creates a pool and verifies that treasury counters are properly incremented.
+/// It provides the foundation for legitimate integration testing of treasury functionality.
+/// 
+/// # Arguments
+/// * `env` - Test environment containing banks client and program context
+/// * `multiple_per_base` - Ratio of multiple token to base token
+/// * `_ignored` - Ignored parameter for function compatibility
+/// 
+/// # Returns
+/// * `PoolCreationResult` - Comprehensive results including treasury state changes
+pub async fn execute_pool_creation_with_counter_verification(
+    env: &mut crate::common::setup::TestEnvironment,
+    multiple_per_base: u64,
+    _ignored: u64,
+) -> Result<PoolCreationResult, Box<dyn std::error::Error>> {
+    println!("🏗️ Phase 1.1: Enhanced pool creation with treasury verification...");
+    
+    // Step 1: Get initial treasury state
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::ID,
+    );
+    
+    let initial_treasury_account = env.banks_client.get_account(main_treasury_pda).await?;
+    let initial_treasury_state = if let Some(account) = initial_treasury_account {
+        MainTreasuryState::try_from_slice(&account.data)?
+    } else {
+        return Err("Treasury account not found - ensure system is properly initialized".into());
+    };
+    
+    println!("💰 Initial treasury state:");
+    println!("   - Pool creation count: {}", initial_treasury_state.pool_creation_count);
+    println!("   - Total pool creation fees: {}", initial_treasury_state.total_pool_creation_fees);
+    println!("   - Total balance: {}", initial_treasury_state.total_balance);
+    
+    // Step 2: Create tokens for pool creation
+    use crate::common::tokens::create_mint;
+    use solana_sdk::signature::Keypair;
+    let primary_mint = Keypair::new();
+    let base_mint = Keypair::new();
+    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint, Some(6)).await?;
+    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await?;
+    
+    // Step 3: Create the pool using existing infrastructure
+    let pool_result = create_pool_new_pattern(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &primary_mint,
+        &base_mint,
+        Some(multiple_per_base), // Use multiple_per_base ratio
+    ).await;
+    
+    let creation_successful = pool_result.is_ok();
+    let pool_config = if creation_successful {
+        pool_result.unwrap()
+    } else {
+        return Err(format!("Pool creation failed: {:?}", pool_result.err()).into());
+    };
+    
+    // Step 4: Get post-creation treasury state
+    let post_creation_treasury_account = env.banks_client.get_account(main_treasury_pda).await?;
+    let post_creation_treasury_state = if let Some(account) = post_creation_treasury_account {
+        MainTreasuryState::try_from_slice(&account.data)?
+    } else {
+        return Err("Treasury account not found after pool creation".into());
+    };
+    
+    // Step 5: Verify treasury counter increments
+    let pool_creation_count_increment = post_creation_treasury_state.pool_creation_count - initial_treasury_state.pool_creation_count;
+    let fee_collected = post_creation_treasury_state.total_pool_creation_fees - initial_treasury_state.total_pool_creation_fees;
+    let balance_change = post_creation_treasury_state.total_balance - initial_treasury_state.total_balance;
+    
+    println!("📊 Treasury verification results:");
+    println!("   - Pool creation count increment: {}", pool_creation_count_increment);
+    println!("   - Fees collected: {} lamports", fee_collected);
+    println!("   - Balance change: {} lamports", balance_change);
+    
+    // Step 6: Validate increments are correct
+    if pool_creation_count_increment != 1 {
+        return Err(format!("Expected pool creation count to increment by 1, got {}", pool_creation_count_increment).into());
+    }
+    
+    if fee_collected == 0 {
+        return Err("Expected pool creation fees to be collected, but got 0".into());
+    }
+    
+    if balance_change <= 0 {
+        return Err(format!("Expected treasury balance to increase, but got change of {}", balance_change).into());
+    }
+    
+    println!("✅ Treasury counter verification successful!");
+    
+    Ok(PoolCreationResult {
+        pool_pda: pool_config.pool_state_pda,
+        initial_treasury_state,
+        post_creation_treasury_state,
+        fee_collected,
+        pool_config,
+        creation_successful,
+    })
+}
+
+/// **Phase 1.1: Create multiple pools for comprehensive testing**
+/// 
+/// This function creates multiple pools with different configurations and tracks
+/// the cumulative impact on treasury counters.
+/// 
+/// # Arguments
+/// * `env` - Test environment
+/// * `pool_configs` - Vector of (ratio_a, ratio_b) tuples for different pools
+/// 
+/// # Returns
+/// * `MultiPoolResult` - Results from all pool creation attempts
+pub async fn create_multiple_pools_for_testing(
+    env: &mut crate::common::setup::TestEnvironment,
+    pool_configs: Vec<(u64, u64)>,
+) -> Result<MultiPoolResult, Box<dyn std::error::Error>> {
+    println!("🏗️ Phase 1.1: Creating {} pools for testing...", pool_configs.len());
+    
+    let mut pool_results = Vec::new();
+    let mut total_fees_collected = 0u64;
+    let mut successful_pools = 0u32;
+    let mut failed_pools = 0u32;
+    
+    for (i, (ratio_a, ratio_b)) in pool_configs.iter().enumerate() {
+        println!("🔄 Creating pool {}/{} with ratio {}:{}", i + 1, pool_configs.len(), ratio_a, ratio_b);
+        
+        match execute_pool_creation_with_counter_verification(env, *ratio_a, *ratio_b).await {
+            Ok(result) => {
+                total_fees_collected += result.fee_collected;
+                successful_pools += 1;
+                pool_results.push(result);
+                println!("   ✅ Pool {} created successfully", i + 1);
+            }
+            Err(e) => {
+                failed_pools += 1;
+                println!("   ❌ Pool {} creation failed: {}", i + 1, e);
+                // Create a failed result entry
+                pool_results.push(PoolCreationResult {
+                    pool_pda: Pubkey::default(),
+                    initial_treasury_state: MainTreasuryState::new(),
+                    post_creation_treasury_state: MainTreasuryState::new(), 
+                    fee_collected: 0,
+                    pool_config: PoolConfig {
+                        token_a_mint: Pubkey::default(),
+                        token_b_mint: Pubkey::default(),
+                        ratio_a_numerator: *ratio_a,
+                        ratio_b_denominator: *ratio_b,
+                        token_a_is_the_multiple: false,
+                        pool_state_pda: Pubkey::default(),
+                        pool_authority_bump: 0,
+                        token_a_vault_pda: Pubkey::default(),
+                        token_a_vault_bump: 0,
+                        token_b_vault_pda: Pubkey::default(),
+                        token_b_vault_bump: 0,
+                        multiple_vault_bump: 0,
+                        base_vault_bump: 0,
+                    },
+                    creation_successful: false,
+                });
+            }
+        }
+    }
+    
+    println!("📊 Multi-pool creation summary:");
+    println!("   - Total pools attempted: {}", pool_configs.len());
+    println!("   - Successful: {}", successful_pools);
+    println!("   - Failed: {}", failed_pools);
+    println!("   - Total fees collected: {} lamports", total_fees_collected);
+    
+    Ok(MultiPoolResult {
+        pool_results,
+        total_fees_collected,
+        successful_pools,
+        failed_pools,
+    })
+}
+
+/// **Phase 1.1: Verify pool creation fee collection in treasury**
+/// 
+/// This function verifies that pool creation fees were properly collected
+/// by comparing treasury states before and after operations.
+/// 
+/// # Arguments
+/// * `env` - Test environment
+/// * `initial_treasury_state` - Treasury state before operations
+/// 
+/// # Returns
+/// * `Result<u64, String>` - Amount of fees collected or error message
+pub async fn verify_pool_creation_fee_collection(
+    env: &mut crate::common::setup::TestEnvironment,
+    initial_treasury_state: &MainTreasuryState,
+) -> Result<u64, String> {
+    println!("🔍 Phase 1.1: Verifying pool creation fee collection...");
+    
+    // Get current treasury state
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::ID,
+    );
+    
+    let current_treasury_account = env.banks_client.get_account(main_treasury_pda).await
+        .map_err(|e| format!("Failed to get treasury account: {}", e))?;
+    
+    let current_treasury_state = if let Some(account) = current_treasury_account {
+        MainTreasuryState::try_from_slice(&account.data)
+            .map_err(|e| format!("Failed to deserialize treasury state: {}", e))?
+    } else {
+        return Err("Treasury account not found".to_string());
+    };
+    
+    // Calculate changes
+    let pool_creation_count_change = current_treasury_state.pool_creation_count - initial_treasury_state.pool_creation_count;
+    let fees_collected = current_treasury_state.total_pool_creation_fees - initial_treasury_state.total_pool_creation_fees;
+    let balance_change = current_treasury_state.total_balance - initial_treasury_state.total_balance;
+    
+    println!("📊 Fee collection verification:");
+    println!("   - Pool creation count change: {}", pool_creation_count_change);
+    println!("   - Pool creation fees collected: {} lamports", fees_collected);
+    println!("   - Treasury balance change: {} lamports", balance_change);
+    
+    // Validate the changes make sense
+    if pool_creation_count_change > 0 && fees_collected == 0 {
+        return Err("Pool creation count increased but no fees were collected".to_string());
+    }
+    
+    if fees_collected > 0 && balance_change <= 0 {
+        return Err("Fees were collected but treasury balance did not increase".to_string());
+    }
+    
+    println!("✅ Pool creation fee collection verified successfully");
+    Ok(fees_collected)
+} 

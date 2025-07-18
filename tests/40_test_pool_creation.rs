@@ -32,6 +32,7 @@ mod common;
 
 use common::*;
 use solana_program_test::BanksClientError;
+use serial_test::serial;
 
 /// Helper function to convert treasury system initialization errors to BanksClientError
 async fn init_treasury_for_test(
@@ -583,6 +584,112 @@ async fn test_pool_normalization_logic() -> TestResult {
     println!("   Config 1 - Ratio: {}:{}", config1.ratio_a_numerator, config1.ratio_b_denominator);
     println!("   Config 2 - Ratio: {}:{}", config2.ratio_a_numerator, config2.ratio_b_denominator);
     println!("   Same PDA prevents liquidity fragmentation: {}", config1.pool_state_pda);
+    
+    Ok(())
+} 
+
+/// POOL-007: Phase 1.1 Enhanced Pool Creation with Treasury Counter Verification
+/// 
+/// This test demonstrates the Phase 1.1 enhanced pool creation helpers that provide
+/// legitimate integration testing of treasury counter functionality
+#[tokio::test]
+#[serial]
+async fn test_phase_1_1_enhanced_pool_creation() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing POOL-007: Phase 1.1 Enhanced Pool Creation with Treasury Verification...");
+    
+    use crate::common::{
+        setup::{initialize_treasury_system, start_test_environment},
+        pool_helpers::{execute_pool_creation_with_counter_verification, verify_pool_creation_fee_collection},
+    };
+    use solana_sdk::signature::Keypair;
+    
+    // Initialize test environment
+    let mut env = start_test_environment().await;
+    
+    println!("🏛️ Step 1: Initialize treasury system...");
+    
+    // Initialize treasury system
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &system_authority,
+    ).await?;
+    
+    println!("✅ Treasury system initialized");
+    
+    println!("\n🏊 Step 2: Execute enhanced pool creation with verification...");
+    
+    // Use Phase 1.1 enhanced helper for legitimate testing
+    let pool_result = execute_pool_creation_with_counter_verification(
+        &mut env,
+        1000,  // This will be used as the multiple_per_base ratio
+        1,     // This parameter is ignored by the current implementation
+    ).await?;
+    
+    println!("✅ Enhanced pool creation completed!");
+    println!("   - Pool PDA: {}", pool_result.pool_pda);
+    println!("   - Fee collected: {} lamports", pool_result.fee_collected);
+    println!("   - Creation successful: {}", pool_result.creation_successful);
+    
+    println!("\n📊 Step 3: Verify pool creation results...");
+    
+    // Validate results from Phase 1.1 helper
+    assert!(pool_result.creation_successful, "Pool creation should be successful");
+    assert!(pool_result.fee_collected > 0, "Pool creation should collect fees");
+    
+    // Verify treasury counter increments
+    let counter_increment = pool_result.post_creation_treasury_state.pool_creation_count - 
+                           pool_result.initial_treasury_state.pool_creation_count;
+    let fee_increment = pool_result.post_creation_treasury_state.total_pool_creation_fees - 
+                       pool_result.initial_treasury_state.total_pool_creation_fees;
+    let balance_increment = pool_result.post_creation_treasury_state.total_balance - 
+                           pool_result.initial_treasury_state.total_balance;
+    
+    assert_eq!(counter_increment, 1, "Pool creation counter should increment by 1");
+    assert_eq!(fee_increment, pool_result.fee_collected, "Fee increment should match collected amount");
+    assert!(balance_increment > 0, "Treasury balance should increase");
+    
+    println!("🔍 Verification results:");
+    println!("   - Counter increment: {} ✅", counter_increment);
+    println!("   - Fee increment: {} lamports ✅", fee_increment);
+    println!("   - Balance increment: {} lamports ✅", balance_increment);
+    
+    println!("\n🔍 Step 4: Verify pool configuration details...");
+    
+    // Verify pool configuration is correct (the actual ratio will be normalized)
+    println!("   - Actual ratio: {}:{}", pool_result.pool_config.ratio_a_numerator, pool_result.pool_config.ratio_b_denominator);
+    assert_ne!(pool_result.pool_config.pool_state_pda, solana_sdk::pubkey::Pubkey::default(), "Pool PDA should be valid");
+    
+    println!("✅ Pool configuration verified:");
+    println!("   - Ratio: {}:{}", pool_result.pool_config.ratio_a_numerator, pool_result.pool_config.ratio_b_denominator);
+    println!("   - Pool State PDA: {}", pool_result.pool_config.pool_state_pda);
+    println!("   - Token A Vault: {}", pool_result.pool_config.token_a_vault_pda);
+    println!("   - Token B Vault: {}", pool_result.pool_config.token_b_vault_pda);
+    
+    println!("\n🔍 Step 5: Additional fee collection verification...");
+    
+    // Use Phase 1.1 helper to double-check fee collection
+    let fee_verification = verify_pool_creation_fee_collection(
+        &mut env,
+        &pool_result.initial_treasury_state,
+    ).await?;
+    
+    assert_eq!(fee_verification, pool_result.fee_collected, "Fee verification should match result");
+    
+    println!("✅ Fee collection verification successful:");
+    println!("   - Verified fees: {} lamports", fee_verification);
+    println!("   - Matches pool result: {}", fee_verification == pool_result.fee_collected);
+    
+    println!("\n✅ POOL-007: Phase 1.1 Enhanced Pool Creation successful!");
+    println!("📋 Phase 1.1 Benefits Demonstrated:");
+    println!("   1. ✅ Enhanced pool creation with automatic verification");
+    println!("   2. ✅ Treasury counter tracking with real blockchain operations");
+    println!("   3. ✅ Comprehensive result structure with detailed state");
+    println!("   4. ✅ Fee collection verification with helper functions");
+    println!("   5. ✅ Legitimate integration testing (no mock data)");
+    println!("   6. ✅ Reusable helper functions for consistent testing");
     
     Ok(())
 } 
