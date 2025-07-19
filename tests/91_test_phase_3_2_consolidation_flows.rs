@@ -74,7 +74,7 @@ async fn test_complex_consolidation_flow() -> Result<(), Box<dyn std::error::Err
     println!("🚀 TEST: Complex consolidation flow (Phase 3.2-002)");
     
     // Execute complex consolidation flow
-    let complex_config = create_complex_consolidation_config();
+    let complex_config = create_comprehensive_consolidation_config();
     let flow_result = execute_consolidation_flow(Some(complex_config)).await?;
     
     // Validate the result
