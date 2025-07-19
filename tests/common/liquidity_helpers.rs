@@ -124,7 +124,7 @@ pub async fn create_liquidity_test_foundation(
     // 8. BATCH OPERATION 4: Fund users with SOL (reduced amounts for faster processing)
     println!("💰 Funding users with SOL...");
     crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 5_000_000_000).await?; // 5 SOL (reduced from 10)
-    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 2_000_000_000).await?; // 2 SOL (reduced from 5)
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 5_000_000_000).await?; // 5 SOL (increased to match user1)
     
     // 9. BATCH OPERATION 5: Create token accounts (optimized batch processing)
     println!("🏦 Creating token accounts...");
