@@ -37,6 +37,7 @@ pub mod tokens;
 pub mod pool_helpers;
 pub mod liquidity_helpers;
 pub mod treasury_helpers; // **PHASE 2.1**: Treasury State Verification Helpers
+pub mod flow_helpers; // **PHASE 3.1**: Basic Trading Flow Infrastructure
 pub mod client_test_utils;
 pub mod view_utils;
 pub mod utils_test_utils;
@@ -51,6 +52,10 @@ pub use tokens::*;
 pub use pool_helpers::*;
 #[allow(unused_imports)]
 pub use liquidity_helpers::*;
+#[allow(unused_imports)]
+pub use treasury_helpers::*;
+#[allow(unused_imports)]
+pub use flow_helpers::*;
 #[allow(unused_imports)]
 pub use client_test_utils::*;
 #[allow(unused_imports)]

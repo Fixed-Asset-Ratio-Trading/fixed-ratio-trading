@@ -1422,7 +1422,7 @@ pub struct SwapOpResult {
 /// **PHASE 1.3**: Enhanced batch swap operation result
 /// 
 /// Contains comprehensive results from executing multiple swap operations with detailed tracking.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct SwapResult {
     /// Total number of swaps performed successfully
