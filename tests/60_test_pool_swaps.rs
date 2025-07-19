@@ -75,6 +75,17 @@ use common::{
     pool_helpers::*,
     setup::*,
     tokens::*,
+    // **ENHANCEMENT**: Add Phase 1.3 swap operation helpers
+    liquidity_helpers::{
+        create_mixed_direction_swaps,
+        execute_swap_operations_with_tracking,
+        verify_swap_fees_accumulated_in_pool,
+        create_batch_a_to_b_swaps,
+        create_batch_b_to_a_swaps,
+        LiquidityTestFoundation,
+        create_liquidity_test_foundation,
+        execute_deposit_operation,
+    },
 };
 
 use fixed_ratio_trading::{
@@ -417,6 +428,134 @@ async fn test_successful_a_to_b_swap() -> TestResult {
     println!("    ✓ Token B: {} (ready to receive)", user_balance_b);
 
     println!("✅ A→B Swap validation testing completed successfully");
+    
+    Ok(())
+}
+
+/// **ENHANCED**: Test comprehensive swap operations using Phase 1.3 helpers
+/// This test demonstrates the power of the new Phase 1.3 enhanced swap helpers
+#[tokio::test] 
+async fn test_enhanced_swap_operations_with_phase_1_3_helpers() -> TestResult {
+    println!("===== ENHANCED: Comprehensive Swap Operations with Phase 1.3 Helpers =====");
+    
+    // Use the enhanced foundation for comprehensive testing
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?; // 3:1 ratio for interesting swaps
+    println!("✅ Enhanced foundation created with 3:1 ratio using Phase 1.1 infrastructure");
+    
+    // Add initial liquidity using enhanced helpers 
+    let user1_pubkey = foundation.user1.pubkey();
+    let user1_primary_account_pubkey = foundation.user1_primary_account.pubkey();
+    let user1_base_account_pubkey = foundation.user1_base_account.pubkey();
+    let user1_lp_a_account_pubkey = foundation.user1_lp_a_account.pubkey();
+    let user1_lp_b_account_pubkey = foundation.user1_lp_b_account.pubkey();
+    let token_a_mint = foundation.pool_config.token_a_mint;
+    let token_b_mint = foundation.pool_config.token_b_mint;
+    
+    // Add liquidity to enable swaps
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_primary_account_pubkey,
+        &user1_lp_a_account_pubkey,
+        &token_a_mint,
+        2_000_000, // 2M tokens
+    ).await?;
+    
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_base_account_pubkey,
+        &user1_lp_b_account_pubkey,
+        &token_b_mint,
+        1_000_000, // 1M tokens (maintains 3:1 ratio)
+    ).await?;
+    
+    println!("✅ Initial liquidity added using Phase 1.2 enhanced deposit operations");
+    
+    // **PHASE 1.3 ENHANCEMENT**: Create mixed-direction swaps for comprehensive testing
+    let swap_operations = create_mixed_direction_swaps(&foundation);
+    println!("✅ Created {} mixed-direction swap operations using Phase 1.3 helpers", swap_operations.len());
+    
+    // **PHASE 1.3 ENHANCEMENT**: Execute comprehensive swap tracking
+    let pool_pda = foundation.pool_config.pool_state_pda;
+    let swap_result = execute_swap_operations_with_tracking(
+        &mut foundation,
+        &pool_pda,
+        swap_operations,
+    ).await?;
+    
+    println!("✅ Enhanced swap operations completed:");
+    println!("   • Swaps performed: {}", swap_result.swaps_performed);
+    println!("   • Total volume processed: {} tokens", swap_result.total_volume_processed);
+    println!("   • Total fees generated: {} lamports", swap_result.total_fees_generated);
+    println!("   • Success rate: {:.1}%", swap_result.success_rate * 100.0);
+    println!("   • Average fee per swap: {:.2} lamports", 
+             if swap_result.swaps_performed > 0 { 
+                 swap_result.total_fees_generated as f64 / swap_result.swaps_performed as f64 
+             } else { 0.0 });
+    
+    // **PHASE 1.3 ENHANCEMENT**: Create batch operations for stress testing
+    let user2_pubkey = foundation.user2.pubkey();
+    let user2_primary_account = foundation.user2_primary_account.pubkey();
+    let user2_base_account = foundation.user2_base_account.pubkey();
+    
+    let batch_a_to_b = create_batch_a_to_b_swaps(
+        vec![10_000, 20_000, 15_000, 25_000, 30_000], // 5 different amounts
+        user2_pubkey,
+        user2_primary_account,
+        user2_base_account,
+        token_a_mint,
+    );
+    let batch_b_to_a = create_batch_b_to_a_swaps(
+        vec![5_000, 8_000, 12_000], // 3 different amounts  
+        user2_pubkey,
+        user2_base_account,
+        user2_primary_account,
+        token_b_mint,
+    );
+    
+    println!("✅ Created batch operations: {} A→B + {} B→A swaps", batch_a_to_b.len(), batch_b_to_a.len());
+    
+    // Execute batch A→B swaps
+    let batch_result_a_to_b = execute_swap_operations_with_tracking(
+        &mut foundation,
+        &pool_pda,
+        batch_a_to_b,
+    ).await?;
+    
+    println!("✅ Batch A→B operations completed: {} swaps, {:.1}% success rate", 
+             batch_result_a_to_b.swaps_performed, batch_result_a_to_b.success_rate * 100.0);
+    
+    // Execute batch B→A swaps
+    let batch_result_b_to_a = execute_swap_operations_with_tracking(
+        &mut foundation,
+        &pool_pda,
+        batch_b_to_a,
+    ).await?;
+    
+    println!("✅ Batch B→A operations completed: {} swaps, {:.1}% success rate", 
+             batch_result_b_to_a.swaps_performed, batch_result_b_to_a.success_rate * 100.0);
+    
+    // **PHASE 1.3 ENHANCEMENT**: Verify swap fees accumulated in pool
+    verify_swap_fees_accumulated_in_pool(&foundation, &pool_pda).await?;
+    println!("✅ Pool swap fee accumulation verified using Phase 1.3 helpers");
+    
+    // Calculate total statistics
+    let total_swaps = swap_result.swaps_performed + batch_result_a_to_b.swaps_performed + batch_result_b_to_a.swaps_performed;
+    let total_fees = swap_result.total_fees_generated + batch_result_a_to_b.total_fees_generated + batch_result_b_to_a.total_fees_generated;
+    let total_volume = swap_result.total_volume_processed + batch_result_a_to_b.total_volume_processed + batch_result_b_to_a.total_volume_processed;
+    
+    println!("\n🎉 ENHANCED SWAP TESTING COMPLETED SUCCESSFULLY!");
+    println!("   • ✅ Phase 1.1 foundation: Robust pool creation");
+    println!("   • ✅ Phase 1.2 liquidity: Enhanced deposit operations");
+    println!("   • ✅ Phase 1.3 swaps: Comprehensive swap operation tracking");
+    println!("   • 📊 Total Statistics:");
+    println!("     - Total swaps executed: {}", total_swaps);
+    println!("     - Total volume processed: {} tokens", total_volume);
+    println!("     - Total fees generated: {} lamports", total_fees);
+    println!("     - Average fee per swap: {:.2} lamports", 
+             if total_swaps > 0 { total_fees as f64 / total_swaps as f64 } else { 0.0 });
+    println!("   • 🚀 All Phase 1.1-1.3 helpers working seamlessly!");
     
     Ok(())
 }

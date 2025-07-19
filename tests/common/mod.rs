@@ -36,6 +36,7 @@ pub mod setup;
 pub mod tokens;
 pub mod pool_helpers;
 pub mod liquidity_helpers;
+pub mod treasury_helpers; // **PHASE 2.1**: Treasury State Verification Helpers
 pub mod client_test_utils;
 pub mod view_utils;
 pub mod utils_test_utils;

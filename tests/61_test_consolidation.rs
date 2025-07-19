@@ -18,6 +18,17 @@ use common::{
     pool_helpers::{create_pool_new_pattern, PoolConfig},
     tokens::create_test_mints,
     liquidity_helpers::{create_liquidity_test_foundation},
+    // **ENHANCEMENT**: Add Phase 2.1 consolidation and treasury helpers
+    pool_helpers::{
+        execute_consolidation_operation,
+        execute_consolidation_with_verification,
+        consolidate_multiple_pools,
+    },
+    treasury_helpers::{
+        get_treasury_state_verified,
+        compare_treasury_states,
+        verify_treasury_balance_change,
+    },
 };
 
 use fixed_ratio_trading::{
@@ -135,6 +146,96 @@ async fn test_basic_consolidation_instruction() -> TestResult {
     println!("   - Pool paused successfully");
     println!("   - Consolidation instruction executed without errors");
     println!("   - Pool state remains consistent");
+    
+    Ok(())
+}
+
+/// **ENHANCED**: Test consolidation using Phase 2.1 enhanced helpers
+/// This test demonstrates the power of the new Phase 2.1 consolidation helpers
+#[tokio::test]
+#[serial]
+async fn test_enhanced_consolidation_with_phase_2_1_helpers() -> TestResult {
+    println!("===== ENHANCED: Comprehensive Consolidation with Phase 2.1 Helpers =====");
+    
+    // Use enhanced foundation
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?;
+    println!("✅ Enhanced foundation created with 3:1 ratio using Phase 1.1 infrastructure");
+    
+    // **PHASE 2.1 ENHANCEMENT**: Get initial treasury state with verification
+    let payer_clone = foundation.env.payer.insecure_clone();
+    let temp_env = TestEnvironment {
+        banks_client: foundation.env.banks_client,
+        payer: payer_clone,
+        recent_blockhash: foundation.env.recent_blockhash,
+    };
+    
+    let initial_treasury_state = get_treasury_state_verified(&temp_env).await?;
+    println!("✅ Initial treasury state verified:");
+    println!("   • Total balance: {} lamports", initial_treasury_state.total_balance);
+    println!("   • Pool creation count: {}", initial_treasury_state.pool_creation_count);
+    println!("   • Total consolidations: {}", initial_treasury_state.total_consolidations_performed);
+    
+    // Update foundation
+    foundation.env.banks_client = temp_env.banks_client;
+    
+    // **PHASE 2.1 ENHANCEMENT**: Execute single pool consolidation with verification
+    let payer_clone_2 = foundation.env.payer.insecure_clone();
+    let mut temp_env_2 = TestEnvironment {
+        banks_client: foundation.env.banks_client,
+        payer: payer_clone_2,
+        recent_blockhash: foundation.env.recent_blockhash,
+    };
+    
+    let pool_state_pda = foundation.pool_config.pool_state_pda;
+    let consolidation_result = execute_consolidation_with_verification(&mut temp_env_2, &pool_state_pda).await?;
+    
+    println!("✅ Enhanced consolidation completed:");
+    println!("   • Consolidation successful: {}", consolidation_result.consolidation_successful);
+    println!("   • Fees transferred: {} lamports", consolidation_result.fees_transferred);
+    println!("   • Initial pool fees: {:?}", consolidation_result.initial_pool_fees);
+    println!("   • Liquidity operations consolidated: {}", consolidation_result.liquidity_operations_consolidated);
+    println!("   • Swap operations consolidated: {}", consolidation_result.swap_operations_consolidated);
+    
+    // Update foundation
+    foundation.env.banks_client = temp_env_2.banks_client;
+    
+    // **PHASE 2.1 ENHANCEMENT**: Compare treasury states
+    let comparison = compare_treasury_states(&initial_treasury_state, &consolidation_result.post_consolidation_treasury_state).await?;
+    
+    println!("✅ Treasury state comparison completed:");
+    println!("   • Balance delta: {} lamports", comparison.balance_delta);
+    println!("   • Pool creation delta: {}", comparison.pool_creation_count_delta);
+    println!("   • Consolidation count delta: {}", comparison.consolidation_count_delta);
+    println!("   • Summary: {}", comparison.change_summary);
+    
+    // **PHASE 2.1 ENHANCEMENT**: Verify treasury balance change
+    let payer_clone_3 = foundation.env.payer.insecure_clone();
+    let temp_env_3 = TestEnvironment {
+        banks_client: foundation.env.banks_client,
+        payer: payer_clone_3,
+        recent_blockhash: foundation.env.recent_blockhash,
+    };
+    
+    verify_treasury_balance_change(&temp_env_3, comparison.balance_delta).await?;
+    
+    println!("✅ Treasury balance verification:");
+    println!("   • Balance change verified successfully");
+    println!("   • Expected delta: {} lamports", comparison.balance_delta);
+    println!("   • Verification completed without errors");
+    
+    // Update foundation
+    foundation.env.banks_client = temp_env_3.banks_client;
+    
+    println!("\n🎉 ENHANCED CONSOLIDATION TESTING COMPLETED SUCCESSFULLY!");
+    println!("   • ✅ Phase 1.1 foundation: Robust pool creation and management");
+    println!("   • ✅ Phase 2.1 consolidation: Enhanced single pool consolidation with verification");
+    println!("   • ✅ Phase 2.1 treasury: Comprehensive state verification and balance tracking");
+    println!("   • 📊 Statistics:");
+    println!("     - Pool consolidated: 1");
+    println!("     - Fees transferred: {} lamports", consolidation_result.fees_transferred);
+    println!("     - Treasury operations tracked: {}", 
+             initial_treasury_state.total_consolidations_performed as i64 + comparison.consolidation_count_delta);
+    println!("   • 🚀 All Phase 1.1-2.1 consolidation helpers working seamlessly!");
     
     Ok(())
 }

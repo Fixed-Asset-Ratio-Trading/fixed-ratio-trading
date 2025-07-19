@@ -681,11 +681,7 @@ pub fn process_withdraw(
 
     // ✅ OPTIMIZATION: USE CONSOLIDATED VALIDATION FUNCTIONS
     // Validate LP token correspondence for withdrawal using consolidated function
-    let is_withdrawing_token_a = validate_withdrawal_lp_correspondence(
-        &withdraw_token_mint_key,
-        &user_input_data,
-        &pool_state_data,
-    )?;
+    let is_withdrawing_token_a = validate_withdrawal_lp_correspondence(&withdraw_token_mint_key, &user_input_data, &pool_state_data,)?;
 
     // Determine withdrawal target using consolidated vault validation
     let _ = validate_vault_and_mint_accounts(
