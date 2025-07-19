@@ -41,6 +41,16 @@ use common::{
         verify_treasury_balance_change,
         execute_treasury_withdrawal_with_verification,
     },
+    // **PHASE 3.1 & 3.2**: Import flow helpers for comprehensive end-to-end testing
+    flow_helpers::{
+        execute_basic_trading_flow,
+        execute_consolidation_flow,
+        BasicTradingFlowConfig,
+        ConsolidationFlowConfig,
+        SwapOperation,
+        SwapDirection as FlowSwapDirection,
+        FlowResult,
+    },
     tokens::get_token_balance,
 };
 
@@ -53,6 +63,189 @@ use fixed_ratio_trading::{
 use borsh::{BorshDeserialize, BorshSerialize};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+// ========================================================================
+// PHASE 3.1 & 3.2: ENHANCED TREASURY TESTS USING FLOW HELPERS
+// ========================================================================
+
+/// **PHASE 3.1**: Comprehensive treasury operations using basic trading flow helpers
+/// This test demonstrates treasury operations across a complete trading flow
+#[tokio::test]
+#[serial]
+async fn test_treasury_operations_with_complete_trading_flow() -> TestResult {
+    println!("🚀 PHASE 3.1: Testing treasury operations with complete trading flow...");
+    
+    // Configure a flow that generates substantial treasury activity
+    let config = BasicTradingFlowConfig {
+        pool_ratio: Some(7), // 7:1 ratio for interesting fee generation
+        liquidity_deposits: vec![1_500_000], // Single large deposit to ensure adequate liquidity
+        swap_operations: vec![
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 15_000 }, // Very conservative amounts
+            SwapOperation { direction: FlowSwapDirection::TokenBToA, amount: 8_000 },
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 20_000 },
+            SwapOperation { direction: FlowSwapDirection::TokenBToA, amount: 10_000 },
+        ],
+        verify_treasury_counters: true, // Critical for treasury testing
+    };
+    
+    // Execute the complete flow with treasury tracking
+    println!("⚡ Executing treasury-focused trading flow...");
+    let flow_result = execute_basic_trading_flow(Some(config)).await?;
+    
+    // Verify comprehensive treasury operations
+    assert!(flow_result.flow_successful, "Treasury flow should be successful");
+    assert!(flow_result.pool_creation_result.fee_collected > 0, "Should collect pool creation fees");
+    assert!(flow_result.liquidity_result.total_fees_generated > 0, "Should generate liquidity fees");
+    assert!(flow_result.swap_result.total_fees_generated > 0, "Should generate swap fees");
+    assert!(flow_result.treasury_comparisons.len() >= 1, "Should track at least one treasury state change");
+    
+    // Calculate total fees across all operations
+    let total_fees = flow_result.pool_creation_result.fee_collected +
+                    flow_result.liquidity_result.total_fees_generated +
+                    flow_result.swap_result.total_fees_generated;
+    
+    println!("✅ Treasury Operations Summary:");
+    println!("   - Pool creation fees: {} lamports", flow_result.pool_creation_result.fee_collected);
+    println!("   - Liquidity operation fees: {} lamports", flow_result.liquidity_result.total_fees_generated);
+    println!("   - Swap operation fees: {} lamports", flow_result.swap_result.total_fees_generated);
+    println!("   - Total fees generated: {} lamports", total_fees);
+    println!("   - Treasury state changes tracked: {}", flow_result.treasury_comparisons.len());
+    
+    // Verify treasury counter tracking
+    assert!(flow_result.final_treasury_state.pool_creation_count >= 1, "Should track pool creation in treasury");
+    
+    println!("✅ PHASE 3.1: Treasury operations with complete trading flow test completed successfully!");
+    println!("   This validates treasury operations across: pool creation + liquidity + swaps + fee accumulation");
+    
+    Ok(())
+}
+
+/// **PHASE 3.2**: Multi-pool treasury consolidation using consolidation flow helpers
+/// This test demonstrates treasury operations across multiple pools and complex scenarios
+#[tokio::test]
+#[serial]
+async fn test_multi_pool_treasury_consolidation() -> TestResult {
+    println!("🚀 PHASE 3.2: Testing multi-pool treasury consolidation...");
+    
+    // Configure a multi-pool scenario with extensive treasury operations
+    let config = ConsolidationFlowConfig {
+        pool_count: 4,
+        pool_ratios: vec![3, 4, 5, 6], // Different ratios for varied fee generation
+        liquidity_per_pool: vec![2_000_000, 1_800_000, 1_500_000, 1_200_000],
+        cross_pool_swaps: vec![
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 0,
+                amount: 300_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenAToB,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 1,
+                amount: 250_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenBToA,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 2,
+                amount: 400_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenAToB,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 3,
+                amount: 180_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenBToA,
+                expected_pool_state: None,
+            },
+        ],
+        treasury_operations: vec![
+            crate::common::flow_helpers::TreasuryOperation {
+                operation_type: crate::common::flow_helpers::TreasuryOperationType::VerifyFeeAccumulation,
+                amount: Some(300_000),
+                expected_success: true,
+            },
+            crate::common::flow_helpers::TreasuryOperation {
+                operation_type: crate::common::flow_helpers::TreasuryOperationType::WithdrawFees,
+                amount: Some(150_000),
+                expected_success: true,
+            },
+            crate::common::flow_helpers::TreasuryOperation {
+                operation_type: crate::common::flow_helpers::TreasuryOperationType::VerifyFeeAccumulation,
+                amount: Some(150_000),
+                expected_success: true,
+            },
+        ],
+        test_fee_consolidation: true,
+        test_treasury_withdrawals: true,
+    };
+    
+    // Execute the multi-pool treasury consolidation
+    println!("⚡ Executing multi-pool treasury consolidation...");
+    let consolidation_result = execute_consolidation_flow(Some(config)).await?;
+    
+    // Verify comprehensive treasury consolidation results
+    assert!(consolidation_result.flow_successful, "Treasury consolidation should be successful");
+    assert_eq!(consolidation_result.pool_results.len(), 4, "Should create 4 pools");
+    assert!(consolidation_result.performance_metrics.total_liquidity_operations >= 4, "Should perform liquidity on all pools");
+    assert_eq!(consolidation_result.performance_metrics.total_swap_operations, 4, "Should perform cross-pool swaps");
+    assert_eq!(consolidation_result.performance_metrics.total_treasury_operations, 3, "Should perform 3 treasury operations");
+    
+    println!("✅ Multi-Pool Treasury Consolidation Results:");
+    println!("   - Pools coordinated: {}", consolidation_result.pool_results.len());
+    println!("   - Total liquidity operations: {}", consolidation_result.performance_metrics.total_liquidity_operations);
+    println!("   - Cross-pool swaps: {}", consolidation_result.performance_metrics.total_swap_operations);
+    println!("   - Treasury operations: {}", consolidation_result.performance_metrics.total_treasury_operations);
+    println!("   - Execution time: {}ms", consolidation_result.performance_metrics.total_execution_time_ms);
+    
+    // Verify treasury consolidation performance
+    assert!(consolidation_result.performance_metrics.total_execution_time_ms > 0, "Should track execution time");
+    assert!(consolidation_result.performance_metrics.pools_processed >= 4, "Should track all operations (4 pools + 4 liquidity + 4 swaps + 3 treasury)");
+    
+    println!("✅ PHASE 3.2: Multi-pool treasury consolidation test completed successfully!");
+    println!("   This validates treasury consolidation across: 4 pools + liquidity + cross-pool swaps + treasury operations");
+    
+    Ok(())
+}
+
+/// **PHASE 3.1 ENHANCED**: Simplified treasury validation using flow helper
+/// This shows how complex treasury testing can be simplified while being more comprehensive
+#[tokio::test]
+#[serial]
+async fn test_enhanced_treasury_operations_validation() -> TestResult {
+    println!("🚀 PHASE 3.1 ENHANCED: Testing enhanced treasury operations validation...");
+    
+    // Test treasury operations with minimal configuration but maximum validation
+    let config = BasicTradingFlowConfig {
+        pool_ratio: Some(9), // 9:1 ratio for distinctive fee generation
+        liquidity_deposits: vec![1_000_000], // Conservative deposit for reliable execution
+        swap_operations: vec![
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 10_000 }, // Much smaller amount
+        ],
+        verify_treasury_counters: true, // Essential for treasury validation
+    };
+    
+    let flow_result = execute_basic_trading_flow(Some(config)).await?;
+    
+    // All treasury validation is handled by the flow helper
+    assert!(flow_result.flow_successful, "Treasury operations should succeed");
+    assert!(flow_result.pool_creation_result.fee_collected > 0, "Should collect creation fees");
+    assert!(flow_result.liquidity_result.total_fees_generated > 0, "Should collect liquidity fees");
+    assert!(flow_result.swap_result.total_fees_generated > 0, "Should collect swap fees");
+    assert!(flow_result.treasury_comparisons.len() >= 1, "Should track treasury changes");
+    
+    let total_fees = flow_result.pool_creation_result.fee_collected +
+                    flow_result.liquidity_result.total_fees_generated +
+                    flow_result.swap_result.total_fees_generated;
+    
+    println!("✅ ENHANCED: Treasury validation completed");
+    println!("   Total fees validated: {} lamports (comprehensive testing in minimal code)", total_fees);
+    
+    Ok(())
+}
+
+// ========================================================================
+// ORIGINAL TREASURY TESTS (Enhanced with flow helper patterns where beneficial)
+// ========================================================================
 
 /// TREASURY-001: Comprehensive treasury operations workflow test
 /// 

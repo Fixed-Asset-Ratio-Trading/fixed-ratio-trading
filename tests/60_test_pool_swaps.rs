@@ -66,6 +66,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
+use serial_test::serial;
 
 
 mod common;
@@ -86,6 +87,16 @@ use common::{
         create_liquidity_test_foundation,
         execute_deposit_operation,
     },
+    // **PHASE 3.1 & 3.2**: Import flow helpers for comprehensive end-to-end testing
+    flow_helpers::{
+        execute_basic_trading_flow,
+        execute_consolidation_flow,
+        BasicTradingFlowConfig,
+        ConsolidationFlowConfig,
+        SwapOperation,
+        SwapDirection as FlowSwapDirection,
+        FlowResult,
+    },
 };
 
 use fixed_ratio_trading::{
@@ -96,6 +107,170 @@ use fixed_ratio_trading::{
 use borsh::{BorshDeserialize, BorshSerialize};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+// ========================================================================
+// PHASE 3.1 & 3.2: ENHANCED SWAP TESTS USING FLOW HELPERS
+// ========================================================================
+
+/// **PHASE 3.1**: Comprehensive swap flow test using basic trading flow helpers
+/// This test demonstrates complex swap scenarios with minimal code
+#[tokio::test]
+#[serial]
+async fn test_comprehensive_swap_flow_with_helpers() -> TestResult {
+    println!("🚀 PHASE 3.1: Testing comprehensive swap flow with flow helpers...");
+    
+    // Configure a swap-focused trading flow
+    let config = BasicTradingFlowConfig {
+        pool_ratio: Some(4), // 4:1 ratio pool for interesting swap dynamics
+        liquidity_deposits: vec![1_500_000], // Single large deposit to ensure adequate liquidity
+        swap_operations: vec![
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 10_000 }, // Very conservative amounts
+            SwapOperation { direction: FlowSwapDirection::TokenBToA, amount: 5_000 },
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 15_000 },
+            SwapOperation { direction: FlowSwapDirection::TokenBToA, amount: 8_000 },
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 12_000 },
+        ],
+        verify_treasury_counters: true,
+    };
+    
+    // Execute the swap-heavy flow
+    println!("⚡ Executing swap-heavy trading flow...");
+    let flow_result = execute_basic_trading_flow(Some(config)).await?;
+    
+    // Verify swap-specific results
+    assert!(flow_result.flow_successful, "Swap flow should be successful");
+    assert_eq!(flow_result.swap_result.swaps_performed, 5, "Should execute 5 swaps");
+    assert!(flow_result.swap_result.total_fees_generated > 0, "Should generate swap fees");
+    
+    // Verify directional swaps
+    let a_to_b_swaps = flow_result.swap_result.swap_details.iter()
+        .filter(|swap| matches!(swap.direction, crate::common::liquidity_helpers::SwapDirection::AToB))
+        .count();
+    let b_to_a_swaps = flow_result.swap_result.swap_details.iter()
+        .filter(|swap| matches!(swap.direction, crate::common::liquidity_helpers::SwapDirection::BToA))
+        .count();
+        
+    assert_eq!(a_to_b_swaps, 3, "Should have 3 A→B swaps");
+    assert_eq!(b_to_a_swaps, 2, "Should have 2 B→A swaps");
+    
+    println!("✅ Swap Flow Results Summary:");
+    println!("   - Total swaps executed: {}", flow_result.swap_result.swaps_performed);
+    println!("   - A→B swaps: {}", a_to_b_swaps);
+    println!("   - B→A swaps: {}", b_to_a_swaps);
+    println!("   - Total swap fees: {} lamports", flow_result.swap_result.total_fees_generated);
+    
+    println!("✅ PHASE 3.1: Comprehensive swap flow test completed successfully!");
+    
+    Ok(())
+}
+
+/// **PHASE 3.2**: Multi-pool swap coordination using consolidation flow helpers
+/// This test demonstrates cross-pool swap scenarios
+#[tokio::test]
+#[serial]
+async fn test_multi_pool_swap_coordination() -> TestResult {
+    println!("🚀 PHASE 3.2: Testing multi-pool swap coordination...");
+    
+    // Configure multiple pools with different ratios for diverse swap testing
+    let config = ConsolidationFlowConfig {
+        pool_count: 4,
+        pool_ratios: vec![2, 3, 5, 7], // Different ratios for varied swap dynamics
+        liquidity_per_pool: vec![2_000_000, 1_500_000, 1_000_000, 800_000],
+        cross_pool_swaps: vec![
+            // Test swaps across different pool ratios
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 0, // 2:1 pool
+                amount: 200_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenAToB,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 1, // 3:1 pool
+                amount: 150_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenBToA,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 2, // 5:1 pool
+                amount: 300_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenAToB,
+                expected_pool_state: None,
+            },
+            crate::common::flow_helpers::CrossPoolSwapOperation {
+                pool_index: 3, // 7:1 pool
+                amount: 100_000,
+                direction: crate::common::flow_helpers::SwapDirection::TokenBToA,
+                expected_pool_state: None,
+            },
+        ],
+        treasury_operations: vec![
+            crate::common::flow_helpers::TreasuryOperation {
+                operation_type: crate::common::flow_helpers::TreasuryOperationType::VerifyFeeAccumulation,
+                amount: Some(80_000),
+                expected_success: true,
+            },
+        ],
+        test_fee_consolidation: true,
+        test_treasury_withdrawals: true,
+    };
+    
+    // Execute the multi-pool swap coordination
+    println!("⚡ Executing multi-pool swap coordination...");
+    let consolidation_result = execute_consolidation_flow(Some(config)).await?;
+    
+    // Verify cross-pool swap results
+    assert!(consolidation_result.flow_successful, "Multi-pool swap flow should be successful");
+    assert_eq!(consolidation_result.pool_results.len(), 4, "Should create 4 pools");
+    assert_eq!(consolidation_result.performance_metrics.total_swap_operations, 4, "Should perform 4 cross-pool swaps");
+    assert!(consolidation_result.performance_metrics.total_treasury_operations >= 1, "Should verify treasury accumulation");
+    
+    println!("✅ Multi-Pool Swap Results Summary:");
+    println!("   - Pools with different ratios: {}", consolidation_result.pool_results.len());
+    println!("   - Cross-pool swaps: {}", consolidation_result.performance_metrics.total_swap_operations);
+    println!("   - Total execution time: {}ms", consolidation_result.performance_metrics.total_execution_time_ms);
+    
+    println!("✅ PHASE 3.2: Multi-pool swap coordination test completed successfully!");
+    println!("   This test validates swap behavior across pools with different ratios (2:1, 3:1, 5:1, 7:1)");
+    
+    Ok(())
+}
+
+/// **PHASE 3.1 ENHANCED**: Replace complex manual swap test with simple flow helper
+/// This shows how existing swap tests can be dramatically simplified
+#[tokio::test]
+#[serial]
+async fn test_enhanced_directional_swaps_with_flow_helper() -> TestResult {
+    println!("🚀 PHASE 3.1 ENHANCED: Testing directional swaps using flow helpers...");
+    
+    // Test bidirectional swaps with minimal configuration
+    let config = BasicTradingFlowConfig {
+        pool_ratio: Some(6), // 6:1 ratio for clear directional testing
+        liquidity_deposits: vec![1_000_000], // Conservative deposit for reliable execution
+        swap_operations: vec![
+            SwapOperation { direction: FlowSwapDirection::TokenAToB, amount: 10_000 }, // Much smaller amounts
+            SwapOperation { direction: FlowSwapDirection::TokenBToA, amount: 5_000 },
+        ],
+        verify_treasury_counters: false, // Focus on swap mechanics
+    };
+    
+    let flow_result = execute_basic_trading_flow(Some(config)).await?;
+    
+    // Verify directional behavior
+    assert!(flow_result.flow_successful, "Directional swap flow should succeed");
+    assert_eq!(flow_result.swap_result.swaps_performed, 2, "Should execute 2 directional swaps");
+    
+    // Check that both directions worked
+    let swap_directions: Vec<_> = flow_result.swap_result.swap_details.iter()
+        .map(|swap| &swap.direction)
+        .collect();
+    
+    assert!(swap_directions.iter().any(|&dir| matches!(dir, crate::common::liquidity_helpers::SwapDirection::AToB)), "Should have A→B swap");
+    assert!(swap_directions.iter().any(|&dir| matches!(dir, crate::common::liquidity_helpers::SwapDirection::BToA)), "Should have B→A swap");
+    
+    println!("✅ ENHANCED: Directional swap test completed (simplified from manual setup)");
+    
+    Ok(())
+}
 
 // ================================================================================================
 // COMMON CONSTANTS AND HELPER FUNCTIONS
