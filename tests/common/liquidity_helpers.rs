@@ -8,7 +8,7 @@ use solana_sdk::{
     signature::Keypair,
     signer::Signer,
 };
-use borsh::BorshSerialize;
+use borsh::{BorshSerialize, BorshDeserialize};
 use fixed_ratio_trading::{
     constants::*,
     types::instructions::PoolInstruction,
@@ -2010,3 +2010,162 @@ pub fn create_mixed_direction_swaps(
         ),
     ]
 } 
+
+/// **NEW: Real deposit operation with comprehensive pool state verification**
+/// 
+/// This function performs an ACTUAL deposit operation (not mock data) and verifies:
+/// 1. Pool state SOL balance is correctly updated with fees
+/// 2. Fee counters are correctly incremented
+/// 3. Total SOL fees collected matches expected amounts
+/// 4. Pending SOL fees calculation is correct
+#[allow(dead_code)]
+pub async fn execute_real_deposit_with_verification(
+    foundation: &mut LiquidityTestFoundation,
+    amount: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🔥 REAL DEPOSIT WITH VERIFICATION: {} tokens", amount);
+    println!("================================================");
+    
+    // **STEP 1: Capture initial state**
+    let initial_pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let initial_pool_state = fixed_ratio_trading::PoolState::try_from_slice(&initial_pool_account.data)?;
+    let initial_pool_sol_balance = initial_pool_account.lamports;
+    
+    println!("📊 INITIAL STATE:");
+    println!("   • Pool SOL balance: {} lamports ({:.6} SOL)", 
+             initial_pool_sol_balance, 
+             initial_pool_sol_balance as f64 / 1_000_000_000.0);
+    println!("   • Collected liquidity fees: {} lamports", initial_pool_state.collected_liquidity_fees);
+    println!("   • Total SOL fees collected: {} lamports", initial_pool_state.total_sol_fees_collected);
+    println!("   • Total fees consolidated: {} lamports", initial_pool_state.total_fees_consolidated);
+    println!("   • Pending SOL fees: {} lamports", initial_pool_state.pending_sol_fees());
+    
+    // **STEP 2: Perform REAL deposit operation**
+    let user1_pubkey = foundation.user1.pubkey();
+    
+    // Determine which token to deposit (use Token A)
+    let deposit_mint = foundation.pool_config.token_a_mint;
+    let user_input_account = foundation.user1_primary_account.pubkey();
+    let user_output_lp_account = foundation.user1_lp_a_account.pubkey();
+    
+    println!("🚀 EXECUTING REAL DEPOSIT OPERATION:");
+    println!("   • User: {}", user1_pubkey);
+    println!("   • Deposit mint: {}", deposit_mint);
+    println!("   • Amount: {} tokens", amount);
+    println!("   • Expected fee: {} lamports ({:.6} SOL)", 
+             fixed_ratio_trading::constants::DEPOSIT_WITHDRAWAL_FEE,
+             fixed_ratio_trading::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
+    
+    // Execute the real deposit operation
+    execute_deposit_operation(
+        foundation,
+        &user1_pubkey,
+        &user_input_account,
+        &user_output_lp_account,
+        &deposit_mint,
+        amount,
+    ).await?;
+    
+    println!("✅ Real deposit operation completed!");
+    
+    // **STEP 3: Verify pool state after deposit**
+    let final_pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let final_pool_state = fixed_ratio_trading::PoolState::try_from_slice(&final_pool_account.data)?;
+    let final_pool_sol_balance = final_pool_account.lamports;
+    
+    println!("📊 FINAL STATE:");
+    println!("   • Pool SOL balance: {} lamports ({:.6} SOL)", 
+             final_pool_sol_balance, 
+             final_pool_sol_balance as f64 / 1_000_000_000.0);
+    println!("   • Collected liquidity fees: {} lamports", final_pool_state.collected_liquidity_fees);
+    println!("   • Total SOL fees collected: {} lamports", final_pool_state.total_sol_fees_collected);
+    println!("   • Total fees consolidated: {} lamports", final_pool_state.total_fees_consolidated);
+    println!("   • Pending SOL fees: {} lamports", final_pool_state.pending_sol_fees());
+    
+    // **STEP 4: Comprehensive verification**
+    println!("🔍 VERIFICATION RESULTS:");
+    
+    // Check SOL balance increase
+    let sol_balance_increase = final_pool_sol_balance - initial_pool_sol_balance;
+    let expected_fee = fixed_ratio_trading::constants::DEPOSIT_WITHDRAWAL_FEE;
+    
+    println!("   • SOL balance increase: {} lamports (expected: {})", 
+             sol_balance_increase, expected_fee);
+    
+    if sol_balance_increase == expected_fee {
+        println!("   ✅ SOL balance increased by correct fee amount");
+    } else {
+        println!("   ❌ SOL balance increase incorrect!");
+        println!("      Expected: {} lamports", expected_fee);
+        println!("      Actual: {} lamports", sol_balance_increase);
+        println!("      Difference: {} lamports", sol_balance_increase as i64 - expected_fee as i64);
+    }
+    
+    // Check collected liquidity fees
+    let liquidity_fees_increase = final_pool_state.collected_liquidity_fees - initial_pool_state.collected_liquidity_fees;
+    println!("   • Liquidity fees increase: {} lamports (expected: {})", 
+             liquidity_fees_increase, expected_fee);
+    
+    if liquidity_fees_increase == expected_fee {
+        println!("   ✅ Collected liquidity fees increased correctly");
+    } else {
+        println!("   ❌ Collected liquidity fees increase incorrect!");
+        println!("      Expected: {} lamports", expected_fee);
+        println!("      Actual: {} lamports", liquidity_fees_increase);
+    }
+    
+    // Check total SOL fees collected
+    let total_fees_increase = final_pool_state.total_sol_fees_collected - initial_pool_state.total_sol_fees_collected;
+    println!("   • Total SOL fees increase: {} lamports (expected: {})", 
+             total_fees_increase, expected_fee);
+    
+    if total_fees_increase == expected_fee {
+        println!("   ✅ Total SOL fees collected increased correctly");
+    } else {
+        println!("   ❌ Total SOL fees collected increase incorrect!");
+        println!("      Expected: {} lamports", expected_fee);
+        println!("      Actual: {} lamports", total_fees_increase);
+    }
+    
+    // Check pending SOL fees calculation
+    let expected_pending_fees = final_pool_state.total_sol_fees_collected - final_pool_state.total_fees_consolidated;
+    let actual_pending_fees = final_pool_state.pending_sol_fees();
+    
+    println!("   • Pending SOL fees calculation:");
+    println!("     - total_sol_fees_collected: {}", final_pool_state.total_sol_fees_collected);
+    println!("     - total_fees_consolidated: {}", final_pool_state.total_fees_consolidated);
+    println!("     - Expected pending: {}", expected_pending_fees);
+    println!("     - Actual pending: {}", actual_pending_fees);
+    
+    if actual_pending_fees == expected_pending_fees {
+        println!("   ✅ Pending SOL fees calculation correct");
+    } else {
+        println!("   ❌ Pending SOL fees calculation incorrect!");
+    }
+    
+    // **STEP 5: Debug fee collection mechanism**
+    if sol_balance_increase != expected_fee || liquidity_fees_increase != expected_fee || total_fees_increase != expected_fee {
+        println!("🚨 FEE COLLECTION DEBUG:");
+        println!("   This indicates an issue with the fee collection mechanism.");
+        println!("   Possible causes:");
+        println!("   1. collect_liquidity_fee_distributed() not being called");
+        println!("   2. Fee collection failing silently");
+        println!("   3. Pool state not being updated after fee transfer");
+        println!("   4. Buffer serialization pattern not working");
+        
+        // Additional debugging - check if the fee was actually transferred
+        println!("🔍 DETAILED DEBUG INFO:");
+        println!("   • Pool state account data length: {}", final_pool_account.data.len());
+        println!("   • Pool state owner: {}", final_pool_account.owner);
+        println!("   • Pool state executable: {}", final_pool_account.executable);
+        
+        return Err("Fee collection verification failed - fees not properly collected".into());
+    }
+    
+    println!("🎉 ALL VERIFICATIONS PASSED!");
+    println!("   • SOL balance increased by {} lamports", sol_balance_increase);
+    println!("   • Fee counters updated correctly");
+    println!("   • Pool state consistency maintained");
+    
+    Ok(())
+}

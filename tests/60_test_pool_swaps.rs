@@ -2083,3 +2083,317 @@ async fn test_governance_fee_architecture() -> TestResult {
     
     Ok(())
 } 
+
+/// **NEW TEST: Real swap with comprehensive pool state verification**
+/// 
+/// This test performs a REAL swap operation and verifies that:
+/// 1. Pool SOL balance increases by the correct swap fee amount
+/// 2. Swap fee counters are correctly updated in pool state
+/// 3. Total SOL fees collected is accurate
+/// 4. Pending SOL fees calculation is correct
+#[tokio::test]
+#[serial]
+async fn test_real_swap_with_pool_state_verification() -> TestResult {
+    println!("🧪 Testing REAL SWAP with comprehensive pool state verification...");
+    println!("==================================================================");
+    
+    // Create foundation for real operations (not mock data)
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?; // 3:1 ratio
+    println!("✅ Foundation created for real swap testing");
+    
+    // **STEP 1: Add liquidity first so we can perform swaps**
+    let user1_pubkey = foundation.user1.pubkey();
+    let deposit_amount = 1_000_000u64; // 1M tokens
+    
+    // Extract values before mutable borrowing to avoid borrow checker issues
+    let user1_primary_account_pubkey = foundation.user1_primary_account.pubkey();
+    let user1_lp_a_account_pubkey = foundation.user1_lp_a_account.pubkey();
+    let token_a_mint = foundation.pool_config.token_a_mint;
+    let user1_base_account_pubkey = foundation.user1_base_account.pubkey();
+    let user1_lp_b_account_pubkey = foundation.user1_lp_b_account.pubkey();
+    let token_b_mint = foundation.pool_config.token_b_mint;
+    
+    println!("🪙 Adding liquidity before swap testing...");
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_primary_account_pubkey,
+        &user1_lp_a_account_pubkey,
+        &token_a_mint,
+        deposit_amount,
+    ).await?;
+    
+    // Also add some Token B liquidity
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_base_account_pubkey,
+        &user1_lp_b_account_pubkey,
+        &token_b_mint,
+        deposit_amount / 3, // Maintain 3:1 ratio
+    ).await?;
+    
+    println!("✅ Liquidity added successfully");
+    
+    // **STEP 2: Perform real swap with verification**
+    let swap_amount = 100_000u64; // 100K tokens
+    
+    println!("🔥 STARTING REAL SWAP WITH VERIFICATION:");
+    println!("   • Swap amount: {} tokens", swap_amount);
+    println!("   • Expected fee: {} lamports ({:.6} SOL)", 
+             fixed_ratio_trading::constants::SWAP_CONTRACT_FEE,
+             fixed_ratio_trading::constants::SWAP_CONTRACT_FEE as f64 / 1_000_000_000.0);
+    
+    // This function will perform the real swap and verify all aspects of the pool state
+    let verification_result = execute_real_swap_with_verification(&mut foundation, swap_amount).await;
+    
+    match verification_result {
+        Ok(()) => {
+            println!("🎉 SUCCESS: All pool state verifications passed!");
+            println!("   • SOL balance correctly increased");
+            println!("   • Fee counters properly updated");
+            println!("   • Pool state consistency maintained");
+        },
+        Err(e) => {
+            println!("❌ VERIFICATION FAILED: {}", e);
+            println!("🚨 This indicates a bug in the swap fee collection mechanism!");
+            
+            // Let's get more debug info by checking the pool state manually
+            let pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+            let pool_state = fixed_ratio_trading::PoolState::try_from_slice(&pool_account.data)?;
+            
+            println!("🔍 DEBUG: Pool state after failed verification:");
+            println!("   • Account lamports: {}", pool_account.lamports);
+            println!("   • collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
+            println!("   • total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
+            println!("   • pending_sol_fees(): {}", pool_state.pending_sol_fees());
+            
+            // Return the error to fail the test
+            return Err(e);
+        }
+    }
+    
+    println!("✅ TEST COMPLETED: Real swap with pool state verification PASSED!");
+    
+    Ok(())
+}
+
+/// **NEW: Real swap operation with comprehensive pool state verification**
+/// 
+/// This function performs an ACTUAL swap operation (not mock data) and verifies:
+/// 1. Pool state SOL balance is correctly updated with fees
+/// 2. Fee counters are correctly incremented
+/// 3. Total SOL fees collected matches expected amounts
+/// 4. Pending SOL fees calculation is correct
+#[allow(dead_code)]
+async fn execute_real_swap_with_verification(
+    foundation: &mut LiquidityTestFoundation,
+    amount: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use borsh::BorshDeserialize;
+    
+    println!("🔥 REAL SWAP WITH VERIFICATION: {} tokens", amount);
+    println!("=============================================");
+    
+    // **STEP 1: Capture initial state**
+    let initial_pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let initial_pool_state = fixed_ratio_trading::PoolState::try_from_slice(&initial_pool_account.data)?;
+    let initial_pool_sol_balance = initial_pool_account.lamports;
+    
+    println!("📊 INITIAL STATE:");
+    println!("   • Pool SOL balance: {} lamports ({:.6} SOL)", 
+             initial_pool_sol_balance, 
+             initial_pool_sol_balance as f64 / 1_000_000_000.0);
+    println!("   • Collected liquidity fees: {} lamports", initial_pool_state.collected_liquidity_fees);
+    println!("   • Total SOL fees collected: {} lamports", initial_pool_state.total_sol_fees_collected);
+    println!("   • Total fees consolidated: {} lamports", initial_pool_state.total_fees_consolidated);
+    println!("   • Pending SOL fees: {} lamports", initial_pool_state.pending_sol_fees());
+    
+    // **STEP 2: Perform REAL swap operation**
+    let user2_pubkey = foundation.user2.pubkey();
+    
+    // Use Token A → Token B swap (user2 swaps Token A for Token B)
+    let input_mint = foundation.pool_config.token_a_mint;
+    let user_input_account = foundation.user2_primary_account.pubkey();
+    let user_output_account = foundation.user2_base_account.pubkey();
+    
+    println!("🚀 EXECUTING REAL SWAP OPERATION:");
+    println!("   • User: {}", user2_pubkey);
+    println!("   • Input mint: {} (Token A)", input_mint);
+    println!("   • Amount: {} tokens", amount);
+    println!("   • Expected fee: {} lamports ({:.6} SOL)", 
+             fixed_ratio_trading::constants::SWAP_CONTRACT_FEE,
+             fixed_ratio_trading::constants::SWAP_CONTRACT_FEE as f64 / 1_000_000_000.0);
+    
+    // Execute the real swap operation using the existing helper
+    execute_swap_operation(
+        foundation,
+        &user2_pubkey,
+        &user_input_account,
+        &user_output_account,
+        &input_mint,
+        amount,
+    ).await?;
+    
+    println!("✅ Real swap operation completed!");
+    
+    // **STEP 3: Verify pool state after swap**
+    let final_pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let final_pool_state = fixed_ratio_trading::PoolState::try_from_slice(&final_pool_account.data)?;
+    let final_pool_sol_balance = final_pool_account.lamports;
+    
+    println!("📊 FINAL STATE:");
+    println!("   • Pool SOL balance: {} lamports ({:.6} SOL)", 
+             final_pool_sol_balance, 
+             final_pool_sol_balance as f64 / 1_000_000_000.0);
+    println!("   • Collected liquidity fees: {} lamports", final_pool_state.collected_liquidity_fees);
+    println!("   • Total SOL fees collected: {} lamports", final_pool_state.total_sol_fees_collected);
+    println!("   • Total fees consolidated: {} lamports", final_pool_state.total_fees_consolidated);
+    println!("   • Pending SOL fees: {} lamports", final_pool_state.pending_sol_fees());
+    
+    // **STEP 4: Comprehensive verification**
+    println!("🔍 VERIFICATION RESULTS:");
+    
+    // Check SOL balance increase
+    let sol_balance_increase = final_pool_sol_balance - initial_pool_sol_balance;
+    let expected_fee = fixed_ratio_trading::constants::SWAP_CONTRACT_FEE;
+    
+    println!("   • SOL balance increase: {} lamports (expected: {})", 
+             sol_balance_increase, expected_fee);
+    
+    if sol_balance_increase == expected_fee {
+        println!("   ✅ SOL balance increased by correct fee amount");
+    } else {
+        println!("   ❌ SOL balance increase incorrect!");
+        println!("      Expected: {} lamports", expected_fee);
+        println!("      Actual: {} lamports", sol_balance_increase);
+        println!("      Difference: {} lamports", sol_balance_increase as i64 - expected_fee as i64);
+    }
+    
+    // Check total SOL fees collected (swap fees should be added to total)
+    let total_fees_increase = final_pool_state.total_sol_fees_collected - initial_pool_state.total_sol_fees_collected;
+    println!("   • Total SOL fees increase: {} lamports (expected: {})", 
+             total_fees_increase, expected_fee);
+    
+    if total_fees_increase == expected_fee {
+        println!("   ✅ Total SOL fees collected increased correctly");
+    } else {
+        println!("   ❌ Total SOL fees collected increase incorrect!");
+        println!("      Expected: {} lamports", expected_fee);
+        println!("      Actual: {} lamports", total_fees_increase);
+    }
+    
+    // Check pending SOL fees calculation
+    let expected_pending_fees = final_pool_state.total_sol_fees_collected - final_pool_state.total_fees_consolidated;
+    let actual_pending_fees = final_pool_state.pending_sol_fees();
+    
+    println!("   • Pending SOL fees calculation:");
+    println!("     - total_sol_fees_collected: {}", final_pool_state.total_sol_fees_collected);
+    println!("     - total_fees_consolidated: {}", final_pool_state.total_fees_consolidated);
+    println!("     - Expected pending: {}", expected_pending_fees);
+    println!("     - Actual pending: {}", actual_pending_fees);
+    
+    if actual_pending_fees == expected_pending_fees {
+        println!("   ✅ Pending SOL fees calculation correct");
+    } else {
+        println!("   ❌ Pending SOL fees calculation incorrect!");
+    }
+    
+    // **STEP 5: Debug fee collection mechanism**
+    if sol_balance_increase != expected_fee || total_fees_increase != expected_fee {
+        println!("🚨 SWAP FEE COLLECTION DEBUG:");
+        println!("   This indicates an issue with the swap fee collection mechanism.");
+        println!("   Possible causes:");
+        println!("   1. collect_fee_to_pool_state() not being called");
+        println!("   2. Fee collection failing silently");
+        println!("   3. Pool state not being updated after fee transfer");
+        println!("   4. Buffer serialization pattern not working for swaps");
+        
+        // Additional debugging - check if the fee was actually transferred
+        println!("🔍 DETAILED DEBUG INFO:");
+        println!("   • Pool state account data length: {}", final_pool_account.data.len());
+        println!("   • Pool state owner: {}", final_pool_account.owner);
+        println!("   • Pool state executable: {}", final_pool_account.executable);
+        
+        return Err("Swap fee collection verification failed - fees not properly collected".into());
+    }
+    
+    println!("🎉 ALL SWAP VERIFICATIONS PASSED!");
+    println!("   • SOL balance increased by {} lamports", sol_balance_increase);
+    println!("   • Fee counters updated correctly");
+    println!("   • Pool state consistency maintained");
+    
+    Ok(())
+}
+
+/// Helper function to execute a swap operation
+#[allow(dead_code)]
+async fn execute_swap_operation(
+    foundation: &mut LiquidityTestFoundation,
+    user_pubkey: &Pubkey,
+    user_input_account: &Pubkey,
+    user_output_account: &Pubkey,
+    input_mint: &Pubkey,
+    amount: u64,
+) -> TestResult {
+    use fixed_ratio_trading::PoolInstruction;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
+    
+    // Create swap instruction
+    let swap_instruction_data = PoolInstruction::Swap {
+        input_token_mint: *input_mint,
+        amount_in: amount,
+    };
+    
+    let serialized = swap_instruction_data.try_to_vec()?;
+    
+    // Derive system state PDA
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::SYSTEM_STATE_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    // Create instruction with correct account ordering (9 accounts for swaps)
+    let swap_ix = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts: vec![
+            AccountMeta::new(*user_pubkey, true),                                          // Index 0: Authority/User Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),       // Index 1: System Program
+            AccountMeta::new_readonly(system_state_pda, false),                           // Index 2: System State PDA
+            AccountMeta::new(foundation.pool_config.pool_state_pda, false),               // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                            // Index 4: SPL Token Program
+            AccountMeta::new(foundation.pool_config.token_a_vault_pda, false),            // Index 5: Token A Vault PDA
+            AccountMeta::new(foundation.pool_config.token_b_vault_pda, false),            // Index 6: Token B Vault PDA
+            AccountMeta::new(*user_input_account, false),                                 // Index 7: User Input Token Account
+            AccountMeta::new(*user_output_account, false),                                // Index 8: User Output Token Account
+        ],
+        data: serialized,
+    };
+    
+    // Find the user keypair that matches the pubkey
+    let user_keypair = if foundation.user1.pubkey() == *user_pubkey {
+        &foundation.user1
+    } else if foundation.user2.pubkey() == *user_pubkey {
+        &foundation.user2
+    } else {
+        return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "User pubkey does not match any user in foundation")
+        ).into());
+    };
+    
+    // Get fresh blockhash
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
+    let mut swap_tx = solana_sdk::transaction::Transaction::new_with_payer(
+        &[swap_ix], 
+        Some(user_pubkey)
+    );
+    swap_tx.sign(&[user_keypair], fresh_blockhash);
+    
+    // Execute the swap transaction
+    foundation.env.banks_client.process_transaction(swap_tx).await?;
+    
+    println!("✅ Swap operation completed successfully");
+    
+    Ok(())
+}

@@ -17,7 +17,7 @@ use common::{
     setup::{start_test_environment, get_sol_balance, TestEnvironment},
     pool_helpers::{create_pool_new_pattern, PoolConfig},
     tokens::create_test_mints,
-    liquidity_helpers::{create_liquidity_test_foundation},
+    liquidity_helpers::{create_liquidity_test_foundation, create_liquidity_test_foundation_with_fees},
     // **ENHANCEMENT**: Add Phase 2.1 consolidation and treasury helpers
     pool_helpers::{
         execute_consolidation_operation,
@@ -330,6 +330,33 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
     // Create a single foundation to test consolidation logic
     let mut foundation = create_liquidity_test_foundation(Some(2)).await?;
     println!("✅ Foundation created for consolidation testing");
+    
+    // Add this after creating the pool foundation and before pausing the pool
+    
+    // **STEP 1.5: Perform operations to generate fees for consolidation testing**
+    println!("💰 Generating fees through deposit operations...");
+    
+    // Use the foundation with fee generation to create actual fees
+    let mut foundation_with_fees = create_liquidity_test_foundation_with_fees(Some(2), true).await?;
+    
+    // Copy the foundation with fees over the original foundation
+    foundation = foundation_with_fees;
+    
+    // Verify fees were collected from the foundation with fees
+    let pool_state_after_deposit = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let pool_state_data: PoolState = PoolState::try_from_slice(&pool_state_after_deposit.data)?;
+    let pending_fees_after_deposit = pool_state_data.pending_sol_fees();
+    
+    println!("✅ Pool state after fee generation:");
+    println!("   • Pending SOL fees: {} lamports", pending_fees_after_deposit);
+    println!("   • Collected liquidity fees: {} lamports", pool_state_data.collected_liquidity_fees);
+    println!("   • Total SOL fees collected: {} lamports", pool_state_data.total_sol_fees_collected);
+    
+    if pending_fees_after_deposit == 0 {
+        println!("⚠️ WARNING: No fees generated - consolidation test may not execute full code path");
+    } else {
+        println!("✅ Fees successfully generated for consolidation testing");
+    }
     
     // Pause the pool for consolidation eligibility  
     let (system_state_pda, _) = Pubkey::find_program_address(

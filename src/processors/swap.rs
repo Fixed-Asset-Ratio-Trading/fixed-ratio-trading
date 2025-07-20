@@ -202,22 +202,8 @@ pub fn process_swap(
     
     msg!("✅ Step 1 completed: System and pool validations passed");
 
-    msg!("⏳ Step 2/6: Collecting protocol fees");
-    
-    // Collect swap fee to pool state
-    use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
-    use crate::constants::SWAP_CONTRACT_FEE;
-    
-    collect_fee_to_pool_state(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-        SWAP_CONTRACT_FEE,
-        FeeType::RegularSwap,
-    )?;
-    
-    msg!("✅ Step 2 completed: Fee collection successful ({} lamports)", SWAP_CONTRACT_FEE);
+    msg!("🔍 Step 2/6: Fee collection will happen after token operations to prevent PDA corruption");
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::SWAP_CONTRACT_FEE);
     
     msg!("⏳ Step 3/6: Loading and validating user accounts");
     
@@ -417,17 +403,38 @@ pub fn process_swap(
 
     msg!("💾 Saving updated pool state");
     
-    // Serialize and save updated pool state
+    // Serialize updated pool state
     let mut serialized_data = Vec::new();
     pool_state_data.serialize(&mut serialized_data)?;
     
-    let mut pool_state_pda_data = pool_state_pda.data.borrow_mut();
-    if serialized_data.len() > pool_state_pda_data.len() {
-        msg!("❌ SERIALIZATION ERROR: Data too large for account");
-        return Err(ProgramError::AccountDataTooSmall);
-    }
+    // Save the pool state in a separate scope to release the mutable borrow
+    {
+        let mut pool_state_pda_data = pool_state_pda.data.borrow_mut();
+        if serialized_data.len() > pool_state_pda_data.len() {
+            msg!("❌ SERIALIZATION ERROR: Data too large for account");
+            return Err(ProgramError::AccountDataTooSmall);
+        }
+        
+        pool_state_pda_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    } // Release mutable borrow here before fee collection
     
-    pool_state_pda_data[..serialized_data.len()].copy_from_slice(&serialized_data);
+    // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE OPERATIONS (GitHub Issue #31960 Workaround)
+    // Fee collection must happen AFTER all invoke/invoke_signed operations to prevent PDA corruption
+    msg!("💰 Step 6a: Collecting fees after token operations...");
+    use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
+    use crate::constants::SWAP_CONTRACT_FEE;
+    
+    collect_fee_to_pool_state(
+        user_authority_signer,
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
+        system_program_account,
+        program_id,
+        SWAP_CONTRACT_FEE,
+        FeeType::RegularSwap,
+    )?;
+    
+    msg!("✅ Swap fee collected successfully after token operations");
+    msg!("💰 Fee collected: {} lamports (distributed to pool state)", SWAP_CONTRACT_FEE);
     
     msg!("✅ SWAP COMPLETED SUCCESSFULLY!");
     msg!("=============================");

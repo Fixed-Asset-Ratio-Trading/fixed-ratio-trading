@@ -1551,3 +1551,66 @@ async fn test_phase_2_1_integration_with_phase_1() -> TestResult {
     
     Ok(())
 } 
+
+/// **NEW TEST: Real deposit with comprehensive pool state verification**
+/// 
+/// This test performs a REAL deposit operation and verifies that:
+/// 1. Pool SOL balance increases by the correct fee amount
+/// 2. Fee counters are correctly updated in pool state
+/// 3. Total SOL fees collected is accurate
+/// 4. Pending SOL fees calculation is correct
+#[tokio::test]
+#[serial]
+async fn test_real_deposit_with_pool_state_verification() -> TestResult {
+    println!("🧪 Testing REAL DEPOSIT with comprehensive pool state verification...");
+    println!("====================================================================");
+    
+    // Create foundation for real operations (not mock data)
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?; // 3:1 ratio
+    println!("✅ Foundation created for real deposit testing");
+    
+    // Import the verification function
+    use common::liquidity_helpers::execute_real_deposit_with_verification;
+    
+    // **STEP 1: Perform real deposit with verification**
+    let deposit_amount = 500_000u64; // 500K tokens
+    
+    println!("🔥 STARTING REAL DEPOSIT WITH VERIFICATION:");
+    println!("   • Deposit amount: {} tokens", deposit_amount);
+    println!("   • Expected fee: {} lamports ({:.6} SOL)", 
+             fixed_ratio_trading::constants::DEPOSIT_WITHDRAWAL_FEE,
+             fixed_ratio_trading::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
+    
+    // This function will perform the real deposit and verify all aspects of the pool state
+    let verification_result = execute_real_deposit_with_verification(&mut foundation, deposit_amount).await;
+    
+    match verification_result {
+        Ok(()) => {
+            println!("🎉 SUCCESS: All pool state verifications passed!");
+            println!("   • SOL balance correctly increased");
+            println!("   • Fee counters properly updated");
+            println!("   • Pool state consistency maintained");
+        },
+        Err(e) => {
+            println!("❌ VERIFICATION FAILED: {}", e);
+            println!("🚨 This indicates a bug in the fee collection mechanism!");
+            
+            // Let's get more debug info by checking the pool state manually
+            let pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+            let pool_state = fixed_ratio_trading::PoolState::try_from_slice(&pool_account.data)?;
+            
+            println!("🔍 DEBUG: Pool state after failed verification:");
+            println!("   • Account lamports: {}", pool_account.lamports);
+            println!("   • collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
+            println!("   • total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
+            println!("   • pending_sol_fees(): {}", pool_state.pending_sol_fees());
+            
+            // Return the error to fail the test
+            return Err(e);
+        }
+    }
+    
+    println!("✅ TEST COMPLETED: Real deposit with pool state verification PASSED!");
+    
+    Ok(())
+} 

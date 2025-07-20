@@ -233,18 +233,11 @@ pub fn process_deposit(
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
 
-    // ✅ COLLECT SOL FEES TO POOL STATE (DISTRIBUTED COLLECTION)
-    // SOL fee collection happens before any state changes or token operations
-    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
-    collect_liquidity_fee_distributed(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-    )?;
-
-    msg!("✅ Deposit fee collected successfully - proceeding with deposit");
-    msg!("💰 Fee: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    // ✅ FEE COLLECTION MOVED TO AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
+    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
+    
+    msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
     
     // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
     msg!("🔍 TRANSACTION SIMULATION RESULTS:");
@@ -503,7 +496,19 @@ pub fn process_deposit(
 
     msg!("🔍 Step 4/4: Verifying transaction and finalizing...");
     
-    // Fee collection moved to beginning of deposit function (FEES FIRST PATTERN)
+    // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
+    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
+    msg!("💰 Step 4a: Collecting fees after token operations...");
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    collect_liquidity_fee_distributed(
+        user_authority_signer,
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
+        system_program_account,
+        program_id,
+    )?;
+
+    msg!("✅ Deposit fee collected successfully after token operations");
+    msg!("💰 Fee collected: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
 
     msg!("✅ DEPOSIT COMPLETED SUCCESSFULLY!");
     msg!("📈 COMPREHENSIVE TRANSACTION SUMMARY:");
@@ -646,17 +651,11 @@ pub fn process_withdraw(
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
 
-    // ✅ COLLECT SOL FEES TO POOL STATE (DISTRIBUTED COLLECTION)
-    // SOL fee collection happens before any state changes or token operations
-    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
-    collect_liquidity_fee_distributed(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-    )?;
+    // ✅ FEE COLLECTION MOVED TO AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
+    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
     
-    msg!("💰 Fee: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
     
     // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
     msg!("🔍 TRANSACTION SIMULATION RESULTS:");
@@ -788,7 +787,24 @@ pub fn process_withdraw(
         account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
     }
 
-    result
+    // Ensure the withdrawal operations completed successfully before collecting fees
+    result?;
+
+    // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
+    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
+    msg!("💰 Step 4a: Collecting fees after token operations...");
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    collect_liquidity_fee_distributed(
+        user_authority_signer,
+        pool_state_pda,  // ← Collect to pool state instead of main treasury
+        system_program_account,
+        program_id,
+    )?;
+
+    msg!("✅ Withdrawal fee collected successfully after token operations");
+    msg!("💰 Fee collected: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+
+    Ok(())
 }
 
 /// Execute the core withdrawal logic
@@ -816,8 +832,8 @@ fn execute_withdrawal_logic<'a>(
     source_lp_mint_account: &AccountInfo<'a>,
     pool_state_account: &AccountInfo<'a>,
     token_program_account: &AccountInfo<'a>,
-    _system_program_account: &AccountInfo<'a>,
-    _program_id: &Pubkey,
+    system_program_account: &AccountInfo<'a>,
+    program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};
     use spl_token::instruction as token_instruction;
@@ -883,6 +899,8 @@ fn execute_withdrawal_logic<'a>(
     
     msg!("📊 Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
     msg!("🔍 Step 4/4: Finalizing transaction and updating pool state...");
+
+    // Fee collection will happen in the main function after the helper completes
 
     msg!("✅ WITHDRAWAL COMPLETED SUCCESSFULLY!");
     msg!("📈 COMPREHENSIVE TRANSACTION SUMMARY:");
