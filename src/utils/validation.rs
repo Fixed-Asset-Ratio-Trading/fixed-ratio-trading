@@ -84,8 +84,7 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
 /// * `_current_timestamp` - Current timestamp (for future time-based pause logic)
 ///
 /// # Returns
-
-
+///
 /// **SECURITY CRITICAL**: Validates and deserializes PoolState with PDA verification.
 /// 
 /// This function prevents malicious users from passing fake PoolState accounts by:

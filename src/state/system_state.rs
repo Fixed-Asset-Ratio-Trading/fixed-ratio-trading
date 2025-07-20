@@ -34,7 +34,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// This state is separate from individual pool states and provides emergency
 /// controls that can override all pool operations when necessary.
 /// Only the program upgrade authority can perform system-wide operations.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
 pub struct SystemState {
     /// Global pause state - when true, all operations are blocked except unpause
     pub is_paused: bool,

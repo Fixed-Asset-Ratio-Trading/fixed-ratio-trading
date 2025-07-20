@@ -481,10 +481,7 @@ pub fn process_deposit(
 
     // ✅ OPTIMIZATION: OPTIMIZED 1:1 RATIO VERIFICATION
     // Use fresh deserialization only for final verification (post-mint operation)
-    let final_lp_balance = {
-        let account_data = safe_unpack_token_account(user_output_account, "User Output LP Token Account")?.amount;
-        account_data
-    };
+    let final_lp_balance = safe_unpack_token_account(user_output_account, "User Output LP Token Account")?.amount;
     
     let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
         .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -1140,5 +1137,6 @@ fn validate_withdrawal_lp_correspondence(
 
 
 /// - Transaction efficiency: Smaller, faster, more cost-effective liquidity operations
+///
 #[allow(dead_code)]
 const PHASE_9_OPTIMIZATION_SUMMARY: &str = "Phase 9 liquidity optimizations successfully implemented"; 
