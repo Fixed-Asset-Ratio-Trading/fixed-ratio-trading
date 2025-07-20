@@ -341,11 +341,7 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     // Calculate available fees for withdrawal (balance minus rent-exempt minimum)
     // Note: This is an approximation since we don't have rent sysvar here
     let estimated_rent_minimum = 2_500_000; // Conservative estimate for pool state account
-    let estimated_available_fees = if current_pool_balance > estimated_rent_minimum {
-        current_pool_balance - estimated_rent_minimum
-    } else {
-        0
-    };
+    let estimated_available_fees = current_pool_balance.saturating_sub(estimated_rent_minimum);
     
     msg!("  Estimated Available for Withdrawal: {} lamports ({:.6} SOL)", 
          estimated_available_fees,
@@ -373,11 +369,7 @@ pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
 
     let current_balance = pool_state_account.lamports();
     let estimated_rent_minimum = 2_500_000; // Conservative estimate
-    let estimated_available = if current_balance > estimated_rent_minimum {
-        current_balance - estimated_rent_minimum
-    } else {
-        0
-    };
+    let estimated_available = current_balance.saturating_sub(estimated_rent_minimum);
 
     msg!("=== POOL SOL BALANCE ===");
     msg!("Pool State PDA: {}", pool_state_account.key);
@@ -421,7 +413,7 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
 
 /// validate_pool_initialized is no longer needed as we now use the pool state PDA to check if the pool is initialized.
 /// **PHASE 1 UPDATE**: Pool existence = initialization status
-
+///
 /// Validates that liquidity operations are not paused.
 pub fn validate_liquidity_not_paused(pool_state: &PoolState) -> ProgramResult {
     if pool_state.liquidity_paused() {

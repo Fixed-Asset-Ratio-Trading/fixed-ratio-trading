@@ -53,8 +53,7 @@ use crate::{
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
-/// 
-
+///
 pub fn process_withdraw_treasury_fees(
     program_id: &Pubkey,
     amount: u64,
@@ -131,11 +130,7 @@ pub fn process_withdraw_treasury_fees(
     
     // Calculate available balance for withdrawal
     let current_balance = main_treasury_pda.lamports();
-    let available_balance = if current_balance > rent_exempt_minimum {
-        current_balance - rent_exempt_minimum
-    } else {
-        0
-    };
+    let available_balance = current_balance.saturating_sub(rent_exempt_minimum);
     
     // Determine actual withdrawal amount
     let withdrawal_amount = if amount == 0 {

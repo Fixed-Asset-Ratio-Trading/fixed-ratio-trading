@@ -248,11 +248,7 @@ impl PoolClient {
         
         // Step 2: Use the provided ratios directly (already in base units)
         let (ratio_a_numerator, ratio_b_denominator): (u64, u64) = 
-            if config.multiple_token_mint < config.base_token_mint {
-                (config.ratio_a_numerator, config.ratio_b_denominator)
-            } else {
-                (config.ratio_a_numerator, config.ratio_b_denominator)
-            };
+            (config.ratio_a_numerator, config.ratio_b_denominator);
         
         // Derive pool state PDA
         let (pool_state, pool_authority_bump) = Pubkey::find_program_address(

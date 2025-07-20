@@ -73,7 +73,7 @@ use crate::utils::validation::validate_non_zero_amount;
 use crate::processors::utilities::validate_liquidity_not_paused;
 
 /// **PHASE 10: USER LP TOKEN ACCOUNT ON-DEMAND CREATION**
-
+///
 /// Safely unpacks a token account with comprehensive error handling
 /// 
 /// This function provides robust error handling for TokenAccount::unpack_from_slice()
@@ -303,13 +303,13 @@ pub fn process_deposit(
 
     // ✅ OPTIMIZATION: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user input token account data (eliminates redundant deserialization)
-    let user_input_data = safe_unpack_token_account(&user_input_account, "User Input Token Account")?;
+    let user_input_data = safe_unpack_token_account(user_input_account, "User Input Token Account")?;
     let actual_deposit_mint = user_input_data.mint;
     
     // Cache user output token account data (with safe handling for uninitialized accounts)
     let user_output_data = if user_output_account.data_len() > 0 {
         // Account exists, try to deserialize
-        match safe_unpack_token_account(&user_output_account, "User Output LP Token Account") {
+        match safe_unpack_token_account(user_output_account, "User Output LP Token Account") {
             Ok(data) => Some(data),
             Err(_) => {
                 msg!("⚠️ User LP token account exists but is not properly initialized");
@@ -482,7 +482,7 @@ pub fn process_deposit(
     // ✅ OPTIMIZATION: OPTIMIZED 1:1 RATIO VERIFICATION
     // Use fresh deserialization only for final verification (post-mint operation)
     let final_lp_balance = {
-        let account_data = safe_unpack_token_account(&user_output_account, "User Output LP Token Account")?.amount;
+        let account_data = safe_unpack_token_account(user_output_account, "User Output LP Token Account")?.amount;
         account_data
     };
     
@@ -698,11 +698,11 @@ pub fn process_withdraw(
 
     // ✅ OPTIMIZATION: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user output token account data (eliminates redundant deserialization)
-    let user_output_data = safe_unpack_token_account(&user_output_account, "User Output Token Account")?;
+    let user_output_data = safe_unpack_token_account(user_output_account, "User Output Token Account")?;
     let actual_withdraw_mint = user_output_data.mint;
     
     // Cache user input token account data (eliminates redundant deserialization)
-    let user_input_data = safe_unpack_token_account(&user_input_account, "User Input LP Token Account")?;
+    let user_input_data = safe_unpack_token_account(user_input_account, "User Input LP Token Account")?;
     
     // ✅ ACCOUNT STATUS AND BALANCE PREVIEW
     msg!("✅ ACCOUNT STATUS:");

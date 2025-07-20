@@ -76,7 +76,7 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
 
 /// Validates that a pool state is properly initialized.
 /// validate_pool_initialized removed as we now use the pool state PDA to check if the pool is initialized.
-
+///
 /// Validates that a pool is not paused (pool-specific pause check).
 ///
 /// # Arguments

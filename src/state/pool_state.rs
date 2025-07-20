@@ -74,7 +74,7 @@ impl RentRequirements {
 /// **PHASE 1: DISTRIBUTED COLLECTION ARCHITECTURE**
 /// Updated to support distributed SOL fee collection with batch consolidation.
 /// Pool creation fees still go directly to MainTreasuryState (optimal for one-time fees).
-#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolState {
     pub owner: Pubkey,
     pub token_a_mint: Pubkey,
@@ -133,42 +133,7 @@ pub struct PoolState {
     pub total_fees_consolidated: u64,
 }
 
-impl Default for PoolState {
-    fn default() -> Self {
-        Self {
-            owner: Pubkey::default(),
-            token_a_mint: Pubkey::default(),
-            token_b_mint: Pubkey::default(),
-            token_a_vault: Pubkey::default(),
-            token_b_vault: Pubkey::default(),
-            lp_token_a_mint: Pubkey::default(),
-            lp_token_b_mint: Pubkey::default(),
-            ratio_a_numerator: 0,
-            ratio_b_denominator: 0,
-            total_token_a_liquidity: 0,
-            total_token_b_liquidity: 0,
-            pool_authority_bump_seed: 0,
-            token_a_vault_bump_seed: 0,
-            token_b_vault_bump_seed: 0,
-            lp_token_a_mint_bump_seed: 0,
-            lp_token_b_mint_bump_seed: 0,
-            rent_requirements: RentRequirements::default(),
-            flags: 0, // All flags start as false (0)
-            collected_fees_token_a: 0,
-            collected_fees_token_b: 0,
-            total_fees_withdrawn_token_a: 0,
-            total_fees_withdrawn_token_b: 0,
-            
-            // Initialize new distributed collection fields
-            collected_liquidity_fees: 0,
-            collected_swap_contract_fees: 0,
-            total_sol_fees_collected: 0,
-            last_consolidation_timestamp: 0,
-            total_consolidations: 0,
-            total_fees_consolidated: 0,
-        }
-    }
-}
+
 
 impl PoolState {
     pub fn get_packed_len() -> usize {
@@ -515,11 +480,7 @@ impl PoolState {
         let pending_fees = self.pending_sol_fees();
         
         // Calculate available balance above rent exempt minimum
-        let available_above_rent_exempt = if current_account_balance > rent_exempt_minimum {
-            current_account_balance - rent_exempt_minimum
-        } else {
-            0
-        };
+        let available_above_rent_exempt = current_account_balance.saturating_sub(rent_exempt_minimum);
         
         // Return the minimum of available balance and pending fees
         // This ensures we never:

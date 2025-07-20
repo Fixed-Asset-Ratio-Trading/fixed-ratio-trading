@@ -69,18 +69,14 @@ pub fn process_pause_pool(
     // Apply pause flags (idempotent - no error if already paused)
     let mut operations_changed = Vec::new();
     
-    if pause_flags & PAUSE_FLAG_LIQUIDITY != 0 {
-        if !pool_state.liquidity_paused() {
-            pool_state.set_liquidity_paused(true);
-            operations_changed.push("general operations");
-        }
+    if pause_flags & PAUSE_FLAG_LIQUIDITY != 0 && !pool_state.liquidity_paused() {
+        pool_state.set_liquidity_paused(true);
+        operations_changed.push("general operations");
     }
     
-    if pause_flags & PAUSE_FLAG_SWAPS != 0 {
-        if !pool_state.swaps_paused() {
-            pool_state.set_swaps_paused(true);
-            operations_changed.push("swaps");
-        }
+    if pause_flags & PAUSE_FLAG_SWAPS != 0 && !pool_state.swaps_paused() {
+        pool_state.set_swaps_paused(true);
+        operations_changed.push("swaps");
     }
     
     // Save updated pool state
@@ -154,18 +150,14 @@ pub fn process_unpause_pool(
     // Apply unpause flags (idempotent - no error if already unpaused)
     let mut operations_changed = Vec::new();
     
-    if unpause_flags & PAUSE_FLAG_LIQUIDITY != 0 {
-        if pool_state.liquidity_paused() {
-            pool_state.set_liquidity_paused(false);
-            operations_changed.push("general operations");
-        }
+    if unpause_flags & PAUSE_FLAG_LIQUIDITY != 0 && pool_state.liquidity_paused() {
+        pool_state.set_liquidity_paused(false);
+        operations_changed.push("general operations");
     }
     
-    if unpause_flags & PAUSE_FLAG_SWAPS != 0 {
-        if pool_state.swaps_paused() {
-            pool_state.set_swaps_paused(false);
-            operations_changed.push("swaps");
-        }
+    if unpause_flags & PAUSE_FLAG_SWAPS != 0 && pool_state.swaps_paused() {
+        pool_state.set_swaps_paused(false);
+        operations_changed.push("swaps");
     }
     
     // Save updated pool state

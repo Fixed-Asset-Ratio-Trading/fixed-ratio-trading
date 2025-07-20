@@ -42,7 +42,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 /// - Rent exempt minimum tracking
 /// - Consolidation operation counting
 /// - Batch consolidation processing
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
 pub struct MainTreasuryState {
     /// Current SOL balance of the main treasury account (synced with account.lamports())
     pub total_balance: u64,
@@ -84,7 +84,7 @@ pub struct MainTreasuryState {
 
 /// **NEW: Consolidated operations data structure**
 /// Used for batch consolidation processing from multiple pools
-#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone, Default)]
 pub struct ConsolidatedOperations {
     pub liquidity_fees: u64,
     pub regular_swap_fees: u64,
@@ -92,16 +92,7 @@ pub struct ConsolidatedOperations {
     pub regular_swap_count: u64,
 }
 
-impl Default for ConsolidatedOperations {
-    fn default() -> Self {
-        Self {
-            liquidity_fees: 0,
-            regular_swap_fees: 0,
-            liquidity_operation_count: 0,
-            regular_swap_count: 0,
-        }
-    }
-}
+
 
 impl MainTreasuryState {
     pub const LEN: usize = 
