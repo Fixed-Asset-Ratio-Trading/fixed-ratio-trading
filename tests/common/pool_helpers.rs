@@ -1020,15 +1020,16 @@ pub async fn execute_consolidation_with_verification(
         return Ok(result);
     }
     
-    // Verify consolidation tracking incremented
+    // Verify consolidation tracking incremented (only if fees were transferred)
     let consolidation_count_delta = result.post_consolidation_treasury_state.total_consolidations_performed - 
                                    result.initial_treasury_state.total_consolidations_performed;
     
-    if consolidation_count_delta != 1 {
+    let expected_count_delta = if result.fees_transferred > 0 { 1 } else { 0 };
+    if consolidation_count_delta != expected_count_delta {
         result.consolidation_successful = false;
         result.error_message = Some(format!(
-            "Consolidation count should increment by 1, got delta: {}", 
-            consolidation_count_delta
+            "Consolidation count should increment by {} (fees transferred: {}), got delta: {}", 
+            expected_count_delta, result.fees_transferred, consolidation_count_delta
         ));
         return Ok(result);
     }

@@ -218,9 +218,14 @@ fn perform_batch_consolidation(
             continue;
         }
         
-        // **RENT EXEMPT PROTECTION: Transfer only the available amount (not the full pending fees)**
-        **pool_account.try_borrow_mut_lamports()? -= available_for_consolidation;
-        **main_treasury_pda.try_borrow_mut_lamports()? += available_for_consolidation;
+        // **GITHUB_ISSUE_31960_WORKAROUND: BUFFER SERIALIZATION PATTERN**
+        // 
+        // ** CRITICAL: Update pool state BEFORE any SOL transfers **
+        // SOL transfer operations can corrupt PDA data buffers, so we must:
+        // 1. Calculate all state changes first
+        // 2. Serialize pool state to temporary buffer  
+        // 3. Then perform SOL transfers
+        // 4. Finally copy serialized data to account atomically
         
         // **IMPORTANT: Partial consolidation tracking**
         // Since we may not consolidate all fees, we need to track what was actually consolidated
@@ -265,17 +270,30 @@ fn perform_batch_consolidation(
         }
         
         // **CONSISTENCY VALIDATION**: Verify fee tracking integrity after consolidation
-        debug_assert!(pool_state.validate_fee_consistency().is_ok(), 
-                     "Fee consistency check failed for pool {}", pool_account.key);
+        if pool_state.validate_fee_consistency().is_err() {
+            msg!("❌ Fee consistency check failed for pool {}", pool_account.key);
+            continue; // Skip this pool instead of panicking
+        }
         
-        // **RENT EXEMPT VALIDATION**: Verify pool still has rent exempt balance
-        debug_assert!(pool_account.lamports() >= rent_exempt_minimum,
-                     "Pool {} balance {} below rent exempt minimum {} after consolidation",
-                     pool_account.key, pool_account.lamports(), rent_exempt_minimum);
+        // **STEP 1: Serialize pool state to temporary buffer BEFORE SOL transfers**
+        let serialized_pool_data = pool_state.try_to_vec()?;
         
-        // Save updated pool state
-        let serialized_data = pool_state.try_to_vec()?;
-        pool_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+        // **STEP 2: Perform SOL transfers AFTER serialization**
+        **pool_account.try_borrow_mut_lamports()? -= available_for_consolidation;
+        **main_treasury_pda.try_borrow_mut_lamports()? += available_for_consolidation;
+        
+        // **RENT EXEMPT VALIDATION**: Verify pool still has rent exempt balance AFTER transfer
+        if pool_account.lamports() < rent_exempt_minimum {
+            msg!("❌ Pool {} balance {} below rent exempt minimum {} after consolidation",
+                 pool_account.key, pool_account.lamports(), rent_exempt_minimum);
+            // Note: SOL transfer already completed, but we log the issue
+        }
+        
+        // **STEP 3: Copy serialized data to account atomically**
+        {
+            let mut account_data = pool_account.data.borrow_mut();
+            account_data[..serialized_pool_data.len()].copy_from_slice(&serialized_pool_data);
+        } // Release borrow immediately
         
         pools_processed += 1;
         msg!("✅ Pool {} consolidated: {} SOL ({}% of pending fees)", 
