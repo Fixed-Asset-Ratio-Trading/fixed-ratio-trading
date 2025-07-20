@@ -767,3 +767,551 @@ async fn test_consolidation_mixed_pause_states() -> TestResult {
     
     Ok(())
 } 
+
+/// **CONSOLIDATION-002: Test consolidation with actual fees**
+/// 
+/// This test verifies that consolidation works correctly when pools have actual fees
+/// by performing real swaps and liquidity operations before consolidation.
+#[tokio::test]
+#[serial]
+async fn test_consolidation_with_actual_fees() -> TestResult {
+    println!("🧪 Testing CONSOLIDATION-002: Consolidation with actual fees...");
+    
+    // Create pool foundation
+    let mut foundation = create_liquidity_test_foundation(Some(2)).await?;
+    println!("✅ Pool foundation created with 2:1 ratio");
+    
+    // Get PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    // Get initial balances
+    let initial_treasury_balance = get_sol_balance(&mut foundation.env.banks_client, &main_treasury_pda).await;
+    let initial_pool_balance = get_sol_balance(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await;
+    
+    println!("Initial balances - Treasury: {} lamports, Pool: {} lamports", 
+             initial_treasury_balance, initial_pool_balance);
+    
+    // Step 1: Add liquidity to generate fees
+    println!("💧 Step 1: Adding liquidity to generate fees...");
+    
+    // Create user for liquidity operations
+    let user = Keypair::new();
+    crate::common::setup::transfer_sol(&mut foundation.env.banks_client, &foundation.env.payer, foundation.env.recent_blockhash, &foundation.env.payer, &user.pubkey(), 5_000_000_000).await?; // 5 SOL
+    
+    // Create user token accounts
+    let user_primary_account = Keypair::new();
+    let user_base_account = Keypair::new();
+    let user_lp_a_account = Keypair::new();
+    let user_lp_b_account = Keypair::new();
+    
+    // Create token accounts
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_primary_account,
+        &foundation.primary_mint.pubkey(),
+        &user.pubkey(),
+    ).await?;
+    
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_base_account,
+        &foundation.base_mint.pubkey(),
+        &user.pubkey(),
+    ).await?;
+    
+    // Create LP token accounts (required for deposit)
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_lp_a_account,
+        &foundation.pool_config.token_a_mint,
+        &user.pubkey(),
+    ).await?;
+    
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_lp_b_account,
+        &foundation.pool_config.token_b_mint,
+        &user.pubkey(),
+    ).await?;
+    
+    // Mint tokens to user
+    crate::common::tokens::mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &foundation.primary_mint.pubkey(),
+        &user_primary_account.pubkey(),
+        &foundation.primary_mint,
+        1_000_000_000, // 1M tokens
+    ).await?;
+    
+    crate::common::tokens::mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &foundation.base_mint.pubkey(),
+        &user_base_account.pubkey(),
+        &foundation.base_mint,
+        500_000_000, // 500K tokens
+    ).await?;
+    
+    // Add liquidity
+    let deposit_instruction = PoolInstruction::Deposit {
+        deposit_token_mint: foundation.primary_mint.pubkey(),
+        amount: 500_000_000, // 500K tokens
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(user.pubkey(), true), // User authority
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new(foundation.pool_config.token_a_vault_pda, false),
+        AccountMeta::new(foundation.pool_config.token_b_vault_pda, false),
+        AccountMeta::new(user_primary_account.pubkey(), false),
+        AccountMeta::new(user_base_account.pubkey(), false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new(spl_token::id(), false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: deposit_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&user.pubkey()),
+        &[&user],
+        foundation.env.recent_blockhash,
+    );
+    
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Liquidity added successfully");
+    
+    // Step 2: Perform swaps to generate more fees
+    println!("🔄 Step 2: Performing swaps to generate more fees...");
+    
+    // Create swap user
+    let swap_user = Keypair::new();
+    crate::common::setup::transfer_sol(&mut foundation.env.banks_client, &foundation.env.payer, foundation.env.recent_blockhash, &foundation.env.payer, &swap_user.pubkey(), 2_000_000_000).await?; // 2 SOL
+    
+    // Create swap user token accounts
+    let swap_user_primary_account = Keypair::new();
+    let swap_user_base_account = Keypair::new();
+    
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &swap_user_primary_account,
+        &foundation.primary_mint.pubkey(),
+        &swap_user.pubkey(),
+    ).await?;
+    
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &swap_user_base_account,
+        &foundation.base_mint.pubkey(),
+        &swap_user.pubkey(),
+    ).await?;
+    
+    // Mint tokens for swapping
+    crate::common::tokens::mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &foundation.primary_mint.pubkey(),
+        &swap_user_primary_account.pubkey(),
+        &foundation.primary_mint,
+        100_000_000, // 100K tokens
+    ).await?;
+    
+    // Perform swap
+    let swap_instruction = PoolInstruction::Swap {
+        input_token_mint: foundation.primary_mint.pubkey(),
+        amount_in: 50_000_000, // 50K tokens
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(swap_user.pubkey(), true), // Swap user authority
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new(foundation.pool_config.token_a_vault_pda, false),
+        AccountMeta::new(foundation.pool_config.token_b_vault_pda, false),
+        AccountMeta::new(swap_user_primary_account.pubkey(), false),
+        AccountMeta::new(swap_user_base_account.pubkey(), false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new(spl_token::id(), false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: swap_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&swap_user.pubkey()),
+        &[&swap_user],
+        foundation.env.recent_blockhash,
+    );
+    
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Swap performed successfully");
+    
+    // Step 3: Check pool state to verify fees were generated
+    println!("🔍 Step 3: Checking pool state for generated fees...");
+    let pool_state = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let pool_state: PoolState = PoolState::try_from_slice(&pool_state.data)?;
+    
+    let pool_fees = pool_state.pending_sol_fees();
+    println!("Pool fees available for consolidation: {} lamports", pool_fees);
+    
+    // Verify fees were actually generated
+    assert!(pool_fees > 0, "Pool should have fees to consolidate");
+    
+    // Step 4: Pause the pool for consolidation eligibility
+    println!("⏸️ Step 4: Pausing pool for consolidation...");
+    
+    let pause_instruction = PoolInstruction::PausePool {
+        pause_flags: PAUSE_FLAG_ALL,
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(foundation.env.payer.pubkey(), true), // Pool owner
+        AccountMeta::new(system_state_pda, false),
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: pause_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&foundation.env.payer.pubkey()),
+        &[&foundation.env.payer],
+        foundation.env.recent_blockhash,
+    );
+    
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Pool paused");
+    
+    // Step 5: Test consolidation instruction with actual fees
+    println!("💰 Step 5: Testing consolidation instruction with actual fees...");
+    
+    let consolidate_instruction = PoolInstruction::ConsolidatePoolFees {
+        pool_count: 1,
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(system_state_pda, false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: consolidate_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&foundation.env.payer.pubkey()),
+        &[&foundation.env.payer],
+        foundation.env.recent_blockhash,
+    );
+    
+    // This should succeed and actually consolidate fees
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Consolidation instruction executed successfully");
+    
+    // Step 6: Verify consolidation actually transferred fees
+    println!("🔍 Step 6: Verifying fee transfer...");
+    let final_treasury_balance = get_sol_balance(&mut foundation.env.banks_client, &main_treasury_pda).await;
+    let final_pool_balance = get_sol_balance(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await;
+    
+    let treasury_balance_change = final_treasury_balance - initial_treasury_balance;
+    let pool_balance_change = final_pool_balance - initial_pool_balance;
+    
+    println!("Treasury balance change: {} lamports", treasury_balance_change);
+    println!("Pool balance change: {} lamports", pool_balance_change);
+    
+    // Verify fees were actually transferred
+    assert!(treasury_balance_change > 0, "Treasury should have received fees");
+    assert!(pool_balance_change < 0, "Pool should have lost fees");
+    
+    // Step 7: Verify pool state after consolidation
+    let pool_state_after = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let pool_state_after: PoolState = PoolState::try_from_slice(&pool_state_after.data)?;
+    
+    let remaining_fees = pool_state_after.pending_sol_fees();
+    println!("Remaining fees in pool: {} lamports", remaining_fees);
+    
+    // Verify pool is still paused
+    assert!(pool_state_after.swaps_paused(), "Pool swaps should still be paused");
+    assert!(pool_state_after.liquidity_paused(), "Pool liquidity should still be paused");
+    
+    println!("✅ CONSOLIDATION-002: Consolidation with actual fees test passed!");
+    println!("   - Liquidity added successfully");
+    println!("   - Swap performed successfully");
+    println!("   - Fees generated: {} lamports", pool_fees);
+    println!("   - Pool paused successfully");
+    println!("   - Consolidation executed and transferred fees");
+    println!("   - Treasury received: {} lamports", treasury_balance_change);
+    println!("   - Pool state remains consistent");
+    
+    Ok(())
+} 
+
+/// **CONSOLIDATION-003: Test consolidation with system pause mode**
+/// 
+/// This test verifies that consolidation works correctly when the system is paused
+/// by testing the SystemPaused consolidation mode in determine_consolidation_mode.
+#[tokio::test]
+#[serial]
+async fn test_consolidation_with_system_pause_mode() -> TestResult {
+    println!("🧪 Testing CONSOLIDATION-003: Consolidation with system pause mode...");
+    
+    // Create pool foundation
+    let mut foundation = create_liquidity_test_foundation(Some(3)).await?;
+    println!("✅ Pool foundation created with 3:1 ratio");
+    
+    // Get PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    
+    // Get initial balances
+    let initial_treasury_balance = get_sol_balance(&mut foundation.env.banks_client, &main_treasury_pda).await;
+    let initial_pool_balance = get_sol_balance(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await;
+    
+    println!("Initial balances - Treasury: {} lamports, Pool: {} lamports", 
+             initial_treasury_balance, initial_pool_balance);
+    
+    // Step 1: Add liquidity to generate fees (same as previous test)
+    println!("💧 Step 1: Adding liquidity to generate fees...");
+    
+    // Create user for liquidity operations
+    let user = Keypair::new();
+    crate::common::setup::transfer_sol(&mut foundation.env.banks_client, &foundation.env.payer, foundation.env.recent_blockhash, &foundation.env.payer, &user.pubkey(), 5_000_000_000).await?; // 5 SOL
+    
+    // Create user token accounts
+    let user_primary_account = Keypair::new();
+    let user_base_account = Keypair::new();
+    
+    // Create token accounts
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_primary_account,
+        &foundation.primary_mint.pubkey(),
+        &user.pubkey(),
+    ).await?;
+    
+    crate::common::tokens::create_token_account(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &user_base_account,
+        &foundation.base_mint.pubkey(),
+        &user.pubkey(),
+    ).await?;
+    
+    // Mint tokens to user
+    crate::common::tokens::mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &foundation.primary_mint.pubkey(),
+        &user_primary_account.pubkey(),
+        &foundation.primary_mint,
+        1_000_000_000, // 1M tokens
+    ).await?;
+    
+    crate::common::tokens::mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &foundation.base_mint.pubkey(),
+        &user_base_account.pubkey(),
+        &foundation.base_mint,
+        500_000_000, // 500K tokens
+    ).await?;
+    
+    // Add liquidity
+    let deposit_instruction = PoolInstruction::Deposit {
+        deposit_token_mint: foundation.primary_mint.pubkey(),
+        amount: 500_000_000, // 500K tokens
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(user.pubkey(), true), // User authority
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new(foundation.pool_config.token_a_vault_pda, false),
+        AccountMeta::new(foundation.pool_config.token_b_vault_pda, false),
+        AccountMeta::new(user_primary_account.pubkey(), false),
+        AccountMeta::new(user_base_account.pubkey(), false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new(spl_token::id(), false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: deposit_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&user.pubkey()),
+        &[&user],
+        foundation.env.recent_blockhash,
+    );
+    
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Liquidity added successfully");
+    
+    // Step 2: Check pool state to verify fees were generated
+    println!("🔍 Step 2: Checking pool state for generated fees...");
+    let pool_state = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let pool_state: PoolState = PoolState::try_from_slice(&pool_state.data)?;
+    
+    let pool_fees = pool_state.pending_sol_fees();
+    println!("Pool fees available for consolidation: {} lamports", pool_fees);
+    
+    // Verify fees were actually generated
+    assert!(pool_fees > 0, "Pool should have fees to consolidate");
+    
+    // Step 3: Pause the SYSTEM (not just the pool) for system pause consolidation mode
+    println!("⏸️ Step 3: Pausing system for system pause consolidation mode...");
+    
+    // First, get the system authority (this would normally be the program upgrade authority)
+    let system_authority = Keypair::new();
+    
+    // Pause the system with consolidation reason
+    let pause_system_instruction = PoolInstruction::PauseSystem {
+        reason_code: PAUSE_REASON_CONSOLIDATION,
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(system_authority.pubkey(), true), // System authority
+        AccountMeta::new(system_state_pda, false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: pause_system_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&system_authority.pubkey()),
+        &[&system_authority],
+        foundation.env.recent_blockhash,
+    );
+    
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ System paused with consolidation reason");
+    
+    // Step 4: Test consolidation instruction with system pause mode
+    println!("💰 Step 4: Testing consolidation instruction with system pause mode...");
+    
+    let consolidate_instruction = PoolInstruction::ConsolidatePoolFees {
+        pool_count: 1,
+    };
+    
+    let accounts = vec![
+        AccountMeta::new(system_state_pda, false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+    ];
+    
+    let instruction = Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: consolidate_instruction.try_to_vec()?,
+    };
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&foundation.env.payer.pubkey()),
+        &[&foundation.env.payer],
+        foundation.env.recent_blockhash,
+    );
+    
+    // This should succeed and actually consolidate fees using SystemPaused mode
+    foundation.env.banks_client.process_transaction(transaction).await?;
+    println!("✅ Consolidation instruction executed successfully with system pause mode");
+    
+    // Step 5: Verify consolidation actually transferred fees
+    println!("🔍 Step 5: Verifying fee transfer...");
+    let final_treasury_balance = get_sol_balance(&mut foundation.env.banks_client, &main_treasury_pda).await;
+    let final_pool_balance = get_sol_balance(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await;
+    
+    let treasury_balance_change = final_treasury_balance - initial_treasury_balance;
+    let pool_balance_change = final_pool_balance - initial_pool_balance;
+    
+    println!("Treasury balance change: {} lamports", treasury_balance_change);
+    println!("Pool balance change: {} lamports", pool_balance_change);
+    
+    // Verify fees were actually transferred
+    assert!(treasury_balance_change > 0, "Treasury should have received fees");
+    assert!(pool_balance_change < 0, "Pool should have lost fees");
+    
+    // Step 6: Verify pool state after consolidation
+    let pool_state_after = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
+    let pool_state_after: PoolState = PoolState::try_from_slice(&pool_state_after.data)?;
+    
+    let remaining_fees = pool_state_after.pending_sol_fees();
+    println!("Remaining fees in pool: {} lamports", remaining_fees);
+    
+    // Step 7: Verify system state
+    let system_state = foundation.env.banks_client.get_account(system_state_pda).await?.unwrap();
+    let system_state: fixed_ratio_trading::state::SystemState = fixed_ratio_trading::state::SystemState::try_from_slice(&system_state.data)?;
+    
+    println!("System state after consolidation:");
+    println!("  - System paused: {}", system_state.is_paused);
+    println!("  - Pause reason: {}", system_state.pause_reason_code);
+    
+    // Verify system is still paused
+    assert!(system_state.is_paused, "System should still be paused");
+    assert_eq!(system_state.pause_reason_code, PAUSE_REASON_CONSOLIDATION, "System should have consolidation pause reason");
+    
+    println!("✅ CONSOLIDATION-003: Consolidation with system pause mode test passed!");
+    println!("   - Liquidity added successfully");
+    println!("   - Fees generated: {} lamports", pool_fees);
+    println!("   - System paused with consolidation reason");
+    println!("   - Consolidation executed using SystemPaused mode");
+    println!("   - Treasury received: {} lamports", treasury_balance_change);
+    println!("   - System state remains consistent");
+    
+    Ok(())
+} 

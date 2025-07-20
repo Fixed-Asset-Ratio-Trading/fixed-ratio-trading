@@ -278,22 +278,56 @@ pub fn check_one_to_many_ratio(
     token_a_decimals: u8,
     token_b_decimals: u8
 ) -> bool {
+    // ✅ ENHANCED DEBUG LOGGING: Step-by-step tracing
+    use solana_program::msg;
+    
+    msg!("🔍 ENHANCED DEBUG: Entering check_one_to_many_ratio");
+    msg!("  Input: ratio_a_numerator={}, ratio_b_denominator={}", ratio_a_numerator, ratio_b_denominator);
+    msg!("  Input: token_a_decimals={}, token_b_decimals={}", token_a_decimals, token_b_decimals);
+    
     let token_a_decimal_factor = 10_u64.pow(token_a_decimals as u32);
     let token_b_decimal_factor = 10_u64.pow(token_b_decimals as u32);
+    
+    msg!("🔍 Step 1: Calculated decimal factors");
+    msg!("  token_a_decimal_factor: {} (10^{})", token_a_decimal_factor, token_a_decimals);
+    msg!("  token_b_decimal_factor: {} (10^{})", token_b_decimal_factor, token_b_decimals);
     
     // Check if both ratios represent whole numbers (no fractional parts)
     let a_is_whole = (ratio_a_numerator % token_a_decimal_factor) == 0;
     let b_is_whole = (ratio_b_denominator % token_b_decimal_factor) == 0;
     
+    msg!("🔍 Step 2: Checking if ratios represent whole numbers");
+    msg!("  a_is_whole: {} ({} % {} == 0)", a_is_whole, ratio_a_numerator, token_a_decimal_factor);
+    msg!("  b_is_whole: {} ({} % {} == 0)", b_is_whole, ratio_b_denominator, token_b_decimal_factor);
+    
     // Convert to display units
     let display_ratio_a = ratio_a_numerator / token_a_decimal_factor;
     let display_ratio_b = ratio_b_denominator / token_b_decimal_factor;
+    
+    msg!("🔍 Step 3: Converting to display units");
+    msg!("  display_ratio_a: {} ({} / {})", display_ratio_a, ratio_a_numerator, token_a_decimal_factor);
+    msg!("  display_ratio_b: {} ({} / {})", display_ratio_b, ratio_b_denominator, token_b_decimal_factor);
     
     // Check if both are greater than zero, whole numbers, and one equals exactly 1
     let both_positive = display_ratio_a > 0 && display_ratio_b > 0;
     let one_equals_one = display_ratio_a == 1 || display_ratio_b == 1;
     
-    a_is_whole && b_is_whole && both_positive && one_equals_one
+    msg!("🔍 Step 4: Checking final conditions");
+    msg!("  both_positive: {} ({} > 0 && {} > 0)", both_positive, display_ratio_a, display_ratio_b);
+    msg!("  one_equals_one: {} ({} == 1 || {} == 1)", one_equals_one, display_ratio_a, display_ratio_b);
+    
+    let final_result = a_is_whole && b_is_whole && both_positive && one_equals_one;
+    
+    msg!("🔍 Step 5: Final calculation");
+    msg!("  a_is_whole: {}", a_is_whole);
+    msg!("  b_is_whole: {}", b_is_whole);
+    msg!("  both_positive: {}", both_positive);
+    msg!("  one_equals_one: {}", one_equals_one);
+    msg!("  final_result: {} (a_is_whole && b_is_whole && both_positive && one_equals_one)", final_result);
+    
+    msg!("🔍 ENHANCED DEBUG: Exiting check_one_to_many_ratio with result: {}", final_result);
+    
+    final_result
 } 
 
 /// **NEW: Secure system state validation**

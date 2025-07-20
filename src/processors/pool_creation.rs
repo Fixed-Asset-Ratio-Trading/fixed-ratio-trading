@@ -541,15 +541,44 @@ pub fn process_initialize_pool(
     let token_b_mint = spl_token::state::Mint::unpack(&token_b_mint_data)?;
     let token_b_decimals = token_b_mint.decimals;
 
+    // ✅ ENHANCED DEBUG LOGGING: Log all inputs to check_one_to_many_ratio
+    msg!("🔍 ENHANCED DEBUG: Token Mint Information");
+    msg!("  Token A Mint: {}", token_a_mint_key);
+    msg!("  Token A Decimals (from mint): {}", token_a_decimals);
+    msg!("  Token A Supply: {}", token_a_mint.supply);
+    msg!("  Token A Is Initialized: {}", token_a_mint.is_initialized);
+    msg!("  Token B Mint: {}", token_b_mint_key);
+    msg!("  Token B Decimals (from mint): {}", token_b_decimals);
+    msg!("  Token B Supply: {}", token_b_mint.supply);
+    msg!("  Token B Is Initialized: {}", token_b_mint.is_initialized);
+
     // ✅ ONE-TO-MANY RATIO FLAG: Determine if this pool qualifies for the one-to-many ratio flag
     // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
     // and both ratios represent whole numbers only (no fractional amounts)
+    
+    msg!("🔍 ENHANCED DEBUG: About to call check_one_to_many_ratio");
+    msg!("  Input ratio_a_numerator: {} (simplified)", ratio_a_numerator);
+    msg!("  Input ratio_b_denominator: {} (simplified)", ratio_b_denominator);
+    msg!("  Input token_a_decimals: {}", token_a_decimals);
+    msg!("  Input token_b_decimals: {}", token_b_decimals);
+    
+    // ✅ BUG FIX: Convert simplified ratio values to decimal-adjusted values
+    // The check_one_to_many_ratio function expects decimal-adjusted values (e.g., 1,000,000,000 for 1.0 with 9 decimals)
+    // but the pool creation stores simplified values (e.g., 160 for a 160:1 ratio)
+    let decimal_adjusted_ratio_a = ratio_a_numerator * 10_u64.pow(token_a_decimals as u32);
+    let decimal_adjusted_ratio_b = ratio_b_denominator * 10_u64.pow(token_b_decimals as u32);
+    
+    msg!("  Decimal-adjusted ratio_a_numerator: {}", decimal_adjusted_ratio_a);
+    msg!("  Decimal-adjusted ratio_b_denominator: {}", decimal_adjusted_ratio_b);
+    
     let is_one_to_many_ratio = check_one_to_many_ratio(
-        ratio_a_numerator,
-        ratio_b_denominator,
+        decimal_adjusted_ratio_a,
+        decimal_adjusted_ratio_b,
         token_a_decimals,
         token_b_decimals
     );
+    
+    msg!("🔍 ENHANCED DEBUG: check_one_to_many_ratio result: {}", is_one_to_many_ratio);
     
     msg!("🔍 One-to-Many Ratio Analysis:");
     msg!("  Token A: {} base units ({} decimals)", ratio_a_numerator, token_a_decimals);
@@ -578,10 +607,20 @@ pub fn process_initialize_pool(
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
         rent_requirements: RentRequirements::new(rent),
-        flags: if is_one_to_many_ratio { 
-            crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
-        } else { 
-            0 
+        flags: {
+            let flag_value = if is_one_to_many_ratio { 
+                msg!("🔍 ENHANCED DEBUG: Setting POOL_FLAG_ONE_TO_MANY_RATIO flag");
+                msg!("  Flag constant value: {}", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
+                msg!("  Flags will be set to: 0b{:08b} ({})", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO, crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
+                crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
+            } else { 
+                msg!("🔍 ENHANCED DEBUG: NOT setting POOL_FLAG_ONE_TO_MANY_RATIO flag");
+                msg!("  is_one_to_many_ratio returned: false");
+                msg!("  Flags will remain: 0b{:08b} ({})", 0u8, 0u8);
+                0 
+            };
+            msg!("🔍 ENHANCED DEBUG: Final flag value assigned to pool state: {}", flag_value);
+            flag_value
         }, // Set ONE_TO_MANY_RATIO flag based on proper validation logic
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
@@ -600,8 +639,18 @@ pub fn process_initialize_pool(
 
     // Fee collection moved to beginning of function (FEES FIRST PATTERN)
 
+    // ✅ ENHANCED DEBUG: Verify pool state flags before serialization
+    msg!("🔍 ENHANCED DEBUG: Pool State Verification BEFORE Serialization");
+    msg!("  Pool state flags field: 0b{:08b} ({})", pool_state.flags, pool_state.flags);
+    msg!("  POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO, crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
+    msg!("  Flag is set check: {}", (pool_state.flags & crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    msg!("  Expected flag state: {}", is_one_to_many_ratio);
+    
     // Serialize pool state to account
     serialize_to_account(&pool_state, pool_state_pda)?;
+    
+    // ✅ ENHANCED DEBUG: Verify serialization completed
+    msg!("🔍 ENHANCED DEBUG: Pool state serialized to account: {}", pool_state_pda.key);
 
     // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
     msg!("🎯 POOL_ID: {}", pool_state_pda.key);

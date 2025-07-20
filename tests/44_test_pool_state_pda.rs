@@ -29,6 +29,7 @@ SOFTWARE.
 mod common;
 
 use common::*;
+use serial_test::serial;
 use solana_program::pubkey::Pubkey;
 use solana_program::instruction::Instruction;
 use solana_sdk::transaction::Transaction;
@@ -529,5 +530,286 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     println!("✅ UTIL-001 test_get_pool_state_pda completed successfully with enhanced validation");
+    Ok(())
+} 
+
+//=============================================================================
+// POOL STATE FLAG PERSISTENCE TESTS (from 96_test_pool_state_flag_persistence.rs)
+//=============================================================================
+
+#[tokio::test]
+#[serial]
+async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 CRITICAL TEST: Pool State Flag Persistence Verification");
+    println!("==========================================================");
+    
+    use crate::common::*;
+    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::utils::validation::check_one_to_many_ratio;
+    use solana_sdk::signer::keypair::Keypair;
+    
+    // Setup test environment
+    let test_env = start_test_environment().await;
+    let mut banks_client = test_env.banks_client;
+    let funder = test_env.payer;
+    let recent_blockhash = test_env.recent_blockhash;
+
+    // Initialize treasury system
+    let system_authority = Keypair::new();
+    transfer_sol(&mut banks_client, &funder, recent_blockhash, &funder, &system_authority.pubkey(), 10_000_000_000).await?;
+    
+    initialize_treasury_system(
+        &mut banks_client,
+        &funder,
+        recent_blockhash,
+        &system_authority,
+    ).await?;
+
+    println!("✅ Treasury system initialized");
+
+    // **TEST CASE 1: Create pool that SHOULD have the flag set**
+    println!("\n🎯 TEST CASE 1: One-to-Many Ratio Pool (flag should be SET)");
+    
+    let token_a_mint = Keypair::new();
+    let token_b_mint = Keypair::new();
+    
+    // Create token mints with appropriate decimals
+    create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(9)).await?; // SOL-like (9 decimals)
+    create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(6)).await?; // USDT-like (6 decimals)
+    
+    // Create pool with 160:1 ratio (160 USDT for 1 SOL) - this should set the POOL_FLAG_ONE_TO_MANY_RATIO flag
+    println!("   Creating pool with 160:1 ratio (should set POOL_FLAG_ONE_TO_MANY_RATIO flag)");
+    
+    // Create the pool
+    let pool_result = create_pool_new_pattern(
+        &mut banks_client,
+        &funder,
+        recent_blockhash,
+        &token_a_mint,
+        &token_b_mint,
+        Some(160), // 160:1 ratio (160 USDT for 1 SOL)
+    ).await;
+
+    // Handle the Result properly - it might fail due to the bug we're investigating
+    match pool_result {
+        Ok(pool_config) => {
+            println!("✅ Pool created successfully");
+            println!("   Pool PDA: {}", pool_config.pool_state_pda);
+            
+            // **CRITICAL TEST: Immediately read back the pool state from blockchain**
+            println!("\n🔍 IMMEDIATE VERIFICATION: Reading pool state from blockchain...");
+            
+            if let Some(pool_state) = get_pool_state(&mut banks_client, &pool_config.pool_state_pda).await {
+                println!("📊 Pool State Retrieved:");
+                println!("   Owner: {}", pool_state.owner);
+                println!("   Token A: {}", pool_state.token_a_mint);
+                println!("   Token B: {}", pool_state.token_b_mint);
+                println!("   Ratio A: {}", pool_state.ratio_a_numerator);
+                println!("   Ratio B: {}", pool_state.ratio_b_denominator);
+                println!("   Flags: 0b{:08b} ({})", pool_state.flags, pool_state.flags);
+                
+                // **CRITICAL CHECK: Verify the flag is set correctly**
+                let flag_is_set = (pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0;
+                
+                println!("\n🎯 FLAG VERIFICATION:");
+                println!("   Expected flag to be set: true (160:1 ratio should set flag)");
+                println!("   Flag actually set: {}", flag_is_set);
+                println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
+                
+                // For 160:1 ratio, the flag should be set
+                assert!(flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for 160:1 ratio but is NOT SET!");
+                println!("✅ SUCCESS: Flag is correctly SET as expected");
+            } else {
+                println!("❌ CRITICAL: Could not retrieve pool state from blockchain!");
+                return Err("Pool state not found on blockchain".into());
+            }
+        }
+        Err(e) => {
+            println!("❌ CRITICAL: Pool creation failed: {:?}", e);
+            return Err(format!("Pool creation failed: {:?}", e).into());
+        }
+    }
+
+    println!("\n🎉 CRITICAL TEST COMPLETED!");
+    println!("===========================================");
+    println!("✅ Pool state flag persistence verified on blockchain");
+    
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 SERIALIZATION METHOD COMPARISON TEST");
+    println!("=====================================");
+    
+    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::PoolState;
+    use fixed_ratio_trading::state::pool_state::RentRequirements;
+    use borsh::{BorshSerialize, BorshDeserialize};
+    use solana_program::sysvar::rent::Rent;
+    
+    // Create a test PoolState structure
+    let test_pool_state = PoolState {
+        owner: solana_program::pubkey::Pubkey::new_unique(),
+        token_a_mint: solana_program::pubkey::Pubkey::new_unique(),
+        token_b_mint: solana_program::pubkey::Pubkey::new_unique(),
+        token_a_vault: solana_program::pubkey::Pubkey::new_unique(),
+        token_b_vault: solana_program::pubkey::Pubkey::new_unique(),
+        lp_token_a_mint: solana_program::pubkey::Pubkey::new_unique(),
+        lp_token_b_mint: solana_program::pubkey::Pubkey::new_unique(),
+        ratio_a_numerator: 1_000_000_000,
+        ratio_b_denominator: 160_000_000,
+        total_token_a_liquidity: 0,
+        total_token_b_liquidity: 0,
+        pool_authority_bump_seed: 255,
+        token_a_vault_bump_seed: 254,
+        token_b_vault_bump_seed: 253,
+        lp_token_a_mint_bump_seed: 252,
+        lp_token_b_mint_bump_seed: 251,
+        rent_requirements: RentRequirements::new(&Rent::default()),
+        flags: POOL_FLAG_ONE_TO_MANY_RATIO, // Set the flag
+        collected_fees_token_a: 0,
+        collected_fees_token_b: 0,
+        total_fees_withdrawn_token_a: 0,
+        total_fees_withdrawn_token_b: 0,
+        collected_liquidity_fees: 0,
+        collected_swap_contract_fees: 0,
+        total_sol_fees_collected: 0,
+        last_consolidation_timestamp: 0,
+        total_consolidations: 0,
+        total_fees_consolidated: 0,
+    };
+    
+    println!("📊 Original PoolState:");
+    println!("   Flags: 0b{:08b} ({})", test_pool_state.flags, test_pool_state.flags);
+    println!("   Flag set: {}", (test_pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    
+    // **METHOD 1: serialize() + Vec**
+    println!("\n🔍 METHOD 1: serialize() + Vec (used by serialize_to_account, liquidity, swap)");
+    let mut serialized_method1 = Vec::new();
+    test_pool_state.serialize(&mut serialized_method1)?;
+    println!("   Serialized size: {} bytes", serialized_method1.len());
+    
+    // Deserialize back
+    let deserialized_method1 = PoolState::try_from_slice(&serialized_method1)?;
+    println!("   Deserialized flags: 0b{:08b} ({})", deserialized_method1.flags, deserialized_method1.flags);
+    println!("   Flag preserved: {}", (deserialized_method1.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    
+    // **METHOD 2: try_to_vec()**
+    println!("\n🔍 METHOD 2: try_to_vec() (used by pool_management, fee_validation)");
+    let serialized_method2 = test_pool_state.try_to_vec()?;
+    println!("   Serialized size: {} bytes", serialized_method2.len());
+    
+    // Deserialize back
+    let deserialized_method2 = PoolState::try_from_slice(&serialized_method2)?;
+    println!("   Deserialized flags: 0b{:08b} ({})", deserialized_method2.flags, deserialized_method2.flags);
+    println!("   Flag preserved: {}", (deserialized_method2.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    
+    // **COMPARISON**
+    println!("\n🎯 COMPARISON RESULTS:");
+    println!("   Method 1 size: {} bytes", serialized_method1.len());
+    println!("   Method 2 size: {} bytes", serialized_method2.len());
+    println!("   Size match: {}", serialized_method1.len() == serialized_method2.len());
+    println!("   Data match: {}", serialized_method1 == serialized_method2);
+    
+    if serialized_method1 == serialized_method2 {
+        println!("✅ SUCCESS: Both serialization methods produce identical results");
+    } else {
+        println!("❌ CRITICAL: Serialization methods produce different results!");
+        
+        // Find differences
+        let max_diff_display = 10; // Limit output
+        let mut diff_count = 0;
+        for (i, (a, b)) in serialized_method1.iter().zip(serialized_method2.iter()).enumerate() {
+            if a != b {
+                if diff_count < max_diff_display {
+                    println!("   Difference at byte {}: method1={}, method2={}", i, a, b);
+                }
+                diff_count += 1;
+            }
+        }
+        if diff_count > max_diff_display {
+            println!("   ... and {} more differences", diff_count - max_diff_display);
+        }
+    }
+    
+    // **DETAILED FIELD COMPARISON**
+    println!("\n🔍 DETAILED FIELD COMPARISON:");
+    println!("   Original flags: {}", test_pool_state.flags);
+    println!("   Method 1 flags: {}", deserialized_method1.flags);
+    println!("   Method 2 flags: {}", deserialized_method2.flags);
+    println!("   Flags match: {}", deserialized_method1.flags == deserialized_method2.flags);
+    
+    // Check other critical fields
+    println!("   Ratio A match: {}", deserialized_method1.ratio_a_numerator == deserialized_method2.ratio_a_numerator);
+    println!("   Ratio B match: {}", deserialized_method1.ratio_b_denominator == deserialized_method2.ratio_b_denominator);
+    println!("   Owner match: {}", deserialized_method1.owner == deserialized_method2.owner);
+    
+    // **ASSERTIONS**
+    assert_eq!(serialized_method1, serialized_method2, "Serialization methods should produce identical byte sequences");
+    assert_eq!(deserialized_method1.flags, deserialized_method2.flags, "Flag values should match between methods");
+    assert!((deserialized_method1.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0, "Flag should be preserved in method 1");
+    assert!((deserialized_method2.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0, "Flag should be preserved in method 2");
+    
+    println!("\n✅ SERIALIZATION COMPARISON COMPLETED SUCCESSFULLY!");
+    println!("Both methods are equivalent and preserve all data correctly.");
+    
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_flag_bit_manipulation_standalone() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 STANDALONE FLAG BIT MANIPULATION TEST");
+    println!("======================================");
+    
+    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use borsh::{BorshSerialize, BorshDeserialize};
+    
+    println!("🔍 Testing flag bit operations...");
+    println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
+    
+    // Test setting the flag
+    let mut flags: u8 = 0;
+    println!("   Initial flags: 0b{:08b} ({})", flags, flags);
+    
+    // Set the flag
+    flags |= POOL_FLAG_ONE_TO_MANY_RATIO;
+    println!("   After setting flag: 0b{:08b} ({})", flags, flags);
+    println!("   Flag is set: {}", (flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    
+    // Test clearing the flag
+    flags &= !POOL_FLAG_ONE_TO_MANY_RATIO;
+    println!("   After clearing flag: 0b{:08b} ({})", flags, flags);
+    println!("   Flag is set: {}", (flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    
+    // Test serialization of just the flag value
+    println!("\n🔍 Testing flag serialization...");
+    let flag_value = POOL_FLAG_ONE_TO_MANY_RATIO;
+    
+    // Method 1: serialize
+    let mut serialized_flag1 = Vec::new();
+    flag_value.serialize(&mut serialized_flag1)?;
+    println!("   Method 1 serialized flag: {:?}", serialized_flag1);
+    
+    // Method 2: try_to_vec
+    let serialized_flag2 = flag_value.try_to_vec()?;
+    println!("   Method 2 serialized flag: {:?}", serialized_flag2);
+    
+    assert_eq!(serialized_flag1, serialized_flag2, "Flag serialization should be identical");
+    
+    // Deserialize and verify
+    let deserialized_flag1 = u8::try_from_slice(&serialized_flag1)?;
+    let deserialized_flag2 = u8::try_from_slice(&serialized_flag2)?;
+    
+    println!("   Deserialized flag 1: {}", deserialized_flag1);
+    println!("   Deserialized flag 2: {}", deserialized_flag2);
+    
+    assert_eq!(deserialized_flag1, POOL_FLAG_ONE_TO_MANY_RATIO);
+    assert_eq!(deserialized_flag2, POOL_FLAG_ONE_TO_MANY_RATIO);
+    assert_eq!(deserialized_flag1, deserialized_flag2);
+    
+    println!("✅ FLAG MANIPULATION TEST COMPLETED SUCCESSFULLY!");
+    
     Ok(())
 } 

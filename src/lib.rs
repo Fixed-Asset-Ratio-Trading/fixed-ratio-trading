@@ -68,6 +68,7 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
+    msg,
     declare_id,
 };
 

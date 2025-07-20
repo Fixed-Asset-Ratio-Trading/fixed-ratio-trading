@@ -500,7 +500,7 @@ pub async fn execute_pool_creation_with_counter_verification(
     // Step 1: Get initial treasury state
     let (main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
-        &fixed_ratio_trading::ID,
+        &fixed_ratio_trading::id(),
     );
     
     let initial_treasury_account = env.banks_client.get_account(main_treasury_pda).await?;
@@ -679,7 +679,7 @@ pub async fn verify_pool_creation_fee_collection(
     // Get current treasury state
     let (main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
-        &fixed_ratio_trading::ID,
+        &fixed_ratio_trading::id(),
     );
     
     let current_treasury_account = env.banks_client.get_account(main_treasury_pda).await
@@ -796,76 +796,149 @@ pub async fn execute_consolidation_operation(
     println!("🔄 PHASE 2.1: Executing consolidation operation...");
     println!("   • Pool: {}", pool_pda);
     
-    // **INFRASTRUCTURE TESTING**: Use mock data for reliable consolidation testing
-    let mock_timestamp = 1640995200; // January 1, 2022 00:00:00 UTC
+    // Get PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::MAIN_TREASURY_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::SYSTEM_STATE_SEED_PREFIX],
+        &fixed_ratio_trading::id(),
+    );
     
-    // **PHASE 2.1**: Mock initial pool fee state (simulating accumulated fees from Phase 1 operations)
-    let initial_pool_fees = PoolFeeState {
-        pool_pda: *pool_pda,
-        total_liquidity_fees: 5000, // Mock: 5000 lamports accumulated from liquidity operations
-        liquidity_operation_count: 10, // Mock: 10 liquidity operations performed
-        pool_balance_primary: 1000000, // Mock: 1M primary tokens
-        pool_balance_base: 500000,     // Mock: 500K base tokens
-        timestamp: mock_timestamp,
+    // Get initial treasury state
+    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+    
+    // Get initial pool state
+    let pool_account = env.banks_client.get_account(*pool_pda).await?.unwrap();
+    let initial_pool_state: fixed_ratio_trading::PoolState = fixed_ratio_trading::PoolState::try_from_slice(&pool_account.data)?;
+    
+    let initial_pool_fees = initial_pool_state.pending_sol_fees();
+    println!("   • Initial pool fees: {} lamports", initial_pool_fees);
+    
+    // If no fees, return early with appropriate result
+    if initial_pool_fees == 0 {
+        println!("   • No fees to consolidate, returning early");
+        return Ok(ConsolidationResult {
+            initial_pool_fees: PoolFeeState {
+                pool_pda: *pool_pda,
+                total_liquidity_fees: 0,
+                liquidity_operation_count: 0,
+                pool_balance_primary: 0,
+                pool_balance_base: 0,
+                timestamp: 0,
+            },
+            initial_treasury_state: initial_treasury_state.clone(),
+            post_consolidation_treasury_state: initial_treasury_state,
+            fees_transferred: 0,
+            liquidity_operations_consolidated: 0,
+            swap_operations_consolidated: 0,
+            consolidation_successful: true, // Still successful, just no fees to consolidate
+            error_message: None,
+            consolidation_timestamp: 0,
+        });
+    }
+    
+    // **PHASE 2.1**: Execute actual consolidation instruction
+    println!("💰 Executing actual consolidation instruction...");
+    
+    let consolidate_instruction = fixed_ratio_trading::PoolInstruction::ConsolidatePoolFees {
+        pool_count: 1,
     };
     
-    // **PHASE 2.1**: Mock initial treasury state
-    let initial_treasury_state = MainTreasuryState {
-        total_balance: 10000000, // Mock: 10M lamports in treasury
-        rent_exempt_minimum: 2039280, // Standard rent exempt minimum
-        total_withdrawn: 0,
-        pool_creation_count: 5,
-        liquidity_operation_count: 25, // Mock: 25 operations before consolidation
-        regular_swap_count: 15,        // Mock: 15 swaps before consolidation
-        treasury_withdrawal_count: 0,
-        failed_operation_count: 0,
-        total_pool_creation_fees: 250000,
-        total_liquidity_fees: 50000,     // Mock: 50K fees before consolidation
-        total_regular_swap_fees: 30000,   // Mock: 30K swap fees before consolidation
-        total_swap_contract_fees: 30000,
-        last_update_timestamp: mock_timestamp - 3600, // 1 hour ago
-        total_consolidations_performed: 2, // Mock: 2 previous consolidations
-        last_consolidation_timestamp: mock_timestamp - 86400, // 1 day ago
+    let accounts = vec![
+        solana_sdk::instruction::AccountMeta::new(system_state_pda, false),
+        solana_sdk::instruction::AccountMeta::new(main_treasury_pda, false),
+        solana_sdk::instruction::AccountMeta::new(*pool_pda, false),
+    ];
+    
+    let instruction = solana_sdk::instruction::Instruction {
+        program_id: fixed_ratio_trading::id(),
+        accounts,
+        data: consolidate_instruction.try_to_vec()?,
     };
     
-    // **INFRASTRUCTURE TESTING**: Simulate consolidation with mock data
-    println!("💰 Consolidating fees from pool to treasury...");
+    let transaction = solana_sdk::transaction::Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&env.payer.pubkey()),
+        &[&env.payer],
+        env.recent_blockhash,
+    );
     
-    // Mock consolidation amounts
-    let fees_to_transfer = initial_pool_fees.total_liquidity_fees; // Transfer all accumulated fees
-    let liquidity_ops_to_consolidate = initial_pool_fees.liquidity_operation_count as u32;
-    let swap_ops_to_consolidate = 0u32; // Mock: No swap fees in this pool for this test
+    // Execute the consolidation transaction
+    match env.banks_client.process_transaction(transaction).await {
+        Ok(_) => {
+            println!("✅ Consolidation instruction executed successfully");
+        }
+        Err(e) => {
+            println!("❌ Consolidation instruction failed: {}", e);
+            return Ok(ConsolidationResult {
+                initial_pool_fees: PoolFeeState {
+                    pool_pda: *pool_pda,
+                    total_liquidity_fees: initial_pool_fees,
+                    liquidity_operation_count: 0,
+                    pool_balance_primary: 0,
+                    pool_balance_base: 0,
+                    timestamp: 0,
+                },
+                initial_treasury_state: initial_treasury_state.clone(),
+                post_consolidation_treasury_state: initial_treasury_state,
+                fees_transferred: 0,
+                liquidity_operations_consolidated: 0,
+                swap_operations_consolidated: 0,
+                consolidation_successful: false,
+                error_message: Some(e.to_string()),
+                consolidation_timestamp: 0,
+            });
+        }
+    }
     
-    // **PHASE 2.1**: Create post-consolidation treasury state
-    let mut post_consolidation_treasury_state = initial_treasury_state.clone();
+    // Get post-consolidation states
+    let post_consolidation_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+    let pool_account_after = env.banks_client.get_account(*pool_pda).await?.unwrap();
+    let post_consolidation_pool_state: fixed_ratio_trading::PoolState = fixed_ratio_trading::PoolState::try_from_slice(&pool_account_after.data)?;
     
-    // Update treasury with consolidated fees and operation counts
-    post_consolidation_treasury_state.total_balance += fees_to_transfer;
-    post_consolidation_treasury_state.total_liquidity_fees += fees_to_transfer;
-    post_consolidation_treasury_state.liquidity_operation_count += liquidity_ops_to_consolidate as u64;
-    post_consolidation_treasury_state.regular_swap_count += swap_ops_to_consolidate as u64;
-    post_consolidation_treasury_state.total_consolidations_performed += 1;
-    post_consolidation_treasury_state.last_consolidation_timestamp = mock_timestamp;
-    post_consolidation_treasury_state.last_update_timestamp = mock_timestamp;
+    let final_pool_fees = post_consolidation_pool_state.pending_sol_fees();
+    let fees_transferred = initial_pool_fees - final_pool_fees;
+    
+    // Calculate operation counts from fee differences
+    let liquidity_ops_consolidated = if initial_pool_state.collected_liquidity_fees > post_consolidation_pool_state.collected_liquidity_fees {
+        (initial_pool_state.collected_liquidity_fees - post_consolidation_pool_state.collected_liquidity_fees) / fixed_ratio_trading::DEPOSIT_WITHDRAWAL_FEE
+    } else {
+        0
+    };
+    
+    let swap_ops_consolidated = if initial_pool_state.collected_swap_contract_fees > post_consolidation_pool_state.collected_swap_contract_fees {
+        (initial_pool_state.collected_swap_contract_fees - post_consolidation_pool_state.collected_swap_contract_fees) / fixed_ratio_trading::SWAP_CONTRACT_FEE
+    } else {
+        0
+    };
     
     println!("✅ PHASE 2.1: Consolidation completed successfully");
-    println!("   • Fees transferred: {} lamports", fees_to_transfer);
-    println!("   • Liquidity operations consolidated: {}", liquidity_ops_to_consolidate);
-    println!("   • Swap operations consolidated: {}", swap_ops_to_consolidate);
+    println!("   • Fees transferred: {} lamports", fees_transferred);
+    println!("   • Liquidity operations consolidated: {}", liquidity_ops_consolidated);
+    println!("   • Swap operations consolidated: {}", swap_ops_consolidated);
     println!("   • Treasury balance updated: {} -> {} lamports", 
              initial_treasury_state.total_balance, 
              post_consolidation_treasury_state.total_balance);
     
     Ok(ConsolidationResult {
-        initial_pool_fees,
+        initial_pool_fees: PoolFeeState {
+            pool_pda: *pool_pda,
+            total_liquidity_fees: initial_pool_state.collected_liquidity_fees,
+            liquidity_operation_count: 0, // We don't track this in pool state
+            pool_balance_primary: 0,
+            pool_balance_base: 0,
+            timestamp: 0,
+        },
         initial_treasury_state,
         post_consolidation_treasury_state,
-        fees_transferred: fees_to_transfer,
-        liquidity_operations_consolidated: liquidity_ops_to_consolidate,
-        swap_operations_consolidated: swap_ops_to_consolidate,
+        fees_transferred,
+        liquidity_operations_consolidated: liquidity_ops_consolidated as u32,
+        swap_operations_consolidated: swap_ops_consolidated as u32,
         consolidation_successful: true,
         error_message: None,
-        consolidation_timestamp: mock_timestamp,
+        consolidation_timestamp: 0,
     })
 }
 

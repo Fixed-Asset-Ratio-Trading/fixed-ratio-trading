@@ -50,6 +50,16 @@ pub struct LiquidityTestFoundation {
 pub async fn create_liquidity_test_foundation(
     pool_ratio: Option<u64>, // e.g., Some(3) for 3:1 ratio
 ) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
+    create_liquidity_test_foundation_with_fees(pool_ratio, false).await
+}
+
+/// Creates a complete liquidity test foundation with option to generate actual fees
+/// This enhanced version can perform real operations to generate fees for testing
+#[allow(dead_code)]
+pub async fn create_liquidity_test_foundation_with_fees(
+    pool_ratio: Option<u64>, // e.g., Some(3) for 3:1 ratio
+    generate_actual_fees: bool, // If true, performs real operations to generate fees
+) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
     println!("🏗️ Creating OPTIMIZED liquidity test foundation...");
     
     // 1. Create test environment
@@ -121,10 +131,10 @@ pub async fn create_liquidity_test_foundation(
         pool_ratio,
     ).await?;
     
-    // 8. BATCH OPERATION 4: Fund users with SOL (reduced amounts for faster processing)
+    // 8. BATCH OPERATION 4: Fund users with SOL (increased amounts for fee operations)
     println!("💰 Funding users with SOL...");
-    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 5_000_000_000).await?; // 5 SOL (reduced from 10)
-    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 5_000_000_000).await?; // 5 SOL (increased to match user1)
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 10_000_000_000).await?; // 10 SOL for fees
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 10_000_000_000).await?; // 10 SOL for fees
     
     // 9. BATCH OPERATION 5: Create token accounts (optimized batch processing)
     println!("🏦 Creating token accounts...");
@@ -190,11 +200,8 @@ pub async fn create_liquidity_test_foundation(
         // REMOVED delay for faster test execution
     }
     
-    println!("✅ OPTIMIZED liquidity test foundation created successfully!");
-    println!("   - Reduced token amounts for faster processing");
-    println!("   - Batched operations to minimize sequential processing");
-    
-    Ok(LiquidityTestFoundation {
+    // Create foundation structure first
+    let mut foundation = LiquidityTestFoundation {
         env,
         pool_config,
         primary_mint,
@@ -211,7 +218,95 @@ pub async fn create_liquidity_test_foundation(
         user2_base_account,
         user2_lp_a_account,
         user2_lp_b_account,
-    })
+    };
+
+    // NEW: Actually generate fees if requested
+    if generate_actual_fees {
+        println!("🔥 Generating actual fees through real operations...");
+        
+        // Determine which token to use for deposits
+        let (deposit_mint, user1_input_account, user1_output_lp_account) = if foundation.pool_config.token_a_is_the_multiple {
+            (
+                foundation.pool_config.token_a_mint,
+                foundation.user1_primary_account.pubkey(),
+                foundation.user1_lp_a_account.pubkey(),
+            )
+        } else {
+            (
+                foundation.pool_config.token_b_mint,
+                foundation.user1_base_account.pubkey(),
+                foundation.user1_lp_b_account.pubkey(),
+            )
+        };
+        
+        // Perform a real deposit to generate liquidity fees
+        let user1_pubkey = foundation.user1.pubkey();
+        execute_deposit_operation(
+            &mut foundation,
+            &user1_pubkey,
+            &user1_input_account,
+            &user1_output_lp_account,
+            &deposit_mint,
+            500_000, // 500K tokens
+        ).await?;
+        
+        println!("✅ Deposit operation completed - fees should now be collected");
+        
+        // Optionally perform a swap to generate swap fees (but handle errors gracefully)
+        println!("🔄 Attempting to perform swap for additional fees...");
+        let (swap_input_mint, _swap_output_mint, user2_input_account, user2_output_account) = if foundation.pool_config.token_a_is_the_multiple {
+            (
+                foundation.pool_config.token_a_mint,
+                foundation.pool_config.token_b_mint,
+                foundation.user2_primary_account.pubkey(),
+                foundation.user2_base_account.pubkey(),
+            )
+        } else {
+            (
+                foundation.pool_config.token_b_mint,
+                foundation.pool_config.token_a_mint,
+                foundation.user2_base_account.pubkey(),
+                foundation.user2_primary_account.pubkey(),
+            )
+        };
+        
+        let user2_pubkey = foundation.user2.pubkey();
+        match execute_swap_operation(
+            &mut foundation,
+            &user2_pubkey,
+            &user2_input_account,
+            &user2_output_account,
+            &swap_input_mint,
+            100_000, // 100K tokens
+        ).await {
+            Ok(_) => {
+                println!("✅ Swap operation completed - additional fees collected");
+            },
+            Err(e) => {
+                println!("⚠️ Swap operation failed (continuing with deposit fees only): {:?}", e);
+                // This is OK - we still have deposit fees to test consolidation
+            }
+        }
+        
+        // Verify fees were collected
+        let pool_state = crate::common::pool_helpers::get_pool_state(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await;
+        if let Some(pool_state) = pool_state {
+            let pending_fees = pool_state.pending_sol_fees();
+            println!("💰 Foundation now has {} lamports in pending fees", pending_fees);
+            if pending_fees == 0 {
+                println!("⚠️ WARNING: No fees collected despite operations - this indicates a fee collection bug");
+            }
+        }
+    }
+
+    println!("✅ OPTIMIZED liquidity test foundation created successfully!");
+    println!("   - Reduced token amounts for faster processing");
+    println!("   - Batched operations to minimize sequential processing");
+    if generate_actual_fees {
+        println!("   - Generated actual fees through real operations");
+    }
+    
+    Ok(foundation)
 }
 
 /// Creates a deposit instruction with proper standardized account ordering
@@ -250,12 +345,12 @@ pub fn create_deposit_instruction_standardized(
             AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA (writable for fee updates, not signer)
             AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
             AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
             AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
-            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account
-            AccountMeta::new(*user_output_lp_account, false),                       // Index 8: User Output LP Token Account
+            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account (writable for token transfer, not signer)
+            AccountMeta::new(*user_output_lp_account, false),                       // Index 8: User Output LP Token Account (writable for LP token minting, not signer)
             AccountMeta::new(*lp_token_a_mint, false),                              // Index 9: LP Token A Mint PDA
             AccountMeta::new(*lp_token_b_mint, false),                              // Index 10: LP Token B Mint PDA
         ],
@@ -299,12 +394,12 @@ pub fn create_withdrawal_instruction_standardized(
             AccountMeta::new(*user, true),                                          // Index 0: User Authority Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA (writable for fee updates, not signer)
             AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program Account
             AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
             AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
-            AccountMeta::new(*user_input_lp_account, false),                        // Index 7: User Input LP Token Account
-            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account
+            AccountMeta::new(*user_input_lp_account, false),                        // Index 7: User Input LP Token Account (writable for LP token burning, not signer)
+            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account (writable for token transfer, not signer)
             AccountMeta::new(*lp_token_a_mint, false),                              // Index 9: LP Token A Mint PDA
             AccountMeta::new(*lp_token_b_mint, false),                              // Index 10: LP Token B Mint PDA
         ],
@@ -339,12 +434,12 @@ pub fn create_swap_instruction_standardized(
             AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
-            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                    // Index 3: Pool State PDA (writable for fee updates, not signer)
             AccountMeta::new_readonly(spl_token::id(), false),                      // Index 4: SPL Token Program
             AccountMeta::new(pool_config.token_a_vault_pda, false),                 // Index 5: Token A Vault PDA
             AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
-            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account
-            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account
+            AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account (writable for token transfer, not signer)
+            AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account (writable for token transfer, not signer)
         ],
         data: serialized,
     })
@@ -397,10 +492,25 @@ pub async fn execute_deposit_operation(
     };
     
     // Step 2: Create user's LP token account for the specific mint they're depositing
-    let user_lp_account_keypair = if is_depositing_token_a {
-        &foundation.user1_lp_a_account
+    // Determine which user is performing the deposit and use their corresponding LP token account
+    let user_lp_account_keypair = if foundation.user1.pubkey() == *user_pubkey {
+        // User1 is depositing
+        if is_depositing_token_a {
+            &foundation.user1_lp_a_account
+        } else {
+            &foundation.user1_lp_b_account
+        }
+    } else if foundation.user2.pubkey() == *user_pubkey {
+        // User2 is depositing
+        if is_depositing_token_a {
+            &foundation.user2_lp_a_account
+        } else {
+            &foundation.user2_lp_b_account
+        }
     } else {
-        &foundation.user1_lp_b_account
+        return Err(solana_program_test::BanksClientError::Io(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "User pubkey does not match any user in foundation")
+        ).into());
     };
     
     // Check if the LP token mint exists first
@@ -463,11 +573,25 @@ pub async fn execute_deposit_operation(
         ).into());
     };
     
+    // Get fresh blockhash to avoid "NotEnoughSigners" error
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
+    println!("🔍 Transaction signing debug:");
+    println!("  - User pubkey: {}", user_pubkey);
+    println!("  - User keypair pubkey: {}", user_keypair.pubkey());
+    println!("  - Fresh blockhash: {}", fresh_blockhash);
+    
     let mut deposit_tx = solana_sdk::transaction::Transaction::new_with_payer(
-        &[deposit_ix], 
+        &[deposit_ix.clone()], 
         Some(user_pubkey)
     );
-    deposit_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+    
+    println!("  - Transaction created with {} instructions", deposit_tx.message.instructions.len());
+    println!("  - Transaction accounts: {:?}", deposit_tx.message.account_keys);
+    println!("  - Instruction accounts: {:?}", deposit_ix.accounts);
+    println!("  - Instruction program_id: {}", deposit_ix.program_id);
+    
+    deposit_tx.sign(&[user_keypair], fresh_blockhash);
     
     // Execute with timeout handling for reliability
     let timeout_duration = std::time::Duration::from_secs(30);
@@ -518,11 +642,14 @@ pub async fn execute_deposit_operation(
                             &deposit_instruction_data,
                         ).map_err(|e| solana_program_test::BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
                         
+                        // Get fresh blockhash for retry transaction
+                        let retry_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+                        
                         let mut retry_tx = solana_sdk::transaction::Transaction::new_with_payer(
                             &[retry_deposit_ix], 
                             Some(user_pubkey)
                         );
-                        retry_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+                        retry_tx.sign(&[user_keypair], retry_blockhash);
                         
                         let retry_future = foundation.env.banks_client.process_transaction(retry_tx);
                         match tokio::time::timeout(timeout_duration, retry_future).await {
@@ -592,11 +719,14 @@ pub async fn execute_withdrawal_operation(
         ).into());
     };
     
+    // Get fresh blockhash to avoid "NotEnoughSigners" error
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
     let mut withdrawal_tx = solana_sdk::transaction::Transaction::new_with_payer(
         &[withdrawal_ix], 
         Some(user_pubkey)
     );
-    withdrawal_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+    withdrawal_tx.sign(&[user_keypair], fresh_blockhash);
     
     // Execute with timeout handling for reliability
     let timeout_duration = std::time::Duration::from_secs(30);
@@ -653,12 +783,15 @@ pub async fn execute_swap_operation(
         ).into());
     };
     
+    // Get fresh blockhash to avoid "NotEnoughSigners" error
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
     // Execute the swap
     let mut swap_tx = solana_sdk::transaction::Transaction::new_with_payer(
         &[swap_ix], 
         Some(user_pubkey)
     );
-    swap_tx.sign(&[user_keypair], foundation.env.recent_blockhash);
+    swap_tx.sign(&[user_keypair], fresh_blockhash);
     
     // Execute with timeout handling
     let timeout_duration = std::time::Duration::from_secs(30);
