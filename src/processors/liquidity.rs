@@ -832,8 +832,8 @@ fn execute_withdrawal_logic<'a>(
     source_lp_mint_account: &AccountInfo<'a>,
     pool_state_account: &AccountInfo<'a>,
     token_program_account: &AccountInfo<'a>,
-    system_program_account: &AccountInfo<'a>,
-    program_id: &Pubkey,
+    _system_program_account: &AccountInfo<'a>,
+    _program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};
     use spl_token::instruction as token_instruction;
