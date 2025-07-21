@@ -1,621 +1,84 @@
 //! Pool Fee Update Tests
 //! 
-//! This module contains comprehensive tests for the UpdatePoolFees instruction
-//! to verify that pool fees can be updated correctly and securely.
+//! Tests for the UpdatePoolFees instruction functionality
 
 use {
     fixed_ratio_trading::{
         constants::*,
-        error::PoolError,
-        state::pool_state::PoolState,
         types::instructions::PoolInstruction,
+        state::{
+            pool_state::PoolState,
+            system_state::SystemState,
+        },
     },
-    solana_program::{
-        instruction::{AccountMeta, Instruction},
-        pubkey::Pubkey,
-        system_instruction,
-    },
+    solana_program::pubkey::Pubkey,
     solana_program_test::*,
     solana_sdk::{
+        instruction::{AccountMeta, Instruction, InstructionError},
         signature::{Keypair, Signer},
-        transaction::Transaction,
+        transaction::{Transaction, TransactionError},
+        account::Account,
+        system_instruction,
     },
-    std::str::FromStr,
-    borsh::BorshSerialize,
+    borsh::{BorshSerialize, BorshDeserialize},
 };
 
 mod common;
 
-use common::*;
+use common::{
+    setup::{initialize_treasury_system},
+    pool_helpers::{create_pool_new_pattern},
+};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Test successful fee update for liquidity fee only
-#[tokio::test]
-async fn test_update_liquidity_fee_only() -> TestResult {
-    println!("🧪 TEST: Update liquidity fee only");
+/// Extended test context that includes the upgrade authority for testing
+struct TestContextWithAuthority {
+    pub env: common::setup::TestEnvironment,
+    pub primary_mint: Keypair,
+    pub base_mint: Keypair,
+    pub lp_token_a_mint: Keypair,
+    pub lp_token_b_mint: Keypair,
+    pub upgrade_authority: Keypair,
+}
+
+/// Helper function to create a fee update instruction
+fn create_fee_update_instruction(
+    pool_state_pda: Pubkey,
+    authority: &Keypair,
+    update_flags: u8,
+    new_liquidity_fee: u64,
+    new_swap_fee: u64,
+) -> Result<Instruction, Box<dyn std::error::Error>> {
+    let program_id = fixed_ratio_trading::id();
     
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
+    // Derive the system state PDA
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
     
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Get initial pool state
-    let initial_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
-    let initial_swap_fee = initial_pool_state.swap_contract_fee;
-    
-    println!("📊 Initial fees - Liquidity: {} lamports, Swap: {} lamports", 
-             initial_liquidity_fee, initial_swap_fee);
-    
-    // Define new liquidity fee (increase by 50%)
-    let new_liquidity_fee = initial_liquidity_fee + (initial_liquidity_fee / 2);
-    let new_swap_fee = initial_swap_fee; // Keep swap fee unchanged
-    
-    // Create fee update instruction
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
+    // Derive the correct program data account
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+
+    Ok(Instruction {
+        program_id,
         accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
+            AccountMeta::new_readonly(authority.pubkey(), true), // Program authority signer
+            AccountMeta::new_readonly(system_state_pda, false), // System state PDA
             AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
+            AccountMeta::new_readonly(program_data_account, false), // Program data account
         ],
         data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
+            update_flags,
             new_liquidity_fee,
             new_swap_fee,
         }
         .try_to_vec()?,
-    };
-    
-    // Execute the transaction
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(transaction).await?;
-    
-    // Verify the update
-    let updated_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    
-    println!("📊 Updated fees - Liquidity: {} lamports, Swap: {} lamports", 
-             updated_pool_state.contract_liquidity_fee, updated_pool_state.swap_contract_fee);
-    
-    // Assertions
-    assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee, 
-               "Liquidity fee should be updated");
-    assert_eq!(updated_pool_state.swap_contract_fee, initial_swap_fee, 
-               "Swap fee should remain unchanged");
-    
-    println!("✅ Test passed: Liquidity fee updated successfully");
-    Ok(())
-}
-
-/// Test successful fee update for swap fee only
-#[tokio::test]
-async fn test_update_swap_fee_only() -> TestResult {
-    println!("🧪 TEST: Update swap fee only");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Get initial pool state
-    let initial_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
-    let initial_swap_fee = initial_pool_state.swap_contract_fee;
-    
-    println!("📊 Initial fees - Liquidity: {} lamports, Swap: {} lamports", 
-             initial_liquidity_fee, initial_swap_fee);
-    
-    // Define new swap fee (decrease by 25%)
-    let new_liquidity_fee = initial_liquidity_fee; // Keep liquidity fee unchanged
-    let new_swap_fee = initial_swap_fee - (initial_swap_fee / 4);
-    
-    // Create fee update instruction
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_SWAP,
-            new_liquidity_fee,
-            new_swap_fee,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the transaction
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(transaction).await?;
-    
-    // Verify the update
-    let updated_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    
-    println!("📊 Updated fees - Liquidity: {} lamports, Swap: {} lamports", 
-             updated_pool_state.contract_liquidity_fee, updated_pool_state.swap_contract_fee);
-    
-    // Assertions
-    assert_eq!(updated_pool_state.contract_liquidity_fee, initial_liquidity_fee, 
-               "Liquidity fee should remain unchanged");
-    assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee, 
-               "Swap fee should be updated");
-    
-    println!("✅ Test passed: Swap fee updated successfully");
-    Ok(())
-}
-
-/// Test successful fee update for both fees
-#[tokio::test]
-async fn test_update_both_fees() -> TestResult {
-    println!("🧪 TEST: Update both fees");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Get initial pool state
-    let initial_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
-    let initial_swap_fee = initial_pool_state.swap_contract_fee;
-    
-    println!("📊 Initial fees - Liquidity: {} lamports, Swap: {} lamports", 
-             initial_liquidity_fee, initial_swap_fee);
-    
-    // Define new fees
-    let new_liquidity_fee = initial_liquidity_fee * 2; // Double liquidity fee
-    let new_swap_fee = initial_swap_fee * 3; // Triple swap fee
-    
-    // Create fee update instruction
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_BOTH,
-            new_liquidity_fee,
-            new_swap_fee,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the transaction
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(transaction).await?;
-    
-    // Verify the update
-    let updated_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    
-    println!("📊 Updated fees - Liquidity: {} lamports, Swap: {} lamports", 
-             updated_pool_state.contract_liquidity_fee, updated_pool_state.swap_contract_fee);
-    
-    // Assertions
-    assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee, 
-               "Liquidity fee should be updated");
-    assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee, 
-               "Swap fee should be updated");
-    
-    println!("✅ Test passed: Both fees updated successfully");
-    Ok(())
-}
-
-/// Test that updated fees are applied during swap operations
-#[tokio::test]
-async fn test_updated_fees_applied_to_swaps() -> TestResult {
-    println!("🧪 TEST: Updated fees applied to swaps");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Add liquidity to the pool
-    add_liquidity_to_pool(&mut ctx, &pool_info, 1_000_000).await?;
-    
-    // Get initial pool state
-    let initial_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let initial_swap_fee = initial_pool_state.swap_contract_fee;
-    
-    // Update swap fee to a higher value
-    let new_swap_fee = initial_swap_fee * 2; // Double the swap fee
-    
-    // Create fee update instruction
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_SWAP,
-            new_liquidity_fee: initial_pool_state.contract_liquidity_fee,
-            new_swap_fee,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the fee update
-    let update_transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(update_transaction).await?;
-    
-    // Get pool state after fee update
-    let updated_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee, 
-               "Swap fee should be updated");
-    
-    // Perform a swap to verify the new fee is applied
-    let swap_amount = 100_000;
-    let swap_result = perform_swap(&mut ctx, &pool_info, swap_amount).await;
-    
-    // The swap should succeed with the new fee
-    assert!(swap_result.is_ok(), "Swap should succeed with updated fee");
-    
-    // Verify that the new fee was collected
-    let final_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let fee_collected = final_pool_state.collected_swap_contract_fees - updated_pool_state.collected_swap_contract_fees;
-    
-    assert_eq!(fee_collected, new_swap_fee, 
-               "New swap fee should be collected");
-    
-    println!("✅ Test passed: Updated swap fee applied correctly");
-    Ok(())
-}
-
-/// Test that updated fees are applied during liquidity operations
-#[tokio::test]
-async fn test_updated_fees_applied_to_liquidity() -> TestResult {
-    println!("🧪 TEST: Updated fees applied to liquidity operations");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Get initial pool state
-    let initial_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
-    
-    // Update liquidity fee to a higher value
-    let new_liquidity_fee = initial_liquidity_fee * 2; // Double the liquidity fee
-    
-    // Create fee update instruction
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
-            new_liquidity_fee,
-            new_swap_fee: initial_pool_state.swap_contract_fee,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the fee update
-    let update_transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(update_transaction).await?;
-    
-    // Get pool state after fee update
-    let updated_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee, 
-               "Liquidity fee should be updated");
-    
-    // Perform a deposit to verify the new fee is applied
-    let deposit_amount = 1_000_000;
-    let deposit_result = add_liquidity_to_pool(&mut ctx, &pool_info, deposit_amount).await;
-    
-    // The deposit should succeed with the new fee
-    assert!(deposit_result.is_ok(), "Deposit should succeed with updated fee");
-    
-    // Verify that the new fee was collected
-    let final_pool_state = get_pool_state(&mut ctx.banks_client, &pool_state_pda).await?;
-    let fee_collected = final_pool_state.collected_liquidity_fees - updated_pool_state.collected_liquidity_fees;
-    
-    assert_eq!(fee_collected, new_liquidity_fee, 
-               "New liquidity fee should be collected");
-    
-    println!("✅ Test passed: Updated liquidity fee applied correctly");
-    Ok(())
-}
-
-/// Test unauthorized fee update attempt
-#[tokio::test]
-async fn test_unauthorized_fee_update() -> TestResult {
-    println!("🧪 TEST: Unauthorized fee update attempt");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Create a different user (not the program authority)
-    let unauthorized_user = Keypair::new();
-    
-    // Fund the unauthorized user
-    let fund_instruction = system_instruction::transfer(
-        &ctx.payer.pubkey(),
-        &unauthorized_user.pubkey(),
-        1_000_000_000, // 1 SOL
-    );
-    
-    let fund_transaction = Transaction::new_signed_with_payer(
-        &[fund_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(fund_transaction).await?;
-    
-    // Try to update fees with unauthorized user
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(unauthorized_user.pubkey(), true), // Unauthorized signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
-            new_liquidity_fee: 2_000_000,
-            new_swap_fee: 50_000,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the transaction (should fail)
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&unauthorized_user.pubkey()),
-        &[&unauthorized_user],
-        ctx.recent_blockhash,
-    );
-    
-    let result = ctx.banks_client.process_transaction(transaction).await;
-    
-    // Should fail with unauthorized error
-    assert!(result.is_err(), "Unauthorized fee update should fail");
-    
-    println!("✅ Test passed: Unauthorized fee update properly rejected");
-    Ok(())
-}
-
-/// Test invalid fee update flags
-#[tokio::test]
-async fn test_invalid_fee_update_flags() -> TestResult {
-    println!("🧪 TEST: Invalid fee update flags");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Try to update fees with invalid flags
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: 0, // Invalid: no flags set
-            new_liquidity_fee: 2_000_000,
-            new_swap_fee: 50_000,
-        }
-        .try_to_vec()?,
-    };
-    
-    // Execute the transaction (should fail)
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    let result = ctx.banks_client.process_transaction(transaction).await;
-    
-    // Should fail with invalid flags error
-    assert!(result.is_err(), "Invalid fee update flags should fail");
-    
-    println!("✅ Test passed: Invalid fee update flags properly rejected");
-    Ok(())
-}
-
-/// Test fee validation limits
-#[tokio::test]
-async fn test_fee_validation_limits() -> TestResult {
-    println!("🧪 TEST: Fee validation limits");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Test liquidity fee too low
-    let update_instruction_low = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
-            new_liquidity_fee: MIN_LIQUIDITY_FEE - 1, // Too low
-            new_swap_fee: 50_000,
-        }
-        .try_to_vec()?,
-    };
-    
-    let transaction_low = Transaction::new_signed_with_payer(
-        &[update_instruction_low],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    let result_low = ctx.banks_client.process_transaction(transaction_low).await;
-    assert!(result_low.is_err(), "Liquidity fee too low should fail");
-    
-    // Test liquidity fee too high
-    let update_instruction_high = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
-            new_liquidity_fee: MAX_LIQUIDITY_FEE + 1, // Too high
-            new_swap_fee: 50_000,
-        }
-        .try_to_vec()?,
-    };
-    
-    let transaction_high = Transaction::new_signed_with_payer(
-        &[update_instruction_high],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    let result_high = ctx.banks_client.process_transaction(transaction_high).await;
-    assert!(result_high.is_err(), "Liquidity fee too high should fail");
-    
-    println!("✅ Test passed: Fee validation limits working correctly");
-    Ok(())
-}
-
-/// Test fee update with system paused
-#[tokio::test]
-async fn test_fee_update_with_system_paused() -> TestResult {
-    println!("🧪 TEST: Fee update with system paused");
-    
-    // Setup test environment
-    let mut ctx = setup_pool_test_context(false).await;
-    
-    // Create a pool with default fees
-    let pool_info = create_test_pool(&mut ctx, 1000, 1).await?;
-    let pool_state_pda = pool_info.pool_state_pda;
-    
-    // Pause the system
-    let pause_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // System authority signer
-            AccountMeta::new(ctx.system_state_pda, false), // System state PDA (writable)
-        ],
-        data: PoolInstruction::PauseSystem { reason_code: 1 }
-            .try_to_vec()?,
-    };
-    
-    let pause_transaction = Transaction::new_signed_with_payer(
-        &[pause_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    ctx.banks_client.process_transaction(pause_transaction).await?;
-    
-    // Try to update fees while system is paused
-    let update_instruction = Instruction {
-        program_id: ctx.program_id,
-        accounts: vec![
-            AccountMeta::new_readonly(ctx.payer.pubkey(), true), // Program authority signer
-            AccountMeta::new_readonly(ctx.system_state_pda, false), // System state PDA
-            AccountMeta::new(pool_state_pda, false), // Pool state PDA (writable)
-            AccountMeta::new_readonly(Pubkey::from_str("BPFLoaderUpgradeab1e11111111111111111111111")?, false), // Program data account
-        ],
-        data: PoolInstruction::UpdatePoolFees {
-            update_flags: FEE_UPDATE_FLAG_LIQUIDITY,
-            new_liquidity_fee: 2_000_000,
-            new_swap_fee: 50_000,
-        }
-        .try_to_vec()?,
-    };
-    
-    let transaction = Transaction::new_signed_with_payer(
-        &[update_instruction],
-        Some(&ctx.payer.pubkey()),
-        &[&ctx.payer],
-        ctx.recent_blockhash,
-    );
-    
-    let result = ctx.banks_client.process_transaction(transaction).await;
-    
-    // Should fail because system is paused
-    assert!(result.is_err(), "Fee update should fail when system is paused");
-    
-    println!("✅ Test passed: Fee update properly blocked when system is paused");
-    Ok(())
+    })
 }
 
 /// Helper function to get pool state
@@ -629,80 +92,1710 @@ async fn get_pool_state(
     Ok(pool_state)
 }
 
-/// Helper function to create a test pool
-async fn create_test_pool(
-    ctx: &mut PoolTestContext,
-    ratio_a: u64,
-    ratio_b: u64,
-) -> Result<PoolInfo, Box<dyn std::error::Error>> {
-    use crate::common::pool_helpers::*;
+/// Helper function to setup context with treasury system initialized
+async fn setup_test_context_with_treasury() -> Result<TestContextWithAuthority, Box<dyn std::error::Error>> {
+    // Create program test with the mock program data account pre-created
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
     
-    // Create a real pool using existing helpers
-    let pool_result = create_pool_with_ratio_enhanced(ctx, ratio_a, ratio_b).await?;
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
     
-    let pool_info = PoolInfo {
-        pool_state_pda: pool_result.pool_state_pda,
-        token_a_vault_pda: pool_result.token_a_vault_pda,
-        token_b_vault_pda: pool_result.token_b_vault_pda,
-        lp_token_a_mint: pool_result.lp_token_a_mint_pda,
-        lp_token_b_mint: pool_result.lp_token_b_mint_pda,
-        primary_mint: ctx.primary_mint.pubkey(),
-        base_mint: ctx.base_mint.pubkey(),
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    
+    // Add some dummy program data
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000, // 1 SOL
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Start the test environment
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Create test context
+    let primary_mint = Keypair::new();
+    let base_mint = Keypair::new();
+    let lp_token_a_mint = Keypair::new();
+    let lp_token_b_mint = Keypair::new();
+    
+    let mut ctx = TestContextWithAuthority {
+        env: common::setup::TestEnvironment {
+            banks_client,
+            payer,
+            recent_blockhash,
+        },
+        primary_mint,
+        base_mint,
+        lp_token_a_mint,
+        lp_token_b_mint,
+        upgrade_authority,
     };
-    Ok(pool_info)
+    
+    // Initialize the treasury system (creates SystemState PDA)
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &ctx.env.payer, // Use payer as system authority for tests
+    ).await?;
+    
+    // Fund the upgrade authority
+    let fund_ix = system_instruction::transfer(
+        &ctx.env.payer.pubkey(),
+        &ctx.upgrade_authority.pubkey(),
+        1_000_000_000, // 1 SOL
+    );
+    
+    let fund_tx = Transaction::new_signed_with_payer(
+        &[fund_ix],
+        Some(&ctx.env.payer.pubkey()),
+        &[&ctx.env.payer],
+        ctx.env.recent_blockhash,
+    );
+    
+    ctx.env.banks_client.process_transaction(fund_tx).await?;
+    
+    println!("📝 Mock program data account created with proper upgrade authority");
+    Ok(ctx)
 }
 
-/// Helper function to add liquidity to a pool
-async fn add_liquidity_to_pool(
-    ctx: &mut PoolTestContext,
-    pool_info: &PoolInfo,
-    amount: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::common::liquidity_helpers::*;
+/// Test successful fee update for liquidity fee only
+#[tokio::test]
+async fn test_update_liquidity_fee_only() -> TestResult {
+    // Use minimal setup approach like the working tests
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
     
-    // Use real liquidity helper to add liquidity
-    let deposit_result = DepositTestConfig {
-        pool_state_pda: pool_info.pool_state_pda,
-        user_input_token_account: ctx.user_primary_token_account,
-        user_output_lp_token_account: ctx.user_lp_token_a_account,
-        deposit_token_mint: pool_info.primary_mint,
-        amount,
-        expected_lp_tokens: amount, // 1:1 ratio
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
     };
     
-    perform_deposit_operation(ctx, &deposit_result).await?;
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.map_err(|e| format!("Failed to fund upgrade authority: {:?}", e))?;
+    
+    // Get initial pool state
+    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
+    let initial_swap_fee = initial_pool_state.swap_contract_fee;
+    
+    // Define new liquidity fee (increase by 50%)
+    let new_liquidity_fee = initial_liquidity_fee + (initial_liquidity_fee / 2);
+    let new_swap_fee = initial_swap_fee; // Keep swap fee unchanged
+    
+    // Create fee update instruction using the upgrade authority
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority, // Use the proper upgrade authority
+        FEE_UPDATE_FLAG_LIQUIDITY,
+        new_liquidity_fee,
+        new_swap_fee,
+    ).map_err(|e| format!("Failed to create instruction: {:?}", e))?;
+    
+    // Execute the transaction
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(transaction).await.map_err(|e| format!("Failed to process transaction: {:?}", e))?;
+    
+    // Verify the fee was updated
+    let pool_account = banks_client.get_account(pool_state_pda).await
+        .map_err(|e| format!("Failed to get account: {:?}", e))?
+        .ok_or("Pool state account not found")?;
+    let updated_pool_state = PoolState::try_from_slice(&pool_account.data)
+        .map_err(|e| format!("Failed to deserialize pool state: {:?}", e))?;
+    
+    assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee, "Liquidity fee should be updated");
+    assert_eq!(updated_pool_state.swap_contract_fee, initial_swap_fee, "Swap fee should remain unchanged");
+    
+    println!("✅ Liquidity fee successfully updated from {} to {}", initial_liquidity_fee, new_liquidity_fee);
     Ok(())
 }
 
-/// Helper function to perform a swap
-async fn perform_swap(
-    ctx: &mut PoolTestContext,
-    pool_info: &PoolInfo,
-    amount: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::common::flow_helpers::*;
+/// Test successful fee update for swap fee only
+#[tokio::test]
+async fn test_update_swap_fee_only() -> TestResult {
+    // Use minimal setup approach like the working tests
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
     
-    // Use real swap helper to perform swap
-    let swap_config = SwapTestConfig {
-        pool_state_pda: pool_info.pool_state_pda,
-        user_input_token_account: ctx.user_primary_token_account,
-        user_output_token_account: ctx.user_base_token_account,
-        input_token_mint: pool_info.primary_mint,
-        amount_in: amount,
-        expected_amount_out: amount, // 1:1 ratio
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
     };
     
-    perform_swap_operation_comprehensive(ctx, &swap_config).await?;
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.map_err(|e| format!("Failed to fund upgrade authority: {:?}", e))?;
+    
+    // Get initial pool state
+    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
+    let initial_swap_fee = initial_pool_state.swap_contract_fee;
+    
+    // Define new swap fee (double it)
+    let new_liquidity_fee = initial_liquidity_fee; // Keep liquidity fee unchanged
+    let new_swap_fee = initial_swap_fee * 2;
+    
+    // Create fee update instruction using the upgrade authority
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        FEE_UPDATE_FLAG_SWAP,
+        new_liquidity_fee,
+        new_swap_fee,
+    ).map_err(|e| format!("Failed to create instruction: {:?}", e))?;
+    
+    // Execute the transaction
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(transaction).await.map_err(|e| format!("Failed to process transaction: {:?}", e))?;
+    
+    // Verify the fee was updated
+    let pool_account = banks_client.get_account(pool_state_pda).await
+        .map_err(|e| format!("Failed to get account: {:?}", e))?
+        .ok_or("Pool state account not found")?;
+    let updated_pool_state = PoolState::try_from_slice(&pool_account.data)
+        .map_err(|e| format!("Failed to deserialize pool state: {:?}", e))?;
+    
+    assert_eq!(updated_pool_state.contract_liquidity_fee, initial_liquidity_fee, "Liquidity fee should remain unchanged");
+    assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee, "Swap fee should be updated");
+    
+    println!("✅ Swap fee successfully updated from {} to {}", initial_swap_fee, new_swap_fee);
     Ok(())
 }
 
-/// Pool information structure for testing
-struct PoolInfo {
-    pool_state_pda: Pubkey,
-    token_a_vault_pda: Pubkey,
-    token_b_vault_pda: Pubkey,
-    lp_token_a_mint: Pubkey,
-    lp_token_b_mint: Pubkey,
-    primary_mint: Pubkey,
-    base_mint: Pubkey,
+/// Test successful fee update for both fees (using minimal setup)
+#[tokio::test]
+async fn test_update_both_fees() -> TestResult {
+    // Use minimal setup approach like the working tests
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.map_err(|e| format!("Failed to fund upgrade authority: {:?}", e))?;
+    
+    // Get initial pool state
+    let initial_liquidity_fee = initial_pool_state.contract_liquidity_fee;
+    let initial_swap_fee = initial_pool_state.swap_contract_fee;
+    
+    // Define new fees
+    let new_liquidity_fee = initial_liquidity_fee + 100_000; // Add 0.1 SOL
+    let new_swap_fee = initial_swap_fee + 10_000; // Add 0.01 SOL
+    
+    // Create fee update instruction using the upgrade authority
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        FEE_UPDATE_FLAG_BOTH,
+        new_liquidity_fee,
+        new_swap_fee,
+    ).map_err(|e| format!("Failed to create instruction: {:?}", e))?;
+    
+    // Execute the transaction
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(transaction).await.map_err(|e| format!("Failed to process transaction: {:?}", e))?;
+    
+    // Verify both fees were updated
+    let pool_account = banks_client.get_account(pool_state_pda).await
+        .map_err(|e| format!("Failed to get account: {:?}", e))?
+        .ok_or("Pool state account not found")?;
+    let updated_pool_state = PoolState::try_from_slice(&pool_account.data)
+        .map_err(|e| format!("Failed to deserialize pool state: {:?}", e))?;
+    
+    assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee, "Liquidity fee should be updated");
+    assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee, "Swap fee should be updated");
+    
+    println!("✅ Both fees successfully updated");
+    println!("   Liquidity fee: {} -> {}", initial_liquidity_fee, new_liquidity_fee);
+    println!("   Swap fee: {} -> {}", initial_swap_fee, new_swap_fee);
+    Ok(())
+}
+
+/// Test that unauthorized users cannot update fees
+#[tokio::test]
+async fn test_unauthorized_fee_update() -> TestResult {
+    // Use minimal setup approach like the working tests
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.map_err(|e| format!("Failed to fund upgrade authority: {:?}", e))?;
+    
+    // Create unauthorized user
+    let unauthorized_user = Keypair::new();
+    
+    // Fund the unauthorized user
+    let fund_instruction = system_instruction::transfer(
+        &payer.pubkey(),
+        &unauthorized_user.pubkey(),
+        1_000_000_000, // 1 SOL
+    );
+    
+    let fund_transaction = Transaction::new_signed_with_payer(
+        &[fund_instruction],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_transaction).await.map_err(|e| format!("Failed to fund unauthorized user: {:?}", e))?;
+    
+    // Try to update fees with unauthorized user (not the upgrade authority)
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &unauthorized_user, // This should fail
+        FEE_UPDATE_FLAG_BOTH,
+        2_000_000, // 2 SOL
+        50_000,    // 0.05 SOL
+    ).map_err(|e| format!("Failed to create instruction: {:?}", e))?;
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&unauthorized_user.pubkey()),
+        &[&unauthorized_user],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // This should fail
+    assert!(result.is_err(), "Unauthorized fee update should fail");
+    
+    println!("✅ Unauthorized fee update properly rejected");
+    Ok(())
+}
+
+/// Test invalid fee update flags
+#[tokio::test]
+async fn test_invalid_fee_update_flags() -> TestResult {
+    // Use minimal setup approach like the working tests
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.map_err(|e| format!("Failed to fund upgrade authority: {:?}", e))?;
+    
+    // Try invalid flag (should be 1, 2, or 3) using the upgrade authority
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        4, // Invalid flag
+        1_000_000,
+        50_000,
+    ).map_err(|e| format!("Failed to create instruction: {:?}", e))?;
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // This should fail
+    assert!(result.is_err(), "Invalid flag should be rejected");
+    
+    println!("✅ Invalid fee update flag properly rejected");
+    Ok(())
+} 
+
+/// Test successful fee update with minimal setup (bypasses treasury issues)
+#[tokio::test]
+async fn test_update_fees_minimal() {
+    // Create a minimal test environment without complex treasury setup
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_tx = Transaction::new_signed_with_payer(
+        &[fund_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_tx).await.expect("Failed to fund upgrade authority");
+    
+    // Test the fee update
+    let new_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE * 2;
+    let new_swap_fee = SWAP_CONTRACT_FEE * 2;
+    
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        FEE_UPDATE_FLAG_BOTH,
+        new_liquidity_fee,
+        new_swap_fee,
+    ).expect("Failed to create instruction");
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // Check if the transaction succeeded
+    match result {
+        Ok(_) => {
+            // Verify the fees were updated
+            let updated_account = banks_client.get_account(pool_state_pda).await
+                .expect("Failed to get account")
+                .expect("Pool state account not found");
+            let updated_pool_state = PoolState::try_from_slice(&updated_account.data)
+                .expect("Failed to deserialize pool state");
+            
+            assert_eq!(updated_pool_state.contract_liquidity_fee, new_liquidity_fee);
+            assert_eq!(updated_pool_state.swap_contract_fee, new_swap_fee);
+            
+            println!("🎉 SUCCESS: Fee update functionality works correctly!");
+            println!("   New liquidity fee: {} lamports", new_liquidity_fee);
+            println!("   New swap fee: {} lamports", new_swap_fee);
+            println!("✅ Program authority validation is working properly");
+        },
+        Err(e) => {
+            println!("❌ Fee update failed with error: {:?}", e);
+            println!("   This indicates an issue with the fee update logic or validation");
+            panic!("Fee update test failed: {:?}", e);
+        }
+    }
+} 
+
+/// Test that unauthorized users cannot update fees (minimal setup)
+#[tokio::test]
+async fn test_unauthorized_fee_update_minimal() {
+    // Create a minimal test environment without complex treasury setup
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.expect("Failed to fund upgrade authority");
+    
+    // Create an unauthorized user (not the upgrade authority)
+    let unauthorized_user = Keypair::new();
+    
+    // Fund the unauthorized user
+    let fund_unauthorized_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &unauthorized_user.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_unauthorized_tx = Transaction::new_signed_with_payer(
+        &[fund_unauthorized_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_unauthorized_tx).await.expect("Failed to fund unauthorized user");
+    
+    // Test the fee update with unauthorized user (should fail)
+    let new_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE * 2;
+    let new_swap_fee = SWAP_CONTRACT_FEE * 2;
+    
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &unauthorized_user, // Using unauthorized user instead of upgrade_authority
+        FEE_UPDATE_FLAG_BOTH,
+        new_liquidity_fee,
+        new_swap_fee,
+    ).expect("Failed to create instruction");
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&unauthorized_user.pubkey()),
+        &[&unauthorized_user],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // Check that the transaction failed (this should fail)
+    match result {
+        Ok(_) => {
+            panic!("🚨 SECURITY BREACH: Unauthorized user was able to update fees!");
+        },
+        Err(e) => {
+            println!("✅ SUCCESS: Unauthorized fee update properly rejected");
+            println!("   Error: {:?}", e);
+            println!("✅ Program authority validation is working correctly");
+            
+            // Verify the pool state was not modified
+            let pool_account = banks_client.get_account(pool_state_pda).await
+                .expect("Failed to get account")
+                .expect("Pool state account not found");
+            let pool_state = PoolState::try_from_slice(&pool_account.data)
+                .expect("Failed to deserialize pool state");
+            
+            // Fees should remain unchanged
+            assert_eq!(pool_state.contract_liquidity_fee, DEPOSIT_WITHDRAWAL_FEE);
+            assert_eq!(pool_state.swap_contract_fee, SWAP_CONTRACT_FEE);
+            println!("✅ Pool state unchanged - fees remain at original values");
+        }
+    }
+} 
+
+/// Test that invalid fee update flags are rejected (minimal setup)
+#[tokio::test]
+async fn test_invalid_fee_update_flags_minimal() {
+    // Create a minimal test environment without complex treasury setup
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.expect("Failed to fund upgrade authority");
+    
+    // Test invalid flags: 0 (no flags set) and 4 (invalid flag)
+    let invalid_flags = [0u8, 4u8, 5u8, 255u8]; // Various invalid flag combinations
+    
+    for invalid_flag in invalid_flags.iter() {
+        println!("Testing invalid flag: {}", invalid_flag);
+        
+        let update_instruction = create_fee_update_instruction(
+            pool_state_pda,
+            &upgrade_authority,
+            *invalid_flag, // Using invalid flag
+            DEPOSIT_WITHDRAWAL_FEE,
+            SWAP_CONTRACT_FEE,
+        ).expect("Failed to create instruction");
+        
+        let transaction = Transaction::new_signed_with_payer(
+            &[update_instruction],
+            Some(&upgrade_authority.pubkey()),
+            &[&upgrade_authority],
+            recent_blockhash,
+        );
+        
+        let result = banks_client.process_transaction(transaction).await;
+        
+        // Check that the transaction failed due to invalid flags
+        match result {
+            Ok(_) => {
+                panic!("🚨 ERROR: Invalid flag {} was accepted when it should be rejected!", invalid_flag);
+            },
+            Err(e) => {
+                println!("✅ SUCCESS: Invalid flag {} properly rejected", invalid_flag);
+                println!("   Error: {:?}", e);
+                
+                // Verify it's the correct error (InvalidFeeUpdateFlags = 1043)
+                if let BanksClientError::TransactionError(TransactionError::InstructionError(_, InstructionError::Custom(error_code))) = e {
+                    assert_eq!(error_code, 1043, "Expected InvalidFeeUpdateFlags error (1043), got {}", error_code);
+                    println!("✅ Correct error code: InvalidFeeUpdateFlags ({})", error_code);
+                } else {
+                    panic!("🚨 Unexpected error type: {:?}", e);
+                }
+            }
+        }
+    }
+    
+    // Verify the pool state was not modified
+    let pool_account = banks_client.get_account(pool_state_pda).await
+        .expect("Failed to get account")
+        .expect("Pool state account not found");
+    let pool_state = PoolState::try_from_slice(&pool_account.data)
+        .expect("Failed to deserialize pool state");
+    
+    // Fees should remain unchanged
+    assert_eq!(pool_state.contract_liquidity_fee, DEPOSIT_WITHDRAWAL_FEE);
+    assert_eq!(pool_state.swap_contract_fee, SWAP_CONTRACT_FEE);
+    println!("✅ Pool state unchanged - fees remain at original values");
+} 
+
+/// Test updating both liquidity and swap fees together (minimal setup)
+#[tokio::test]
+async fn test_update_both_fees_minimal() {
+    // Create a minimal test environment without complex treasury setup
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.expect("Failed to fund upgrade authority");
+    
+    // Test updating both fees with new values
+    let new_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE * 2; // Double the original
+    let new_swap_fee = SWAP_CONTRACT_FEE * 3; // Triple the original
+    
+    println!("Original liquidity fee: {} lamports", DEPOSIT_WITHDRAWAL_FEE);
+    println!("Original swap fee: {} lamports", SWAP_CONTRACT_FEE);
+    println!("New liquidity fee: {} lamports", new_liquidity_fee);
+    println!("New swap fee: {} lamports", new_swap_fee);
+    
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        FEE_UPDATE_FLAG_BOTH, // Update both fees
+        new_liquidity_fee,
+        new_swap_fee,
+    ).expect("Failed to create instruction");
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // Check that the transaction succeeded
+    match result {
+        Ok(_) => {
+            println!("✅ SUCCESS: Both fees updated successfully");
+            
+            // Verify the pool state was properly updated
+            let pool_account = banks_client.get_account(pool_state_pda).await
+                .expect("Failed to get account")
+                .expect("Pool state account not found");
+            let pool_state = PoolState::try_from_slice(&pool_account.data)
+                .expect("Failed to deserialize pool state");
+            
+            // Verify both fees were updated correctly
+            assert_eq!(pool_state.contract_liquidity_fee, new_liquidity_fee, 
+                      "Liquidity fee should be updated to {}", new_liquidity_fee);
+            assert_eq!(pool_state.swap_contract_fee, new_swap_fee, 
+                      "Swap fee should be updated to {}", new_swap_fee);
+            
+            println!("✅ Liquidity fee updated: {} → {} lamports", 
+                    DEPOSIT_WITHDRAWAL_FEE, pool_state.contract_liquidity_fee);
+            println!("✅ Swap fee updated: {} → {} lamports", 
+                    SWAP_CONTRACT_FEE, pool_state.swap_contract_fee);
+            println!("✅ Both fee updates verified on blockchain");
+        },
+        Err(e) => {
+            panic!("🚨 ERROR: Fee update transaction failed: {:?}", e);
+        }
+    }
+} 
+
+/// Test updating only the liquidity fee (minimal setup)
+#[tokio::test]
+async fn test_update_liquidity_fee_only_minimal() {
+    // Create a minimal test environment without complex treasury setup
+    let program_id = fixed_ratio_trading::id();
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
+    let mut program_test = ProgramTest::new(
+        "fixed-ratio-trading",
+        program_id,
+        processor!(fixed_ratio_trading::process_instruction),
+    );
+    
+    // Create the upgrade authority keypair for testing
+    let upgrade_authority = Keypair::new();
+    
+    // Create the program data account data
+    let account_type: u32 = 3; // ProgramData type
+    let has_upgrade_authority: u8 = 1; // true
+    let slot: u64 = 0;
+    
+    let mut account_data = Vec::new();
+    account_data.extend_from_slice(&account_type.to_le_bytes());
+    account_data.push(has_upgrade_authority);
+    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
+    account_data.extend_from_slice(&slot.to_le_bytes());
+    account_data.extend_from_slice(&[0u8; 100]);
+    
+    // Add the program data account to the test environment
+    program_test.add_account(
+        program_data_account,
+        Account {
+            lamports: 1_000_000_000,
+            data: account_data,
+            owner: solana_program::bpf_loader_upgradeable::id(),
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    // Create a mock pool state account for testing with proper PDA derivation
+    let token_a_mint = Pubkey::new_unique();
+    let token_b_mint = Pubkey::new_unique(); 
+    
+    // Derive the pool state PDA correctly
+    let pool_state_pda = {
+        let seeds = &[
+            b"pool_state",
+            token_a_mint.as_ref(),
+            token_b_mint.as_ref(),
+            &[1u64.to_le_bytes(), 1u64.to_le_bytes()].concat(), // ratio_a:ratio_b = 1:1
+        ];
+        Pubkey::find_program_address(seeds, &program_id).0
+    };
+    
+    let mut initial_pool_state = PoolState::default();
+    initial_pool_state.token_a_mint = token_a_mint;
+    initial_pool_state.token_b_mint = token_b_mint;
+    initial_pool_state.ratio_a_numerator = 1;
+    initial_pool_state.ratio_b_denominator = 1;
+    initial_pool_state.contract_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE;
+    initial_pool_state.swap_contract_fee = SWAP_CONTRACT_FEE;
+    
+    // Create a proper system state account
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &program_id
+    );
+    
+    let system_state = SystemState::new(); // Creates unpaused state
+    
+    program_test.add_account(
+        system_state_pda,
+        Account {
+            lamports: 1_000_000,
+            data: system_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    program_test.add_account(
+        pool_state_pda,
+        Account {
+            lamports: 10_000_000,
+            data: initial_pool_state.try_to_vec().unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+    
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+    
+    // Fund the upgrade authority
+    let fund_upgrade_authority_ix = system_instruction::transfer(
+        &payer.pubkey(),
+        &upgrade_authority.pubkey(),
+        1_000_000_000,
+    );
+    
+    let fund_upgrade_authority_tx = Transaction::new_signed_with_payer(
+        &[fund_upgrade_authority_ix],
+        Some(&payer.pubkey()),
+        &[&payer],
+        recent_blockhash,
+    );
+    
+    banks_client.process_transaction(fund_upgrade_authority_tx).await.expect("Failed to fund upgrade authority");
+    
+    // Test updating only the liquidity fee
+    let new_liquidity_fee = DEPOSIT_WITHDRAWAL_FEE * 4; // Quadruple the original
+    let unchanged_swap_fee = SWAP_CONTRACT_FEE; // This should remain unchanged
+    
+    println!("Original liquidity fee: {} lamports", DEPOSIT_WITHDRAWAL_FEE);
+    println!("Original swap fee: {} lamports", SWAP_CONTRACT_FEE);
+    println!("New liquidity fee: {} lamports", new_liquidity_fee);
+    println!("Swap fee should remain: {} lamports", unchanged_swap_fee);
+    
+    let update_instruction = create_fee_update_instruction(
+        pool_state_pda,
+        &upgrade_authority,
+        FEE_UPDATE_FLAG_LIQUIDITY, // Update only liquidity fee
+        new_liquidity_fee,
+        unchanged_swap_fee, // This value should be ignored since we're only updating liquidity
+    ).expect("Failed to create instruction");
+    
+    let transaction = Transaction::new_signed_with_payer(
+        &[update_instruction],
+        Some(&upgrade_authority.pubkey()),
+        &[&upgrade_authority],
+        recent_blockhash,
+    );
+    
+    let result = banks_client.process_transaction(transaction).await;
+    
+    // Check that the transaction succeeded
+    match result {
+        Ok(_) => {
+            println!("✅ SUCCESS: Liquidity fee updated successfully");
+            
+            // Verify the pool state was properly updated
+            let pool_account = banks_client.get_account(pool_state_pda).await
+                .expect("Failed to get account")
+                .expect("Pool state account not found");
+            let pool_state = PoolState::try_from_slice(&pool_account.data)
+                .expect("Failed to deserialize pool state");
+            
+            // Verify only the liquidity fee was updated
+            assert_eq!(pool_state.contract_liquidity_fee, new_liquidity_fee, 
+                      "Liquidity fee should be updated to {}", new_liquidity_fee);
+            assert_eq!(pool_state.swap_contract_fee, SWAP_CONTRACT_FEE, 
+                      "Swap fee should remain unchanged at {}", SWAP_CONTRACT_FEE);
+            
+            println!("✅ Liquidity fee updated: {} → {} lamports", 
+                    DEPOSIT_WITHDRAWAL_FEE, pool_state.contract_liquidity_fee);
+            println!("✅ Swap fee unchanged: {} lamports (as expected)", 
+                    pool_state.swap_contract_fee);
+            println!("✅ Selective fee update verified on blockchain");
+        },
+        Err(e) => {
+            panic!("🚨 ERROR: Liquidity fee update transaction failed: {:?}", e);
+        }
+    }
 } 
