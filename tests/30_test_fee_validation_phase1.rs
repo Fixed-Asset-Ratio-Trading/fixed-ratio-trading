@@ -363,6 +363,8 @@ async fn test_error_code_mappings() {
 
 
 /// Helper function to create mock account info for testing
+#[allow(dead_code)]
+#[allow(static_mut_refs)]
 fn create_mock_account_info() -> AccountInfo<'static> {
     static mut LAMPORTS: u64 = 500; // Insufficient for most fees
     static mut DATA: Vec<u8> = Vec::new();

@@ -68,7 +68,7 @@ fn test_get_program_data_address() -> TestResult {
     // Test PDA derivation properties
     for (i, program_id) in program_ids.iter().enumerate() {
         let data_address = data_addresses[i];
-        let (expected_pda, bump) = Pubkey::find_program_address(
+        let (expected_pda, _bump) = Pubkey::find_program_address(
             &[program_id.as_ref()],
             &bpf_loader_upgradeable::id()
         );
@@ -166,7 +166,7 @@ fn test_program_authority_comprehensive() -> TestResult {
     // Test PDA derivation properties
     for (i, program_id) in program_ids.iter().enumerate() {
         let data_address = data_addresses[i];
-        let (expected_pda, bump) = Pubkey::find_program_address(
+        let (expected_pda, _bump) = Pubkey::find_program_address(
             &[program_id.as_ref()],
             &bpf_loader_upgradeable::id()
         );

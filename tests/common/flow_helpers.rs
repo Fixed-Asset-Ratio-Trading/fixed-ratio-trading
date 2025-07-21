@@ -1328,7 +1328,7 @@ pub async fn execute_consolidation_flow(
 /// Execute a treasury operation for consolidation testing
 #[allow(dead_code)]
 async fn execute_treasury_operation(
-    env: &crate::common::setup::TestEnvironment,
+    _env: &crate::common::setup::TestEnvironment,
     operation: &TreasuryOperation,
 ) -> Result<TreasuryOperationResult, Box<dyn std::error::Error>> {
     match operation.operation_type {

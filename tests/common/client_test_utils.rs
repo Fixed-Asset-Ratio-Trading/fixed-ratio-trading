@@ -34,6 +34,7 @@ pub fn create_test_pool_config() -> PoolConfig {
 /// This is a simplified version of the main PoolState for testing purposes.
 /// The actual PoolState is defined in src/state/pool_state.rs
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TestPoolState {
     pub token_a_mint: Pubkey,
     pub token_b_mint: Pubkey,
@@ -221,6 +222,6 @@ pub fn create_swap_instruction(
 /// # Returns
 /// * `Result<(), PoolClientError>` - Currently returns NotImplemented
 #[allow(dead_code)]
-pub fn additional_operations(pool_client: &PoolClient) -> Result<(), PoolClientError> {
+pub fn additional_operations(_pool_client: &PoolClient) -> Result<(), PoolClientError> {
     Err(PoolClientError::NotImplemented)
 } 

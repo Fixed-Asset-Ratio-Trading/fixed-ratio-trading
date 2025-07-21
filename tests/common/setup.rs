@@ -67,6 +67,7 @@ use borsh::BorshSerialize;
 /// The private key is stored in the repository for testing purposes only.
 /// 
 /// **NEVER use this authority in production deployments!**
+#[allow(dead_code)]
 pub const TEST_PROGRAM_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFhTfYNQn";
 
 /// **HARDCODED TEST PROGRAM AUTHORITY KEYPAIR**
@@ -82,6 +83,7 @@ pub const TEST_PROGRAM_AUTHORITY: &str = "6SBHtCjRodUsFrsHEGjf4WH1v1kU2CMKHNQKFh
 /// 
 /// # Returns
 /// * `Result<Keypair, Box<dyn std::error::Error>>` - The test authority keypair or error
+#[allow(dead_code)]
 pub fn create_test_program_authority_keypair() -> Result<solana_sdk::signature::Keypair, Box<dyn std::error::Error>> {
     use solana_sdk::signature::Keypair;
     use std::str::FromStr;
@@ -142,6 +144,7 @@ pub fn get_test_program_data_address(program_id: &Pubkey) -> Pubkey {
 /// 
 /// # Returns
 /// * `Vec<AccountMeta>` - Account metas for authority validation
+#[allow(dead_code)]
 pub fn create_program_authority_account_metas(
     program_id: &Pubkey,
     authority_keypair: &Keypair,
@@ -166,6 +169,7 @@ pub fn create_program_authority_account_metas(
 /// 
 /// # Returns
 /// * `Result<(), String>` - Ok if they match, error message if they don't
+#[allow(dead_code)]
 pub fn verify_test_program_authority_consistency(keypair: &Keypair) -> Result<(), String> {
     use std::str::FromStr;
     

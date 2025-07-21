@@ -219,13 +219,13 @@ async fn test_individual_pool_creation() -> TestResult {
         // Create token mints
         let primary_mint = Keypair::new();
         let base_mint = Keypair::new();
-        create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint, Some(6)).await;
-        create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await;
+        let _ = create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint, Some(6)).await;
+        let _ = create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await;
         
         // Initialize treasury
         let system_authority = Keypair::new();
-        transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &system_authority.pubkey(), 10_000_000_000).await;
-        initialize_treasury_system(&mut env.banks_client, &env.payer, env.recent_blockhash, &system_authority).await;
+        let _ = transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &system_authority.pubkey(), 10_000_000_000).await;
+        let _ = initialize_treasury_system(&mut env.banks_client, &env.payer, env.recent_blockhash, &system_authority).await;
         
         // Create pool
         let pool_config = create_pool_new_pattern(

@@ -40,7 +40,6 @@ SOFTWARE.
 //! - Comprehensive state comparison with detailed deltas
 //! - Mock data support for reliable infrastructure testing
 
-use crate::common::*;
 use fixed_ratio_trading::state::MainTreasuryState;
 use fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX;
 use solana_sdk::pubkey::Pubkey;
@@ -133,9 +132,6 @@ pub struct BalanceVerificationResult {
 /// 
 /// **INFRASTRUCTURE TESTING**: Uses mock data for predictable treasury testing.
 /// 
-/// # Arguments
-/// * `env` - Test environment with access to blockchain state
-/// 
 /// # Returns
 /// * `MainTreasuryState` - Verified treasury state
 /// 
@@ -155,7 +151,7 @@ pub async fn get_treasury_state_verified() -> Result<MainTreasuryState, Box<dyn 
     
     // **BLOCKCHAIN RETRIEVAL**: Get treasury account from blockchain
     // TODO: Fix mutable borrow issue - temporary mock for debugging
-    // let treasury_account = env.banks_client.get_account(main_treasury_pda).await?;
+    // let treasury_account = banks_client.get_account(main_treasury_pda).await?;
     
     // Mock treasury state for now to focus on pool flag debugging
     let mock_treasury_state = MainTreasuryState {
@@ -186,7 +182,7 @@ pub async fn get_treasury_state_verified() -> Result<MainTreasuryState, Box<dyn 
     #[allow(unreachable_code)]
     {
     // TODO: Fix mutable borrow issue to enable real blockchain retrieval
-    let treasury_account = env.banks_client.get_account(main_treasury_pda).await?;
+    let treasury_account = banks_client.get_account(main_treasury_pda).await?;
     let treasury_account = treasury_account.ok_or("Treasury account not found on blockchain")?;
     let treasury_state = MainTreasuryState::try_from_slice(&treasury_account.data)?;
     // ... validation code ...
@@ -282,7 +278,6 @@ pub async fn assert_treasury_counter_increment(
 /// **INFRASTRUCTURE TESTING**: Validates balance changes with mock data.
 /// 
 /// # Arguments
-/// * `env` - Test environment with access to blockchain state
 /// * `expected_change` - Expected balance change (positive for fees collected, negative for withdrawals)
 /// 
 /// # Returns
@@ -505,7 +500,6 @@ pub struct AuthValidationResult {
 /// **INFRASTRUCTURE TESTING**: Simulates withdrawal with mock data and validation.
 /// 
 /// # Arguments
-/// * `env` - Test environment with access to blockchain state
 /// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
 /// 
 /// # Returns
@@ -606,9 +600,6 @@ pub async fn execute_treasury_withdrawal_with_verification(
 /// 
 /// **INFRASTRUCTURE TESTING**: Simulates failures with mock data for testing.
 /// 
-/// # Arguments
-/// * `env` - Test environment with access to blockchain state
-/// 
 /// # Returns
 /// * `FailedOpResult` - Detailed failure tracking data
 /// 
@@ -680,9 +671,6 @@ pub async fn simulate_failed_treasury_withdrawal() -> Result<FailedOpResult, Box
 /// operations, ensuring only authorized entities can perform withdrawals.
 /// 
 /// **INFRASTRUCTURE TESTING**: Simulates authority validation with mock data.
-/// 
-/// # Arguments
-/// * `env` - Test environment with access to blockchain state
 /// 
 /// # Returns
 /// * `AuthValidationResult` - Authority validation test results

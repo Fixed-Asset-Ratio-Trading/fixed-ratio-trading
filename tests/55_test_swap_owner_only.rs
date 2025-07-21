@@ -17,7 +17,6 @@ use serial_test::serial;
 
 mod common;
 use common::{
-    tokens::*,
     liquidity_helpers::{create_liquidity_test_foundation, LiquidityTestFoundation},
     setup::*,
     pool_helpers::get_pool_state,
@@ -26,7 +25,6 @@ use fixed_ratio_trading::utils::program_authority::get_program_data_address;
 
 use fixed_ratio_trading::{
     PoolInstruction,
-    constants::*,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
