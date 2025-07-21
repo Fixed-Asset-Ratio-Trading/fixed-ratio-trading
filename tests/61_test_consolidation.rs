@@ -3,6 +3,13 @@
 //! This module provides extensive testing for the fee consolidation functionality,
 //! including maximum pool count testing, edge cases, and various consolidation scenarios.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey,

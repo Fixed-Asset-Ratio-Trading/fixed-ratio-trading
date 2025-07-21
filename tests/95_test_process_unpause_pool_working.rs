@@ -3,6 +3,13 @@
 //! This test verifies that process_unpause_pool works correctly by first pausing a pool
 //! and then unpausing it, testing the complete pause/unpause cycle.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey,

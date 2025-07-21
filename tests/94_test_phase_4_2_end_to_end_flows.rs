@@ -1,3 +1,10 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 //! # Phase 4.2: End-to-End Flow Integration Tests
 //!
 //! This module provides comprehensive end-to-end flow tests that demonstrate complete

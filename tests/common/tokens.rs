@@ -184,9 +184,9 @@ pub async fn create_token_account_instruction(
     mint: &solana_program::pubkey::Pubkey,
     owner: &solana_program::pubkey::Pubkey,
 ) -> Result<solana_sdk::instruction::Instruction, solana_program_test::BanksClientError> {
-    use solana_sdk::instruction::Instruction;
+
     
-    let create_account_ix = solana_sdk::system_instruction::create_account(
+    let _create_account_ix = solana_sdk::system_instruction::create_account(
         payer,
         token_account,
         0, // Will be calculated by the system

@@ -2,6 +2,13 @@
 // This test verifies that the end-to-end flow helpers work correctly
 // by chaining together all proven operations from Phases 1 and 2
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 use common::flow_helpers::*;
 

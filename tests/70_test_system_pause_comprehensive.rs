@@ -47,6 +47,13 @@ SOFTWARE.
 //! - Validates pause state persists correctly
 //! - Tests system pause precedence over pool operations
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;

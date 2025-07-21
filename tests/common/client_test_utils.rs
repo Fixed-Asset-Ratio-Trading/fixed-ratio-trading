@@ -8,7 +8,7 @@ use solana_program::{
     program_error::ProgramError,
     pubkey::Pubkey,
     system_program,
-    sysvar::{self, rent, clock},
+    sysvar::{rent, clock},
 };
 use spl_token;
 use borsh::BorshSerialize;

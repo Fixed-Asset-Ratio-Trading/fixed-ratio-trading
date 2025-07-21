@@ -27,6 +27,13 @@ SOFTWARE.
 //! This module demonstrates CU measurement using simple, fast instructions
 //! that don't cause DeadlineExceeded errors or banks server hangs.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;

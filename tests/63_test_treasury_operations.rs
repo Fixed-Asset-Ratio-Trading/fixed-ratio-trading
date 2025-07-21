@@ -3,6 +3,13 @@
 //! This module tests comprehensive treasury operations including pool creation,
 //! liquidity management, swap operations, and fee consolidation.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey,

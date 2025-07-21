@@ -27,6 +27,13 @@ SOFTWARE.
 //! This module contains tests for the client SDK functionality,
 //! including client initialization, PDA derivation, and instruction building.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;
@@ -37,11 +44,8 @@ use fixed_ratio_trading::{
 };
 use solana_program::{
     pubkey::Pubkey,
-    system_program,
-    sysvar,
-    instruction::AccountMeta,
 };
-use crate::common::client_test_utils::*;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 
 /// Test PoolClient initialization and configuration (SDK-001)

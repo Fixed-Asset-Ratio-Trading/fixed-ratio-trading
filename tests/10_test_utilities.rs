@@ -27,6 +27,13 @@ SOFTWARE.
 //! This module contains unit tests for utility functions, helper components,
 //! and core functionality that doesn't require full integration testing.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;

@@ -29,6 +29,13 @@
 //! - `test_successful_b_to_a_swap` in pool_swaps
 //! - Various scattered individual operation tests
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 use common::*;
 use crate::common::tokens::get_token_balance;

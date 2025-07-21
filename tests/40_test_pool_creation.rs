@@ -28,6 +28,13 @@ SOFTWARE.
 //! including both the deprecated two-instruction pattern and the new single-instruction
 //! pattern, as well as validation and error handling tests.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;

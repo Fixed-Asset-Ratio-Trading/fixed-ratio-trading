@@ -28,6 +28,13 @@ SOFTWARE.
 //! capabilities including automated fee collection, health monitoring,
 //! emergency procedures, batch operations, and performance optimization.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 use serial_test::serial;
 
 mod common;

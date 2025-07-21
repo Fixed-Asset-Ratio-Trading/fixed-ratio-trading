@@ -43,7 +43,6 @@ use fixed_ratio_trading::{
         SYSTEM_STATE_SEED_PREFIX,
         MAIN_TREASURY_SEED_PREFIX,
     },
-    state::{SystemState, MainTreasuryState},
     process_instruction,
 };
 

@@ -467,6 +467,7 @@ pub struct PoolCreationResult {
 
 /// Result structure for multiple pool creation operations
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct MultiPoolResult {
     /// Results from individual pool creations
     pub pool_results: Vec<PoolCreationResult>,
@@ -490,6 +491,7 @@ pub struct MultiPoolResult {
 /// 
 /// # Returns
 /// * `PoolCreationResult` - Comprehensive results including treasury state changes
+#[allow(dead_code)]
 pub async fn execute_pool_creation_with_counter_verification(
     env: &mut crate::common::setup::TestEnvironment,
     multiple_per_base: u64,

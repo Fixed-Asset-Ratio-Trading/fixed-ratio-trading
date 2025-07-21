@@ -40,7 +40,7 @@ use crate::common::*;
 use fixed_ratio_trading::state::MainTreasuryState;
 use fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX;
 use solana_sdk::pubkey::Pubkey;
-use borsh::BorshDeserialize;
+
 
 // ========================================
 // PHASE 2.1: TREASURY STATE VERIFICATION DATA STRUCTURES

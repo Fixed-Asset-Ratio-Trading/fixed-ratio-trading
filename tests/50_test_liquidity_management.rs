@@ -4,6 +4,13 @@
 //! and edge cases. Tests are designed to validate the 1:1 LP token ratio enforcement
 //! and proper fee handling.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -65,7 +72,6 @@ use common::{
         ConsolidationFlowConfig,
         SwapOperation,
         SwapDirection as FlowSwapDirection,
-        FlowResult,
     },
 };
 

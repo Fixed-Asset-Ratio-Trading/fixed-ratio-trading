@@ -26,6 +26,13 @@ SOFTWARE.
 //! 
 //! This module contains comprehensive tests for pool state PDA derivation functionality.
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::*;

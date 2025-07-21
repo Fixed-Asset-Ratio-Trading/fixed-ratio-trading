@@ -12,6 +12,13 @@
 //! - Performance metrics collection
 //! - State consistency across complex scenarios
 
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(unused_mut)]
+#![allow(unused_assignments)]
+#![allow(unused_results)]
+
 mod common;
 
 use common::flow_helpers::*;
