@@ -171,14 +171,15 @@ pub fn collect_liquidity_fee_distributed<'a>(
     pool_state_account: &AccountInfo<'a>,
     system_program: &AccountInfo<'a>,
     program_id: &Pubkey,
+    fee_amount: u64,
 ) -> ProgramResult {
-    println!("🔍 DEBUG: collect_liquidity_fee_distributed called!");
+    println!("🔍 DEBUG: collect_liquidity_fee_distributed called with fee: {} lamports!", fee_amount);
     let result = collect_fee_to_pool_state(
         payer_account,
         pool_state_account,
         system_program,
         program_id,
-        DEPOSIT_WITHDRAWAL_FEE,
+        fee_amount,
         FeeType::Liquidity,
     );
     if let Err(ref e) = result {

@@ -40,6 +40,17 @@ pub struct PoolState {
     /// Bit 4 (16): Single LP token mode (future feature)
     pub flags: u8,
     
+    // **NEW: CONFIGURABLE CONTRACT FEES**
+    /// Contract fee for liquidity operations (deposits/withdrawals) in lamports
+    /// This fee is charged in SOL to cover computational costs
+    /// **Future**: Will be modifiable via pool fee update function
+    pub contract_liquidity_fee: u64,
+    
+    /// Contract fee for swap operations in lamports  
+    /// This fee is charged in SOL to cover computational costs
+    /// **Future**: Will be modifiable via pool fee update function
+    pub swap_contract_fee: u64,
+    
     // Fee collection and withdrawal tracking (Token fees only)
     pub collected_fees_token_a: u64,
     pub collected_fees_token_b: u64,
@@ -93,6 +104,10 @@ impl PoolState {
         1 +  // lp_token_b_mint_bump_seed
         1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, only_lp_token_a_for_both)
         
+        // **NEW: CONFIGURABLE CONTRACT FEES** (+16 bytes)
+        8 +  // contract_liquidity_fee
+        8 +  // swap_contract_fee
+        
         // Fee collection and withdrawal tracking (Token fees)
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b
@@ -115,7 +130,7 @@ impl PoolState {
         // - collected_pool_creation_fees: u64 (8 bytes) - Pool creation happens only once, goes to MainTreasury
         // - rent_requirements: RentRequirements (40 bytes) - Rent calculations done on-demand
         
-        // **NET ADDITION: -1 bytes per pool** (56 added - 57 removed)
+        // **NET ADDITION: +15 bytes per pool** (72 added - 57 removed)
     }
     
     // **NEW: BITWISE FLAG HELPER METHODS**

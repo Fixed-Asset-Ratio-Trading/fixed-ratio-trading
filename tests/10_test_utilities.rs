@@ -279,6 +279,10 @@ fn test_pool_state_get_packed_len() {
         1 +  // lp_token_b_mint_bump_seed
         1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, etc.)
         
+        // **NEW: CONFIGURABLE CONTRACT FEES** (+16 bytes)
+        8 +  // contract_liquidity_fee
+        8 +  // swap_contract_fee
+        
         // Fee collection and withdrawal tracking (Token fees)
         8 +  // collected_fees_token_a
         8 +  // collected_fees_token_b

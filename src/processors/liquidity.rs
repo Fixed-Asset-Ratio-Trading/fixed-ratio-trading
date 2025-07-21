@@ -181,7 +181,7 @@ pub fn process_deposit(
     // ✅ PRE-TRANSACTION INFORMATION (DEFI UX BEST PRACTICES)
     msg!("💰 FEE BREAKDOWN:");
     msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
-    msg!("   • Protocol Fee: {} lamports ({} SOL)", crate::constants::DEPOSIT_WITHDRAWAL_FEE, crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
+    msg!("   • Protocol Fee: Will be displayed after pool state validation");
     msg!("   • Account Creation: May require ~0.00203928 SOL rent if LP token account doesn't exist");
     
     msg!("📈 EXPECTED OUTCOMES:");
@@ -230,6 +230,10 @@ pub fn process_deposit(
     // Read and validate pool state (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
+    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
+    msg!("💰 ACTUAL FEE BREAKDOWN:");
+    msg!("   • Protocol Fee: {} lamports ({} SOL)", pool_state_data.contract_liquidity_fee, pool_state_data.contract_liquidity_fee as f64 / 1_000_000_000.0);
+    
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
 
@@ -237,7 +241,7 @@ pub fn process_deposit(
     // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
     
     msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
-    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", pool_state_data.contract_liquidity_fee);
     
     // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
     msg!("🔍 TRANSACTION SIMULATION RESULTS:");
@@ -502,6 +506,7 @@ pub fn process_deposit(
         pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
         program_id,
+        pool_state_data.contract_liquidity_fee,
     )?;
 
     msg!("✅ Deposit fee collected successfully after token operations");
@@ -594,7 +599,7 @@ pub fn process_withdraw(
     // ✅ PRE-TRANSACTION INFORMATION (DEFI UX BEST PRACTICES)
     msg!("💰 FEE BREAKDOWN:");
     msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
-    msg!("   • Protocol Fee: {} lamports ({} SOL)", crate::constants::DEPOSIT_WITHDRAWAL_FEE, crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
+    msg!("   • Protocol Fee: Will be displayed after pool state validation");
     msg!("   • No account creation fees (withdrawing to existing accounts)");
     
     msg!("📈 EXPECTED OUTCOMES:");
@@ -645,6 +650,10 @@ pub fn process_withdraw(
     // ✅ LOAD POOL STATE: Single deserialization (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
+    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
+    msg!("💰 ACTUAL FEE BREAKDOWN:");
+    msg!("   • Protocol Fee: {} lamports ({} SOL)", pool_state_data.contract_liquidity_fee, pool_state_data.contract_liquidity_fee as f64 / 1_000_000_000.0);
+    
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
 
@@ -652,7 +661,7 @@ pub fn process_withdraw(
     // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
     
     msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
-    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", pool_state_data.contract_liquidity_fee);
     
     // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
     msg!("🔍 TRANSACTION SIMULATION RESULTS:");
@@ -796,10 +805,11 @@ pub fn process_withdraw(
         pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
         program_id,
+        pool_state_data.contract_liquidity_fee,
     )?;
 
     msg!("✅ Withdrawal fee collected successfully after token operations");
-    msg!("💰 Fee collected: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    msg!("💰 Fee collected: {} lamports (distributed to pool state)", pool_state_data.contract_liquidity_fee);
 
     Ok(())
 }

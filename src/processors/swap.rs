@@ -141,7 +141,7 @@ pub fn process_swap(
 
     msg!("💰 FEE BREAKDOWN:");
     msg!("   • Network Fee: ~0.000005 SOL (static)");
-    msg!("   • Swap Contract Fee: {} lamports", crate::constants::SWAP_CONTRACT_FEE);
+    msg!("   • Swap Contract Fee: Will be displayed after pool state validation");
     msg!("   • No account creation costs (existing accounts)");
     
     msg!("🔒 TRANSACTION SECURITY:");
@@ -156,6 +156,10 @@ pub fn process_swap(
     
     // Load and validate pool state data
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+
+    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
+    msg!("💰 ACTUAL FEE BREAKDOWN:");
+    msg!("   • Swap Contract Fee: {} lamports ({} SOL)", pool_state_data.swap_contract_fee, pool_state_data.swap_contract_fee as f64 / 1_000_000_000.0);
 
     // Check if pool swaps are paused
     if pool_state_data.swaps_paused() {
@@ -203,7 +207,7 @@ pub fn process_swap(
     msg!("✅ Step 1 completed: System and pool validations passed");
 
     msg!("🔍 Step 2/6: Fee collection will happen after token operations to prevent PDA corruption");
-    msg!("💰 Fee: {} lamports (will be collected to pool state)", crate::constants::SWAP_CONTRACT_FEE);
+    msg!("💰 Fee: {} lamports (will be collected to pool state)", pool_state_data.swap_contract_fee);
     
     msg!("⏳ Step 3/6: Loading and validating user accounts");
     
@@ -422,19 +426,18 @@ pub fn process_swap(
     // Fee collection must happen AFTER all invoke/invoke_signed operations to prevent PDA corruption
     msg!("💰 Step 6a: Collecting fees after token operations...");
     use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
-    use crate::constants::SWAP_CONTRACT_FEE;
     
     collect_fee_to_pool_state(
         user_authority_signer,
         pool_state_pda,  // ← Collect to pool state instead of main treasury
         system_program_account,
         program_id,
-        SWAP_CONTRACT_FEE,
+        pool_state_data.swap_contract_fee,
         FeeType::RegularSwap,
     )?;
     
     msg!("✅ Swap fee collected successfully after token operations");
-    msg!("💰 Fee collected: {} lamports (distributed to pool state)", SWAP_CONTRACT_FEE);
+    msg!("💰 Fee collected: {} lamports (distributed to pool state)", pool_state_data.swap_contract_fee);
     
     msg!("✅ SWAP COMPLETED SUCCESSFULLY!");
     msg!("=============================");
@@ -442,7 +445,7 @@ pub fn process_swap(
     msg!("   • Input: {} tokens (mint: {})", amount_in, input_token_mint_key);
     msg!("   • Output: {} tokens (mint: {})", amount_out, output_token_mint_key);
     msg!("   • Exchange rate: {}:{} (fixed ratio)", numerator, denominator);
-    msg!("   • Total fees paid: {} lamports", SWAP_CONTRACT_FEE);
+    msg!("   • Total fees paid: {} lamports", pool_state_data.swap_contract_fee);
     msg!("   • Pool: {} ↔ {}", pool_state_data.token_a_mint, pool_state_data.token_b_mint);
     
     msg!("💰 POST-TRANSACTION POOL STATE:");

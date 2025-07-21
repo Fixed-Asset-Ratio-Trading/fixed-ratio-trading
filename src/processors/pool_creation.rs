@@ -621,6 +621,11 @@ pub fn process_initialize_pool(
             msg!("🔍 ENHANCED DEBUG: Final flag value assigned to pool state: {}", flag_value);
             flag_value
         }, // Set ONE_TO_MANY_RATIO flag based on proper validation logic
+        
+        // **NEW: CONFIGURABLE CONTRACT FEES** - Initialize with current constants
+        contract_liquidity_fee: crate::constants::DEPOSIT_WITHDRAWAL_FEE,
+        swap_contract_fee: crate::constants::SWAP_CONTRACT_FEE,
+        
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
         total_fees_withdrawn_token_a: 0,
