@@ -46,7 +46,6 @@ use solana_sdk::signature::Keypair;
 use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
 use borsh::BorshSerialize;
 use fixed_ratio_trading::{
-    RentRequirements, 
     PoolError, 
     MINIMUM_RENT_BUFFER
 };
@@ -83,98 +82,7 @@ async fn retry_transaction(
     Err(last_error.unwrap())
 }
 
-// ================================================================================================
-// RENT REQUIREMENTS TESTS
-// ================================================================================================
 
-#[test]
-fn test_rent_requirements_new() {
-    // Create a mock Rent object
-    let rent = Rent {
-        lamports_per_byte_year: 3480,
-        exemption_threshold: 2.0,
-        burn_percent: 50,
-    };
-
-    let rent_req = RentRequirements::new(&rent);
-
-    // Verify initial values
-    assert_eq!(rent_req.last_update_slot, 0);
-    assert_eq!(rent_req.rent_exempt_minimum, rent.minimum_balance(0));
-    assert_eq!(rent_req.pool_state_rent, rent.minimum_balance(PoolState::get_packed_len()));
-    assert_eq!(rent_req.token_vault_rent, rent.minimum_balance(TokenAccount::LEN));
-    assert_eq!(rent_req.lp_mint_rent, rent.minimum_balance(MintAccount::LEN));
-}
-
-#[test]
-fn test_rent_requirements_update_if_needed() {
-    let rent = Rent {
-        lamports_per_byte_year: 3480,
-        exemption_threshold: 2.0,
-        burn_percent: 50,
-    };
-
-    let mut rent_req = RentRequirements::new(&rent);
-    
-    // Test that update is needed when last_update_slot is 0
-    assert_eq!(rent_req.update_if_needed(&rent, 0), true);
-    assert_eq!(rent_req.last_update_slot, 0);
-
-    // Set last_update_slot to simulate initialized state
-    rent_req.last_update_slot = 100;
-
-    // Test that no update is needed for small slot differences
-    assert_eq!(rent_req.update_if_needed(&rent, 200), false);
-    assert_eq!(rent_req.last_update_slot, 100);
-
-    // Test that update happens after 1000 slots
-    assert_eq!(rent_req.update_if_needed(&rent, 1101), true);
-    assert_eq!(rent_req.last_update_slot, 1101);
-
-    // Test that no update is needed immediately after
-    assert_eq!(rent_req.update_if_needed(&rent, 1102), false);
-    
-    // Test that update happens if rent parameters change
-    let new_rent = Rent {
-        lamports_per_byte_year: 4000, // Changed
-        exemption_threshold: 2.0,
-        burn_percent: 50,
-    };
-    assert_eq!(rent_req.update_if_needed(&new_rent, 1103), true);
-    assert_eq!(rent_req.last_update_slot, 1103);
-}
-
-#[test]
-fn test_rent_requirements_get_total_required_rent() {
-    let rent = Rent {
-        lamports_per_byte_year: 3480,
-        exemption_threshold: 2.0,
-        burn_percent: 50,
-    };
-
-    let rent_req = RentRequirements::new(&rent);
-    
-    // Calculate expected total
-    let expected_total = rent_req.pool_state_rent + 
-                       (2 * rent_req.token_vault_rent) + 
-                       (2 * rent_req.lp_mint_rent) + 
-                       MINIMUM_RENT_BUFFER;
-    
-    assert_eq!(rent_req.get_total_required_rent(), expected_total);
-}
-
-#[test]
-fn test_rent_requirements_get_packed_len() {
-    // Test that get_packed_len returns the correct size
-    let expected_len = 8 + // last_update_slot
-                      8 + // rent_exempt_minimum
-                      8 + // pool_state_rent
-                      8 + // token_vault_rent
-                      8;  // lp_mint_rent
-    
-    assert_eq!(RentRequirements::get_packed_len(), expected_len);
-    assert_eq!(RentRequirements::get_packed_len(), 40); // Corrected expected value
-}
 
 // ================================================================================================
 // POOL ERROR TESTS
@@ -369,7 +277,6 @@ fn test_pool_state_get_packed_len() {
         1 +  // token_b_vault_bump_seed
         1 +  // lp_token_a_mint_bump_seed
         1 +  // lp_token_b_mint_bump_seed
-        40 + // rent_requirements (RentRequirements::get_packed_len())
         1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, etc.)
         
         // Fee collection and withdrawal tracking (Token fees)
@@ -1356,11 +1263,9 @@ async fn test_get_pool_info() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(pool_state.total_fees_withdrawn_token_b, 0, "Initial withdrawn fees Token B should be zero");
         // Note: SOL fees moved to treasury system - no longer tracked per pool
         
-        // Verify rent requirements exist
-        assert!(pool_state.rent_requirements.rent_exempt_minimum > 0, "Rent requirements should be calculated");
-        assert!(pool_state.rent_requirements.pool_state_rent > 0, "Pool state rent should be calculated");
-        assert!(pool_state.rent_requirements.token_vault_rent > 0, "Token vault rent should be calculated");
-        assert!(pool_state.rent_requirements.lp_mint_rent > 0, "LP mint rent should be calculated");
+        // Verify pool state data integrity
+        // Note: Rent requirements are now calculated on-demand rather than stored
+        assert_eq!(pool_state.total_sol_fees_collected, 0, "Initial pool should have zero collected fees");
         
         println!("✅ Liquidity information and balance validation passed");
     }

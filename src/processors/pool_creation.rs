@@ -6,7 +6,7 @@
 use crate::{
     constants::*,
     error::PoolError,
-    state::{MainTreasuryState, PoolState, pool_state::RentRequirements},
+    state::{MainTreasuryState, PoolState},
     utils::{serialization::serialize_to_account, validation::check_one_to_many_ratio},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -606,7 +606,6 @@ pub fn process_initialize_pool(
         token_b_vault_bump_seed,
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
-        rent_requirements: RentRequirements::new(rent),
         flags: {
             let flag_value = if is_one_to_many_ratio { 
                 msg!("🔍 ENHANCED DEBUG: Setting POOL_FLAG_ONE_TO_MANY_RATIO flag");

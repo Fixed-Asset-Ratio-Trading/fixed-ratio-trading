@@ -6,68 +6,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     pubkey::Pubkey,
-    sysvar::rent::Rent,
-    program_pack::Pack,
 };
-use spl_token::state::{Account as TokenAccount, Mint as MintAccount};
-use crate::{
-    constants::MINIMUM_RENT_BUFFER,
-};
-
-/// Tracks rent requirements for pool accounts to ensure rent exemption.
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
-pub struct RentRequirements {
-    pub last_update_slot: u64,
-    pub rent_exempt_minimum: u64,
-    pub pool_state_rent: u64,
-    pub token_vault_rent: u64,
-    pub lp_mint_rent: u64,
-}
-
-impl RentRequirements {
-    pub fn new(rent: &Rent) -> Self {
-        Self {
-            last_update_slot: 0,
-            rent_exempt_minimum: rent.minimum_balance(0),
-            pool_state_rent: rent.minimum_balance(PoolState::get_packed_len()),
-            token_vault_rent: rent.minimum_balance(TokenAccount::LEN),
-            lp_mint_rent: rent.minimum_balance(MintAccount::LEN),
-        }
-    }
-
-    pub fn update_if_needed(&mut self, rent: &Rent, current_slot: u64) -> bool {
-        // Update rent requirements if they've changed or if it's been a while
-        let needs_update = self.last_update_slot == 0 || 
-                          current_slot - self.last_update_slot > 1000 || // Update every ~1000 slots
-                          self.pool_state_rent != rent.minimum_balance(PoolState::get_packed_len()) ||
-                          self.token_vault_rent != rent.minimum_balance(TokenAccount::LEN) ||
-                          self.lp_mint_rent != rent.minimum_balance(MintAccount::LEN);
-
-        if needs_update {
-            self.pool_state_rent = rent.minimum_balance(PoolState::get_packed_len());
-            self.token_vault_rent = rent.minimum_balance(TokenAccount::LEN);
-            self.lp_mint_rent = rent.minimum_balance(MintAccount::LEN);
-            self.last_update_slot = current_slot;
-        }
-
-        needs_update
-    }
-
-    pub fn get_total_required_rent(&self) -> u64 {
-        self.pool_state_rent + 
-        (2 * self.token_vault_rent) + // Two token vaults
-        (2 * self.lp_mint_rent) + // Two LP mints
-        MINIMUM_RENT_BUFFER // Additional buffer
-    }
-
-    pub fn get_packed_len() -> usize {
-        8 + // last_update_slot
-        8 + // rent_exempt_minimum
-        8 + // pool_state_rent
-        8 + // token_vault_rent
-        8   // lp_mint_rent
-    }
-}
 
 /// Main pool state containing all configuration and runtime data.
 /// 
@@ -92,7 +31,6 @@ pub struct PoolState {
     pub token_b_vault_bump_seed: u8,
     pub lp_token_a_mint_bump_seed: u8,
     pub lp_token_b_mint_bump_seed: u8,
-    pub rent_requirements: RentRequirements,
     
     /// Pool state flags using bitwise operations
     /// Bit 0 (1): One-to-many ratio configuration
@@ -153,7 +91,6 @@ impl PoolState {
         1 +  // token_b_vault_bump_seed
         1 +  // lp_token_a_mint_bump_seed
         1 +  // lp_token_b_mint_bump_seed
-        RentRequirements::get_packed_len() + // rent_requirements
         1 +  // flags (bitwise: one_to_many_ratio, liquidity_paused, swaps_paused, withdrawal_protection_active, only_lp_token_a_for_both)
         
         // Fee collection and withdrawal tracking (Token fees)
@@ -172,12 +109,13 @@ impl PoolState {
         8 +  // total_consolidations
         8    // total_fees_consolidated
         
-        // **REMOVED FIELDS** (-17 bytes):
+        // **REMOVED FIELDS** (-57 bytes):
         // - is_initialized: bool (1 byte) - Pool existence = initialization
         // - swap_fee_basis_points: u64 (8 bytes) - Moved to constants as fixed value
         // - collected_pool_creation_fees: u64 (8 bytes) - Pool creation happens only once, goes to MainTreasury
+        // - rent_requirements: RentRequirements (40 bytes) - Rent calculations done on-demand
         
-        // **NET ADDITION: +39 bytes per pool** (56 added - 17 removed)
+        // **NET ADDITION: -1 bytes per pool** (56 added - 57 removed)
     }
     
     // **NEW: BITWISE FLAG HELPER METHODS**

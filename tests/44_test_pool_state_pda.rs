@@ -652,7 +652,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     
     use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
     use fixed_ratio_trading::PoolState;
-    use fixed_ratio_trading::state::pool_state::RentRequirements;
+
     use borsh::{BorshSerialize, BorshDeserialize};
     use solana_program::sysvar::rent::Rent;
     
@@ -674,7 +674,6 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
         token_b_vault_bump_seed: 253,
         lp_token_a_mint_bump_seed: 252,
         lp_token_b_mint_bump_seed: 251,
-        rent_requirements: RentRequirements::new(&Rent::default()),
         flags: POOL_FLAG_ONE_TO_MANY_RATIO, // Set the flag
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
