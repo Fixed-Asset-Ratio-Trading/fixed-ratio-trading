@@ -144,6 +144,9 @@ use crate::processors::{
         process_pause_pool,
         process_unpause_pool,
     },
+    pool_fee_update::{
+        process_update_pool_fees,
+    },
 };
 
 /// Main entry point for the fixed-ratio trading pool Solana program.
@@ -202,6 +205,12 @@ pub fn process_instruction(
             enable_restriction,
             designated_owner,
         } => process_set_swap_owner_only(program_id, enable_restriction, designated_owner, accounts),
+
+        PoolInstruction::UpdatePoolFees {
+            update_flags,
+            new_liquidity_fee,
+            new_swap_fee,
+        } => process_update_pool_fees(program_id, accounts, update_flags, new_liquidity_fee, new_swap_fee),
 
 
 

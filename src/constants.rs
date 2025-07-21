@@ -253,5 +253,41 @@ pub const POOL_FLAG_SINGLE_LP_TOKEN: u8 = 0b10000; // 16
 /// **Use Case**: Pool owners deploy custom fee-collecting contracts and route swaps through them
 pub const POOL_FLAG_SWAP_FOR_OWNERS_ONLY: u8 = 0b100000; // 32
 
+//=============================================================================
+// FEE UPDATE BITWISE FLAGS
+//=============================================================================
+
+/// Fee update flag: Update liquidity fee (deposits/withdrawals)
+/// Used in UpdatePoolFees instruction to specify which fee to update
+pub const FEE_UPDATE_FLAG_LIQUIDITY: u8 = 0b01; // 1
+
+/// Fee update flag: Update swap fee
+/// Used in UpdatePoolFees instruction to specify which fee to update
+pub const FEE_UPDATE_FLAG_SWAP: u8 = 0b10; // 2
+
+/// Fee update flag: Update both fees (liquidity + swap)
+/// Used in UpdatePoolFees instruction to update both fees at once
+pub const FEE_UPDATE_FLAG_BOTH: u8 = FEE_UPDATE_FLAG_LIQUIDITY | FEE_UPDATE_FLAG_SWAP; // 3
+
+//=============================================================================
+// FEE VALIDATION LIMITS
+//=============================================================================
+
+/// Maximum allowed liquidity fee in lamports (0.01 SOL)
+/// Prevents excessive fees that would make operations prohibitively expensive
+pub const MAX_LIQUIDITY_FEE: u64 = 10_000_000; // 0.01 SOL
+
+/// Maximum allowed swap fee in lamports (0.001 SOL)
+/// Prevents excessive fees that would make swaps prohibitively expensive
+pub const MAX_SWAP_FEE: u64 = 1_000_000; // 0.001 SOL
+
+/// Minimum allowed liquidity fee in lamports (0.0001 SOL)
+/// Ensures fees cover basic transaction costs
+pub const MIN_LIQUIDITY_FEE: u64 = 100_000; // 0.0001 SOL
+
+/// Minimum allowed swap fee in lamports (0.00001 SOL)
+/// Ensures fees cover basic transaction costs
+pub const MIN_SWAP_FEE: u64 = 10_000; // 0.00001 SOL
+
 
 

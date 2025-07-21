@@ -361,4 +361,35 @@ pub enum PoolInstruction {
         designated_owner: Pubkey,
     },
     
+    /// **POOL FEE UPDATE**: Update pool contract fees (program authority only)
+    /// 
+    /// Allows the program authority to update the contract fees for a specific pool.
+    /// This provides granular control over pool economics while maintaining security
+    /// through proper authorization checks.
+    /// 
+    /// # Security:
+    /// - Only the program authority can call this instruction
+    /// - Fee updates are applied immediately to all future operations
+    /// - Existing pending fees are not affected by the update
+    /// - Fee validation ensures reasonable limits
+    /// 
+    /// # Arguments:
+    /// - `update_flags`: Bitwise flags indicating which fees to update
+    ///   - 0b01 (1): Update liquidity fee
+    ///   - 0b10 (2): Update swap fee  
+    ///   - 0b11 (3): Update both fees
+    /// - `new_liquidity_fee`: New liquidity fee in lamports (only used if liquidity flag is set)
+    /// - `new_swap_fee`: New swap fee in lamports (only used if swap flag is set)
+    /// 
+    /// # Account Order:
+    /// - [0] Program Authority Signer (must be program upgrade authority)
+    /// - [1] System State PDA (for system pause validation)
+    /// - [2] Pool State PDA (writable, to update fee parameters)
+    /// - [3] Program Data Account (for upgrade authority validation)
+    UpdatePoolFees {
+        update_flags: u8,
+        new_liquidity_fee: u64,
+        new_swap_fee: u64,
+    },
+    
 } 

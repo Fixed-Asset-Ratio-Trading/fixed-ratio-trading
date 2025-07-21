@@ -11,6 +11,7 @@ pub mod system_pause;
 pub mod process_initialize;
 pub mod utilities;
 pub mod treasury;
+pub mod pool_fee_update;
 
 // Re-export consolidation functions
 pub use consolidation::*;
@@ -39,4 +40,7 @@ pub use process_initialize::*;
 pub use utilities::*;
 
 // Re-export treasury management functions
-pub use treasury::*; 
+pub use treasury::*;
+
+// Re-export pool fee update functions
+pub use pool_fee_update::*; 

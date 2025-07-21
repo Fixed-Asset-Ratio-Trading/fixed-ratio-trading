@@ -155,6 +155,22 @@ pub enum PoolError {
     
     #[error("No pools eligible for consolidation")]
     NoPoolsEligibleForConsolidation,
+    
+    /// **NEW: Fee update errors**
+    #[error("Unauthorized fee update: Only program authority can update pool fees")]
+    UnauthorizedFeeUpdate,
+    
+    #[error("Invalid fee update flags: {flags}. Must be 1 (liquidity), 2 (swap), or 3 (both)")]
+    InvalidFeeUpdateFlags { flags: u8 },
+    
+    #[error("Invalid liquidity fee: {fee} lamports. Must be between {min} and {max} lamports")]
+    InvalidLiquidityFee { fee: u64, min: u64, max: u64 },
+    
+    #[error("Invalid swap fee: {fee} lamports. Must be between {min} and {max} lamports")]
+    InvalidSwapFee { fee: u64, min: u64, max: u64 },
+    
+    #[error("Fee update validation failed: {reason}")]
+    FeeUpdateValidationFailed { reason: String },
 }
 
 impl PoolError {
@@ -192,6 +208,11 @@ impl PoolError {
             PoolError::PoolNotEligibleForConsolidation { .. } => 1039,
             PoolError::ConsolidationRaceCondition => 1040,
             PoolError::NoPoolsEligibleForConsolidation => 1041,
+            PoolError::UnauthorizedFeeUpdate => 1042,
+            PoolError::InvalidFeeUpdateFlags { .. } => 1043,
+            PoolError::InvalidLiquidityFee { .. } => 1044,
+            PoolError::InvalidSwapFee { .. } => 1045,
+            PoolError::FeeUpdateValidationFailed { .. } => 1046,
         }
     }
 }
