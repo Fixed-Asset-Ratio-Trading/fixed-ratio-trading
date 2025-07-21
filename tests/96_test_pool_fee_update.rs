@@ -7,12 +7,11 @@ use {
     fixed_ratio_trading::{
         constants::*,
         error::PoolError,
-        instruction::*,
         state::pool_state::PoolState,
         types::instructions::PoolInstruction,
     },
     solana_program::{
-        instruction::Instruction,
+        instruction::{AccountMeta, Instruction},
         pubkey::Pubkey,
         system_instruction,
     },
@@ -22,6 +21,7 @@ use {
         transaction::Transaction,
     },
     std::str::FromStr,
+    borsh::BorshSerialize,
 };
 
 mod common;
@@ -620,10 +620,11 @@ async fn test_fee_update_with_system_paused() -> TestResult {
 
 /// Helper function to get pool state
 async fn get_pool_state(
-    banks_client: &mut BanksClient,
+    banks_client: &mut solana_program_test::BanksClient,
     pool_state_pda: &Pubkey,
 ) -> Result<PoolState, Box<dyn std::error::Error>> {
-    let account = banks_client.get_account(*pool_state_pda).await?;
+    let account = banks_client.get_account(*pool_state_pda).await?
+        .ok_or("Pool state account not found")?;
     let pool_state = PoolState::try_from_slice(&account.data)?;
     Ok(pool_state)
 }
@@ -634,14 +635,17 @@ async fn create_test_pool(
     ratio_a: u64,
     ratio_b: u64,
 ) -> Result<PoolInfo, Box<dyn std::error::Error>> {
-    // This would use the existing pool creation helpers
-    // For now, we'll use a simplified approach
+    use crate::common::pool_helpers::*;
+    
+    // Create a real pool using existing helpers
+    let pool_result = create_pool_with_ratio_enhanced(ctx, ratio_a, ratio_b).await?;
+    
     let pool_info = PoolInfo {
-        pool_state_pda: Pubkey::new_unique(),
-        token_a_vault_pda: Pubkey::new_unique(),
-        token_b_vault_pda: Pubkey::new_unique(),
-        lp_token_a_mint: Pubkey::new_unique(),
-        lp_token_b_mint: Pubkey::new_unique(),
+        pool_state_pda: pool_result.pool_state_pda,
+        token_a_vault_pda: pool_result.token_a_vault_pda,
+        token_b_vault_pda: pool_result.token_b_vault_pda,
+        lp_token_a_mint: pool_result.lp_token_a_mint_pda,
+        lp_token_b_mint: pool_result.lp_token_b_mint_pda,
         primary_mint: ctx.primary_mint.pubkey(),
         base_mint: ctx.base_mint.pubkey(),
     };
@@ -650,23 +654,45 @@ async fn create_test_pool(
 
 /// Helper function to add liquidity to a pool
 async fn add_liquidity_to_pool(
-    _ctx: &mut PoolTestContext,
-    _pool_info: &PoolInfo,
-    _amount: u64,
+    ctx: &mut PoolTestContext,
+    pool_info: &PoolInfo,
+    amount: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // This would use the existing liquidity helpers
-    // For now, we'll return success
+    use crate::common::liquidity_helpers::*;
+    
+    // Use real liquidity helper to add liquidity
+    let deposit_result = DepositTestConfig {
+        pool_state_pda: pool_info.pool_state_pda,
+        user_input_token_account: ctx.user_primary_token_account,
+        user_output_lp_token_account: ctx.user_lp_token_a_account,
+        deposit_token_mint: pool_info.primary_mint,
+        amount,
+        expected_lp_tokens: amount, // 1:1 ratio
+    };
+    
+    perform_deposit_operation(ctx, &deposit_result).await?;
     Ok(())
 }
 
 /// Helper function to perform a swap
 async fn perform_swap(
-    _ctx: &mut PoolTestContext,
-    _pool_info: &PoolInfo,
-    _amount: u64,
+    ctx: &mut PoolTestContext,
+    pool_info: &PoolInfo,
+    amount: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // This would use the existing swap helpers
-    // For now, we'll return success
+    use crate::common::flow_helpers::*;
+    
+    // Use real swap helper to perform swap
+    let swap_config = SwapTestConfig {
+        pool_state_pda: pool_info.pool_state_pda,
+        user_input_token_account: ctx.user_primary_token_account,
+        user_output_token_account: ctx.user_base_token_account,
+        input_token_mint: pool_info.primary_mint,
+        amount_in: amount,
+        expected_amount_out: amount, // 1:1 ratio
+    };
+    
+    perform_swap_operation_comprehensive(ctx, &swap_config).await?;
     Ok(())
 }
 
