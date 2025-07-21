@@ -25,22 +25,11 @@ use {
 
 mod common;
 
-use common::{
-    setup::{initialize_treasury_system},
-    pool_helpers::{create_pool_new_pattern},
-};
+
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Extended test context that includes the upgrade authority for testing
-struct TestContextWithAuthority {
-    pub env: common::setup::TestEnvironment,
-    pub primary_mint: Keypair,
-    pub base_mint: Keypair,
-    pub lp_token_a_mint: Keypair,
-    pub lp_token_b_mint: Keypair,
-    pub upgrade_authority: Keypair,
-}
+
 
 /// Helper function to create a fee update instruction
 fn create_fee_update_instruction(
@@ -81,110 +70,10 @@ fn create_fee_update_instruction(
     })
 }
 
-/// Helper function to get pool state
-async fn get_pool_state(
-    banks_client: &mut solana_program_test::BanksClient,
-    pool_state_pda: &Pubkey,
-) -> Result<PoolState, Box<dyn std::error::Error>> {
-    let account = banks_client.get_account(*pool_state_pda).await?
-        .ok_or("Pool state account not found")?;
-    let pool_state = PoolState::try_from_slice(&account.data)?;
-    Ok(pool_state)
-}
 
-/// Helper function to setup context with treasury system initialized
-async fn setup_test_context_with_treasury() -> Result<TestContextWithAuthority, Box<dyn std::error::Error>> {
-    // Create program test with the mock program data account pre-created
-    let program_id = fixed_ratio_trading::id();
-    let (program_data_account, _bump) = Pubkey::find_program_address(
-        &[program_id.as_ref()],
-        &solana_program::bpf_loader_upgradeable::id()
-    );
-    
-    let mut program_test = ProgramTest::new(
-        "fixed-ratio-trading",
-        program_id,
-        processor!(fixed_ratio_trading::process_instruction),
-    );
-    
-    // Create the upgrade authority keypair for testing
-    let upgrade_authority = Keypair::new();
-    
-    // Create the program data account data
-    let account_type: u32 = 3; // ProgramData type
-    let has_upgrade_authority: u8 = 1; // true
-    let slot: u64 = 0;
-    
-    let mut account_data = Vec::new();
-    account_data.extend_from_slice(&account_type.to_le_bytes());
-    account_data.push(has_upgrade_authority);
-    account_data.extend_from_slice(upgrade_authority.pubkey().as_ref());
-    account_data.extend_from_slice(&slot.to_le_bytes());
-    
-    // Add some dummy program data
-    account_data.extend_from_slice(&[0u8; 100]);
-    
-    // Add the program data account to the test environment
-    program_test.add_account(
-        program_data_account,
-        Account {
-            lamports: 1_000_000_000, // 1 SOL
-            data: account_data,
-            owner: solana_program::bpf_loader_upgradeable::id(),
-            executable: false,
-            rent_epoch: 0,
-        },
-    );
-    
-    // Start the test environment
-    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
-    
-    // Create test context
-    let primary_mint = Keypair::new();
-    let base_mint = Keypair::new();
-    let lp_token_a_mint = Keypair::new();
-    let lp_token_b_mint = Keypair::new();
-    
-    let mut ctx = TestContextWithAuthority {
-        env: common::setup::TestEnvironment {
-            banks_client,
-            payer,
-            recent_blockhash,
-        },
-        primary_mint,
-        base_mint,
-        lp_token_a_mint,
-        lp_token_b_mint,
-        upgrade_authority,
-    };
-    
-    // Initialize the treasury system (creates SystemState PDA)
-    initialize_treasury_system(
-        &mut ctx.env.banks_client,
-        &ctx.env.payer,
-        ctx.env.recent_blockhash,
-        &ctx.env.payer, // Use payer as system authority for tests
-    ).await?;
-    
-    // Fund the upgrade authority
-    let fund_ix = system_instruction::transfer(
-        &ctx.env.payer.pubkey(),
-        &ctx.upgrade_authority.pubkey(),
-        1_000_000_000, // 1 SOL
-    );
-    
-    let fund_tx = Transaction::new_signed_with_payer(
-        &[fund_ix],
-        Some(&ctx.env.payer.pubkey()),
-        &[&ctx.env.payer],
-        ctx.env.recent_blockhash,
-    );
-    
-    ctx.env.banks_client.process_transaction(fund_tx).await?;
-    
-    println!("📝 Mock program data account created with proper upgrade authority");
-    Ok(ctx)
-}
+
+
+
 
 /// Test successful fee update for liquidity fee only
 #[tokio::test]
