@@ -109,13 +109,13 @@ async fn create_individual_operation_env() -> Result<IndividualOperationTestEnv,
     let user_lp_b_account = Keypair::new();
     
     // 4. Create token mints
-    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint, Some(6)).await;
-    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await;
+    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint, Some(6)).await?;
+    create_mint(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint, Some(6)).await?;
     
     // 5. Initialize treasury system
     let system_authority = Keypair::new();
-    transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &system_authority.pubkey(), 10_000_000_000).await;
-    initialize_treasury_system(&mut env.banks_client, &env.payer, env.recent_blockhash, &system_authority).await;
+    transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &system_authority.pubkey(), 10_000_000_000).await?;
+    initialize_treasury_system(&mut env.banks_client, &env.payer, env.recent_blockhash, &system_authority).await?;
     
     // 6. Create pool (minimal setup)
     let pool_config = create_pool_new_pattern(
@@ -138,15 +138,15 @@ async fn create_individual_operation_env() -> Result<IndividualOperationTestEnv,
     );
     
     // 8. Create and fund user token accounts
-    create_token_account(&mut env.banks_client, &env.payer, env.recent_blockhash, &user_primary_account, &primary_mint.pubkey(), &user.pubkey()).await;
-    create_token_account(&mut env.banks_client, &env.payer, env.recent_blockhash, &user_base_account, &base_mint.pubkey(), &user.pubkey()).await;
+    create_token_account(&mut env.banks_client, &env.payer, env.recent_blockhash, &user_primary_account, &primary_mint.pubkey(), &user.pubkey()).await?;
+    create_token_account(&mut env.banks_client, &env.payer, env.recent_blockhash, &user_base_account, &base_mint.pubkey(), &user.pubkey()).await?;
     // NOTE: LP token accounts are NOT created here because LP token mints don't exist yet
     // The LP token mints are created by the smart contract during the first deposit operation
     // User LP token accounts will be created as needed during deposit operations
     
     // 9. Mint tokens to user
-    mint_tokens(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint.pubkey(), &user_primary_account.pubkey(), &primary_mint, 10_000_000).await;
-    mint_tokens(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint.pubkey(), &user_base_account.pubkey(), &base_mint, 5_000_000).await;
+    mint_tokens(&mut env.banks_client, &env.payer, env.recent_blockhash, &primary_mint.pubkey(), &user_primary_account.pubkey(), &primary_mint, 10_000_000).await?;
+    mint_tokens(&mut env.banks_client, &env.payer, env.recent_blockhash, &base_mint.pubkey(), &user_base_account.pubkey(), &base_mint, 5_000_000).await?;
     
     println!("✅ Individual operation environment ready");
     

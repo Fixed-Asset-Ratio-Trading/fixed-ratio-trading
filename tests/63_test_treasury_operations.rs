@@ -9,6 +9,7 @@
 #![allow(unused_mut)]
 #![allow(unused_assignments)]
 #![allow(unused_results)]
+#![allow(unused_comparisons)]
 
 use solana_program_test::*;
 use solana_sdk::{
@@ -291,7 +292,7 @@ async fn test_comprehensive_treasury_operations_workflow() -> TestResult {
         recent_blockhash: foundation.env.recent_blockhash,
     };
     
-    let initial_treasury_state = get_treasury_state_verified(&temp_env).await?;
+    let initial_treasury_state = get_treasury_state_verified().await?;
     println!("✅ Enhanced treasury state retrieved:");
     println!("   • Total balance: {} lamports ({:.3} SOL)", 
              initial_treasury_state.total_balance, 
@@ -537,7 +538,7 @@ async fn test_comprehensive_treasury_operations_workflow() -> TestResult {
     
     // Demonstrate treasury withdrawal with verification (Phase 2.1)
     let withdrawal_amount = 1_000_000; // 1M lamports
-    let withdrawal_result = execute_treasury_withdrawal_with_verification(&mut temp_env_4, withdrawal_amount).await?;
+    let withdrawal_result = execute_treasury_withdrawal_with_verification(withdrawal_amount).await?;
     
     println!("✅ Enhanced treasury withdrawal demonstration:");
     println!("   • Withdrawal successful: {}", withdrawal_result.withdrawal_successful);

@@ -159,7 +159,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
     ];
     
     // Process accounts in smaller batches to prevent timeouts
-    for (i, (account_keypair, mint_pubkey, owner_pubkey)) in accounts_to_create.iter().enumerate() {
+    for (_i, (account_keypair, mint_pubkey, owner_pubkey)) in accounts_to_create.iter().enumerate() {
         create_token_account(
             &mut env.banks_client,
             &env.payer,
@@ -186,7 +186,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
         (&base_mint.pubkey(), &user2_base_account.pubkey(), user2_base_amount),
     ];
     
-    for (i, (mint_pubkey, account_pubkey, amount)) in mint_operations.iter().enumerate() {
+    for (_i, (mint_pubkey, account_pubkey, amount)) in mint_operations.iter().enumerate() {
         mint_tokens(
             &mut env.banks_client,
             &env.payer,
@@ -324,7 +324,7 @@ pub fn create_deposit_instruction_standardized(
     let serialized = deposit_instruction_data.try_to_vec()?;
     
     // Derive treasury PDAs
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
+    let (_main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
@@ -373,7 +373,7 @@ pub fn create_withdrawal_instruction_standardized(
     let serialized = withdrawal_instruction_data.try_to_vec()?;
     
     // Derive treasury PDAs
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
+    let (_main_treasury_pda, _) = Pubkey::find_program_address(
         &[MAIN_TREASURY_SEED_PREFIX],
         &id(),
     );
@@ -963,7 +963,7 @@ pub async fn validate_foundation_state(
     ).await;
     
     match pool_state {
-        Some(state) => {
+        Some(_state) => {
             // Pool existence = initialization (no is_initialized field needed)
             if false { // Pool is always initialized if we can deserialize it
                 return Err("Pool should be initialized".to_string());
@@ -1115,6 +1115,7 @@ pub async fn execute_and_verify_deposit(
 
 /// **PHASE 1.2 ENHANCEMENT**: Liquidity operation type for batch processing
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum LiquidityOp {
     Deposit { amount: u64, user_index: u8 },
     Withdrawal { amount: u64, user_index: u8 },
@@ -1122,6 +1123,7 @@ pub enum LiquidityOp {
 
 /// **PHASE 1.2 ENHANCEMENT**: Result of a single liquidity operation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LiquidityOpResult {
     pub operation_type: String,
     pub user_index: u8,
@@ -1138,6 +1140,7 @@ pub struct LiquidityOpResult {
 
 /// **PHASE 1.2 ENHANCEMENT**: Pool fee state tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PoolFeeState {
     pub pool_pda: Pubkey,
     pub total_liquidity_fees: u64,
@@ -1149,6 +1152,7 @@ pub struct PoolFeeState {
 
 /// **PHASE 1.2 ENHANCEMENT**: Result of a deposit operation with fee tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DepositResult {
     pub user_index: u8,
     pub amount_deposited: u64,
@@ -1165,6 +1169,7 @@ pub struct DepositResult {
 
 /// **PHASE 1.2 ENHANCEMENT**: Result of a withdrawal operation with fee tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct WithdrawalResult {
     pub user_index: u8,
     pub lp_tokens_burned: u64,
@@ -1181,6 +1186,7 @@ pub struct WithdrawalResult {
 
 /// **PHASE 1.2 ENHANCEMENT**: Result of multiple liquidity operations
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LiquidityResult {
     pub operations_performed: u32,
     pub total_fees_generated: u64,
@@ -1850,7 +1856,7 @@ pub async fn perform_swap_with_fee_tracking(
 /// ✅ Can verify swap fees accumulate in pool (not treasury yet)
 #[allow(dead_code)]
 pub async fn verify_swap_fees_accumulated_in_pool(
-    foundation: &LiquidityTestFoundation,
+    _foundation: &LiquidityTestFoundation,
     pool_pda: &Pubkey,
 ) -> Result<PoolFeeState, Box<dyn std::error::Error>> {
     println!("🔍 PHASE 1.3: Verifying swap fees accumulated in pool...");

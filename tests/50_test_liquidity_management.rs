@@ -10,6 +10,7 @@
 #![allow(unused_mut)]
 #![allow(unused_assignments)]
 #![allow(unused_results)]
+#![allow(unused_comparisons)]
 
 use solana_program_test::*;
 use solana_sdk::{
@@ -1319,7 +1320,7 @@ async fn test_phase_2_1_treasury_verification_helpers() -> TestResult {
     
     // **PHASE 2.1**: Test treasury state retrieval and verification
     println!("🚀 Testing get_treasury_state_verified...");
-    let treasury_state = get_treasury_state_verified(&env).await?;
+    let treasury_state = get_treasury_state_verified().await?;
     
     // Test Criteria: Can reliably retrieve and validate treasury state
     assert!(treasury_state.total_balance > 0, "Treasury should have positive balance");
@@ -1352,10 +1353,10 @@ async fn test_phase_2_1_treasury_verification_helpers() -> TestResult {
     println!("🚀 Testing verify_treasury_balance_change...");
     
     // Test positive balance change (fee collection)
-    verify_treasury_balance_change(&env, 5000).await?; // Expect 5000 lamports increase
+    verify_treasury_balance_change(5000).await?; // Expect 5000 lamports increase
     
     // Test negative balance change (withdrawal)
-    verify_treasury_balance_change(&env, -2000).await?; // Expect 2000 lamports decrease
+    verify_treasury_balance_change(-2000).await?; // Expect 2000 lamports decrease
     
     println!("✅ Balance change verification test passed");
     
@@ -1419,7 +1420,7 @@ async fn test_phase_2_1_treasury_withdrawal_helpers() -> TestResult {
     println!("🚀 Testing execute_treasury_withdrawal_with_verification...");
     
     let withdrawal_amount = 5000000; // 5M lamports
-    let withdrawal_result = execute_treasury_withdrawal_with_verification(&mut env, withdrawal_amount).await?;
+    let withdrawal_result = execute_treasury_withdrawal_with_verification(withdrawal_amount).await?;
     
     // Test Criteria: Can execute treasury withdrawals and verify counter updates
     assert!(withdrawal_result.withdrawal_successful, "Withdrawal should succeed");
@@ -1443,7 +1444,7 @@ async fn test_phase_2_1_treasury_withdrawal_helpers() -> TestResult {
     // **PHASE 2.1**: Test failed operation simulation
     println!("🚀 Testing simulate_failed_treasury_withdrawal...");
     
-    let failed_result = simulate_failed_treasury_withdrawal(&mut env).await?;
+    let failed_result = simulate_failed_treasury_withdrawal().await?;
     
     // Test Criteria: Can simulate withdrawal failures and verify failed operation counters
     assert!(failed_result.failure_tracked_correctly, "Failed operation should be tracked correctly");
@@ -1460,7 +1461,7 @@ async fn test_phase_2_1_treasury_withdrawal_helpers() -> TestResult {
     // **PHASE 2.1**: Test authority validation
     println!("🚀 Testing test_withdrawal_authority_validation...");
     
-    let auth_result = test_withdrawal_authority_validation(&mut env).await?;
+    let auth_result = test_withdrawal_authority_validation().await?;
     
     // Test Criteria: Can validate withdrawal amount limits and authority checks
     // Test Criteria: Builds on treasury populated by previous phases
@@ -1506,7 +1507,7 @@ async fn test_phase_2_1_integration_with_phase_1() -> TestResult {
     println!("🔗 Testing Phase 1.1 (Pool Creation) + Phase 2.1 (Consolidation) integration...");
     
     // Get initial treasury state (Phase 2.1 helper)
-    let initial_treasury = get_treasury_state_verified(&env).await?;
+    let initial_treasury = get_treasury_state_verified().await?;
     
     // Simulate pool operations that generate fees (Phase 1.2 and 1.3 would do this)
     // For integration testing, we'll use the consolidation helpers directly
@@ -1536,7 +1537,7 @@ async fn test_phase_2_1_integration_with_phase_1() -> TestResult {
     
     // Test balance verification (Phase 2.1 helper)
     let balance_change = comparison.balance_delta;
-    verify_treasury_balance_change(&env, balance_change).await?;
+    verify_treasury_balance_change(balance_change).await?;
     
     // **INTEGRATION**: Complete workflow - All phases working together
     println!("🔗 Testing complete workflow: Phases 1.1 → 1.2 → 1.3 → 2.1...");
@@ -1547,7 +1548,7 @@ async fn test_phase_2_1_integration_with_phase_1() -> TestResult {
     // 4. Fee consolidation (Phase 2.1) - executed above
     // 5. Treasury management (Phase 2.1) - test withdrawal
     
-    let withdrawal_result = execute_treasury_withdrawal_with_verification(&mut env, 1000000).await?; // 1M lamports
+    let withdrawal_result = execute_treasury_withdrawal_with_verification(1000000).await?; // 1M lamports
     assert!(withdrawal_result.withdrawal_successful, "Treasury withdrawal should complete the workflow");
     
     println!("✅ PHASE 2.1: Complete integration testing passed!");

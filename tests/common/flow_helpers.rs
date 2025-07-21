@@ -1,3 +1,6 @@
+// Suppress all dead code warnings for this comprehensive test infrastructure
+#![allow(dead_code)]
+
 // End-to-End Flow Helpers for Comprehensive Testing
 // Phase 3.1: Basic Trading Flow Infrastructure
 // This module provides comprehensive flow helpers that chain together
@@ -22,6 +25,7 @@ use crate::common::{
 /// Complete result from basic trading flow execution
 /// This contains all the data from each phase of the flow
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct FlowResult {
     pub pool_creation_result: crate::common::pool_helpers::PoolCreationResult,
     pub liquidity_result: crate::common::liquidity_helpers::LiquidityResult,
@@ -33,6 +37,7 @@ pub struct FlowResult {
 
 /// Individual swap operation result for flow tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SwapOpResult {
     pub swap_direction: SwapDirection,
     pub amount_swapped: u64,
@@ -42,6 +47,7 @@ pub struct SwapOpResult {
 
 /// Swap direction enumeration
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum SwapDirection {
     TokenAToB,
     TokenBToA,
@@ -49,6 +55,7 @@ pub enum SwapDirection {
 
 /// Configuration for basic trading flow
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct BasicTradingFlowConfig {
     pub pool_ratio: Option<u64>,
     pub liquidity_deposits: Vec<u64>,
@@ -58,6 +65,7 @@ pub struct BasicTradingFlowConfig {
 
 /// Individual swap operation configuration
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SwapOperation {
     pub direction: SwapDirection,
     pub amount: u64,
@@ -66,6 +74,7 @@ pub struct SwapOperation {
 /// Executes a complete basic trading flow using all proven Phase 1 and 2 helpers
 /// This is the core function that chains together pool creation, liquidity, and swaps
 /// with comprehensive treasury counter verification
+#[allow(dead_code)]
 pub async fn execute_basic_trading_flow(
     config: Option<BasicTradingFlowConfig>,
 ) -> Result<FlowResult, Box<dyn std::error::Error>> {
@@ -94,7 +103,7 @@ pub async fn execute_basic_trading_flow(
     ).await?;
     
     // Get initial treasury state for comparison
-    let initial_treasury_state = get_treasury_state_verified(&env).await?;
+    let initial_treasury_state = get_treasury_state_verified().await?;
     println!("💰 Initial treasury state:");
     println!("  - Pool creation count: {}", initial_treasury_state.pool_creation_count);
     println!("  - Total balance: {} lamports", initial_treasury_state.total_balance);
@@ -138,7 +147,7 @@ pub async fn execute_basic_trading_flow(
     ).await?;
     
     // Get treasury state after pool creation
-    let post_creation_treasury_state = get_treasury_state_verified(&env).await?;
+    let post_creation_treasury_state = get_treasury_state_verified().await?;
     
     // Create pool creation result
     let pool_creation_result = PoolCreationResult {
@@ -173,7 +182,7 @@ pub async fn execute_basic_trading_flow(
     
     let user2_primary_account = Keypair::new();
     let user2_base_account = Keypair::new();
-    let user2_lp_a_account = Keypair::new();
+    let _user2_lp_a_account = Keypair::new();
     
     // Create token accounts
     create_token_account(
@@ -722,7 +731,7 @@ pub async fn execute_basic_trading_flow(
     
     // Step 5: Verify all counters and states at each step
     println!("🔍 Step 5: Verify all counters and states...");
-    let final_treasury_state = get_treasury_state_verified(&env).await?;
+    let final_treasury_state = get_treasury_state_verified().await?;
     
     // Create treasury comparisons
     let mut treasury_comparisons = Vec::new();
@@ -767,6 +776,7 @@ pub async fn execute_basic_trading_flow(
 }
 
 /// Validates that a flow result contains expected data
+#[allow(dead_code)]
 pub fn validate_flow_result(result: &FlowResult) -> Result<(), Box<dyn std::error::Error>> {
     if !result.flow_successful {
         return Err("Flow was not successful".into());
@@ -792,6 +802,7 @@ pub fn validate_flow_result(result: &FlowResult) -> Result<(), Box<dyn std::erro
 }
 
 /// Creates a simple flow configuration for testing
+#[allow(dead_code)]
 pub fn create_simple_flow_config() -> BasicTradingFlowConfig {
     BasicTradingFlowConfig {
         pool_ratio: Some(2), // 2:1 ratio
@@ -805,6 +816,7 @@ pub fn create_simple_flow_config() -> BasicTradingFlowConfig {
 }
 
 /// Creates a comprehensive flow configuration for thorough testing
+#[allow(dead_code)]
 pub fn create_comprehensive_flow_config() -> BasicTradingFlowConfig {
     BasicTradingFlowConfig {
         pool_ratio: Some(5), // 5:1 ratio
@@ -827,6 +839,7 @@ pub fn create_comprehensive_flow_config() -> BasicTradingFlowConfig {
 
 /// Configuration for consolidation flow testing
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct ConsolidationFlowConfig {
     /// Number of pools to create for testing
     pub pool_count: u32,
@@ -846,6 +859,7 @@ pub struct ConsolidationFlowConfig {
 
 /// Cross-pool swap operation for testing coordination
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct CrossPoolSwapOperation {
     /// Pool index to use for the swap
     pub pool_index: usize,
@@ -859,6 +873,7 @@ pub struct CrossPoolSwapOperation {
 
 /// Treasury operation for testing consolidation
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct TreasuryOperation {
     /// Type of treasury operation
     pub operation_type: TreasuryOperationType,
@@ -870,6 +885,7 @@ pub struct TreasuryOperation {
 
 /// Types of treasury operations for testing
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub enum TreasuryOperationType {
     /// Query treasury information
     GetInfo,
@@ -881,6 +897,7 @@ pub enum TreasuryOperationType {
 
 /// Comprehensive result for consolidation flow operations
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct ConsolidationFlowResult {
     /// Results from individual pool creations
     pub pool_results: Vec<PoolCreationResult>,
@@ -902,6 +919,7 @@ pub struct ConsolidationFlowResult {
 
 /// Result of a treasury operation
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct TreasuryOperationResult {
     /// Type of operation performed
     pub operation_type: TreasuryOperationType,
@@ -917,6 +935,7 @@ pub struct TreasuryOperationResult {
 
 /// Performance metrics for consolidation flows
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct ConsolidationPerformanceMetrics {
     /// Total execution time for the flow
     pub total_execution_time_ms: u64,
@@ -941,6 +960,7 @@ pub struct ConsolidationPerformanceMetrics {
 /// Executes a comprehensive consolidation flow that tests multiple pools,
 /// cross-pool operations, treasury management, and fee consolidation.
 /// This represents the most complex end-to-end testing scenario.
+#[allow(dead_code)]
 pub async fn execute_consolidation_flow(
     config: Option<ConsolidationFlowConfig>,
 ) -> Result<ConsolidationFlowResult, Box<dyn std::error::Error>> {
@@ -973,7 +993,7 @@ pub async fn execute_consolidation_flow(
         &system_authority,
     ).await?;
     
-    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(&env).await?;
+    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     
     // Step 2: Create multiple pools with different configurations
     println!("🏊 Step 2: Create {} pools with different ratios...", config.pool_count);
@@ -1010,7 +1030,7 @@ pub async fn execute_consolidation_flow(
         ).await?;
         
         // Create pool configuration using normalization
-        let pool_config = crate::common::pool_helpers::normalize_pool_config_legacy(
+        let _pool_config = crate::common::pool_helpers::normalize_pool_config_legacy(
             &primary_mint.pubkey(),
             &base_mint.pubkey(),
             ratio,
@@ -1031,7 +1051,7 @@ pub async fn execute_consolidation_flow(
             pool_pda: pool_config_result.pool_state_pda,
             fee_collected: 0, // Will be updated by the pool creation process
             initial_treasury_state: initial_treasury_state.clone(),
-            post_creation_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified(&env).await?,
+            post_creation_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified().await?,
             pool_config: pool_config_result.clone(),
             creation_successful: true,
         };
@@ -1059,7 +1079,7 @@ pub async fn execute_consolidation_flow(
         let liquidity_start_time = std::time::Instant::now();
         
         // Create a basic trading flow for this pool to add liquidity
-        let single_pool_config = BasicTradingFlowConfig {
+        let _single_pool_config = BasicTradingFlowConfig {
             pool_ratio: Some(config.pool_ratios[i]),
             liquidity_deposits: config.liquidity_per_pool.clone(),
             swap_operations: vec![], // No swaps yet, just liquidity
@@ -1110,7 +1130,7 @@ pub async fn execute_consolidation_flow(
                 total_volume_processed: 0,
             },
             treasury_comparisons: vec![],
-            final_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified(&env).await?,
+            final_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified().await?,
             flow_successful: true,
         };
         
@@ -1143,7 +1163,7 @@ pub async fn execute_consolidation_flow(
                  cross_swap.direction, cross_swap.amount);
         
         // Create swap configuration for this specific pool
-        let swap_config = BasicTradingFlowConfig {
+        let _swap_config = BasicTradingFlowConfig {
             pool_ratio: Some(config.pool_ratios[cross_swap.pool_index]),
             liquidity_deposits: vec![], // No liquidity, just swaps
             swap_operations: vec![SwapOperation {
@@ -1197,7 +1217,7 @@ pub async fn execute_consolidation_flow(
                 total_volume_processed: cross_swap.amount,
             },
             treasury_comparisons: vec![],
-            final_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified(&env).await?,
+            final_treasury_state: crate::common::treasury_helpers::get_treasury_state_verified().await?,
             flow_successful: true,
         };
         
@@ -1242,7 +1262,7 @@ pub async fn execute_consolidation_flow(
     
     // Step 6: Get final treasury state and perform comprehensive verification
     println!("🔍 Step 6: Verify final treasury state and create comprehensive comparisons...");
-    let final_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(&env).await?;
+    let final_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     
     // Create treasury comparisons
     let mut treasury_comparisons = Vec::new();
@@ -1306,6 +1326,7 @@ pub async fn execute_consolidation_flow(
 
 
 /// Execute a treasury operation for consolidation testing
+#[allow(dead_code)]
 async fn execute_treasury_operation(
     env: &crate::common::setup::TestEnvironment,
     operation: &TreasuryOperation,
@@ -1313,7 +1334,7 @@ async fn execute_treasury_operation(
     match operation.operation_type {
         TreasuryOperationType::GetInfo => {
             // Test treasury info retrieval
-            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
             
             Ok(TreasuryOperationResult {
                 operation_type: operation.operation_type.clone(),
@@ -1326,7 +1347,7 @@ async fn execute_treasury_operation(
         TreasuryOperationType::WithdrawFees => {
             // Test treasury fee withdrawal (this would require actual implementation)
             // For now, we'll simulate success
-            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
             
             Ok(TreasuryOperationResult {
                 operation_type: operation.operation_type.clone(),
@@ -1338,7 +1359,7 @@ async fn execute_treasury_operation(
         }
         TreasuryOperationType::VerifyFeeAccumulation => {
             // Test fee accumulation verification
-            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+            let treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
             
             // Verify that fees have been accumulated
             let has_fees = treasury_state.total_balance > treasury_state.rent_exempt_minimum;
@@ -1355,6 +1376,7 @@ async fn execute_treasury_operation(
 }
 
 /// Creates a default consolidation flow configuration for testing
+#[allow(dead_code)]
 pub fn create_default_consolidation_config() -> ConsolidationFlowConfig {
     ConsolidationFlowConfig {
         pool_count: 3,
@@ -1398,6 +1420,7 @@ pub fn create_default_consolidation_config() -> ConsolidationFlowConfig {
 }
 
 /// Creates a complex consolidation flow configuration for thorough testing
+#[allow(dead_code)]
 pub fn create_comprehensive_consolidation_config() -> ConsolidationFlowConfig {
     ConsolidationFlowConfig {
         pool_count: 5,
@@ -1473,6 +1496,7 @@ pub fn create_comprehensive_consolidation_config() -> ConsolidationFlowConfig {
 }
 
 /// Validates that a consolidation flow result meets expected criteria
+#[allow(dead_code)]
 pub fn validate_consolidation_flow_result(result: &ConsolidationFlowResult) -> Result<(), Box<dyn std::error::Error>> {
     if !result.flow_successful {
         return Err("Consolidation flow was not successful".into());
@@ -2186,8 +2210,8 @@ pub async fn execute_treasury_management_flow(
         &system_authority,
     ).await?;
     
-    // Get initial treasury state
-    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(&env).await?;
+            // Get initial treasury state
+        let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     println!("💰 Initial treasury state captured");
     
     // Execute treasury operations based on configuration
@@ -2197,7 +2221,7 @@ pub async fn execute_treasury_management_flow(
     let mut batch_operation_results = Vec::new();
     let mut emergency_operation_results = Vec::new();
     let mut benchmark_results = Vec::new();
-    let mut treasury_state_changes = Vec::new();
+    let treasury_state_changes = Vec::new();
     
     // Step 2: Execute configured treasury operations
     println!("🔧 Step 2: Executing treasury operations...");
@@ -2258,7 +2282,7 @@ pub async fn execute_treasury_management_flow(
     
     // Step 3: Get final treasury state and calculate changes
     println!("📊 Step 3: Analyzing treasury state changes...");
-    let final_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(&env).await?;
+    let final_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     
     // Calculate execution metrics
     let total_execution_time = flow_start_time.elapsed().as_millis() as u64;
@@ -2601,7 +2625,7 @@ fn calculate_treasury_flow_metrics(
 }
 
 fn generate_treasury_report(
-    initial_state: &MainTreasuryState,
+    _initial_state: &MainTreasuryState,
     final_state: &MainTreasuryState,
     _operation_results: &[TreasuryOperationResult],
     fee_collection_results: &[FeeCollectionResult],

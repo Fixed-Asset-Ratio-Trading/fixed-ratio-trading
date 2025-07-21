@@ -338,18 +338,7 @@ async fn test_performance_metrics_validation() -> Result<(), Box<dyn std::error:
     assert!(metrics.total_treasury_operations >= 1, "Should have at least 1 treasury operation");
     
     // Verify average calculations make sense
-    if metrics.pools_processed > 0 {
-        assert!(metrics.avg_pool_creation_time_ms >= 0, "Average pool creation time should be non-negative");
-    }
-    
-    if metrics.total_liquidity_operations > 0 {
-        assert!(metrics.avg_liquidity_operation_time_ms >= 0, "Average liquidity operation time should be non-negative");
-    }
-    
-    if metrics.total_swap_operations > 0 {
-        assert!(metrics.avg_swap_operation_time_ms >= 0, "Average swap operation time should be non-negative");
-    }
-    
+     
     // Verify consistency between operations and results
     assert_eq!(flow_result.pool_results.len() as u32, metrics.pools_processed, 
                "Pool results should match pools processed metric");

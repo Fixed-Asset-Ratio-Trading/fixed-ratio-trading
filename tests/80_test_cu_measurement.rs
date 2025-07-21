@@ -33,6 +33,7 @@ SOFTWARE.
 #![allow(unused_mut)]
 #![allow(unused_assignments)]
 #![allow(unused_results)]
+#![allow(unused_comparisons)]
 
 mod common;
 

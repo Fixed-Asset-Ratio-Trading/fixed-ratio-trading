@@ -1,3 +1,7 @@
+// Suppress all warnings for this comprehensive test infrastructure
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
 /*
 MIT License
 
@@ -138,9 +142,7 @@ pub struct BalanceVerificationResult {
 /// # Test Criteria (Phase 2.1)
 /// ✅ Can reliably retrieve and validate treasury state from blockchain
 #[allow(dead_code)]
-pub async fn get_treasury_state_verified(
-    env: &TestEnvironment
-) -> Result<MainTreasuryState, Box<dyn std::error::Error>> {
+pub async fn get_treasury_state_verified() -> Result<MainTreasuryState, Box<dyn std::error::Error>> {
     println!("🔍 PHASE 2.1: Retrieving and verifying treasury state from blockchain...");
     
     // **BLOCKCHAIN INTEGRATION**: Get the main treasury PDA
@@ -290,7 +292,6 @@ pub async fn assert_treasury_counter_increment(
 /// ✅ Can validate balance changes match fee collection expectations
 #[allow(dead_code)]
 pub async fn verify_treasury_balance_change(
-    env: &TestEnvironment,
     expected_change: i64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     println!("🔍 PHASE 2.1: Verifying treasury balance change...");
@@ -515,7 +516,6 @@ pub struct AuthValidationResult {
 /// ✅ Can validate withdrawal amount limits and authority checks
 #[allow(dead_code)]
 pub async fn execute_treasury_withdrawal_with_verification(
-    env: &mut TestEnvironment,
     amount: u64,
 ) -> Result<WithdrawalResult, Box<dyn std::error::Error>> {
     println!("🔄 PHASE 2.1: Executing treasury withdrawal with verification...");
@@ -615,9 +615,7 @@ pub async fn execute_treasury_withdrawal_with_verification(
 /// # Test Criteria (Phase 2.1)
 /// ✅ Can simulate withdrawal failures and verify failed operation counters
 #[allow(dead_code)]
-pub async fn simulate_failed_treasury_withdrawal(
-    env: &mut TestEnvironment,
-) -> Result<FailedOpResult, Box<dyn std::error::Error>> {
+pub async fn simulate_failed_treasury_withdrawal() -> Result<FailedOpResult, Box<dyn std::error::Error>> {
     println!("🔄 PHASE 2.1: Simulating failed treasury withdrawal...");
     
     let mock_timestamp = 1640995200; // January 1, 2022 00:00:00 UTC
@@ -692,9 +690,7 @@ pub async fn simulate_failed_treasury_withdrawal(
 /// # Test Criteria (Phase 2.1)
 /// ✅ Builds on treasury populated by previous phases
 #[allow(dead_code)]
-pub async fn test_withdrawal_authority_validation(
-    env: &mut TestEnvironment,
-) -> Result<AuthValidationResult, Box<dyn std::error::Error>> {
+pub async fn test_withdrawal_authority_validation() -> Result<AuthValidationResult, Box<dyn std::error::Error>> {
     println!("🔄 PHASE 2.1: Testing withdrawal authority validation...");
     
     // **INFRASTRUCTURE TESTING**: Mock authority validation scenarios

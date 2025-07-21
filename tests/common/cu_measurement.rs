@@ -16,6 +16,7 @@ use std::time::Instant;
 
 /// Result of a CU measurement test
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CUMeasurementResult {
     pub instruction_name: String,
     pub success: bool,
@@ -27,6 +28,7 @@ pub struct CUMeasurementResult {
 
 /// CU measurement configuration
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CUMeasurementConfig {
     pub max_retries: u32,
     pub enable_logging: bool,
@@ -134,7 +136,7 @@ async fn test_instruction_with_cu_limit(
     recent_blockhash: Hash,
     instruction: &Instruction,
     cu_limit: u64,
-    config: &CUMeasurementConfig,
+    _config: &CUMeasurementConfig,
 ) -> (bool, Option<String>, Option<String>) {
     // Create transaction with specific CU budget instruction
     let compute_budget_ix = solana_sdk::compute_budget::ComputeBudgetInstruction::set_compute_unit_limit(
@@ -169,6 +171,7 @@ async fn test_instruction_with_cu_limit(
 }
 
 /// Measure CUs for multiple instructions and compare them
+#[allow(dead_code)]
 pub async fn compare_instruction_cu(
     banks_client: &mut BanksClient,
     payer: &Keypair,
@@ -199,6 +202,7 @@ pub async fn compare_instruction_cu(
 }
 
 /// Benchmark a function multiple times to get average CU consumption
+#[allow(dead_code)]
 pub async fn benchmark_instruction_cu(
     banks_client: &mut BanksClient,
     payer: &Keypair,
@@ -258,6 +262,7 @@ pub async fn benchmark_instruction_cu(
 }
 
 /// Generate a detailed CU report
+#[allow(dead_code)]
 pub fn generate_cu_report(results: &[CUMeasurementResult]) -> String {
     let mut report = String::new();
     

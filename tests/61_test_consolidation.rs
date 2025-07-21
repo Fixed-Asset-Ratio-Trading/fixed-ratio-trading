@@ -9,6 +9,7 @@
 #![allow(unused_mut)]
 #![allow(unused_assignments)]
 #![allow(unused_results)]
+#![allow(unused_comparisons)]
 
 use solana_program_test::*;
 use solana_sdk::{
@@ -169,7 +170,7 @@ async fn test_enhanced_consolidation_with_phase_2_1_helpers() -> TestResult {
         recent_blockhash: foundation.env.recent_blockhash,
     };
     
-    let initial_treasury_state = get_treasury_state_verified(&temp_env).await?;
+    let initial_treasury_state = get_treasury_state_verified().await?;
     println!("✅ Initial treasury state verified:");
     println!("   • Total balance: {} lamports", initial_treasury_state.total_balance);
     println!("   • Pool creation count: {}", initial_treasury_state.pool_creation_count);

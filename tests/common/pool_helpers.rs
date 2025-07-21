@@ -365,8 +365,8 @@ pub async fn verify_pool_state(
     banks: &mut BanksClient,
     config: &PoolConfig,
     owner: &Pubkey,
-    lp_token_a_mint: &Pubkey,
-    lp_token_b_mint: &Pubkey,
+    _lp_token_a_mint: &Pubkey,
+    _lp_token_b_mint: &Pubkey,
 ) -> Result<(), String> {
     let pool_state = get_pool_state(banks, &config.pool_state_pda).await
         .ok_or("Pool state account not found")?;
@@ -450,6 +450,7 @@ use borsh::BorshDeserialize;
 
 /// Result structure for enhanced pool creation operations
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PoolCreationResult {
     /// The created pool's PDA
     pub pool_pda: Pubkey,
@@ -596,6 +597,7 @@ pub async fn execute_pool_creation_with_counter_verification(
 /// 
 /// # Returns
 /// * `MultiPoolResult` - Results from all pool creation attempts
+#[allow(dead_code)]
 pub async fn create_multiple_pools_for_testing(
     env: &mut crate::common::setup::TestEnvironment,
     pool_configs: Vec<(u64, u64)>,
@@ -672,6 +674,7 @@ pub async fn create_multiple_pools_for_testing(
 /// 
 /// # Returns
 /// * `Result<u64, String>` - Amount of fees collected or error message
+#[allow(dead_code)]
 pub async fn verify_pool_creation_fee_collection(
     env: &mut crate::common::setup::TestEnvironment,
     initial_treasury_state: &MainTreasuryState,
@@ -809,7 +812,7 @@ pub async fn execute_consolidation_operation(
     );
     
     // Get initial treasury state
-    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+    let initial_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     
     // Get initial pool state
     let pool_account = env.banks_client.get_account(*pool_pda).await?.unwrap();
@@ -896,7 +899,7 @@ pub async fn execute_consolidation_operation(
     }
     
     // Get post-consolidation states
-    let post_consolidation_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified(env).await?;
+    let post_consolidation_treasury_state = crate::common::treasury_helpers::get_treasury_state_verified().await?;
     let pool_account_after = env.banks_client.get_account(*pool_pda).await?.unwrap();
     let post_consolidation_pool_state: fixed_ratio_trading::PoolState = fixed_ratio_trading::PoolState::try_from_slice(&pool_account_after.data)?;
     
