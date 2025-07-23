@@ -5,9 +5,9 @@
 
 /**
  * Get user-friendly display order for token pairs
- * Always shows the "base token" (ratio = 1) first, regardless of lexicographic order
+ * Phase 1.3: Implements special handling for One-to-many ratio pools (bit 0 flag)
  * 
- * @param {Object} pool - Pool data with ratioANumerator, ratioBDenominator, tokenASymbol, tokenBSymbol, etc.
+ * @param {Object} pool - Pool data with ratioANumerator, ratioBDenominator, tokenASymbol, tokenBSymbol, flags, etc.
  * @returns {Object} Display configuration with base/quote tokens and exchange rates
  */
 function getDisplayTokenOrder(pool) {
@@ -20,19 +20,59 @@ function getDisplayTokenOrder(pool) {
             quoteLiquidity: 0,
             exchangeRate: 1,
             displayPair: 'Token A/Token B',
-            rateText: '1 Token A = 1.00 Token B',
-            isReversed: false
+            rateText: '1 Token A = 1.000 Token B',
+            isReversed: false,
+            isOneToManyRatio: false
         };
     }
 
     const ratioANumerator = pool.ratioANumerator || 1;
     const ratioBDenominator = pool.ratioBDenominator || 1;
     
+    // Check if this is a One-to-many ratio pool (bit 0 flag)
+    const isOneToManyRatio = checkOneToManyRatioFlag(pool);
+    
     // CRITICAL FIX: Stored ratio means "ratioANumerator of TokenA per ratioBDenominator of TokenB"
     // So ratioANumerator:ratioBDenominator = 10000:1 means "10000 TokenA per 1 TokenB"
     const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // How many A per B
     const tokensB_per_tokenA = ratioBDenominator / ratioANumerator;  // How many B per A
     
+    if (isOneToManyRatio) {
+        // **Phase 1.3: One-to-many ratio special handling**
+        // Place token with value 1 (excluding decimals) first
+        // Ignore normalization for these pools
+        
+        if (ratioBDenominator === 1) {
+            // TokenB has ratio of 1, display as TokenB/TokenA
+            // Example: USDT/SOL 1002:1 → Display as SOL/USDT 1:1002
+            return {
+                baseToken: pool.tokenBSymbol,
+                quoteToken: pool.tokenASymbol,
+                baseLiquidity: pool.tokenBLiquidity || 0,
+                quoteLiquidity: pool.tokenALiquidity || 0,
+                exchangeRate: tokensA_per_tokenB,
+                displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
+                rateText: `1 ${pool.tokenBSymbol} = ${ratioANumerator} ${pool.tokenASymbol}`,
+                isReversed: true,
+                isOneToManyRatio: true
+            };
+        } else if (ratioANumerator === 1) {
+            // TokenA has ratio of 1, display as TokenA/TokenB
+            return {
+                baseToken: pool.tokenASymbol,
+                quoteToken: pool.tokenBSymbol,
+                baseLiquidity: pool.tokenALiquidity || 0,
+                quoteLiquidity: pool.tokenBLiquidity || 0,
+                exchangeRate: tokensB_per_tokenA,
+                displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
+                rateText: `1 ${pool.tokenASymbol} = ${ratioBDenominator} ${pool.tokenBSymbol}`,
+                isReversed: false,
+                isOneToManyRatio: true
+            };
+        }
+    }
+    
+    // **Standard pools: Keep normalized display with fractions to 3 decimal places**
     // Determine which token should be the "base" (ratio = 1) for display
     if (tokensA_per_tokenB >= 1.0) {
         // Many TokenA per 1 TokenB means TokenB is more valuable
@@ -44,8 +84,9 @@ function getDisplayTokenOrder(pool) {
             quoteLiquidity: pool.tokenALiquidity || 0,
             exchangeRate: tokensA_per_tokenB,
             displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
-            rateText: `1 ${pool.tokenBSymbol} = ${formatExchangeRate(tokensA_per_tokenB)} ${pool.tokenASymbol}`,
-            isReversed: true
+            rateText: `1 ${pool.tokenBSymbol} = ${formatExchangeRateStandard(tokensA_per_tokenB)} ${pool.tokenASymbol}`,
+            isReversed: true,
+            isOneToManyRatio: false
         };
     } else {
         // Many TokenB per 1 TokenA means TokenA is more valuable  
@@ -57,14 +98,87 @@ function getDisplayTokenOrder(pool) {
             quoteLiquidity: pool.tokenBLiquidity || 0,
             exchangeRate: tokensB_per_tokenA,
             displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
-            rateText: `1 ${pool.tokenASymbol} = ${formatExchangeRate(tokensB_per_tokenA)} ${pool.tokenBSymbol}`,
-            isReversed: false
+            rateText: `1 ${pool.tokenASymbol} = ${formatExchangeRateStandard(tokensB_per_tokenA)} ${pool.tokenBSymbol}`,
+            isReversed: false,
+            isOneToManyRatio: false
         };
     }
 }
 
 /**
- * Format exchange rate with appropriate decimal places and notation
+ * Phase 1.3: Check if pool has One-to-many ratio flag (bit 0) set
+ * 
+ * @param {Object} pool - Pool data with flags or flagsDecoded
+ * @returns {boolean} True if One-to-many ratio flag is set
+ */
+function checkOneToManyRatioFlag(pool) {
+    // Check flagsDecoded first (from JSON state)
+    if (pool.flagsDecoded && typeof pool.flagsDecoded.one_to_many_ratio === 'boolean') {
+        return pool.flagsDecoded.one_to_many_ratio;
+    }
+    
+    // Check raw flags field (bitwise check for bit 0)
+    if (typeof pool.flags === 'number') {
+        return (pool.flags & 1) !== 0; // Bit 0 (value 1)
+    }
+    
+    return false;
+}
+
+/**
+ * Phase 1.3: Pool State Flags Interpretation
+ * 
+ * @param {Object} pool - Pool data with flags
+ * @returns {Object} Decoded flag information
+ */
+function interpretPoolFlags(pool) {
+    const flags = pool.flags || 0;
+    
+    return {
+        oneToManyRatio: (flags & 1) !== 0,        // Bit 0 (1): One-to-many ratio configuration
+        liquidityPaused: (flags & 2) !== 0,       // Bit 1 (2): Liquidity operations paused
+        swapsPaused: (flags & 4) !== 0,           // Bit 2 (4): Swap operations paused
+        withdrawalProtection: (flags & 8) !== 0,   // Bit 3 (8): Withdrawal protection active
+        singleLpTokenMode: (flags & 16) !== 0      // Bit 4 (16): Single LP token mode (future feature)
+    };
+}
+
+/**
+ * Phase 1.3: Format exchange rate for standard pools with 3 decimal places
+ * 
+ * @param {number} rate - Exchange rate to format
+ * @returns {string} Formatted rate string with 3 decimal places
+ */
+function formatExchangeRateStandard(rate) {
+    if (rate >= 1000000) {
+        // Use scientific notation for very large numbers
+        return rate.toExponential(2);
+    } else if (rate >= 100) {
+        // 3 decimal places for standard pools as per Phase 1.3 requirements
+        return rate.toLocaleString('en-US', { 
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
+        });
+    } else if (rate >= 1) {
+        // 3 decimal places for normal numbers
+        return rate.toLocaleString('en-US', { 
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
+        });
+    } else if (rate >= 0.001) {
+        // More decimal places for small numbers but minimum 3
+        return rate.toLocaleString('en-US', { 
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 6
+        });
+    } else {
+        // Scientific notation for very small numbers
+        return rate.toExponential(3);
+    }
+}
+
+/**
+ * Legacy format exchange rate function (maintained for compatibility)
  * 
  * @param {number} rate - Exchange rate to format
  * @returns {string} Formatted rate string
@@ -168,10 +282,14 @@ if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
         getDisplayTokenOrder,
         formatExchangeRate,
+        formatExchangeRateStandard,
         getSimpleDisplayOrder,
         formatLargeNumber,
         createPoolTitle,
-        createExchangeRateDisplay
+        createExchangeRateDisplay,
+        // Phase 1.3: New flag interpretation functions
+        checkOneToManyRatioFlag,
+        interpretPoolFlags
     };
 }
 
@@ -180,9 +298,13 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         getDisplayTokenOrder,
         formatExchangeRate,
+        formatExchangeRateStandard,
         getSimpleDisplayOrder,
         formatLargeNumber,
         createPoolTitle,
-        createExchangeRateDisplay
+        createExchangeRateDisplay,
+        // Phase 1.3: New flag interpretation functions
+        checkOneToManyRatioFlag,
+        interpretPoolFlags
     };
 } 

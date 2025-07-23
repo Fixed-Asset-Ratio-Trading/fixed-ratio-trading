@@ -756,16 +756,20 @@ function renderPools() {
 
 /**
  * Create a pool card element
+ * Phase 1.3: Enhanced with pool state flags display
  */
 function createPoolCard(pool) {
     const card = document.createElement('div');
     card.className = 'pool-card';
     
-    const status = pool.isPaused || pool.swapsPaused ? 'paused' : 'active';
-    const statusText = pool.isPaused ? 'Pool Paused' : 
-                     pool.swapsPaused ? 'Swaps Paused' : 'Active';
+    // Phase 1.3: Interpret pool flags
+    const flags = window.TokenDisplayUtils.interpretPoolFlags(pool);
     
-    // Use the new display utilities for user-friendly token ordering
+    const status = flags.liquidityPaused || flags.swapsPaused ? 'paused' : 'active';
+    const statusText = flags.liquidityPaused ? 'Pool Paused' : 
+                     flags.swapsPaused ? 'Swaps Paused' : 'Active';
+    
+    // Use the new display utilities for user-friendly token ordering (Phase 1.3 enhanced)
     const display = window.TokenDisplayUtils.getDisplayTokenOrder(pool);
     
     // Create user-friendly pool title and exchange rate
@@ -773,17 +777,24 @@ function createPoolCard(pool) {
         `${display.displayPair} Pool` : 
         `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
     
-    // Add data source indicator
+    // Phase 1.3: Enhanced data source and ratio type indicators
     const dataSourceBadge = pool.dataSource === 'RPC' 
         ? '<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">🔗 RPC</span>'
         : pool.dataSource === 'sessionStorage' 
         ? '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📦 Session</span>'
+        : pool.dataSource === 'JSON'
+        ? '<span style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📄 JSON</span>'
+        : '';
+    
+    // Phase 1.3: One-to-many ratio indicator
+    const ratioTypeBadge = display.isOneToManyRatio 
+        ? '<span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 4px;">🎯 1:Many</span>'
         : '';
     
     card.innerHTML = `
         <div class="pool-header">
             <div class="pool-title">
-                ${displayTitle}${dataSourceBadge}
+                ${displayTitle}${dataSourceBadge}${ratioTypeBadge}
             </div>
             <div class="pool-status ${status}">${statusText}</div>
         </div>
@@ -834,7 +845,13 @@ function createPoolCard(pool) {
             <button class="liquidity-btn" onclick="addLiquidity('${pool.address}')">
                 💧 Add Liquidity
             </button>
+            <button class="swap-btn" onclick="swapTokens('${pool.address}')">
+                🔄 Swap Tokens
+            </button>
         </div>
+        
+        <!-- Phase 1.3: Pool State Flags Display -->
+        ${generatePoolFlagsSection(flags, pool)}
         
         <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
             <div><strong>Pool Address:</strong> ${pool.address}</div>
@@ -843,6 +860,80 @@ function createPoolCard(pool) {
     `;
     
     return card;
+}
+
+/**
+ * Phase 1.3: Generate pool flags status section
+ * 
+ * @param {Object} flags - Interpreted pool flags
+ * @param {Object} pool - Pool data
+ * @returns {string} HTML for pool flags section
+ */
+function generatePoolFlagsSection(flags, pool) {
+    // Only show flags section if any flags are set or if we have flag data
+    const hasFlags = flags.oneToManyRatio || flags.liquidityPaused || flags.swapsPaused || 
+                     flags.withdrawalProtection || flags.singleLpTokenMode;
+    
+    if (!hasFlags && (typeof pool.flags === 'undefined' || pool.flags === 0)) {
+        return ''; // No flags to display
+    }
+    
+    const flagItems = [];
+    
+    // One-to-many ratio configuration
+    if (flags.oneToManyRatio) {
+        flagItems.push('<span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🎯 One-to-Many Ratio</span>');
+    }
+    
+    // Liquidity operations paused
+    if (flags.liquidityPaused) {
+        flagItems.push('<span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">⏸️ Liquidity Paused</span>');
+    }
+    
+    // Swap operations paused
+    if (flags.swapsPaused) {
+        flagItems.push('<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🚫 Swaps Paused</span>');
+    }
+    
+    // Withdrawal protection active
+    if (flags.withdrawalProtection) {
+        flagItems.push('<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🛡️ Withdrawal Protection</span>');
+    }
+    
+    // Single LP token mode (future feature)
+    if (flags.singleLpTokenMode) {
+        flagItems.push('<span style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🔗 Single LP Mode</span>');
+    }
+    
+    // Show raw flags value for debugging
+    const rawFlagsDisplay = typeof pool.flags === 'number' ? 
+        `<span style="color: #6b7280; font-size: 10px; margin-left: 8px;">Raw: ${pool.flags} (0b${pool.flags.toString(2).padStart(5, '0')})</span>` : '';
+    
+    if (flagItems.length === 0 && rawFlagsDisplay) {
+        return `
+            <div style="margin-top: 10px; padding: 8px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;"><strong>Pool Flags:</strong></div>
+                <div>
+                    <span style="background: #6b7280; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">No Active Flags</span>
+                    ${rawFlagsDisplay}
+                </div>
+            </div>
+        `;
+    }
+    
+    if (flagItems.length > 0) {
+        return `
+            <div style="margin-top: 10px; padding: 8px; background: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
+                <div style="font-size: 11px; color: #6b7280; margin-bottom: 4px;"><strong>Pool Flags:</strong></div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                    ${flagItems.join(' ')}
+                    ${rawFlagsDisplay}
+                </div>
+            </div>
+        `;
+    }
+    
+    return '';
 }
 
 /**
@@ -1026,6 +1117,19 @@ function addLiquidity(poolAddress) {
     
     // Navigate to liquidity page
     window.location.href = 'liquidity.html';
+}
+
+/**
+ * Phase 2.1: Navigate to swap page for a specific pool
+ */
+function swapTokens(poolAddress) {
+    console.log('🔄 Navigating to swap tokens for pool:', poolAddress);
+    
+    // Store the pool address in sessionStorage so the swap page can access it
+    sessionStorage.setItem('selectedPoolAddress', poolAddress);
+    
+    // Navigate to swap page
+    window.location.href = 'swap.html';
 }
 
 /**

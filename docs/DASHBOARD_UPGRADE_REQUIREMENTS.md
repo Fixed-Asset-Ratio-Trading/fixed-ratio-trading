@@ -49,9 +49,21 @@ Display all pools by token pairs with ratios
 
 Each pool entry shows:
 - Token pair names
-- Ratio display
-- **Liquidity** button
-- **Swap** button
+- Ratio display (using Phase 1.3 display rules)
+- **Liquidity** button (navigates to liquidity.html)
+- **Swap** button (navigates to swap.html)
+
+### 2.3 Pool Display Rules Consistency
+
+**Phase 1.3 display rules must be applied consistently across all pages:**
+- **Main Dashboard**: Pool cards use enhanced display with One-to-many ratio handling
+- **Liquidity Page**: Pool information section uses same display logic and flags interpretation
+- **Swap Page**: Pool information section uses same display logic and flags interpretation
+
+**Navigation Flow:**
+- Dashboard → **Liquidity** button → `liquidity.html?pool={address}`
+- Dashboard → **Swap** button → `swap.html?pool={address}`
+- All pages maintain consistent pool display formatting and flag interpretation
 
 ### 2.2 Pool State Flags Interpretation
 
