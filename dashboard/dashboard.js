@@ -15,6 +15,71 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
+ * Load initial state from JSON file if available
+ */
+async function loadInitialStateFromJSON() {
+    try {
+        console.log('📁 Loading initial state from JSON file...');
+        
+        // Wait for config to be loaded
+        let attempts = 0;
+        while (!window.TRADING_CONFIG && attempts < 10) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        if (!window.TRADING_CONFIG) {
+            console.warn('⚠️ Configuration not loaded, skipping JSON state loading');
+            return { pools: [], mainTreasuryState: null, systemState: null };
+        }
+        
+        const stateFile = window.TRADING_CONFIG.stateFile || 'state.json';
+        const response = await fetch(stateFile);
+        
+        if (!response.ok) {
+            console.log('📁 No state file found or accessible, starting with empty state');
+            return { pools: [], mainTreasuryState: null, systemState: null };
+        }
+        
+        const stateData = await response.json();
+        console.log(`✅ Loaded state from JSON: ${stateData.pools?.length || 0} pools, treasury: ${!!stateData.main_treasury_state}, system: ${!!stateData.system_state}`);
+        
+        // Convert JSON state data to dashboard format
+        const convertedPools = (stateData.pools || []).map(pool => ({
+            address: pool.address,
+            isInitialized: true,
+            isPaused: pool.flags_decoded?.liquidity_paused || false,
+            swapsPaused: pool.flags_decoded?.swaps_paused || false,
+            tokenAMint: pool.token_a_mint,
+            tokenBMint: pool.token_b_mint,
+            tokenALiquidity: pool.total_token_a_liquidity || 0,
+            tokenBLiquidity: pool.total_token_b_liquidity || 0,
+            ratioANumerator: pool.ratio_a_numerator || 1,
+            ratioBDenominator: pool.ratio_b_denominator || 1,
+            swapFeeBasisPoints: 0, // Will be calculated from SOL fees
+            collectedFeesTokenA: pool.collected_fees_token_a || 0,
+            collectedFeesTokenB: pool.collected_fees_token_b || 0,
+            collectedSolFees: pool.total_sol_fees_collected || 0,
+            owner: pool.owner,
+            flags: pool.flags || 0,
+            flagsDecoded: pool.flags_decoded || {},
+            dataSource: 'JSON' // Mark data source
+        }));
+        
+        return {
+            pools: convertedPools,
+            mainTreasuryState: stateData.main_treasury_state,
+            systemState: stateData.system_state,
+            metadata: stateData.metadata
+        };
+        
+    } catch (error) {
+        console.warn('⚠️ Error loading state from JSON:', error);
+        return { pools: [], mainTreasuryState: null, systemState: null };
+    }
+}
+
+/**
  * Initialize the dashboard connection and start monitoring
  */
 async function initializeDashboard() {
@@ -24,6 +89,13 @@ async function initializeDashboard() {
         if (poolToUpdate) {
             console.log('🔄 Returning from liquidity page, will update pool:', poolToUpdate);
             sessionStorage.removeItem('poolToUpdate'); // Clear the flag
+        }
+        
+        // Load initial state from JSON file
+        const initialState = await loadInitialStateFromJSON();
+        if (initialState.pools.length > 0) {
+            pools = initialState.pools;
+            console.log(`📁 Pre-loaded ${pools.length} pools from JSON state file`);
         }
         
         // Initialize Solana connection
@@ -281,7 +353,7 @@ async function refreshData() {
 }
 
 /**
- * Scan for Fixed Ratio Trading pools (prioritize RPC data over localStorage)
+ * Scan for Fixed Ratio Trading pools (prioritize RPC data over sessionStorage)
  */
 async function scanForPools() {
     try {
@@ -329,17 +401,17 @@ async function scanForPools() {
             console.warn('⚠️ Error scanning on-chain pools (this is normal if program not deployed):', error);
         }
         
-        // Only use localStorage data as fallback if no on-chain pools found
+        // Use sessionStorage data as fallback if no on-chain pools found
         if (onChainPools.length === 0) {
             try {
-                const storedPoolsRaw = localStorage.getItem('createdPools') || '[]';
-                console.log('📦 No on-chain pools found, checking localStorage...');
+                const storedPoolsRaw = sessionStorage.getItem('createdPools') || '[]';
+                console.log('📦 No on-chain pools found, checking sessionStorage...');
                 
                 const storedPools = JSON.parse(storedPoolsRaw);
                 console.log('📦 Found stored pools:', storedPools.length);
                 
-                // Only include localStorage pools that don't conflict with on-chain data
-                localPools = storedPools.map(pool => {
+                // Convert sessionStorage pools that don't conflict with existing data
+                const sessionPools = storedPools.map(pool => {
                     const converted = {
                         address: pool.address,
                         isInitialized: pool.isInitialized,
@@ -358,17 +430,27 @@ async function scanForPools() {
                         owner: pool.creator,
                         tokenASymbol: pool.tokenASymbol,
                         tokenBSymbol: pool.tokenBSymbol,
-                        dataSource: 'localStorage' // Mark data source
+                        dataSource: 'sessionStorage' // Mark data source
                     };
                     return converted;
                 });
-                console.log(`📦 Using ${localPools.length} localStorage pools as fallback`);
+                
+                // If we have pre-loaded pools from JSON, merge with session pools
+                if (pools.length > 0) {
+                    const existingAddresses = new Set(pools.map(p => p.address));
+                    const newSessionPools = sessionPools.filter(p => !existingAddresses.has(p.address));
+                    localPools = [...pools, ...newSessionPools];
+                    console.log(`📦 Merged ${pools.length} JSON pools with ${newSessionPools.length} new session pools`);
+                } else {
+                    localPools = sessionPools;
+                    console.log(`📦 Using ${localPools.length} sessionStorage pools as fallback`);
+                }
             } catch (error) {
                 console.warn('⚠️ Error loading local pools:', error);
-                localPools = [];
+                localPools = pools; // Keep JSON-loaded pools if sessionStorage fails
             }
         } else {
-            console.log('🎯 Using on-chain data only (ignoring localStorage)');
+            console.log('🎯 Using on-chain data only (ignoring other sources)');
         }
         
         // Prioritize on-chain data - if we have on-chain pools, use them exclusively
@@ -376,9 +458,9 @@ async function scanForPools() {
             pools = onChainPools;
             console.log(`✅ Loaded ${pools.length} pools from RPC (on-chain data)`);
         } else {
-            // Fallback to localStorage only if no on-chain data
+            // Fallback to sessionStorage only if no on-chain data
             pools = localPools;
-            console.log(`📦 Loaded ${pools.length} pools from localStorage (fallback)`);
+            console.log(`📦 Loaded ${pools.length} pools from sessionStorage (fallback)`);
         }
         
     } catch (error) {
@@ -570,11 +652,11 @@ async function parsePoolState(data, address) {
 }
 
 /**
- * Try to get token symbols from localStorage or use defaults
+ * Try to get token symbols from sessionStorage or use defaults
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
-        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
         
         const tokenA = createdTokens.find(t => t.mint === tokenAMint);
         const tokenB = createdTokens.find(t => t.mint === tokenBMint);
@@ -694,8 +776,8 @@ function createPoolCard(pool) {
     // Add data source indicator
     const dataSourceBadge = pool.dataSource === 'RPC' 
         ? '<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">🔗 RPC</span>'
-        : pool.dataSource === 'localStorage' 
-        ? '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📦 Cache</span>'
+        : pool.dataSource === 'sessionStorage' 
+        ? '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📦 Session</span>'
         : '';
     
     card.innerHTML = `
@@ -829,14 +911,14 @@ async function forceRefreshPools() {
     // Clear any existing pools
     pools = [];
     
-    // Check localStorage directly
-    const rawData = localStorage.getItem('createdPools');
-    console.log('🐛 Raw localStorage data:', rawData);
+    // Check sessionStorage directly
+    const rawData = sessionStorage.getItem('createdPools');
+    console.log('🐛 Raw sessionStorage data:', rawData);
     
     if (rawData) {
         try {
             const parsedData = JSON.parse(rawData);
-            console.log('🐛 Parsed localStorage data:', parsedData);
+            console.log('🐛 Parsed sessionStorage data:', parsedData);
             console.log('🐛 Number of stored pools:', parsedData.length);
             
             // Show what each pool looks like
@@ -845,11 +927,11 @@ async function forceRefreshPools() {
             });
             
         } catch (error) {
-            console.error('🐛 Error parsing localStorage:', error);
+            console.error('🐛 Error parsing sessionStorage:', error);
         }
     } else {
-        console.log('🐛 No localStorage data found');
-        alert('No pool data found in localStorage. Have you created any pools yet?');
+        console.log('🐛 No sessionStorage data found');
+        alert('No pool data found in sessionStorage. Have you created any pools yet?');
         return;
     }
     

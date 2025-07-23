@@ -76,7 +76,7 @@ use solana_program::{
 use solana_program::entrypoint;
 
 // ⚠️ IMPORTANT: When changing the program ID, also update PROGRAM_AUTHORITY in constants.rs
-declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+declare_id!("2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx");
 
 // Declare the entrypoint
 #[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]

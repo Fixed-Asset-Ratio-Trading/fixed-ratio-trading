@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "generated_at": "2025-07-23T12:20:01.603Z",
+    "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
+    "rpc_url": "http://192.168.2.88:8899",
+    "script_version": "1.0.0",
+    "solana_environment": "remote"
+  },
+  "pools": [],
+  "main_treasury_state": null,
+  "system_state": null,
+  "pda_addresses": {
+    "main_treasury": "EEaT1sB9AtMQMfrDPmrHmvD66kEJ8JqVzKMqQGhjaQ6p",
+    "system_state": "ECLKV2UTXn1u6JCXKymLiHQhKfS97KL4VcWJwmTGRkZr"
+  }
+}

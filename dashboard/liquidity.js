@@ -158,7 +158,7 @@ async function loadPoolInformation() {
         // Parse pool state data (simplified version)
         poolData = await parsePoolState(poolAccount.data);
         
-        // Try to get token symbols from localStorage
+        // Try to get token symbols from sessionStorage
         const tokenSymbols = await getTokenSymbols(poolData.tokenAMint, poolData.tokenBMint);
         poolData.tokenASymbol = tokenSymbols.tokenA;
         poolData.tokenBSymbol = tokenSymbols.tokenB;
@@ -232,11 +232,11 @@ async function parsePoolState(data) {
 }
 
 /**
- * Try to get token symbols from localStorage
+ * Try to get token symbols from sessionStorage
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
-        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
         
         const tokenA = createdTokens.find(t => t.mint === tokenAMint);
         const tokenB = createdTokens.find(t => t.mint === tokenBMint);

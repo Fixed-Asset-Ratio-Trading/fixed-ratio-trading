@@ -1,0 +1,22 @@
+{
+  "solana": {
+    "rpcUrl": "http://192.168.2.88:8899",
+    "wsUrl": null,
+    "commitment": "confirmed",
+    "disableRetryOnRateLimit": true
+  },
+  "program": {
+    "programId": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
+    "poolStateSeedPrefix": "pool_state"
+  },
+  "wallets": {
+    "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
+  },
+  "dashboard": {
+    "refreshInterval": 10000,
+    "stateFile": "dashboard/state.json"
+  },
+  "version": "1.0.0",
+  "lastUpdated": "2024-01-15",
+  "_description": "Centralized configuration for Fixed Ratio Trading project - used by dashboard, scripts, and deployment tools"
+} 

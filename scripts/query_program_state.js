@@ -18,20 +18,38 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 const fs = require('fs');
 const path = require('path');
 
+// Load shared configuration
+function loadSharedConfig() {
+    try {
+        const configPath = path.join(__dirname, '../shared-config.json');
+        const configData = fs.readFileSync(configPath, 'utf8');
+        const sharedConfig = JSON.parse(configData);
+        
+        console.log('✅ Loaded shared configuration from:', configPath);
+        
+        return {
+            // Environment variables can override shared config
+            rpcUrl: process.env.SOLANA_RPC_URL || sharedConfig.solana.rpcUrl,
+            programId: process.env.PROGRAM_ID || sharedConfig.program.programId,
+            commitment: sharedConfig.solana.commitment,
+            outputFile: path.join(__dirname, '..', sharedConfig.dashboard.stateFile)
+        };
+        
+    } catch (error) {
+        console.warn('⚠️ Failed to load shared config, using fallback:', error.message);
+        
+        // Fallback configuration
+        return {
+            rpcUrl: process.env.SOLANA_RPC_URL || 'http://192.168.2.88:8899',
+            programId: process.env.PROGRAM_ID || '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
+            outputFile: path.join(__dirname, '../dashboard/state.json'),
+            commitment: 'confirmed'
+        };
+    }
+}
+
 // Configuration
-const CONFIG = {
-    // Solana connection (defaults to localhost for test environment)
-    rpcUrl: process.env.SOLANA_RPC_URL || 'http://localhost:8899',
-    
-    // Program ID - update this to match your deployed program
-    programId: process.env.PROGRAM_ID || '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
-    
-    // Output file path
-    outputFile: path.join(__dirname, '../dashboard/state.json'),
-    
-    // Commitment level for queries
-    commitment: 'confirmed'
-};
+const CONFIG = loadSharedConfig();
 
 // PDA seed constants (must match smart contract)
 const SEEDS = {

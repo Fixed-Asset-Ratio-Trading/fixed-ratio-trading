@@ -72,6 +72,19 @@ if [ -n "$MISSING_TOOLS" ]; then
 fi
 echo -e "${GREEN}✅ All required tools found${NC}"
 
+# Load shared configuration if available
+SHARED_CONFIG="$PROJECT_ROOT/shared-config.json"
+if [ -f "$SHARED_CONFIG" ] && command -v jq >/dev/null 2>&1; then
+    echo -e "${BLUE}📋 Loading shared configuration...${NC}"
+    RPC_URL=$(jq -r '.solana.rpcUrl' "$SHARED_CONFIG" 2>/dev/null || echo "http://192.168.2.88:8899")
+    BACKPACK_WALLET=$(jq -r '.wallets.expectedBackpackWallet' "$SHARED_CONFIG" 2>/dev/null || echo "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t")
+    echo -e "${GREEN}✅ Configuration loaded from shared-config.json${NC}"
+else
+    echo -e "${YELLOW}⚠️ Using fallback configuration (shared-config.json not found or jq not available)${NC}"
+    RPC_URL="http://192.168.2.88:8899"
+    BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
+fi
+
 # Configuration - Get program ID from the generated keypair
 PROGRAM_KEYPAIR="$PROJECT_ROOT/target/deploy/fixed_ratio_trading-keypair.json"
 if [ -f "$PROGRAM_KEYPAIR" ]; then
@@ -79,9 +92,7 @@ if [ -f "$PROGRAM_KEYPAIR" ]; then
 else
     PROGRAM_ID="Will be generated during build"
 fi
-RPC_URL="http://192.168.2.88:8899"
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
-BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 
 echo -e "${BLUE}📋 Configuration:${NC}"
 echo "  Program ID: $PROGRAM_ID"

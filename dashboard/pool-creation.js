@@ -274,8 +274,8 @@ async function loadUserTokens() {
  */
 async function tryFetchTokenMetadata(tokenInfo) {
     try {
-        // Check if this is a token we created (stored in localStorage)
-        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        // Check if this is a token we created (stored in sessionStorage)
+        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
         const createdToken = createdTokens.find(t => t.mint === tokenInfo.mint);
         
         if (createdToken) {
@@ -1010,7 +1010,7 @@ async function checkDuplicatePool(tokenA, tokenB, ratio) {
         
         const [poolStatePDA] = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                encoder.encode('pool_state_v2'),
+                encoder.encode('pool_state'),
                 tokenAMint.toBytes(), 
                 tokenBMint.toBytes(),
                 ratioABytes,
@@ -1032,8 +1032,8 @@ async function checkDuplicatePool(tokenA, tokenB, ratio) {
         
     } catch (error) {
         console.warn('⚠️ Could not check for duplicate pools:', error);
-        // Fallback to localStorage check if RPC fails
-        const existingPools = JSON.parse(localStorage.getItem('createdPools') || '[]');
+        // Fallback to sessionStorage check if RPC fails
+        const existingPools = JSON.parse(sessionStorage.getItem('createdPools') || '[]');
         
         return existingPools.some(pool => {
             const sameAB = pool.tokenAMint === tokenA.mint && 

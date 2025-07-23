@@ -380,7 +380,7 @@ async function createSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
         💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
@@ -428,7 +428,7 @@ async function createMicroSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Micro sample token "${microSampleData.name}" created successfully! 
         💰 ${microSampleData.supply.toLocaleString()} ${microSampleData.symbol} tokens minted to your wallet
@@ -477,7 +477,7 @@ async function createLargeSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Large sample token "${largeSampleData.name}" created successfully! 
         💰 ${largeSampleData.supply.toLocaleString()} ${largeSampleData.symbol} tokens minted to your wallet
@@ -522,7 +522,7 @@ async function handleTokenCreation(event) {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         // Clear form
         clearForm();

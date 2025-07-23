@@ -1,35 +1,65 @@
 // Centralized Configuration for Fixed Ratio Trading Dashboard
-// This file contains all shared configuration values used across the dashboard
+// This file loads configuration from the centralized shared-config.json file
 
-// Global configuration object
-window.TRADING_CONFIG = {
-    // Solana RPC endpoint - change this to switch between validators
-    rpcUrl: 'http://192.168.2.88:8899',
-    
-    // WebSocket URL (set to null to disable WebSocket and use HTTP polling)
-    wsUrl: null, // Disable WebSocket to avoid connection issues
-    // wsUrl: 'ws://192.168.2.88:8900', // Direct WebSocket endpoint (uncomment to enable)
-    
-    // Fixed Ratio Trading program ID
-    programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
-    
-    // Connection settings
-    commitment: 'confirmed',
-    disableRetryOnRateLimit: true, // Improve stability
-    
-    // Dashboard settings
-    refreshInterval: 10000, // 10 seconds
-    
-    // Pool state configuration
-    poolStateSeedPrefix: 'pool_state_v2',
-    
-    // Expected Backpack wallet for testing (optional)
-    expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
-    
-    // Version info
-    version: '1.0.0',
-    lastUpdated: '2024-01-15'
-};
+// Load configuration from centralized config file
+async function loadSharedConfig() {
+    try {
+        const response = await fetch('../shared-config.json');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const sharedConfig = await response.json();
+        
+        // Map shared config to dashboard format for backward compatibility
+        window.TRADING_CONFIG = {
+            // Solana connection settings
+            rpcUrl: sharedConfig.solana.rpcUrl,
+            wsUrl: sharedConfig.solana.wsUrl,
+            commitment: sharedConfig.solana.commitment,
+            disableRetryOnRateLimit: sharedConfig.solana.disableRetryOnRateLimit,
+            
+            // Program settings
+            programId: sharedConfig.program.programId,
+            poolStateSeedPrefix: sharedConfig.program.poolStateSeedPrefix,
+            
+            // Dashboard settings
+            refreshInterval: sharedConfig.dashboard.refreshInterval,
+            stateFile: sharedConfig.dashboard.stateFile,
+            
+            // Wallet settings
+            expectedWallet: sharedConfig.wallets.expectedBackpackWallet,
+            
+            // Version info
+            version: sharedConfig.version,
+            lastUpdated: sharedConfig.lastUpdated
+        };
+        
+        console.log('✅ Shared configuration loaded:', sharedConfig.solana.rpcUrl);
+        return true;
+    } catch (error) {
+        console.error('❌ Failed to load shared configuration:', error);
+        
+        // Fallback to hardcoded values
+        window.TRADING_CONFIG = {
+            rpcUrl: 'http://192.168.2.88:8899',
+            wsUrl: null,
+            programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
+            commitment: 'confirmed',
+            disableRetryOnRateLimit: true,
+            refreshInterval: 10000,
+            poolStateSeedPrefix: 'pool_state',
+            expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
+            version: '1.0.0',
+            lastUpdated: '2024-01-15'
+        };
+        
+        console.warn('⚠️ Using fallback configuration');
+        return false;
+    }
+}
+
+// Initialize configuration immediately
+loadSharedConfig();
 
 // Legacy alias for backward compatibility
 window.CONFIG = window.TRADING_CONFIG;

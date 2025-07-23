@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debug localStorage - FRT</title>
+    <title>Debug sessionStorage - FRT</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -87,8 +87,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔧 localStorage Debug Tool</h1>
-            <p>Debug and clean up localStorage data for Fixed Ratio Trading</p>
+            <h1>🔧 sessionStorage Debug Tool</h1>
+            <p>Debug and clean up sessionStorage data for Fixed Ratio Trading</p>
         </div>
         
         <div class="section">
@@ -112,18 +112,18 @@
         
         <div class="section">
             <h2>📊 Raw Data</h2>
-            <button class="btn btn-primary" onclick="showRawData()">📋 Show Raw localStorage Data</button>
+            <button class="btn btn-primary" onclick="showRawData()">📋 Show Raw sessionStorage Data</button>
             <div id="raw-data-display"></div>
         </div>
     </div>
 
     <script>
         function loadPools() {
-            const poolsData = localStorage.getItem('createdPools');
+            const poolsData = sessionStorage.getItem('createdPools');
             const display = document.getElementById('pools-display');
             
             if (!poolsData) {
-                display.innerHTML = '<p>No pools found in localStorage</p>';
+                display.innerHTML = '<p>No pools found in sessionStorage</p>';
                 return;
             }
             
@@ -176,7 +176,7 @@
         }
         
         function removeDuplicates() {
-            const poolsData = localStorage.getItem('createdPools');
+            const poolsData = sessionStorage.getItem('createdPools');
             if (!poolsData) {
                 alert('No pools found');
                 return;
@@ -194,7 +194,7 @@
                     }
                 });
                 
-                localStorage.setItem('createdPools', JSON.stringify(uniquePools));
+                sessionStorage.setItem('createdPools', JSON.stringify(uniquePools));
                 alert(`Removed ${pools.length - uniquePools.length} duplicate pools. ${uniquePools.length} unique pools remaining.`);
                 loadPools(); // Refresh display
                 
@@ -204,14 +204,14 @@
         }
         
         function removePool(index) {
-            const poolsData = localStorage.getItem('createdPools');
+            const poolsData = sessionStorage.getItem('createdPools');
             if (!poolsData) return;
             
             try {
                 const pools = JSON.parse(poolsData);
                 if (confirm(`Remove pool: ${pools[index].tokenASymbol}/${pools[index].tokenBSymbol}?`)) {
                     pools.splice(index, 1);
-                    localStorage.setItem('createdPools', JSON.stringify(pools));
+                    sessionStorage.setItem('createdPools', JSON.stringify(pools));
                     loadPools(); // Refresh display
                 }
             } catch (error) {
@@ -221,17 +221,17 @@
         
         function clearAllPools() {
             if (confirm('Are you sure you want to clear ALL pools? This cannot be undone.')) {
-                localStorage.removeItem('createdPools');
+                sessionStorage.removeItem('createdPools');
                 document.getElementById('pools-display').innerHTML = '<p>All pools cleared.</p>';
             }
         }
         
         function loadTokens() {
-            const tokensData = localStorage.getItem('createdTokens');
+            const tokensData = sessionStorage.getItem('createdTokens');
             const display = document.getElementById('tokens-display');
             
             if (!tokensData) {
-                display.innerHTML = '<p>No tokens found in localStorage</p>';
+                display.innerHTML = '<p>No tokens found in sessionStorage</p>';
                 return;
             }
             
@@ -260,17 +260,17 @@
         
         function clearAllTokens() {
             if (confirm('Are you sure you want to clear ALL tokens? This cannot be undone.')) {
-                localStorage.removeItem('createdTokens');
+                sessionStorage.removeItem('createdTokens');
                 document.getElementById('tokens-display').innerHTML = '<p>All tokens cleared.</p>';
             }
         }
         
         function showRawData() {
             const display = document.getElementById('raw-data-display');
-            const pools = localStorage.getItem('createdPools');
-            const tokens = localStorage.getItem('createdTokens');
+            const pools = sessionStorage.getItem('createdPools');
+            const tokens = sessionStorage.getItem('createdTokens');
             
-            let html = '<h3>Raw localStorage Data:</h3>';
+            let html = '<h3>Raw sessionStorage Data:</h3>';
             
             html += '<h4>createdPools:</h4>';
             html += `<div class="code">${pools || 'null'}</div>`;

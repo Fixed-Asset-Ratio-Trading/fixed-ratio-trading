@@ -16,7 +16,7 @@ window.TRADING_CONFIG = {
     programId: '4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn',
     commitment: 'confirmed',
     refreshInterval: 10000,
-    poolStateSeedPrefix: 'pool_state_v2',
+    poolStateSeedPrefix: 'pool_state',
     expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
     version: '1.0.0',
     lastUpdated: '2024-01-15'
