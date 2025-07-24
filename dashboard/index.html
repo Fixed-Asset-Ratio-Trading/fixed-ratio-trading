@@ -587,6 +587,36 @@
             </div>
         </div>
         
+        <!-- Cache Clear Helper -->
+        <div id="cache-clear-helper" style="
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        ">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <span style="font-size: 20px;">🧹</span>
+                <strong style="color: #991b1b;">Seeing stale data?</strong>
+            </div>
+            <p style="margin: 0 0 10px 0; color: #7f1d1d; font-size: 14px;">
+                If you're seeing old test data after a fresh deployment, try clearing the browser cache.
+            </p>
+            <button onclick="clearAllCaches()" style="
+                background: #dc2626;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                cursor: pointer;
+                font-size: 14px;
+                font-weight: 600;
+            ">
+                🔄 Clear Cache & Reload
+            </button>
+        </div>
+        
         <div class="pools-section">
             <div class="section-header">
                 <h2 class="section-title">🏊‍♂️ Individual Pools</h2>

@@ -4,7 +4,7 @@
 // Load configuration from centralized config file
 async function loadSharedConfig() {
     try {
-        const response = await fetch('../shared-config.json');
+        const response = await fetch('./shared-config.json');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -58,10 +58,17 @@ async function loadSharedConfig() {
     }
 }
 
-// Initialize configuration immediately
-loadSharedConfig();
+// Initialize configuration asynchronously
+async function initializeConfig() {
+    await loadSharedConfig();
+    
+    // Legacy alias for backward compatibility
+    window.CONFIG = window.TRADING_CONFIG;
+    
+    if (window.TRADING_CONFIG && window.TRADING_CONFIG.rpcUrl) {
+        console.log('✅ Trading configuration loaded:', window.TRADING_CONFIG.rpcUrl);
+    }
+}
 
-// Legacy alias for backward compatibility
-window.CONFIG = window.TRADING_CONFIG;
-
-console.log('✅ Trading configuration loaded:', window.TRADING_CONFIG.rpcUrl); 
+// Start configuration loading
+initializeConfig(); 

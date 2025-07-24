@@ -37,12 +37,26 @@ function getTokenImageURI(symbol) {
 }
 
 /**
+ * Browser-compatible helper to concatenate Uint8Arrays (replaces Buffer.concat)
+ */
+function concatUint8Arrays(arrays) {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+    }
+    return result;
+}
+
+/**
  * Get metadata account address for a mint
  */
 async function getMetadataAccount(mint) {
     const [metadataAccount] = await solanaWeb3.PublicKey.findProgramAddress(
         [
-            Buffer.from('metadata'),
+            new TextEncoder().encode('metadata'),
             TOKEN_METADATA_PROGRAM_ID.toBuffer(),
             mint.toBuffer(),
         ],
@@ -84,14 +98,15 @@ function createMetadataInstruction(
     };
 
     // Build instruction data
-    const dataBytes = Buffer.concat([
-        Buffer.from([0]), // CreateMetadataAccount instruction (discriminator = 0)
-        Buffer.from(data.name.padEnd(32, '\0'), 'utf-8'),
-        Buffer.from(data.symbol.padEnd(10, '\0'), 'utf-8'),
-        Buffer.from(data.uri.padEnd(200, '\0'), 'utf-8'),
-        Buffer.from([0, 0]), // sellerFeeBasisPoints (u16)
-        Buffer.from([0]), // creators option (0 = None)
-        Buffer.from([1]), // isMutable (1 = true)
+    const encoder = new TextEncoder();
+    const dataBytes = concatUint8Arrays([
+        new Uint8Array([0]), // CreateMetadataAccount instruction (discriminator = 0)
+        encoder.encode(data.name.padEnd(32, '\0')),
+        encoder.encode(data.symbol.padEnd(10, '\0')),
+        encoder.encode(data.uri.padEnd(200, '\0')),
+        new Uint8Array([0, 0]), // sellerFeeBasisPoints (u16)
+        new Uint8Array([0]), // creators option (0 = None)
+        new Uint8Array([1]), // isMutable (1 = true)
     ]);
 
     return new solanaWeb3.TransactionInstruction({

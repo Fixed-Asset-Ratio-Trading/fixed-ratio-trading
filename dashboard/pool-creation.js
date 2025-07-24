@@ -12,6 +12,20 @@ let selectedTokenB = null;
 let currentRatio = 1;
 let errorCountdownTimer = null;
 
+/**
+ * Browser-compatible helper to concatenate Uint8Arrays (replaces Buffer.concat)
+ */
+function concatUint8Arrays(arrays) {
+    const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+    const result = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const arr of arrays) {
+        result.set(arr, offset);
+        offset += arr.length;
+    }
+    return result;
+}
+
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 Pool Creation Dashboard initializing...');
@@ -715,11 +729,11 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // Create pool state PDA - same derivation logic as smart contract
         const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                Buffer.from('pool_state'),
+                new TextEncoder().encode('pool_state'),
                 tokenAMint.toBuffer(),
                 tokenBMint.toBuffer(),
-                Buffer.from(new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer)),
-                Buffer.from(new Uint8Array(new BigUint64Array([BigInt(1)]).buffer)) // ratio_b_denominator = 1
+                new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer),
+                new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator = 1
             ],
             programId
         );
@@ -730,7 +744,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // This prevents users from creating fake LP tokens to drain pools
         const lpTokenAMintPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                Buffer.from('lp_token_a_mint'),
+                new TextEncoder().encode('lp_token_a_mint'),
                 poolStatePDA[0].toBuffer()
             ],
             programId
@@ -738,7 +752,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         const lpTokenBMintPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                Buffer.from('lp_token_b_mint'),
+                new TextEncoder().encode('lp_token_b_mint'),
                 poolStatePDA[0].toBuffer()
             ],
             programId
@@ -752,7 +766,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // Create token vault PDAs
         const tokenAVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                Buffer.from('token_a_vault'),
+                new TextEncoder().encode('token_a_vault'),
                 poolStatePDA[0].toBuffer()
             ],
             programId
@@ -760,7 +774,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         const tokenBVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                Buffer.from('token_b_vault'),
+                new TextEncoder().encode('token_b_vault'),
                 poolStatePDA[0].toBuffer()
             ],
             programId
@@ -773,17 +787,17 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // Get main treasury PDA
         const mainTreasuryPDA = await solanaWeb3.PublicKey.findProgramAddress(
-            [Buffer.from('main_treasury')],
+            [new TextEncoder().encode('main_treasury')],
             programId
         );
         
         console.log('Main treasury PDA:', mainTreasuryPDA[0].toString());
         
         // Create instruction data for InitializePool
-        const instructionData = Buffer.concat([
-            Buffer.from([0]), // InitializePool instruction discriminator
-            Buffer.from(new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer)), // ratio_a_numerator  
-            Buffer.from(new Uint8Array(new BigUint64Array([BigInt(1)]).buffer)) // ratio_b_denominator
+        const instructionData = concatUint8Arrays([
+            new Uint8Array([0]), // InitializePool instruction discriminator
+            new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer), // ratio_a_numerator  
+            new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator
         ]);
         
         // Check if accounts already exist

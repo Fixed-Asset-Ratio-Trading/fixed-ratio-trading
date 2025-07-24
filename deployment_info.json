@@ -1,15 +1,15 @@
 {
   "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
   "version": "0.12.1018",
-  "previous_version": "0.12.1017",
+  "previous_version": "0.12.1018",
   "rpc_url": "http://192.168.2.88:8899",
   "wallet_address": "3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f",
-  "deployment_timestamp": "2025-07-23T12:20:01Z",
+  "deployment_timestamp": "2025-07-24T09:13:54Z",
   "deployment_type": "remote",
   "program_data_address": "BLAjxFQFghDWy79Q2S2tNVGMMbjzy52ikajdz5o33dxi",
   "program_size": "477624",
   "backpack_wallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t",
   "backpack_wallet_balance": "100",
-  "deploy_action": "CREATE",
-  "deploy_result": "CREATED"
+  "deploy_action": "UPGRADE",
+  "deploy_result": "UPGRADED"
 }

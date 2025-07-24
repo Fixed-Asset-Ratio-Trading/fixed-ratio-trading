@@ -37,7 +37,17 @@ async function loadInitialStateFromJSON() {
         }
         
         const stateFile = window.TRADING_CONFIG.stateFile || 'state.json';
-        const response = await fetch(stateFile);
+        
+        // Add cache-busting parameter to ensure fresh data after deployment
+        const cacheBuster = `?t=${Date.now()}`;
+        const response = await fetch(`${stateFile}${cacheBuster}`, {
+            cache: 'no-cache',
+            headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        });
         
         if (!response.ok) {
             console.log('📁 No state file found or accessible, starting with empty state');
@@ -46,6 +56,26 @@ async function loadInitialStateFromJSON() {
         
         const stateData = await response.json();
         console.log(`✅ Loaded state from JSON: ${stateData.pools?.length || 0} pools, treasury: ${!!stateData.main_treasury_state}, system: ${!!stateData.system_state}`);
+        
+        // Detect if this is a fresh deployment (no treasury/system state)
+        if (!stateData.main_treasury_state && !stateData.system_state && stateData.pools?.length === 0) {
+            console.log('🔄 Fresh deployment detected - clearing all cached data');
+            
+            // Clear sessionStorage to remove stale data
+            try {
+                const keysToRemove = [];
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    if (key && (key.includes('pool') || key.includes('treasury') || key.includes('system') || key.includes('state'))) {
+                        keysToRemove.push(key);
+                    }
+                }
+                keysToRemove.forEach(key => sessionStorage.removeItem(key));
+                console.log(`🧹 Cleared ${keysToRemove.length} stale sessionStorage items`);
+            } catch (e) {
+                console.warn('⚠️ Could not clear sessionStorage:', e.message);
+            }
+        }
         
         // Convert JSON state data to dashboard format
         const convertedPools = (stateData.pools || []).map(pool => ({
@@ -87,6 +117,22 @@ async function loadInitialStateFromJSON() {
  */
 async function initializeDashboard() {
     try {
+        // Wait for configuration to be loaded
+        let configAttempts = 0;
+        while (!window.TRADING_CONFIG && configAttempts < 30) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            configAttempts++;
+        }
+        
+        if (!window.TRADING_CONFIG) {
+            throw new Error('Configuration failed to load after 3 seconds');
+        }
+        
+        // Set up CONFIG alias for backward compatibility
+        window.CONFIG = window.TRADING_CONFIG;
+        
+        console.log('✅ Configuration ready:', window.CONFIG.rpcUrl);
+        
         // Check if returning from liquidity page
         const poolToUpdate = sessionStorage.getItem('poolToUpdate');
         if (poolToUpdate) {
@@ -114,6 +160,9 @@ async function initializeDashboard() {
         // Phase 2.2: Update treasury and system state displays
         updateTreasuryStateDisplay();
         updateSystemStateDisplay();
+        
+        // Show cache clear helper if we detect stale data issues
+        checkForStaleDataIssues();
         
         // Initialize Solana connection
         // Initialize Solana connection with WebSocket configuration
@@ -1408,6 +1457,76 @@ async function updatePoolLiquidity(poolAddress) {
     }
 }
 
+/**
+ * Check for stale data issues and show helper if needed
+ */
+function checkForStaleDataIssues() {
+    const treasurySection = document.getElementById('treasury-state-section');
+    const systemSection = document.getElementById('system-state-section');
+    const cacheHelper = document.getElementById('cache-clear-helper');
+    
+    // If sections are visible but we have no state data, show cache clear helper
+    const treasuryVisible = treasurySection && treasurySection.style.display !== 'none';
+    const systemVisible = systemSection && systemSection.style.display !== 'none';
+    const hasNoState = !mainTreasuryState && !systemState;
+    
+    // Also check if sessionStorage has old data that might be interfering
+    let hasStaleSessionData = false;
+    try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+            const key = sessionStorage.key(i);
+            if (key && (key.includes('treasury') || key.includes('system') || key.includes('state'))) {
+                hasStaleSessionData = true;
+                break;
+            }
+        }
+    } catch (e) {
+        // Ignore sessionStorage errors
+    }
+    
+    if (cacheHelper && ((treasuryVisible || systemVisible) && hasNoState) || hasStaleSessionData) {
+        console.log('⚠️ Stale data detected - showing cache clear helper');
+        cacheHelper.style.display = 'block';
+    }
+}
+
+/**
+ * Manual cache clearing function for debugging
+ */
+function clearAllCaches() {
+    console.log('🧹 Manually clearing all caches...');
+    
+    // Clear sessionStorage
+    try {
+        sessionStorage.clear();
+        console.log('✅ SessionStorage cleared');
+    } catch (e) {
+        console.warn('⚠️ Could not clear sessionStorage:', e.message);
+    }
+    
+    // Clear localStorage
+    try {
+        localStorage.clear();
+        console.log('✅ LocalStorage cleared');
+    } catch (e) {
+        console.warn('⚠️ Could not clear localStorage:', e.message);
+    }
+    
+    // Force reload page to get fresh data
+    console.log('🔄 Reloading page to fetch fresh data...');
+    setTimeout(() => {
+        window.location.reload(true); // Force reload from server
+    }, 1000);
+}
+
+/**
+ * Force refresh with cache clearing
+ */
+async function forceRefreshWithCacheClear() {
+    console.log('🔄 Force refreshing with cache clear...');
+    clearAllCaches();
+}
+
 // Export for global access
 window.refreshData = refreshData;
 window.createSamplePools = createSamplePools;
@@ -1418,5 +1537,8 @@ window.updatePoolLiquidity = updatePoolLiquidity;
 // Phase 2.2: Treasury and System State toggle functions
 window.toggleTreasuryStateDetails = toggleTreasuryStateDetails;
 window.toggleSystemStateDetails = toggleSystemStateDetails;
+// Cache clearing functions
+window.clearAllCaches = clearAllCaches;
+window.forceRefreshWithCacheClear = forceRefreshWithCacheClear;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 
