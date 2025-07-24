@@ -8,6 +8,12 @@ let poolAddress = null;
 let poolData = null;
 let connection = null;
 let swapDirection = 'AtoB'; // 'AtoB' or 'BtoA'
+// Phase 4.1: Enhanced swap settings
+let slippageTolerance = 0.5; // Default 0.5%
+let mockBalances = {
+    tokenA: 150.543210,
+    tokenB: 2500.876543
+};
 
 /**
  * Initialize the swap page
@@ -260,7 +266,7 @@ function initializeSwapInterface() {
     swapForm.style.display = 'grid';
     
     // Set initial token symbols and setup
-    updateSwapInterface();
+    updateSwapInterfaceEnhanced();
     updateExchangeRate();
 }
 
@@ -294,9 +300,9 @@ function updateSwapInterface() {
  */
 function toggleSwapDirection() {
     swapDirection = swapDirection === 'AtoB' ? 'BtoA' : 'AtoB';
-    updateSwapInterface();
+    updateSwapInterfaceEnhanced();
     updateExchangeRate();
-    calculateSwapOutput();
+    calculateSwapOutputEnhanced();
 }
 
 /**
@@ -580,10 +586,196 @@ function togglePoolStateDetails() {
     }
 }
 
+/**
+ * Phase 4.1: Enhanced token selection for "from" token
+ */
+function selectFromToken() {
+    // In a real implementation, this would show a dropdown with available tokens
+    // For now, just toggle between the two pool tokens
+    toggleSwapDirection();
+}
+
+/**
+ * Phase 4.1: Enhanced token selection for "to" token  
+ */
+function selectToToken() {
+    // In a real implementation, this would show a dropdown with available tokens
+    // For now, just toggle between the two pool tokens
+    toggleSwapDirection();
+}
+
+/**
+ * Phase 4.1: Set maximum amount from wallet balance
+ */
+function setMaxAmount() {
+    if (!poolData) return;
+    
+    const maxBalance = swapDirection === 'AtoB' ? mockBalances.tokenA : mockBalances.tokenB;
+    document.getElementById('from-amount').value = maxBalance.toFixed(6);
+    calculateSwapOutputEnhanced();
+}
+
+/**
+ * Phase 4.1: Enhanced swap output calculation with preview
+ */
+function calculateSwapOutputEnhanced() {
+    if (!poolData) return;
+    
+    const fromAmount = parseFloat(document.getElementById('from-amount').value) || 0;
+    const toAmountInput = document.getElementById('to-amount');
+    const preview = document.getElementById('transaction-preview');
+    const swapBtn = document.getElementById('swap-btn');
+    
+    if (fromAmount <= 0) {
+        toAmountInput.value = '';
+        preview.style.display = 'none';
+        swapBtn.disabled = true;
+        return;
+    }
+    
+    // Calculate output amount
+    let outputAmount;
+    if (swapDirection === 'AtoB') {
+        outputAmount = (fromAmount * poolData.ratioBDenominator) / poolData.ratioANumerator;
+    } else {
+        outputAmount = (fromAmount * poolData.ratioANumerator) / poolData.ratioBDenominator;
+    }
+    
+    toAmountInput.value = outputAmount.toFixed(6);
+    
+    // Calculate minimum received with slippage
+    const minimumReceived = outputAmount * (1 - slippageTolerance / 100);
+    
+    // Update transaction preview
+    updateTransactionPreview(fromAmount, outputAmount, minimumReceived);
+    
+    // Show preview and enable button
+    preview.style.display = 'block';
+    swapBtn.disabled = false;
+    
+    // Update price impact (mock calculation)
+    const priceImpact = Math.min(fromAmount * 0.01, 5); // Simple mock calculation
+    document.getElementById('price-impact-value').textContent = priceImpact.toFixed(2) + '%';
+    
+    // Show warning for high slippage
+    const warning = document.getElementById('preview-warning');
+    if (slippageTolerance > 2.0 || priceImpact > 3.0) {
+        warning.style.display = 'block';
+    } else {
+        warning.style.display = 'none';
+    }
+}
+
+/**
+ * Phase 4.1: Update transaction preview
+ */
+function updateTransactionPreview(fromAmount, toAmount, minimumReceived) {
+    if (!poolData) return;
+    
+    const fromSymbol = swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol;
+    const toSymbol = swapDirection === 'AtoB' ? poolData.tokenBSymbol : poolData.tokenASymbol;
+    
+    document.getElementById('preview-from-amount').textContent = `${fromAmount.toFixed(6)} ${fromSymbol}`;
+    document.getElementById('preview-to-amount').textContent = `${toAmount.toFixed(6)} ${toSymbol}`;
+    document.getElementById('preview-minimum').textContent = `${minimumReceived.toFixed(6)} ${toSymbol}`;
+    
+    // Exchange rate
+    const rate = toAmount / fromAmount;
+    document.getElementById('preview-rate').textContent = `1 ${fromSymbol} = ${rate.toFixed(6)} ${toSymbol}`;
+}
+
+/**
+ * Phase 4.1: Set slippage tolerance
+ */
+function setSlippage(percentage) {
+    slippageTolerance = percentage;
+    
+    // Update UI
+    document.getElementById('current-slippage').textContent = percentage + '%';
+    document.getElementById('custom-slippage').value = '';
+    
+    // Update active button
+    document.querySelectorAll('.slippage-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Find and activate the correct button
+    document.querySelectorAll('.slippage-btn').forEach(btn => {
+        if (btn.textContent === percentage + '%') {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Recalculate if we have amounts
+    calculateSwapOutputEnhanced();
+}
+
+/**
+ * Phase 4.1: Set custom slippage tolerance
+ */
+function setCustomSlippage() {
+    const customValue = parseFloat(document.getElementById('custom-slippage').value);
+    
+    if (!isNaN(customValue) && customValue >= 0 && customValue <= 50) {
+        slippageTolerance = customValue;
+        document.getElementById('current-slippage').textContent = customValue + '%';
+        
+        // Remove active class from preset buttons
+        document.querySelectorAll('.slippage-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Recalculate
+        calculateSwapOutputEnhanced();
+    }
+}
+
+/**
+ * Phase 4.1: Override updateSwapInterface with enhanced features
+ */
+function updateSwapInterfaceEnhanced() {
+    if (!poolData) return;
+    
+    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
+    
+    // Update token symbols and icons
+    if (swapDirection === 'AtoB') {
+        document.getElementById('from-token-symbol').textContent = poolData.tokenASymbol;
+        document.getElementById('to-token-symbol').textContent = poolData.tokenBSymbol;
+        document.getElementById('from-token-icon').textContent = poolData.tokenASymbol.charAt(0);
+        document.getElementById('to-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
+        document.getElementById('from-token-balance').textContent = mockBalances.tokenA.toFixed(6);
+        document.getElementById('to-token-balance').textContent = mockBalances.tokenB.toFixed(6);
+    } else {
+        document.getElementById('from-token-symbol').textContent = poolData.tokenBSymbol;
+        document.getElementById('to-token-symbol').textContent = poolData.tokenASymbol;
+        document.getElementById('from-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
+        document.getElementById('to-token-icon').textContent = poolData.tokenASymbol.charAt(0);
+        document.getElementById('from-token-balance').textContent = mockBalances.tokenB.toFixed(6);
+        document.getElementById('to-token-balance').textContent = mockBalances.tokenA.toFixed(6);
+    }
+    
+    // Reset amounts
+    document.getElementById('from-amount').value = '';
+    document.getElementById('to-amount').value = '';
+    
+    // Hide preview
+    document.getElementById('transaction-preview').style.display = 'none';
+    document.getElementById('swap-btn').disabled = true;
+}
+
 // Export functions for global access
 window.toggleSwapDirection = toggleSwapDirection;
 window.calculateSwapOutput = calculateSwapOutput;
 window.executeSwap = executeSwap;
+// Phase 4.1: Export enhanced functions
+window.selectFromToken = selectFromToken;
+window.selectToToken = selectToToken;
+window.setMaxAmount = setMaxAmount;
+window.calculateSwapOutputEnhanced = calculateSwapOutputEnhanced;
+window.setSlippage = setSlippage;
+window.setCustomSlippage = setCustomSlippage;
+window.updateSwapInterfaceEnhanced = updateSwapInterfaceEnhanced;
 window.togglePoolStateDetails = togglePoolStateDetails;
 
 // Initialize when page loads

@@ -244,6 +244,180 @@
             box-shadow: none;
         }
         
+        /* Phase 4.1: Enhanced Token Selection */
+        .token-selector-enhanced {
+            background: white;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .token-selector-enhanced:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+        
+        .token-selector-enhanced.active {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+        
+        .token-display {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .token-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        
+        .token-details {
+            flex: 1;
+            margin-left: 12px;
+        }
+        
+        .token-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+        }
+        
+        .token-balance-enhanced {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 2px;
+        }
+        
+        .token-dropdown-arrow {
+            font-size: 12px;
+            color: #9ca3af;
+            transition: transform 0.3s ease;
+        }
+        
+        /* Phase 4.1: Slippage Settings */
+        .slippage-section {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .slippage-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .slippage-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .slippage-options {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .slippage-btn {
+            padding: 6px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            color: #374151;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .slippage-btn:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+        
+        .slippage-btn.active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        
+        .slippage-custom {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .slippage-input {
+            width: 60px;
+            padding: 6px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 12px;
+            text-align: center;
+        }
+        
+        /* Phase 4.1: Transaction Preview */
+        .transaction-preview {
+            background: #fffbeb;
+            border: 1px solid #f59e0b;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            display: none;
+        }
+        
+        .preview-header {
+            font-size: 14px;
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .preview-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .preview-label {
+            color: #6b7280;
+        }
+        
+        .preview-value {
+            font-weight: 600;
+            color: #111827;
+        }
+        
+        .preview-warning {
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 4px;
+            padding: 8px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #991b1b;
+        }
+        
         .status-message {
             padding: 15px;
             border-radius: 8px;
@@ -360,22 +534,30 @@
             </div>
             
             <div id="swap-form" class="swap-form" style="display: none;">
-                <!-- From Token -->
+                <!-- Phase 4.1: Enhanced From Token -->
                 <div class="token-input-section">
-                    <div class="token-selector">
-                        <div class="token-info">
-                            <div class="token-symbol" id="from-token-symbol">TOKEN A</div>
-                            <div class="token-balance">Balance: <span id="from-token-balance">0</span></div>
+                    <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">From</label>
+                    <div class="token-selector-enhanced" id="from-token-selector" onclick="selectFromToken()">
+                        <div class="token-display">
+                            <div class="token-icon" id="from-token-icon">A</div>
+                            <div class="token-details">
+                                <div class="token-name" id="from-token-symbol">TOKEN A</div>
+                                <div class="token-balance-enhanced">Balance: <span id="from-token-balance">0.000000</span></div>
+                            </div>
+                            <div class="token-dropdown-arrow">▼</div>
                         </div>
-                        <div style="font-size: 14px; color: #666;">From</div>
                     </div>
                     <input type="number" 
                            class="amount-input" 
                            id="from-amount" 
-                           placeholder="0.00" 
+                           placeholder="0.000000" 
                            min="0" 
                            step="0.000001"
-                           oninput="calculateSwapOutput()">
+                           oninput="calculateSwapOutputEnhanced()"
+                           style="margin-top: 10px;">
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
+                        <span onclick="setMaxAmount()" style="color: #3b82f6; cursor: pointer; text-decoration: underline;">MAX</span>
+                    </div>
                 </div>
                 
                 <!-- Swap Direction Button -->
@@ -385,33 +567,92 @@
                     </button>
                 </div>
                 
-                <!-- To Token -->
+                <!-- Phase 4.1: Enhanced To Token -->
                 <div class="token-input-section">
-                    <div class="token-selector">
-                        <div class="token-info">
-                            <div class="token-symbol" id="to-token-symbol">TOKEN B</div>
-                            <div class="token-balance">Balance: <span id="to-token-balance">0</span></div>
+                    <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">To</label>
+                    <div class="token-selector-enhanced" id="to-token-selector" onclick="selectToToken()">
+                        <div class="token-display">
+                            <div class="token-icon" id="to-token-icon">B</div>
+                            <div class="token-details">
+                                <div class="token-name" id="to-token-symbol">TOKEN B</div>
+                                <div class="token-balance-enhanced">Balance: <span id="to-token-balance">0.000000</span></div>
+                            </div>
+                            <div class="token-dropdown-arrow">▼</div>
                         </div>
-                        <div style="font-size: 14px; color: #666;">To</div>
                     </div>
                     <input type="number" 
                            class="amount-input" 
                            id="to-amount" 
-                           placeholder="0.00" 
+                           placeholder="0.000000" 
                            readonly
-                           style="background: #f3f4f6;">
+                           style="background: #f3f4f6; margin-top: 10px;">
+                    <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
+                        Expected output
+                    </div>
                 </div>
                 
-                <!-- Exchange Rate Display -->
+                <!-- Phase 4.1: Enhanced Exchange Rate Display -->
                 <div class="exchange-rate-display">
-                    <div style="font-size: 14px; color: #374151; margin-bottom: 5px;">Exchange Rate</div>
-                    <div id="exchange-rate-text" style="font-size: 16px; font-weight: 600; color: #1f2937;">
+                    <div style="font-size: 14px; color: #374151; margin-bottom: 8px; font-weight: 600;">📊 Exchange Rate Information</div>
+                    <div id="exchange-rate-text" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 5px;">
                         Loading...
+                    </div>
+                    <div id="price-impact" style="font-size: 12px; color: #6b7280;">
+                        Price impact: <span id="price-impact-value">0.00%</span>
+                    </div>
+                </div>
+                
+                <!-- Phase 4.1: Slippage Tolerance Settings -->
+                <div class="slippage-section">
+                    <div class="slippage-header">
+                        <div class="slippage-title">⚙️ Slippage Tolerance</div>
+                        <div style="font-size: 12px; color: #6b7280;">Current: <span id="current-slippage">0.5%</span></div>
+                    </div>
+                    <div class="slippage-options">
+                        <button class="slippage-btn" onclick="setSlippage(0.1)">0.1%</button>
+                        <button class="slippage-btn active" onclick="setSlippage(0.5)">0.5%</button>
+                        <button class="slippage-btn" onclick="setSlippage(1.0)">1.0%</button>
+                        <div class="slippage-custom">
+                            <input type="number" class="slippage-input" id="custom-slippage" 
+                                   min="0" max="50" step="0.1" placeholder="2.0"
+                                   onchange="setCustomSlippage()">
+                            <span style="font-size: 12px; color: #6b7280;">%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Phase 4.1: Transaction Preview -->
+                <div class="transaction-preview" id="transaction-preview">
+                    <div class="preview-header">
+                        📋 Transaction Preview
+                    </div>
+                    <div class="preview-item">
+                        <span class="preview-label">You Pay:</span>
+                        <span class="preview-value" id="preview-from-amount">-</span>
+                    </div>
+                    <div class="preview-item">
+                        <span class="preview-label">You Receive:</span>
+                        <span class="preview-value" id="preview-to-amount">-</span>
+                    </div>
+                    <div class="preview-item">
+                        <span class="preview-label">Exchange Rate:</span>
+                        <span class="preview-value" id="preview-rate">-</span>
+                    </div>
+                    <div class="preview-item">
+                        <span class="preview-label">Minimum Received:</span>
+                        <span class="preview-value" id="preview-minimum">-</span>
+                    </div>
+                    <div class="preview-item">
+                        <span class="preview-label">Network Fee:</span>
+                        <span class="preview-value" id="preview-fee">~0.000005 SOL</span>
+                    </div>
+                    <div class="preview-warning" id="preview-warning" style="display: none;">
+                        ⚠️ High slippage detected. You may receive significantly less tokens than expected.
                     </div>
                 </div>
                 
                 <button class="swap-btn" id="swap-btn" onclick="executeSwap()" disabled>
-                    🔄 Swap Tokens
+                    🔄 Review Swap
                 </button>
             </div>
         </div>
