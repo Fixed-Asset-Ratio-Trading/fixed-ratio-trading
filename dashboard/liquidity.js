@@ -841,6 +841,198 @@ function togglePoolStateDetails() {
     }
 }
 
+/**
+ * Phase 3.1: Switch between add and remove liquidity operations
+ */
+function switchOperation(operation) {
+    const addToggle = document.getElementById('add-toggle');
+    const removeToggle = document.getElementById('remove-toggle');
+    const addSection = document.getElementById('add-liquidity-section');
+    const removeSection = document.getElementById('remove-liquidity-section');
+    
+    if (operation === 'add') {
+        addToggle.classList.add('active');
+        removeToggle.classList.remove('active');
+        addSection.style.display = 'block';
+        removeSection.style.display = 'none';
+    } else {
+        addToggle.classList.remove('active');
+        removeToggle.classList.add('active');
+        addSection.style.display = 'none';
+        removeSection.style.display = 'block';
+        
+        // Load LP token balances when switching to remove
+        loadLPTokenBalances();
+    }
+}
+
+/**
+ * Phase 3.1: Load LP token balances for connected wallet
+ */
+async function loadLPTokenBalances() {
+    if (!poolData || !window.backpack?.solana?.publicKey) {
+        console.log('No wallet connected or pool data unavailable');
+        return;
+    }
+    
+    try {
+        // Mock LP token balances (in real implementation, query SPL token accounts)
+        const mockLPBalances = {
+            tokenA: 1250.543210, // Mock LP Token A balance
+            tokenB: 2150.876543  // Mock LP Token B balance
+        };
+        
+        // Update LP token labels and balances
+        document.getElementById('lp-token-a-label').textContent = `LP ${poolData.tokenASymbol}`;
+        document.getElementById('lp-token-a-balance').textContent = mockLPBalances.tokenA.toFixed(6);
+        document.getElementById('lp-token-a-symbol').textContent = `LP ${poolData.tokenASymbol}`;
+        document.getElementById('lp-token-a-display').textContent = mockLPBalances.tokenA.toFixed(6);
+        
+        document.getElementById('lp-token-b-label').textContent = `LP ${poolData.tokenBSymbol}`;
+        document.getElementById('lp-token-b-balance').textContent = mockLPBalances.tokenB.toFixed(6);
+        document.getElementById('lp-token-b-symbol').textContent = `LP ${poolData.tokenBSymbol}`;
+        document.getElementById('lp-token-b-display').textContent = mockLPBalances.tokenB.toFixed(6);
+        
+        console.log('✅ LP token balances loaded');
+        
+    } catch (error) {
+        console.error('❌ Error loading LP token balances:', error);
+        showStatus('error', 'Failed to load LP token balances');
+    }
+}
+
+/**
+ * Phase 3.1: Select LP token for removal
+ */
+function selectLPToken(tokenType) {
+    const optionA = document.getElementById('lp-token-a-option');
+    const optionB = document.getElementById('lp-token-b-option');
+    
+    // Clear previous selections
+    optionA.classList.remove('selected');
+    optionB.classList.remove('selected');
+    
+    if (tokenType === 'a') {
+        optionA.classList.add('selected');
+        document.getElementById('selected-lp-token-name').textContent = `LP ${poolData.tokenASymbol}`;
+        document.getElementById('available-lp-symbol').textContent = `LP ${poolData.tokenASymbol}`;
+        
+        const balance = document.getElementById('lp-token-a-balance').textContent;
+        document.getElementById('available-lp-balance').textContent = balance;
+        
+        // Update expected output display
+        document.getElementById('output-token-label').textContent = `${poolData.tokenASymbol}:`;
+        
+    } else {
+        optionB.classList.add('selected');
+        document.getElementById('selected-lp-token-name').textContent = `LP ${poolData.tokenBSymbol}`;
+        document.getElementById('available-lp-symbol').textContent = `LP ${poolData.tokenBSymbol}`;
+        
+        const balance = document.getElementById('lp-token-b-balance').textContent;
+        document.getElementById('available-lp-balance').textContent = balance;
+        
+        // Update expected output display
+        document.getElementById('output-token-label').textContent = `${poolData.tokenBSymbol}:`;
+    }
+    
+    // Reset remove amount and update button
+    document.getElementById('remove-liquidity-amount').value = '';
+    updateRemoveButton();
+}
+
+/**
+ * Phase 3.1: Update remove liquidity button state
+ */
+function updateRemoveButton() {
+    const amount = parseFloat(document.getElementById('remove-liquidity-amount').value) || 0;
+    const selectedLP = document.querySelector('.lp-token-option.selected');
+    const button = document.getElementById('remove-liquidity-btn');
+    const expectedOutput = document.getElementById('expected-output');
+    
+    if (amount > 0 && selectedLP) {
+        button.disabled = false;
+        
+        // Calculate expected output (mock calculation)
+        const isTokenA = selectedLP.id === 'lp-token-a-option';
+        let expectedAmount;
+        
+        if (isTokenA) {
+            // Convert LP tokens to underlying Token A
+            expectedAmount = amount * 1.0; // 1:1 ratio for LP to underlying (simplified)
+        } else {
+            // Convert LP tokens to underlying Token B
+            expectedAmount = amount * 1.0; // 1:1 ratio for LP to underlying (simplified)
+        }
+        
+        document.getElementById('output-token-amount').textContent = expectedAmount.toFixed(6);
+        expectedOutput.style.display = 'block';
+        
+    } else {
+        button.disabled = true;
+        expectedOutput.style.display = 'none';
+    }
+}
+
+/**
+ * Phase 3.1: Execute remove liquidity transaction
+ */
+async function removeLiquidity() {
+    if (!poolData) {
+        showStatus('error', 'No pool data available');
+        return;
+    }
+    
+    const amount = parseFloat(document.getElementById('remove-liquidity-amount').value);
+    const selectedLP = document.querySelector('.lp-token-option.selected');
+    
+    if (!amount || !selectedLP) {
+        showStatus('error', 'Please select LP token and enter amount');
+        return;
+    }
+    
+    try {
+        const isTokenA = selectedLP.id === 'lp-token-a-option';
+        const tokenType = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
+        const lpTokenType = isTokenA ? `LP ${poolData.tokenASymbol}` : `LP ${poolData.tokenBSymbol}`;
+        
+        showStatus('info', `Removing ${amount} ${lpTokenType} from pool...`);
+        
+        // Mock remove liquidity operation
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        showStatus('success', `✅ Successfully removed ${amount} ${lpTokenType}! You received ${amount.toFixed(6)} ${tokenType}.`);
+        
+        // Reset form
+        document.getElementById('remove-liquidity-amount').value = '';
+        updateRemoveButton();
+        
+        // Reload LP balances
+        setTimeout(() => {
+            loadLPTokenBalances();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ Error removing liquidity:', error);
+        showStatus('error', `Failed to remove liquidity: ${error.message}`);
+    }
+}
+
+/**
+ * Update the original add liquidity function to use new ID
+ */
+function updateAddButton() {
+    const amount = parseFloat(document.getElementById('add-liquidity-amount').value) || 0;
+    const selectedToken = document.querySelector('.token-option.selected');
+    const button = document.getElementById('add-liquidity-btn');
+    
+    if (amount > 0 && selectedToken) {
+        button.disabled = false;
+        button.style.display = 'block';
+    } else {
+        button.disabled = true;
+    }
+}
+
 // Export for global access
 window.connectWallet = connectWallet;
 window.disconnectWallet = disconnectWallet;
@@ -848,5 +1040,10 @@ window.selectToken = selectToken;
 window.updateAddButton = updateAddButton;
 window.addLiquidity = addLiquidity;
 window.togglePoolStateDetails = togglePoolStateDetails; // Phase 2.1
+// Phase 3.1: Export new functions
+window.switchOperation = switchOperation;
+window.selectLPToken = selectLPToken;
+window.updateRemoveButton = updateRemoveButton;
+window.removeLiquidity = removeLiquidity;
 
 console.log('💧 Liquidity JavaScript loaded successfully'); 

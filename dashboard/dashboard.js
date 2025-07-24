@@ -7,6 +7,9 @@ let connection = null;
 let pools = [];
 let lastUpdate = null;
 let contractVersion = null;
+// Phase 2.2: Treasury and System State variables
+let mainTreasuryState = null;
+let systemState = null;
 
 // Initialize dashboard when page loads
 document.addEventListener('DOMContentLoaded', async () => {
@@ -98,6 +101,20 @@ async function initializeDashboard() {
             console.log(`📁 Pre-loaded ${pools.length} pools from JSON state file`);
         }
         
+        // Phase 2.2: Store treasury and system state data
+        if (initialState.mainTreasuryState) {
+            mainTreasuryState = initialState.mainTreasuryState;
+            console.log('🏛️ Loaded treasury state from JSON');
+        }
+        if (initialState.systemState) {
+            systemState = initialState.systemState;
+            console.log('⚙️ Loaded system state from JSON');
+        }
+        
+        // Phase 2.2: Update treasury and system state displays
+        updateTreasuryStateDisplay();
+        updateSystemStateDisplay();
+        
         // Initialize Solana connection
         // Initialize Solana connection with WebSocket configuration
         console.log('🔌 Connecting to Solana RPC...');
@@ -169,7 +186,14 @@ async function initializeDashboard() {
             }
         }
         
-        console.log('✅ Dashboard initialized successfully');
+        // Phase 2.3: Add dashboard state summary
+    if (mainTreasuryState || systemState) {
+        console.log('🏛️ Enhanced dashboard initialized with:', 
+            mainTreasuryState ? 'Treasury State ✅' : 'Treasury State ❌',
+            systemState ? 'System State ✅' : 'System State ❌');
+    }
+    
+    console.log('✅ Dashboard initialized successfully');
     } catch (error) {
         console.error('❌ Failed to initialize dashboard:', error);
         showError('Unexpected initialization error: ' + error.message);
@@ -337,6 +361,23 @@ async function refreshData() {
         
         // Render pools
         renderPools();
+        
+        // Phase 2.3: Refresh treasury and system state data
+        try {
+            const refreshedState = await loadInitialStateFromJSON();
+            if (refreshedState.mainTreasuryState) {
+                mainTreasuryState = refreshedState.mainTreasuryState;
+                updateTreasuryStateDisplay();
+                console.log('🏛️ Treasury state refreshed');
+            }
+            if (refreshedState.systemState) {
+                systemState = refreshedState.systemState;
+                updateSystemStateDisplay();
+                console.log('⚙️ System state refreshed');
+            }
+        } catch (stateError) {
+            console.warn('⚠️ Could not refresh treasury/system state:', stateError);
+        }
         
         // Update timestamp
         lastUpdate = new Date();
@@ -676,6 +717,7 @@ async function getTokenSymbols(tokenAMint, tokenBMint) {
 
 /**
  * Update summary statistics
+ * Phase 2.3: Enhanced with treasury state integration
  */
 function updateSummaryStats() {
     const totalPools = pools.length;
@@ -689,15 +731,36 @@ function updateSummaryStats() {
     const avgSwapFee = totalPools > 0 ? 
         Math.floor(pools.reduce((sum, pool) => sum + pool.swapFeeBasisPoints, 0) / totalPools) : 0;
     
+    // Phase 2.3: Use treasury state data when available for more accurate statistics
+    let totalSwaps = '--';
+    let treasuryPoolCount = totalPools;
+    let treasuryFeesSOL = totalFeesSOL;
+    
+    if (mainTreasuryState) {
+        totalSwaps = mainTreasuryState.regular_swap_count || '--';
+        treasuryPoolCount = mainTreasuryState.pool_creation_count || totalPools;
+        const treasuryTotalSOL = (
+            (mainTreasuryState.total_liquidity_fees || 0) +
+            (mainTreasuryState.total_regular_swap_fees || 0) +
+            (mainTreasuryState.total_swap_contract_fees || 0)
+        ) / 1000000000;
+        treasuryFeesSOL = treasuryTotalSOL;
+    }
+    
     // Update DOM elements
-    document.getElementById('total-pools').textContent = totalPools;
+    document.getElementById('total-pools').textContent = treasuryPoolCount;
     document.getElementById('active-pools').textContent = activePools;
     document.getElementById('paused-pools').textContent = pausedPools;
     document.getElementById('total-tvl').textContent = `${totalTVL.toLocaleString()} tokens`;
     document.getElementById('avg-pool-size').textContent = `${avgPoolSize.toLocaleString()} tokens`;
-    document.getElementById('total-fees').textContent = `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
+    document.getElementById('total-fees').textContent = mainTreasuryState ? 
+        `${treasuryFeesSOL.toFixed(4)} SOL` : 
+        `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
     document.getElementById('avg-swap-fee').textContent = `${avgSwapFee} bps`;
-    document.getElementById('total-swaps').textContent = '--'; // Would need transaction history
+    document.getElementById('total-swaps').textContent = totalSwaps;
+    
+    // Phase 2.3: Add system status indicator
+    updateSystemStatusIndicator();
 }
 
 /**
@@ -1133,6 +1196,181 @@ function swapTokens(poolAddress) {
 }
 
 /**
+ * Phase 2.2: Update Treasury State Display
+ */
+function updateTreasuryStateDisplay() {
+    const treasurySection = document.getElementById('treasury-state-section');
+    const treasuryContent = document.getElementById('treasury-state-content');
+    
+    if (!mainTreasuryState) {
+        treasurySection.style.display = 'none';
+        return;
+    }
+    
+    treasurySection.style.display = 'block';
+    treasuryContent.innerHTML = generateTreasuryStateFields();
+}
+
+/**
+ * Phase 2.2: Generate Treasury State fields display
+ */
+function generateTreasuryStateFields() {
+    if (!mainTreasuryState) return '<div>No treasury state data available</div>';
+    
+    return `
+        <!-- Balance Information -->
+        <div class="treasury-state-section">
+            <h4 style="color: #ea580c; margin: 0 0 15px 0; border-bottom: 2px solid #fed7aa; padding-bottom: 5px;">💰 Balance Information</h4>
+            <div class="state-field"><strong>total_balance:</strong><br><code>${mainTreasuryState.total_balance || 'N/A'} lamports (${((mainTreasuryState.total_balance || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+            <div class="state-field"><strong>rent_exempt_minimum:</strong><br><code>${mainTreasuryState.rent_exempt_minimum || 'N/A'} lamports (${((mainTreasuryState.rent_exempt_minimum || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+            <div class="state-field"><strong>total_withdrawn:</strong><br><code>${mainTreasuryState.total_withdrawn || 'N/A'} lamports (${((mainTreasuryState.total_withdrawn || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+        </div>
+        
+        <!-- Operation Counters -->
+        <div class="treasury-state-section">
+            <h4 style="color: #3b82f6; margin: 0 0 15px 0; border-bottom: 2px solid #bfdbfe; padding-bottom: 5px;">📊 Operation Counters</h4>
+            <div class="state-field"><strong>pool_creation_count:</strong><br><code>${mainTreasuryState.pool_creation_count || 'N/A'}</code></div>
+            <div class="state-field"><strong>liquidity_operation_count:</strong><br><code>${mainTreasuryState.liquidity_operation_count || 'N/A'}</code></div>
+            <div class="state-field"><strong>regular_swap_count:</strong><br><code>${mainTreasuryState.regular_swap_count || 'N/A'}</code></div>
+            <div class="state-field"><strong>treasury_withdrawal_count:</strong><br><code>${mainTreasuryState.treasury_withdrawal_count || 'N/A'}</code></div>
+            <div class="state-field"><strong>failed_operation_count:</strong><br><code>${mainTreasuryState.failed_operation_count || 'N/A'}</code></div>
+        </div>
+        
+        <!-- Fee Totals -->
+        <div class="treasury-state-section">
+            <h4 style="color: #10b981; margin: 0 0 15px 0; border-bottom: 2px solid #bbf7d0; padding-bottom: 5px;">💸 Fee Totals</h4>
+            <div class="state-field"><strong>total_pool_creation_fees:</strong><br><code>${mainTreasuryState.total_pool_creation_fees || 'N/A'} lamports (${((mainTreasuryState.total_pool_creation_fees || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+            <div class="state-field"><strong>total_liquidity_fees:</strong><br><code>${mainTreasuryState.total_liquidity_fees || 'N/A'} lamports (${((mainTreasuryState.total_liquidity_fees || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+            <div class="state-field"><strong>total_regular_swap_fees:</strong><br><code>${mainTreasuryState.total_regular_swap_fees || 'N/A'} lamports (${((mainTreasuryState.total_regular_swap_fees || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+            <div class="state-field"><strong>total_swap_contract_fees:</strong><br><code>${mainTreasuryState.total_swap_contract_fees || 'N/A'} lamports (${((mainTreasuryState.total_swap_contract_fees || 0) / 1000000000).toFixed(4)} SOL)</code></div>
+        </div>
+        
+        <!-- Consolidation Information -->
+        <div class="treasury-state-section">
+            <h4 style="color: #8b5cf6; margin: 0 0 15px 0; border-bottom: 2px solid #e9d5ff; padding-bottom: 5px;">🔄 Consolidation Information</h4>
+            <div class="state-field"><strong>last_update_timestamp:</strong><br><code>${mainTreasuryState.last_update_timestamp || 'N/A'}${mainTreasuryState.last_update_timestamp ? ` (${new Date(mainTreasuryState.last_update_timestamp * 1000).toLocaleString()})` : ''}</code></div>
+            <div class="state-field"><strong>total_consolidations_performed:</strong><br><code>${mainTreasuryState.total_consolidations_performed || 'N/A'}</code></div>
+            <div class="state-field"><strong>last_consolidation_timestamp:</strong><br><code>${mainTreasuryState.last_consolidation_timestamp || 'N/A'}${mainTreasuryState.last_consolidation_timestamp ? ` (${new Date(mainTreasuryState.last_consolidation_timestamp * 1000).toLocaleString()})` : ''}</code></div>
+        </div>
+    `;
+}
+
+/**
+ * Phase 2.2: Update System State Display
+ */
+function updateSystemStateDisplay() {
+    const systemSection = document.getElementById('system-state-section');
+    const systemContent = document.getElementById('system-state-content');
+    
+    if (!systemState) {
+        systemSection.style.display = 'none';
+        return;
+    }
+    
+    systemSection.style.display = 'block';
+    systemContent.innerHTML = generateSystemStateFields();
+}
+
+/**
+ * Phase 2.2: Generate System State fields display
+ */
+function generateSystemStateFields() {
+    if (!systemState) return '<div>No system state data available</div>';
+    
+    // Decode pause reason if available
+    const pauseReasonDecoded = decodePauseReason(systemState.pause_reason_code);
+    
+    return `
+        <!-- System Status -->
+        <div class="system-state-section">
+            <h4 style="color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 5px;">⚙️ System Status</h4>
+            <div class="state-field"><strong>is_paused:</strong><br><code>${systemState.is_paused ? '🚨 PAUSED' : '✅ ACTIVE'}</code></div>
+            <div class="state-field"><strong>pause_timestamp:</strong><br><code>${systemState.pause_timestamp || 'N/A'}${systemState.pause_timestamp ? ` (${new Date(systemState.pause_timestamp * 1000).toLocaleString()})` : ''}</code></div>
+            <div class="state-field"><strong>pause_reason_code:</strong><br><code>${systemState.pause_reason_code || 'N/A'}</code></div>
+            <div class="state-field"><strong>pause_reason_decoded:</strong><br><code>${pauseReasonDecoded}</code></div>
+        </div>
+    `;
+}
+
+/**
+ * Phase 2.2: Decode pause reason code
+ */
+function decodePauseReason(reasonCode) {
+    if (!reasonCode) return 'No pause reason';
+    
+    const reasons = {
+        0: 'No pause (system active)',
+        1: 'Emergency pause',
+        2: 'Maintenance pause', 
+        3: 'Security incident',
+        4: 'Upgrade in progress',
+        5: 'Configuration change',
+        6: 'Manual operator pause',
+        7: 'Automated safety pause',
+        8: 'Network instability',
+        9: 'Resource exhaustion',
+        10: 'Unknown/Other'
+    };
+    
+    return reasons[reasonCode] || `Unknown reason code: ${reasonCode}`;
+}
+
+/**
+ * Phase 2.2: Toggle Treasury State details visibility
+ */
+function toggleTreasuryStateDetails() {
+    const details = document.getElementById('treasury-state-details');
+    const indicator = document.getElementById('treasury-expand-indicator');
+    
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        indicator.textContent = '▲';
+    } else {
+        details.style.display = 'none';
+        indicator.textContent = '▼';
+    }
+}
+
+/**
+ * Phase 2.2: Toggle System State details visibility
+ */
+function toggleSystemStateDetails() {
+    const details = document.getElementById('system-state-details');
+    const indicator = document.getElementById('system-expand-indicator');
+    
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        indicator.textContent = '▲';
+    } else {
+        details.style.display = 'none';
+        indicator.textContent = '▼';
+    }
+}
+
+/**
+ * Phase 2.3: Update system status indicator in the main dashboard
+ */
+function updateSystemStatusIndicator() {
+    // Add system status to the network status card
+    const programStatusElement = document.getElementById('program-status');
+    if (programStatusElement && systemState) {
+        const statusText = systemState.is_paused ? '🚨 System Paused' : '✅ System Active';
+        const statusColor = systemState.is_paused ? '#ef4444' : '#10b981';
+        
+        // Update program status to include system status
+        programStatusElement.innerHTML = `
+            <span style="color: ${statusColor};">${statusText}</span>
+        `;
+        
+        // Add treasury balance if available
+        if (mainTreasuryState) {
+            const treasuryBalance = (mainTreasuryState.total_balance / 1000000000).toFixed(4);
+            programStatusElement.innerHTML += `<br><small style="color: #666;">Treasury: ${treasuryBalance} SOL</small>`;
+        }
+    }
+}
+
+/**
  * Update pool liquidity by reading from contract
  */
 async function updatePoolLiquidity(poolAddress) {
@@ -1177,5 +1415,8 @@ window.forceRefreshPools = forceRefreshPools;
 window.debugRPC = debugRPC;
 window.addLiquidity = addLiquidity;
 window.updatePoolLiquidity = updatePoolLiquidity;
+// Phase 2.2: Treasury and System State toggle functions
+window.toggleTreasuryStateDetails = toggleTreasuryStateDetails;
+window.toggleSystemStateDetails = toggleSystemStateDetails;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 

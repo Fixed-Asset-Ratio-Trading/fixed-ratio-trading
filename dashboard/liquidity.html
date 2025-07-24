@@ -355,6 +355,182 @@
             margin-top: 3px;
         }
         
+        /* Phase 3.1: Liquidity Operations Styles */
+        .liquidity-operations-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #6366f1;
+        }
+        
+        .operation-toggle {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .toggle-btn {
+            padding: 12px 24px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            background: white;
+            color: #6b7280;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .toggle-btn:hover {
+            border-color: #6366f1;
+            color: #6366f1;
+            transform: translateY(-2px);
+        }
+        
+        .toggle-btn.active {
+            background: #6366f1;
+            color: white;
+            border-color: #6366f1;
+        }
+        
+        .lp-balances-section {
+            background: #f0f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #bfdbfe;
+        }
+        
+        .lp-balance-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .lp-balance-item {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .lp-token-label {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+        
+        .lp-token-balance {
+            font-size: 18px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        
+        .lp-token-selection {
+            margin-bottom: 20px;
+        }
+        
+        .lp-token-choice {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .lp-token-option {
+            background: #f8f9fa;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        
+        .lp-token-option:hover {
+            border-color: #6366f1;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+        
+        .lp-token-option.selected {
+            border-color: #10b981;
+            background: #f0fdf4;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        
+        .lp-token-symbol {
+            font-size: 18px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .lp-token-balance-display {
+            color: #10b981;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .expected-output {
+            background: #ecfdf5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #bbf7d0;
+        }
+        
+        .output-display {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .output-label {
+            font-weight: 600;
+            color: #374151;
+        }
+        
+        .output-amount {
+            font-weight: 700;
+            color: #059669;
+            font-size: 18px;
+        }
+        
+        .remove-liquidity-btn {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+            display: block;
+        }
+        
+        .remove-liquidity-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+        }
+        
+        .remove-liquidity-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
         @media (max-width: 768px) {
             .container {
                 padding: 20px;
@@ -370,6 +546,25 @@
             
             .pool-state-section {
                 margin-bottom: 15px;
+            }
+            
+            /* Phase 3.1: Mobile responsive styles */
+            .operation-toggle {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .lp-balance-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .lp-token-choice {
+                grid-template-columns: 1fr;
+            }
+            
+            .output-display {
+                flex-direction: column;
+                gap: 5px;
             }
         }
     </style>
@@ -438,9 +633,22 @@
             </div>
         </div>
         
-        <!-- Amount Section -->
-        <div class="amount-section" id="amount-section">
-            <h2 style="color: #333; margin-bottom: 10px;">💰 Enter Amount</h2>
+        <!-- Phase 3.1: Liquidity Operations Toggle -->
+        <div class="liquidity-operations-section">
+            <h2 style="color: #333; margin-bottom: 15px;">💧 Liquidity Operations</h2>
+            <div class="operation-toggle">
+                <button class="toggle-btn active" id="add-toggle" onclick="switchOperation('add')">
+                    ➕ Add Liquidity
+                </button>
+                <button class="toggle-btn" id="remove-toggle" onclick="switchOperation('remove')">
+                    ➖ Remove Liquidity
+                </button>
+            </div>
+        </div>
+
+        <!-- Add Liquidity Section -->
+        <div class="amount-section" id="add-liquidity-section">
+            <h2 style="color: #333; margin-bottom: 10px;">💰 Add Liquidity</h2>
             <p style="color: #666; margin-bottom: 15px;">Enter the amount of tokens to add to the liquidity pool</p>
             
             <div style="text-align: center;">
@@ -449,7 +657,7 @@
                 </div>
                 <input type="number" 
                        class="amount-input" 
-                       id="liquidity-amount" 
+                       id="add-liquidity-amount" 
                        placeholder="0.00" 
                        min="0" 
                        step="0.000001"
@@ -458,11 +666,79 @@
                     Available: <span id="available-balance">0</span> <span id="available-token-symbol">TOKEN</span>
                 </div>
             </div>
+            
+            <button class="add-liquidity-btn" id="add-liquidity-btn" onclick="addLiquidity()">
+                💧 Add Liquidity
+            </button>
         </div>
-        
-        <button class="add-liquidity-btn" id="add-liquidity-btn" onclick="addLiquidity()">
-            💧 Add Liquidity
-        </button>
+
+        <!-- Phase 3.1: Remove Liquidity Section -->
+        <div class="amount-section" id="remove-liquidity-section" style="display: none;">
+            <h2 style="color: #333; margin-bottom: 10px;">💰 Remove Liquidity</h2>
+            <p style="color: #666; margin-bottom: 15px;">Enter the amount of LP tokens to remove from the liquidity pool</p>
+            
+            <!-- LP Token Balances Display -->
+            <div class="lp-balances-section">
+                <h3 style="color: #374151; margin-bottom: 10px;">🎫 Your LP Token Balances</h3>
+                <div class="lp-balance-grid">
+                    <div class="lp-balance-item">
+                        <div class="lp-token-label" id="lp-token-a-label">LP Token A</div>
+                        <div class="lp-token-balance" id="lp-token-a-balance">0.000000</div>
+                    </div>
+                    <div class="lp-balance-item">
+                        <div class="lp-token-label" id="lp-token-b-label">LP Token B</div>
+                        <div class="lp-token-balance" id="lp-token-b-balance">0.000000</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- LP Token Selection -->
+            <div class="lp-token-selection">
+                <h3 style="color: #374151; margin-bottom: 10px;">🔄 Select LP Token to Remove</h3>
+                <div class="lp-token-choice">
+                    <div class="lp-token-option" id="lp-token-a-option" onclick="selectLPToken('a')">
+                        <div class="lp-token-symbol" id="lp-token-a-symbol">LP Token A</div>
+                        <div class="lp-token-balance-display" id="lp-token-a-display">0.000000</div>
+                    </div>
+                    <div class="lp-token-option" id="lp-token-b-option" onclick="selectLPToken('b')">
+                        <div class="lp-token-symbol" id="lp-token-b-symbol">LP Token B</div>
+                        <div class="lp-token-balance-display" id="lp-token-b-display">0.000000</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Remove Amount Input -->
+            <div style="text-align: center; margin-top: 20px;">
+                <div style="font-size: 14px; color: #666; margin-bottom: 5px;">
+                    Amount of <span id="selected-lp-token-name">LP Token</span> to remove
+                </div>
+                <input type="number" 
+                       class="amount-input" 
+                       id="remove-liquidity-amount" 
+                       placeholder="0.000000" 
+                       min="0" 
+                       step="0.000001"
+                       onchange="updateRemoveButton()">
+                <div style="font-size: 12px; color: #999; margin-top: 8px;">
+                    Available: <span id="available-lp-balance">0.000000</span> <span id="available-lp-symbol">LP Token</span>
+                </div>
+                
+                <!-- Expected Output Display -->
+                <div class="expected-output" id="expected-output" style="display: none;">
+                    <h4 style="color: #374151; margin: 15px 0 10px 0;">📈 Expected Output</h4>
+                    <div class="output-display">
+                        <div class="output-item">
+                            <span class="output-label" id="output-token-label">Token:</span>
+                            <span class="output-amount" id="output-token-amount">0.000000</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="remove-liquidity-btn" id="remove-liquidity-btn" onclick="removeLiquidity()" disabled>
+                💧 Remove Liquidity
+            </button>
+        </div>
     </div>
 
     <!-- Scripts -->

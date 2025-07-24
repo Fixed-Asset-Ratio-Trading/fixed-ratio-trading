@@ -1,14 +1,75 @@
 {
   "metadata": {
-    "generated_at": "2025-07-23T12:20:01.603Z",
-    "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
+    "generated_at": "2024-11-19T23:28:33.901Z",
+    "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
-    "solana_environment": "remote"
+    "solana_environment": "localnet"
   },
-  "pools": [],
-  "main_treasury_state": null,
-  "system_state": null,
+  "pools": [
+    {
+      "address": "ExamplePoolAddress123456789",
+      "owner": "ExampleOwnerAddress123456789",
+      "token_a_mint": "TokenAMintAddress123456789",
+      "token_b_mint": "TokenBMintAddress123456789",
+      "token_a_vault": "TokenAVaultAddress123456789",
+      "token_b_vault": "TokenBVaultAddress123456789",
+      "lp_token_a_mint": "LPTokenAMintAddress123456789",
+      "lp_token_b_mint": "LPTokenBMintAddress123456789",
+      "ratio_a_numerator": 1002,
+      "ratio_b_denominator": 1,
+      "total_token_a_liquidity": 1500000,
+      "total_token_b_liquidity": 1500,
+      "pool_authority_bump_seed": 254,
+      "token_a_vault_bump_seed": 253,
+      "token_b_vault_bump_seed": 252,
+      "lp_token_a_mint_bump_seed": 251,
+      "lp_token_b_mint_bump_seed": 250,
+      "flags": 1,
+      "contract_liquidity_fee": 5000000,
+      "swap_contract_fee": 2000000,
+      "collected_fees_token_a": 25000,
+      "collected_fees_token_b": 25,
+      "total_fees_withdrawn_token_a": 0,
+      "total_fees_withdrawn_token_b": 0,
+      "collected_liquidity_fees": 15000000,
+      "collected_swap_contract_fees": 8000000,
+      "total_sol_fees_collected": 23000000,
+      "last_consolidation_timestamp": 1700000000,
+      "total_consolidations": 3,
+      "total_fees_consolidated": 23000000,
+      "flags_decoded": {
+        "one_to_many_ratio": true,
+        "liquidity_paused": false,
+        "swaps_paused": false,
+        "withdrawal_protection": false,
+        "single_lp_token_mode": false
+      }
+    }
+  ],
+  "main_treasury_state": {
+    "total_balance": 5000000000,
+    "rent_exempt_minimum": 2000000,
+    "total_withdrawn": 500000000,
+    "pool_creation_count": 15,
+    "liquidity_operation_count": 85,
+    "regular_swap_count": 342,
+    "treasury_withdrawal_count": 3,
+    "failed_operation_count": 7,
+    "total_pool_creation_fees": 75000000,
+    "total_liquidity_fees": 425000000,
+    "total_regular_swap_fees": 684000000,
+    "total_swap_contract_fees": 136800000,
+    "last_update_timestamp": 1700123456,
+    "total_consolidations_performed": 12,
+    "last_consolidation_timestamp": 1700100000
+  },
+  "system_state": {
+    "is_paused": false,
+    "pause_timestamp": null,
+    "pause_reason_code": 0,
+    "pause_reason_decoded": "No pause / Normal operation"
+  },
   "pda_addresses": {
     "main_treasury": "EEaT1sB9AtMQMfrDPmrHmvD66kEJ8JqVzKMqQGhjaQ6p",
     "system_state": "ECLKV2UTXn1u6JCXKymLiHQhKfS97KL4VcWJwmTGRkZr"

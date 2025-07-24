@@ -322,6 +322,41 @@
             color: #666;
         }
         
+        /* Phase 2.2: Treasury and System State Display Styles */
+        .treasury-state-section, .system-state-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .state-field {
+            margin-bottom: 12px;
+            padding: 8px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        
+        .state-field strong {
+            color: #374151;
+            font-weight: 600;
+        }
+        
+        .state-field code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #1f2937;
+            word-break: break-all;
+            display: inline-block;
+            margin-top: 3px;
+        }
+        
         .error {
             background: #fee2e2;
             color: #991b1b;
@@ -500,6 +535,54 @@
                 <div class="status-item" title="Pool fees are percentage-based on traded tokens (0-0.5%)">
                     <span class="status-label">Avg Pool Fee Rate 📈</span>
                     <span class="status-value" id="avg-swap-fee">-- bps</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Phase 2.2: Treasury State Display -->
+        <div id="treasury-state-section" style="
+            background: white;
+            margin: 30px 0;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #f59e0b;
+            overflow: hidden;
+            display: none;
+        ">
+            <div style="padding: 20px; cursor: pointer; background: #f8f9fa; border-bottom: 1px solid #e5e7eb;" onclick="toggleTreasuryStateDetails()">
+                <h3 style="margin: 0; color: #333; display: flex; align-items: center; justify-content: between;">
+                    🏛️ Treasury State Details (Expandable Debug Section)
+                    <span id="treasury-expand-indicator" style="margin-left: auto; font-size: 20px;">▼</span>
+                </h3>
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Click to view all MainTreasuryState struct fields</p>
+            </div>
+            <div id="treasury-state-details" style="display: none; padding: 25px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div id="treasury-state-content">Loading treasury state...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Phase 2.2: System State Display -->
+        <div id="system-state-section" style="
+            background: white;
+            margin: 30px 0;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #ef4444;
+            overflow: hidden;
+            display: none;
+        ">
+            <div style="padding: 20px; cursor: pointer; background: #f8f9fa; border-bottom: 1px solid #e5e7eb;" onclick="toggleSystemStateDetails()">
+                <h3 style="margin: 0; color: #333; display: flex; align-items: center; justify-content: between;">
+                    ⚙️ System State Details (Expandable Debug Section)
+                    <span id="system-expand-indicator" style="margin-left: auto; font-size: 20px;">▼</span>
+                </h3>
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Click to view all SystemState struct fields</p>
+            </div>
+            <div id="system-state-details" style="display: none; padding: 25px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div id="system-state-content">Loading system state...</div>
                 </div>
             </div>
         </div>
