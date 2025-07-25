@@ -8,8 +8,8 @@ let wallet = null;
 let isConnected = false;
 let createdTokens = [];
 
-// Metaplex Token Metadata Program constants
-const TOKEN_METADATA_PROGRAM_ID = new solanaWeb3.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+// Metaplex Token Metadata Program ID - loaded from config
+let TOKEN_METADATA_PROGRAM_ID = null;
 
 // Token image mappings
 const TOKEN_IMAGES = {
@@ -54,6 +54,10 @@ function concatUint8Arrays(arrays) {
  * Get metadata account address for a mint
  */
 async function getMetadataAccount(mint) {
+    if (!TOKEN_METADATA_PROGRAM_ID) {
+        throw new Error('Token Metadata Program ID not loaded from config');
+    }
+    
     const [metadataAccount] = await solanaWeb3.PublicKey.findProgramAddress(
         [
             new TextEncoder().encode('metadata'),
@@ -78,6 +82,10 @@ function createMetadataInstruction(
     symbol,
     uri
 ) {
+    if (!TOKEN_METADATA_PROGRAM_ID) {
+        throw new Error('Token Metadata Program ID not loaded from config');
+    }
+    
     const keys = [
         { pubkey: metadataAccount, isSigner: false, isWritable: true },
         { pubkey: mint, isSigner: false, isWritable: false },
@@ -97,14 +105,28 @@ function createMetadataInstruction(
         creators: null
     };
 
-    // Build instruction data
+    // Build instruction data - basic format
     const encoder = new TextEncoder();
+    
+    // Simple fixed-size format that matches standard Metaplex expectations
+    const nameBuffer = new Uint8Array(32);
+    const symbolBuffer = new Uint8Array(10);  
+    const uriBuffer = new Uint8Array(200);
+    
+    const nameBytes = encoder.encode(data.name);
+    const symbolBytes = encoder.encode(data.symbol);
+    const uriBytes = encoder.encode(data.uri || '');
+    
+    nameBuffer.set(nameBytes.slice(0, 32));
+    symbolBuffer.set(symbolBytes.slice(0, 10));
+    uriBuffer.set(uriBytes.slice(0, 200));
+    
     const dataBytes = concatUint8Arrays([
-        new Uint8Array([0]), // CreateMetadataAccount instruction (discriminator = 0)
-        encoder.encode(data.name.padEnd(32, '\0')),
-        encoder.encode(data.symbol.padEnd(10, '\0')),
-        encoder.encode(data.uri.padEnd(200, '\0')),
-        new Uint8Array([0, 0]), // sellerFeeBasisPoints (u16)
+        new Uint8Array([0]), // CreateMetadataAccount instruction discriminator
+        nameBuffer,          // name (32 bytes)
+        symbolBuffer,        // symbol (10 bytes)
+        uriBuffer,          // uri (200 bytes)
+        new Uint8Array([0, 0]), // sellerFeeBasisPoints (u16 = 0)
         new Uint8Array([0]), // creators option (0 = None)
         new Uint8Array([1]), // isMutable (1 = true)
     ]);
@@ -151,10 +173,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
+ * Initialize Metaplex Token Metadata Program ID from config
+ */
+async function initializeMetaplexConfig() {
+    try {
+        // Wait for config to be loaded
+        let attempts = 0;
+        while (!window.TRADING_CONFIG && attempts < 50) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+        }
+        
+        if (window.TRADING_CONFIG && window.TRADING_CONFIG.metaplex && window.TRADING_CONFIG.metaplex.tokenMetadataProgramId) {
+            TOKEN_METADATA_PROGRAM_ID = new solanaWeb3.PublicKey(window.TRADING_CONFIG.metaplex.tokenMetadataProgramId);
+            console.log('✅ Loaded Token Metadata Program ID from config:', TOKEN_METADATA_PROGRAM_ID.toString());
+        } else {
+            console.warn('⚠️ No Metaplex config found, metadata creation will be disabled');
+            TOKEN_METADATA_PROGRAM_ID = null;
+        }
+    } catch (error) {
+        console.error('❌ Error loading Metaplex config:', error);
+        TOKEN_METADATA_PROGRAM_ID = null;
+    }
+}
+
+/**
  * Initialize the application
  */
 async function initializeApp() {
     try {
+        // Initialize Metaplex Token Metadata Program ID from config
+        await initializeMetaplexConfig();
+        
         // Initialize Solana connection with WebSocket configuration
         console.log('🔌 Connecting to Solana RPC...');
         const connectionConfig = {
@@ -395,7 +445,7 @@ async function createSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
         💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
@@ -443,7 +493,7 @@ async function createMicroSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Micro sample token "${microSampleData.name}" created successfully! 
         💰 ${microSampleData.supply.toLocaleString()} ${microSampleData.symbol} tokens minted to your wallet
@@ -492,7 +542,7 @@ async function createLargeSampleToken() {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         showStatus('success', `🎉 Large sample token "${largeSampleData.name}" created successfully! 
         💰 ${largeSampleData.supply.toLocaleString()} ${largeSampleData.symbol} tokens minted to your wallet
@@ -537,7 +587,7 @@ async function handleTokenCreation(event) {
         
         // Store created token
         createdTokens.push(tokenInfo);
-        sessionStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
         
         // Clear form
         clearForm();
@@ -757,9 +807,9 @@ async function createSPLToken(tokenData) {
             )
         );
         
-        // 6. Create token metadata (for wallet display and images) - SKIP on local networks
-        // Note: Metaplex Token Metadata Program only exists on mainnet/devnet, not local networks
-        if (imageURI && (connection.rpcEndpoint.includes('devnet') || connection.rpcEndpoint.includes('mainnet'))) {
+        // 6. Create token metadata (for wallet display and images)
+        // Temporarily disabled due to instruction format compatibility issues
+        if (imageURI && false) { // Disabled until we fix instruction format
             console.log('📄 Adding metadata instruction with image...');
             instructions.push(
                 createMetadataInstruction(
@@ -774,7 +824,7 @@ async function createSPLToken(tokenData) {
                 )
             );
         } else {
-            console.log('📄 Skipping metadata creation (local network detected)');
+            console.log('📄 Metadata creation temporarily disabled - basic token creation only');
         }
         
         // Create and send transaction

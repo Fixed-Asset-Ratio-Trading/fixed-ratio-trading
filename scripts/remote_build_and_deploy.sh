@@ -234,6 +234,30 @@ else
     echo -e "${BLUE}ℹ️  Skipping connectivity test (validator was just reset and verified)${NC}"
 fi
 
+# Step 3.5: Ensure Metaplex programs are deployed for local testing
+echo -e "${YELLOW}🎨 Checking Metaplex programs deployment...${NC}"
+echo "   Verifying Token Metadata Program for full token functionality"
+
+METAPLEX_SCRIPT="$PROJECT_ROOT/scripts/metaplex/manage_metaplex.sh"
+if [ -f "$METAPLEX_SCRIPT" ]; then
+    # Check if Metaplex programs are already deployed
+    if ! "$METAPLEX_SCRIPT" status >/dev/null 2>&1; then
+        echo "   Metaplex programs not found, deploying..."
+        if "$METAPLEX_SCRIPT" start; then
+            echo -e "${GREEN}✅ Metaplex programs deployed successfully${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Metaplex deployment failed, proceeding without full metadata support${NC}"
+            echo "   Note: Token creation may not include metadata on this deployment"
+        fi
+    else
+        echo -e "${GREEN}✅ Metaplex programs already deployed${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠️  Metaplex management script not found, skipping metadata setup${NC}"
+fi
+
+echo ""
+
 # Step 4: Check if build creates new changes
 echo -e "${YELLOW}🔍 Checking if app was modified...${NC}"
 

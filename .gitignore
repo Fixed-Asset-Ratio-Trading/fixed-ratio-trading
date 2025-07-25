@@ -2,6 +2,9 @@
 /test-ledger
 .DS_Store
 
+# Metaplex local deployment artifacts
+.metaplex/
+
 # Solana keypair files - NEVER commit these!
 !deployment_info.json
 target/deploy/*-keypair.json

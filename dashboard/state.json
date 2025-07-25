@@ -1,10 +1,10 @@
 {
   "metadata": {
-    "generated_at": "2025-07-24T09:13:55.240Z",
+    "generated_at": "2025-07-25T11:00:21.292Z",
     "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
     "rpc_url": "http://192.168.2.88:8899",
-    "script_version": "1.0.3097",
-    "solana_environment": "remote"
+    "script_version": "1.0.0",
+    "solana_environment": "localnet"
   },
   "pools": [],
   "main_treasury_state": null,

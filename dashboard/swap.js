@@ -172,25 +172,66 @@ async function enrichPoolData() {
 }
 
 /**
- * Get token symbols from sessionStorage or use defaults
+ * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
-        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
+        console.log(`🔍 Looking up symbols for tokens: ${tokenAMint} and ${tokenBMint}`);
         
-        const tokenA = createdTokens.find(t => t.mint === tokenAMint);
-        const tokenB = createdTokens.find(t => t.mint === tokenBMint);
+        // Get token A symbol
+        const tokenASymbol = await getTokenSymbol(tokenAMint, 'A');
+        
+        // Get token B symbol  
+        const tokenBSymbol = await getTokenSymbol(tokenBMint, 'B');
+        
+        console.log(`✅ Token symbols found: ${tokenASymbol}/${tokenBSymbol}`);
         
         return {
-            tokenA: tokenA?.symbol || `TOKEN-${tokenAMint?.slice(0, 4) || 'A'}`,
-            tokenB: tokenB?.symbol || `TOKEN-${tokenBMint?.slice(0, 4) || 'B'}`
+            tokenA: tokenASymbol,
+            tokenB: tokenBSymbol
         };
     } catch (error) {
-        console.warn('Error getting token symbols:', error);
+        console.warn('❌ Error getting token symbols:', error);
         return {
             tokenA: `TOKEN-${tokenAMint?.slice(0, 4) || 'A'}`,
             tokenB: `TOKEN-${tokenBMint?.slice(0, 4) || 'B'}`
         };
+    }
+}
+
+/**
+ * Get token symbol from localStorage, Metaplex, or default
+ */
+async function getTokenSymbol(tokenMint, tokenLabel) {
+    try {
+        // Check localStorage first
+        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        const localToken = createdTokens.find(t => t.mint === tokenMint);
+        
+        if (localToken?.symbol) {
+            console.log(`✅ Found token ${tokenLabel} symbol in localStorage: ${localToken.symbol}`);
+            return localToken.symbol;
+        }
+        
+        // Try Metaplex metadata (if available)
+        if (typeof queryTokenMetadata === 'function') {
+            console.log(`🔍 Querying Metaplex metadata for token ${tokenLabel}: ${tokenMint}`);
+            const metadataAccount = await queryTokenMetadata(tokenMint);
+            
+            if (metadataAccount?.symbol) {
+                console.log(`✅ Found token ${tokenLabel} symbol in Metaplex: ${metadataAccount.symbol}`);
+                return metadataAccount.symbol;
+            }
+        }
+        
+        // Fallback to default
+        const defaultSymbol = `TOKEN-${tokenMint?.slice(0, 4) || tokenLabel}`;
+        console.log(`⚠️ Using default symbol for token ${tokenLabel}: ${defaultSymbol}`);
+        return defaultSymbol;
+        
+    } catch (error) {
+        console.warn(`❌ Error getting symbol for token ${tokenLabel}:`, error);
+        return `TOKEN-${tokenMint?.slice(0, 4) || tokenLabel}`;
     }
 }
 

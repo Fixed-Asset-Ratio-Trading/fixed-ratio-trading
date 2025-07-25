@@ -9,6 +9,10 @@
     "programId": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
     "poolStateSeedPrefix": "pool_state"
   },
+  "metaplex": {
+    "tokenMetadataProgramId": "Bq4p12U2SqXAEZ7WC2t4izgivrYKpiy2kojKDUdTQVyS",
+    "lastUpdated": "2025-01-24"
+  },
   "wallets": {
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
   },

@@ -688,25 +688,127 @@ async function parsePoolState(data, address) {
 }
 
 /**
- * Try to get token symbols from sessionStorage or use defaults
+ * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
-        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
+        console.log(`🔍 Looking up symbols for tokens: ${tokenAMint} and ${tokenBMint}`);
         
-        const tokenA = createdTokens.find(t => t.mint === tokenAMint);
-        const tokenB = createdTokens.find(t => t.mint === tokenBMint);
+        // Get token A symbol
+        const tokenASymbol = await getTokenSymbol(tokenAMint, 'A');
+        
+        // Get token B symbol  
+        const tokenBSymbol = await getTokenSymbol(tokenBMint, 'B');
+        
+        console.log(`✅ Token symbols found: ${tokenASymbol}/${tokenBSymbol}`);
         
         return {
-            tokenA: tokenA?.symbol || `TOKEN-${tokenAMint.slice(0, 4)}`,
-            tokenB: tokenB?.symbol || `TOKEN-${tokenBMint.slice(0, 4)}`
+            tokenA: tokenASymbol,
+            tokenB: tokenBSymbol
         };
     } catch (error) {
-        console.warn('Error getting token symbols:', error);
+        console.warn('❌ Error getting token symbols:', error);
         return {
             tokenA: `TOKEN-${tokenAMint.slice(0, 4)}`,
             tokenB: `TOKEN-${tokenBMint.slice(0, 4)}`
         };
+    }
+}
+
+/**
+ * Get token symbol from localStorage, Metaplex, or default
+ */
+async function getTokenSymbol(tokenMint, tokenLabel) {
+    try {
+        // Check localStorage first
+        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+        const localToken = createdTokens.find(t => t.mint === tokenMint);
+        
+        if (localToken?.symbol) {
+            console.log(`✅ Found token ${tokenLabel} symbol in localStorage: ${localToken.symbol}`);
+            return localToken.symbol;
+        }
+        
+        // Try Metaplex metadata
+        console.log(`🔍 Querying Metaplex metadata for token ${tokenLabel}: ${tokenMint}`);
+        const metadataAccount = await queryTokenMetadata(tokenMint);
+        
+        if (metadataAccount?.symbol) {
+            console.log(`✅ Found token ${tokenLabel} symbol in Metaplex: ${metadataAccount.symbol}`);
+            return metadataAccount.symbol;
+        }
+        
+        // Fallback to default
+        const defaultSymbol = `TOKEN-${tokenMint.slice(0, 4)}`;
+        console.log(`⚠️ Using default symbol for token ${tokenLabel}: ${defaultSymbol}`);
+        return defaultSymbol;
+        
+    } catch (error) {
+        console.warn(`❌ Error getting symbol for token ${tokenLabel}:`, error);
+        return `TOKEN-${tokenMint.slice(0, 4)}`;
+    }
+}
+
+/**
+ * Query Metaplex Token Metadata Program for token metadata
+ */
+async function queryTokenMetadata(tokenMintAddress) {
+    try {
+        // Get Token Metadata Program ID from config
+        const TOKEN_METADATA_PROGRAM_ID = window.TRADING_CONFIG?.metaplex?.tokenMetadataProgramId 
+            ? new solanaWeb3.PublicKey(window.TRADING_CONFIG.metaplex.tokenMetadataProgramId)
+            : null;
+        
+        if (!TOKEN_METADATA_PROGRAM_ID) {
+            console.warn('⚠️ No Metaplex config found, skipping metadata query');
+            return null;
+        }
+        const tokenMint = new solanaWeb3.PublicKey(tokenMintAddress);
+        
+        // Derive metadata account PDA
+        const seeds = [
+            new TextEncoder().encode('metadata'),
+            TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+            tokenMint.toBuffer()
+        ];
+        
+        const [metadataAccount] = solanaWeb3.PublicKey.findProgramAddressSync(
+            seeds,
+            TOKEN_METADATA_PROGRAM_ID
+        );
+        
+        // Try to fetch the metadata account
+        const accountInfo = await connection.getAccountInfo(metadataAccount);
+        
+        if (!accountInfo) {
+            return null;
+        }
+        
+        // Basic parsing of metadata structure
+        const data = accountInfo.data;
+        let offset = 1; // Skip key byte
+        offset += 32; // Skip update authority
+        offset += 32; // Skip mint
+        
+        // Read name length and name
+        const nameLength = data.readUInt32LE(offset);
+        offset += 4;
+        const name = data.slice(offset, offset + nameLength).toString('utf8').replace(/\0/g, '');
+        offset += nameLength;
+        
+        // Read symbol length and symbol  
+        const symbolLength = data.readUInt32LE(offset);
+        offset += 4;
+        const symbol = data.slice(offset, offset + symbolLength).toString('utf8').replace(/\0/g, '');
+        
+        return {
+            name: name.trim(),
+            symbol: symbol.trim()
+        };
+        
+    } catch (error) {
+        console.warn(`❌ Error querying token metadata for ${tokenMintAddress}:`, error);
+        return null;
     }
 }
 

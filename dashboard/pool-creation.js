@@ -293,21 +293,102 @@ async function loadUserTokens() {
  */
 async function tryFetchTokenMetadata(tokenInfo) {
     try {
-        // Check if this is a token we created (stored in sessionStorage)
-        const createdTokens = JSON.parse(sessionStorage.getItem('createdTokens') || '[]');
+        // Check if this is a token we created (stored in localStorage)
+        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
         const createdToken = createdTokens.find(t => t.mint === tokenInfo.mint);
         
         if (createdToken) {
             tokenInfo.symbol = createdToken.symbol;
             tokenInfo.name = createdToken.name;
+            console.log(`✅ Found token metadata in localStorage: ${tokenInfo.symbol} (${tokenInfo.name})`);
             return;
         }
         
-        // For now, use default values. In a real app, you'd query token registries or metadata programs
-        console.log(`Using default metadata for token ${tokenInfo.mint}`);
+        // Try to fetch metadata from Metaplex Token Metadata Program
+        console.log(`🔍 Querying Metaplex metadata for token ${tokenInfo.mint}`);
+        const metadataAccount = await queryMetaplexMetadata(tokenInfo.mint);
+        
+        if (metadataAccount) {
+            tokenInfo.symbol = metadataAccount.symbol || tokenInfo.symbol;
+            tokenInfo.name = metadataAccount.name || tokenInfo.name;
+            console.log(`✅ Found Metaplex metadata: ${tokenInfo.symbol} (${tokenInfo.name})`);
+            return;
+        }
+        
+        // Fallback to default values
+        console.log(`⚠️ Using default metadata for token ${tokenInfo.mint}`);
         
     } catch (error) {
-        console.warn('Error fetching token metadata:', error);
+        console.warn('❌ Error fetching token metadata:', error);
+    }
+}
+
+/**
+ * Query Metaplex Token Metadata Program for token metadata
+ */
+async function queryMetaplexMetadata(tokenMintAddress) {
+    try {
+        // Get Token Metadata Program ID from config
+        const TOKEN_METADATA_PROGRAM_ID = window.TRADING_CONFIG?.metaplex?.tokenMetadataProgramId 
+            ? new solanaWeb3.PublicKey(window.TRADING_CONFIG.metaplex.tokenMetadataProgramId)
+            : null;
+        
+        if (!TOKEN_METADATA_PROGRAM_ID) {
+            console.warn('⚠️ No Metaplex config found, skipping metadata query');
+            return null;
+        }
+        const tokenMint = new solanaWeb3.PublicKey(tokenMintAddress);
+        
+        // Derive metadata account PDA
+        const seeds = [
+            new TextEncoder().encode('metadata'),
+            TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+            tokenMint.toBuffer()
+        ];
+        
+        const [metadataAccount] = solanaWeb3.PublicKey.findProgramAddressSync(
+            seeds,
+            TOKEN_METADATA_PROGRAM_ID
+        );
+        
+        console.log(`🔍 Checking metadata account: ${metadataAccount.toString()}`);
+        
+        // Try to fetch the metadata account
+        const accountInfo = await connection.getAccountInfo(metadataAccount);
+        
+        if (!accountInfo) {
+            console.log(`⚠️ No metadata account found for token ${tokenMintAddress}`);
+            return null;
+        }
+        
+        // Parse metadata (simplified - in production you'd use @metaplex-foundation/mpl-token-metadata)
+        const data = accountInfo.data;
+        
+        // Basic parsing of metadata structure
+        // This is a simplified version - the actual Metaplex metadata has a complex structure
+        let offset = 1; // Skip key byte
+        offset += 32; // Skip update authority
+        offset += 32; // Skip mint
+        
+        // Read name length and name
+        const nameLength = data.readUInt32LE(offset);
+        offset += 4;
+        const name = data.slice(offset, offset + nameLength).toString('utf8').replace(/\0/g, '');
+        offset += nameLength;
+        
+        // Read symbol length and symbol  
+        const symbolLength = data.readUInt32LE(offset);
+        offset += 4;
+        const symbol = data.slice(offset, offset + symbolLength).toString('utf8').replace(/\0/g, '');
+        
+        return {
+            name: name.trim(),
+            symbol: symbol.trim()
+        };
+        
+    } catch (error) {
+        console.warn(`❌ Error querying Metaplex metadata for ${tokenMintAddress}:`, error);
+        return null;
     }
 }
 

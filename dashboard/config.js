@@ -22,6 +22,9 @@ async function loadSharedConfig() {
             programId: sharedConfig.program.programId,
             poolStateSeedPrefix: sharedConfig.program.poolStateSeedPrefix,
             
+            // Metaplex settings
+            metaplex: sharedConfig.metaplex,
+            
             // Dashboard settings
             refreshInterval: sharedConfig.dashboard.refreshInterval,
             stateFile: sharedConfig.dashboard.stateFile,
@@ -48,6 +51,7 @@ async function loadSharedConfig() {
             disableRetryOnRateLimit: true,
             refreshInterval: 10000,
             poolStateSeedPrefix: 'pool_state',
+            metaplex: null, // No metaplex config in fallback
             expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
             version: '1.0.0',
             lastUpdated: '2024-01-15'
