@@ -7,14 +7,14 @@
 #   ./remote_build_and_deploy.sh [--reset|--noreset]
 #
 # Options:
-#   --reset     Reset the validator before deployment
-#   --noreset   Keep existing validator state (default behavior)
-#   (no option) Keep existing validator state (default behavior)
+#   --reset     Reset the validator before deployment (default behavior)
+#   --noreset   Keep existing validator state  
+#   (no option) Reset the validator before deployment (default behavior)
 
 set -e
 
 # Parse command line arguments
-VALIDATOR_RESET_OPTION=""
+VALIDATOR_RESET_OPTION="auto_reset"  # Default to reset
 for arg in "$@"; do
     case $arg in
         --reset)
@@ -128,14 +128,11 @@ VALIDATOR_RESET=false
 
 if [ "$VALIDATOR_RESET_OPTION" = "auto_reset" ]; then
     VALIDATOR_RESET=true
-    echo -e "${YELLOW}🔄 Resetting validator (--reset specified)${NC}"
+    echo -e "${YELLOW}🔄 Resetting validator (default behavior)${NC}"
 else
-    # Default behavior: no reset
+    # Explicit no reset
     VALIDATOR_RESET=false
-    echo -e "${BLUE}🔄 Keeping existing validator state (default)${NC}"
-    if [ "$VALIDATOR_RESET_OPTION" = "no_reset" ]; then
-        echo -e "${BLUE}   (--noreset explicitly specified)${NC}"
-    fi
+    echo -e "${BLUE}🔄 Keeping existing validator state (--noreset specified)${NC}"
 fi
 
 if [ "$VALIDATOR_RESET" = true ]; then
@@ -506,6 +503,128 @@ else
     echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
+# Step 12.5: Initialize program if this is a fresh deployment
+if [ "$DEPLOY_ACTION" = "CREATE" ]; then
+    echo ""
+    echo -e "${YELLOW}🏗️ Initializing program (creating system accounts)...${NC}"
+    echo "   This creates Treasury and System State accounts for the new program."
+    
+    # Use Node.js to invoke InitializeProgram instruction
+    # This is more reliable than trying to use solana CLI for arbitrary program calls
+    INIT_SCRIPT="
+const { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } = require('@solana/web3.js');
+const fs = require('fs');
+
+async function initializeProgram() {
+    try {
+        // Connect to RPC
+        const connection = new Connection('$RPC_URL', 'confirmed');
+        
+        // Load wallet keypair
+        const keypairData = JSON.parse(fs.readFileSync('$HOME/.config/solana/id.json'));
+        const payer = Keypair.fromSecretKey(new Uint8Array(keypairData));
+        
+        const programId = new PublicKey('$PROGRAM_ID');
+        
+                 // Create InitializeProgram instruction data (single byte discriminator)
+         const instructionData = new Uint8Array([0]);
+        
+        // Get System State PDA
+        const [systemStatePDA] = await PublicKey.findProgramAddress(
+            [Buffer.from('system_state')],
+            programId
+        );
+        
+        // Get Main Treasury PDA
+        const [mainTreasuryPDA] = await PublicKey.findProgramAddress(
+            [Buffer.from('main_treasury')],
+            programId
+        );
+        
+                 // Get Program Data PDA (required for authority validation)  
+         const programDataPDA = new PublicKey('${PROGRAM_DATA_ADDRESS}');
+         
+         // Create InitializeProgram instruction
+         const initInstruction = new TransactionInstruction({
+             keys: [
+                 { pubkey: payer.publicKey, isSigner: true, isWritable: true },        // 0. Program Authority
+                 { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false }, // 1. System Program (FIXED)
+                 { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false }, // 2. Rent Sysvar
+                 { pubkey: systemStatePDA, isSigner: false, isWritable: true },        // 3. System State PDA
+                 { pubkey: mainTreasuryPDA, isSigner: false, isWritable: true },       // 4. Main Treasury PDA
+                 { pubkey: programDataPDA, isSigner: false, isWritable: false }        // 5. Program Data Account
+             ],
+             programId: programId,
+             data: instructionData
+         });
+        
+        // Create and send transaction
+        const transaction = new Transaction().add(initInstruction);
+        const signature = await connection.sendTransaction(transaction, [payer]);
+        
+        // Wait for confirmation
+        await connection.confirmTransaction(signature);
+        
+        console.log(JSON.stringify({ success: true, signature: signature }));
+    } catch (error) {
+        console.log(JSON.stringify({ success: false, error: error.message }));
+    }
+}
+
+initializeProgram();
+"
+    
+    # Check if Node.js and required packages are available
+    if command -v node >/dev/null 2>&1; then
+        # Try to run the initialization
+        INIT_RESULT=$(echo "$INIT_SCRIPT" | node --input-type=module 2>&1)
+    
+        # Parse the JSON result from Node.js script
+        INIT_SUCCESS=$(echo "$INIT_RESULT" | jq -r '.success // false' 2>/dev/null)
+        
+        if [ "$INIT_SUCCESS" = "true" ]; then
+            INIT_TX_SIGNATURE=$(echo "$INIT_RESULT" | jq -r '.signature // "N/A"')
+            echo -e "${GREEN}✅ Program initialized successfully!${NC}"
+            echo "   Transaction: $INIT_TX_SIGNATURE"
+            echo "   System accounts (Treasury, System State) created."
+            INITIALIZATION_STATUS="success"
+            INITIALIZATION_TX="$INIT_TX_SIGNATURE"
+        
+        # Wait a moment for confirmation
+        echo "   Waiting for confirmation..."
+        sleep 3
+        
+        # Verify system accounts were created
+        MAIN_TREASURY_PDA=$(echo "import { PublicKey } from '@solana/web3.js'; const [pda] = PublicKey.findProgramAddressSync([Buffer.from('main_treasury')], new PublicKey('$PROGRAM_ID')); console.log(pda.toString());" | node --input-type=module 2>/dev/null || echo "")
+        if [ -n "$MAIN_TREASURY_PDA" ]; then
+            TREASURY_ACCOUNT=$(solana account "$MAIN_TREASURY_PDA" --url "$RPC_URL" --output json 2>/dev/null)
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}✅ System accounts verified - program ready for use!${NC}"
+            else
+                echo -e "${YELLOW}⚠️ Initialization completed but account verification pending${NC}"
+            fi
+        fi
+        else
+            # Initialization failed
+            INIT_ERROR=$(echo "$INIT_RESULT" | jq -r '.error // "Unknown error"' 2>/dev/null)
+            echo -e "${YELLOW}⚠️ Program initialization failed:${NC}"
+            echo "   Error: $INIT_ERROR"
+            echo -e "${YELLOW}   You can initialize manually using the dashboard${NC}"
+            INITIALIZATION_STATUS="failed"
+            INITIALIZATION_TX=""
+        fi
+    else
+        echo -e "${YELLOW}⚠️ Node.js not available, skipping automatic initialization${NC}"
+        echo -e "${YELLOW}   You can initialize manually using the dashboard${NC}"
+        INITIALIZATION_STATUS="skipped"
+        INITIALIZATION_TX=""
+    fi
+else
+    echo -e "${BLUE}ℹ️ Skipping initialization (upgrade deployment)${NC}"
+    INITIALIZATION_STATUS="skipped"
+    INITIALIZATION_TX=""
+fi
+
 # Step 13: Save deployment info
 echo -e "${YELLOW}💾 Saving deployment information...${NC}"
 cat > "$PROJECT_ROOT/deployment_info.json" << EOF
@@ -522,7 +641,9 @@ cat > "$PROJECT_ROOT/deployment_info.json" << EOF
   "backpack_wallet": "$BACKPACK_WALLET",
   "backpack_wallet_balance": "$FINAL_BALANCE",
   "deploy_action": "$DEPLOY_ACTION",
-  "deploy_result": "$DEPLOY_RESULT"
+  "deploy_result": "$DEPLOY_RESULT",
+  "initialization_status": "$INITIALIZATION_STATUS",
+  "initialization_transaction": "$INITIALIZATION_TX"
 }
 EOF
 
@@ -573,14 +694,30 @@ echo ""
 echo -e "${BLUE}📋 Deployment Details:${NC}"
 echo "  📈 Action: $DEPLOY_ACTION"
 echo "  ✅ Result: $DEPLOY_RESULT"
+echo "  🏗️ Initialization: $INITIALIZATION_STATUS"
+if [ "$INITIALIZATION_STATUS" = "success" ] && [ -n "$INITIALIZATION_TX" ]; then
+    echo "  🔗 Init Transaction: $INITIALIZATION_TX"
+fi
 echo "  📊 Program Data: $PROGRAM_DATA_ADDRESS"
 echo "  📏 Program Size: $PROGRAM_SIZE bytes"
 echo ""
 echo -e "${GREEN}💡 The contract is now live on the direct validator endpoint!${NC}"
 echo -e "${YELLOW}📝 Next Steps:${NC}"
-echo "  1. ✅ Contract is deployed and ready for use"
-echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
-echo "  3. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+if [ "$INITIALIZATION_STATUS" = "success" ]; then
+    echo "  1. ✅ Contract is deployed and initialized - ready for pools!"
+    echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
+    echo "  3. 🏊‍♂️ Create pools via dashboard (no manual initialization needed)"
+    echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+elif [ "$INITIALIZATION_STATUS" = "failed" ]; then
+    echo "  1. ✅ Contract is deployed but initialization failed"
+    echo "  2. 🏗️ Initialize manually via dashboard before creating pools"
+    echo "  3. 🌐 Access via dashboard pointing to $RPC_URL"
+    echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+else
+    echo "  1. ✅ Contract is upgraded and ready for use"
+    echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
+    echo "  3. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+fi
 echo ""
 echo -e "${BLUE}🔗 Test connection:${NC}"
 echo "  curl -X POST -H \"Content-Type: application/json\" \\"

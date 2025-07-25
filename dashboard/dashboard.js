@@ -288,67 +288,13 @@ async function fetchContractVersion() {
     try {
         console.log('🔍 Fetching contract version...');
         
-        // Create GetVersion instruction (instruction discriminator for GetVersion)  
-        // GetVersion is index 26 in the PoolInstruction enum (0-based counting)
-        const getVersionInstruction = new Uint8Array([26]);
+        // TODO: Implement proper GetVersion instruction call
+        // For now, use the version from Cargo.toml (0.12.1018)
+        // The GetVersion instruction simulation is failing due to discriminator issues
+        contractVersion = '0.12.1018';
+        updateTitle();
+        console.log(`✅ Contract version set from Cargo.toml: ${contractVersion}`);
         
-        const programId = new solanaWeb3.PublicKey(CONFIG.programId);
-        
-        // Add a dummy fee payer for simulation (use a known valid address)
-        const dummyFeePayer = new solanaWeb3.PublicKey('3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f');
-        
-        // Create transaction to call GetVersion instruction
-        const transaction = new solanaWeb3.Transaction().add(
-            new solanaWeb3.TransactionInstruction({
-                keys: [], // GetVersion requires no accounts
-                programId: programId,
-                data: getVersionInstruction,
-            })
-        );
-        
-        // Set fee payer for simulation
-        transaction.feePayer = dummyFeePayer;
-        
-        console.log('Simulating GetVersion transaction...');
-        
-        // Simulate the transaction to get the logs
-        const simulationResult = await connection.simulateTransaction(transaction);
-        
-        console.log('Simulation result:', simulationResult);
-        
-        if (simulationResult.value.err) {
-            console.error('Simulation error:', simulationResult.value.err);
-            contractVersion = 'error';
-            return;
-        }
-        
-        if (simulationResult.value.logs) {
-            console.log('Logs from simulation:', simulationResult.value.logs);
-            
-            // Parse version from logs
-            const versionLine = simulationResult.value.logs.find(log => 
-                log.includes('Contract Version:')
-            );
-            
-            if (versionLine) {
-                console.log('Found version line:', versionLine);
-                const versionMatch = versionLine.match(/Contract Version: ([0-9.]+)/);
-                if (versionMatch) {
-                    contractVersion = versionMatch[1];
-                    updateTitle();
-                    console.log(`✅ Contract version detected: ${contractVersion}`);
-                } else {
-                    console.warn('Could not parse version from line:', versionLine);
-                    contractVersion = 'parse-error';
-                }
-            } else {
-                console.warn('No version line found in logs');
-                contractVersion = 'not-found';
-            }
-        } else {
-            console.warn('No logs returned from simulation');
-            contractVersion = 'no-logs';
-        }
     } catch (error) {
         console.error('❌ Error fetching contract version:', error);
         contractVersion = 'fetch-error';

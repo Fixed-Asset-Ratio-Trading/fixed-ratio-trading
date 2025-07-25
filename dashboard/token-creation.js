@@ -757,8 +757,9 @@ async function createSPLToken(tokenData) {
             )
         );
         
-        // 6. Create token metadata (for wallet display and images)
-        if (imageURI) {
+        // 6. Create token metadata (for wallet display and images) - SKIP on local networks
+        // Note: Metaplex Token Metadata Program only exists on mainnet/devnet, not local networks
+        if (imageURI && (connection.rpcEndpoint.includes('devnet') || connection.rpcEndpoint.includes('mainnet'))) {
             console.log('📄 Adding metadata instruction with image...');
             instructions.push(
                 createMetadataInstruction(
@@ -773,19 +774,7 @@ async function createSPLToken(tokenData) {
                 )
             );
         } else {
-            console.log('📄 Adding metadata instruction without image...');
-            instructions.push(
-                createMetadataInstruction(
-                    metadataAccount,
-                    mintKeypair.publicKey,
-                    wallet.publicKey,     // mint authority
-                    wallet.publicKey,     // payer
-                    wallet.publicKey,     // update authority
-                    tokenData.name,
-                    tokenData.symbol,
-                    ''
-                )
-            );
+            console.log('📄 Skipping metadata creation (local network detected)');
         }
         
         // Create and send transaction

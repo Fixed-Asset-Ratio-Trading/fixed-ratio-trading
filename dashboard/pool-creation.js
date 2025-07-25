@@ -109,6 +109,9 @@ async function initializeApp() {
     }
 }
 
+// Program initialization is handled automatically during deployment by the program authority
+// Users do not need to manually initialize the program
+
 /**
  * Connect to Backpack wallet
  */
@@ -155,6 +158,8 @@ async function handleWalletConnected() {
         
         // Load user tokens
         await loadUserTokens();
+        
+        // Program initialization is handled by deployment script (program authority only)
         
     } catch (error) {
         console.error('❌ Error handling wallet connection:', error);
@@ -463,19 +468,12 @@ function updateRatioDisplay() {
     const ratioInput = document.getElementById('ratio-input');
     currentRatio = parseFloat(ratioInput.value) || 1;
     
-    // Use display utilities to show user-friendly ordering in ratio display
-    const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
-        selectedTokenA.symbol, 
-        selectedTokenB.symbol, 
-        Math.floor(currentRatio), 
-        1
-    );
-    
-    // Update display elements with user-friendly ordering
-    document.getElementById('ratio-token-a').textContent = display.baseToken;
-    document.getElementById('ratio-token-b').textContent = display.quoteToken;
-    document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(display.exchangeRate);
-    document.getElementById('ratio-input-label').textContent = display.quoteToken;
+    // Respect user's selection order: first selected token (Token A) should appear first
+    // Display as: 1 Token A = currentRatio Token B
+    document.getElementById('ratio-token-a').textContent = selectedTokenA.symbol;
+    document.getElementById('ratio-token-b').textContent = selectedTokenB.symbol;
+    document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(currentRatio);
+    document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
     
     // Update pool summary
     updatePoolSummary();
@@ -491,16 +489,12 @@ function updatePoolSummary() {
     const summaryPair = document.getElementById('summary-pair');
     const summaryRate = document.getElementById('summary-rate');
     
-    // Use display utilities to show user-friendly ordering
-    const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
-        selectedTokenA.symbol, 
-        selectedTokenB.symbol, 
-        Math.floor(currentRatio), 
-        1
-    );
+    // Respect user's selection order: first selected token appears first
+    const displayPair = `${selectedTokenA.symbol} / ${selectedTokenB.symbol}`;
+    const rateText = `1 ${selectedTokenA.symbol} = ${window.TokenDisplayUtils.formatExchangeRate(currentRatio)} ${selectedTokenB.symbol}`;
     
-    summaryPair.textContent = display.displayPair;
-    summaryRate.textContent = display.rateText;
+    summaryPair.textContent = displayPair;
+    summaryRate.textContent = rateText;
     
     summarySection.style.display = 'block';
 }
@@ -795,7 +789,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // Create instruction data for InitializePool
         const instructionData = concatUint8Arrays([
-            new Uint8Array([0]), // InitializePool instruction discriminator
+            new Uint8Array([1, 0, 0, 0]), // InitializePool instruction discriminator (variant 1, u32 little-endian)
             new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer), // ratio_a_numerator  
             new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator
         ]);
@@ -847,7 +841,8 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             .add(createPoolInstruction);
         
         // Set recent blockhash and fee payer
-        transaction.recentBlockhash = (await connection.getRecentBlockhash()).blockhash;
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
         transaction.feePayer = wallet.publicKey;
         
         // ✅ SECURITY FIX: No longer need to sign with LP token mint keypairs
