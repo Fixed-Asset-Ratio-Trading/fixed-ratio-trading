@@ -527,126 +527,43 @@ else
     echo -e "${RED}❌ Program keypair not found${NC}"
 fi
 
-# Step 12.5: Initialize program if this is a fresh deployment
+# Step 12.5: Initialize system with program authority (for fresh deployments)
 if [ "$DEPLOY_ACTION" = "CREATE" ]; then
     echo ""
-    echo -e "${YELLOW}🏗️ Initializing program (creating system accounts)...${NC}"
-    echo "   This creates Treasury and System State accounts for the new program."
-    
-    # Use Node.js to invoke InitializeProgram instruction
-    # This is more reliable than trying to use solana CLI for arbitrary program calls
-    INIT_SCRIPT="
-const { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } = require('@solana/web3.js');
-const fs = require('fs');
+    echo -e "${YELLOW}🔧 Initializing Fixed Ratio Trading system...${NC}"
 
-async function initializeProgram() {
-    try {
-        // Connect to RPC
-        const connection = new Connection('$RPC_URL', 'confirmed');
-        
-        // Load wallet keypair
-        const keypairData = JSON.parse(fs.readFileSync('$HOME/.config/solana/id.json'));
-        const payer = Keypair.fromSecretKey(new Uint8Array(keypairData));
-        
-        const programId = new PublicKey('$PROGRAM_ID');
-        
-                 // Create InitializeProgram instruction data (single byte discriminator)
-         const instructionData = new Uint8Array([0]);
-        
-        // Get System State PDA
-        const [systemStatePDA] = await PublicKey.findProgramAddress(
-            [Buffer.from('system_state')],
-            programId
-        );
-        
-        // Get Main Treasury PDA
-        const [mainTreasuryPDA] = await PublicKey.findProgramAddress(
-            [Buffer.from('main_treasury')],
-            programId
-        );
-        
-                 // Get Program Data PDA (required for authority validation)  
-         const programDataPDA = new PublicKey('${PROGRAM_DATA_ADDRESS}');
-         
-         // Create InitializeProgram instruction
-         const initInstruction = new TransactionInstruction({
-             keys: [
-                 { pubkey: payer.publicKey, isSigner: true, isWritable: true },        // 0. Program Authority
-                 { pubkey: new PublicKey('11111111111111111111111111111111'), isSigner: false, isWritable: false }, // 1. System Program (FIXED)
-                 { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false }, // 2. Rent Sysvar
-                 { pubkey: systemStatePDA, isSigner: false, isWritable: true },        // 3. System State PDA
-                 { pubkey: mainTreasuryPDA, isSigner: false, isWritable: true },       // 4. Main Treasury PDA
-                 { pubkey: programDataPDA, isSigner: false, isWritable: false }        // 5. Program Data Account
-             ],
-             programId: programId,
-             data: instructionData
-         });
-        
-        // Create and send transaction
-        const transaction = new Transaction().add(initInstruction);
-        const signature = await connection.sendTransaction(transaction, [payer]);
-        
-        // Wait for confirmation
-        await connection.confirmTransaction(signature);
-        
-        console.log(JSON.stringify({ success: true, signature: signature }));
-    } catch (error) {
-        console.log(JSON.stringify({ success: false, error: error.message }));
-    }
-}
-
-initializeProgram();
-"
-    
-    # Check if Node.js and required packages are available
-    if command -v node >/dev/null 2>&1; then
-        # Try to run the initialization
-        INIT_RESULT=$(echo "$INIT_SCRIPT" | node --input-type=module 2>&1)
-    
-        # Parse the JSON result from Node.js script
-        INIT_SUCCESS=$(echo "$INIT_RESULT" | jq -r '.success // false' 2>/dev/null)
-        
-        if [ "$INIT_SUCCESS" = "true" ]; then
-            INIT_TX_SIGNATURE=$(echo "$INIT_RESULT" | jq -r '.signature // "N/A"')
-            echo -e "${GREEN}✅ Program initialized successfully!${NC}"
-            echo "   Transaction: $INIT_TX_SIGNATURE"
-            echo "   System accounts (Treasury, System State) created."
-            INITIALIZATION_STATUS="success"
-            INITIALIZATION_TX="$INIT_TX_SIGNATURE"
-        
-        # Wait a moment for confirmation
-        echo "   Waiting for confirmation..."
-        sleep 3
-        
-        # Verify system accounts were created
-        MAIN_TREASURY_PDA=$(echo "import { PublicKey } from '@solana/web3.js'; const [pda] = PublicKey.findProgramAddressSync([Buffer.from('main_treasury')], new PublicKey('$PROGRAM_ID')); console.log(pda.toString());" | node --input-type=module 2>/dev/null || echo "")
-        if [ -n "$MAIN_TREASURY_PDA" ]; then
-            TREASURY_ACCOUNT=$(solana account "$MAIN_TREASURY_PDA" --url "$RPC_URL" --output json 2>/dev/null)
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}✅ System accounts verified - program ready for use!${NC}"
+    if command -v node &> /dev/null; then
+        # Check if @solana/web3.js is available
+        if [ -d "$PROJECT_ROOT/node_modules/@solana/web3.js" ]; then
+            echo "  Using existing @solana/web3.js installation..."
+            cd "$PROJECT_ROOT"
+            
+            # Use the consolidated initialization script
+            node scripts/initialize_system.js "$PROGRAM_ID" "$RPC_URL" "$KEYPAIR_PATH"
+            INIT_EXIT_CODE=$?
+            
+            if [ $INIT_EXIT_CODE -eq 0 ]; then
+                echo -e "${GREEN}✅ System initialization completed successfully${NC}"
+                INITIALIZATION_STATUS="success"
             else
-                echo -e "${YELLOW}⚠️ Initialization completed but account verification pending${NC}"
+                echo -e "${YELLOW}⚠️  System initialization failed, but deployment was successful${NC}"
+                echo "   Try running manually: node scripts/initialize_system.js $PROGRAM_ID $RPC_URL"
+                INITIALIZATION_STATUS="failed"
             fi
-        fi
         else
-            # Initialization failed
-            INIT_ERROR=$(echo "$INIT_RESULT" | jq -r '.error // "Unknown error"' 2>/dev/null)
-            echo -e "${YELLOW}⚠️ Program initialization failed:${NC}"
-            echo "   Error: $INIT_ERROR"
-            echo -e "${YELLOW}   You can initialize manually using the dashboard${NC}"
-            INITIALIZATION_STATUS="failed"
-            INITIALIZATION_TX=""
+            echo -e "${YELLOW}⚠️  @solana/web3.js not found, skipping automatic system initialization${NC}"
+            echo "   Run 'npm install @solana/web3.js' and then:"
+            echo "   node scripts/initialize_system.js $PROGRAM_ID $RPC_URL"
+            INITIALIZATION_STATUS="skipped"
         fi
     else
-        echo -e "${YELLOW}⚠️ Node.js not available, skipping automatic initialization${NC}"
-        echo -e "${YELLOW}   You can initialize manually using the dashboard${NC}"
+        echo -e "${YELLOW}⚠️  Node.js not found, skipping automatic system initialization${NC}"
+        echo "   Install Node.js and run: node scripts/initialize_system.js $PROGRAM_ID $RPC_URL"
         INITIALIZATION_STATUS="skipped"
-        INITIALIZATION_TX=""
     fi
 else
     echo -e "${BLUE}ℹ️ Skipping initialization (upgrade deployment)${NC}"
     INITIALIZATION_STATUS="skipped"
-    INITIALIZATION_TX=""
 fi
 
 # Step 13: Save deployment info
