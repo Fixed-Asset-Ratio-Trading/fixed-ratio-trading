@@ -420,6 +420,13 @@ async function scanForPools() {
             
             const poolPromises = programAccounts.map(async (account) => {
                 try {
+                    // Filter out accounts that are too small to be pools
+                    // Pool states should be 300+ bytes, Treasury ~120 bytes, SystemState ~10 bytes
+                    if (account.account.data.length < 300) {
+                        console.log(`⏭️ Skipping account ${account.pubkey.toString()} (${account.account.data.length} bytes) - too small for pool state`);
+                        return null;
+                    }
+                    
                     console.log(`🔍 Attempting to parse account ${account.pubkey.toString()} with ${account.account.data.length} bytes`);
                     const poolData = await parsePoolState(account.account.data, account.pubkey);
                     return poolData;
