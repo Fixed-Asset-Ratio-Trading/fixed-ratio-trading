@@ -7,14 +7,14 @@
 #   ./remote_build_and_deploy.sh [--reset|--noreset]
 #
 # Options:
-#   --reset     Reset the validator before deployment (default behavior)
-#   --noreset   Keep existing validator state  
-#   (no option) Reset the validator before deployment (default behavior)
+#   --reset     Reset the validator before deployment
+#   --noreset   Keep existing validator state (default behavior)
+#   (no option) Keep existing validator state (default behavior)
 
 set -e
 
 # Parse command line arguments
-VALIDATOR_RESET_OPTION="auto_reset"  # Default to reset
+VALIDATOR_RESET_OPTION="no_reset"  # Default to no reset (changed from auto_reset)
 for arg in "$@"; do
     case $arg in
         --reset)
@@ -128,11 +128,11 @@ VALIDATOR_RESET=false
 
 if [ "$VALIDATOR_RESET_OPTION" = "auto_reset" ]; then
     VALIDATOR_RESET=true
-    echo -e "${YELLOW}🔄 Resetting validator (default behavior)${NC}"
+    echo -e "${YELLOW}🔄 Resetting validator (--reset specified)${NC}"
 else
-    # Explicit no reset
+    # Default no reset
     VALIDATOR_RESET=false
-    echo -e "${BLUE}🔄 Keeping existing validator state (--noreset specified)${NC}"
+    echo -e "${BLUE}🔄 Keeping existing validator state (default behavior)${NC}"
 fi
 
 if [ "$VALIDATOR_RESET" = true ]; then

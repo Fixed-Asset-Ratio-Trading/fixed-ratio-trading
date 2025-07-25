@@ -111,6 +111,32 @@ RPC_URL=http://192.168.2.88:8899 ./scripts/metaplex/manage_metaplex.sh
 ### `query_program_state.js`
 Queries the current state of the Fixed Ratio Trading program.
 
+### `update_state_from_devnet.sh`
+**NEW:** Updates the dashboard state.json file with data from Solana devnet.
+
+**Features:**
+- Connects to Solana devnet and queries program state
+- Retrieves all pool states, treasury state, and system state
+- Updates the dashboard/state.json file with live devnet data
+- Enables dashboard to display real devnet program state
+
+**Usage:**
+```bash
+# Use program ID from shared-config.json
+./scripts/update_state_from_devnet.sh
+
+# Use custom program ID
+./scripts/update_state_from_devnet.sh --program-id YOUR_PROGRAM_ID
+```
+
+**Requirements:**
+- Node.js and npm installed
+- Internet connection to access devnet
+- Valid program ID (either in shared-config.json or specified via --program-id)
+
+**Purpose:**
+This script is useful when you want to view and monitor the state of your program deployed on devnet through your local dashboard. Instead of creating local test data, you can pull real state data from devnet.
+
 ---
 
 ## 🏗️ Architecture Notes
