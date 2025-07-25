@@ -686,11 +686,15 @@ async function confirmTransactionWithProgress(signature, commitment = 'confirmed
  * Create pool transaction
  */
 async function createPoolTransaction(tokenA, tokenB, ratio) {
-    try {
-        console.log('🏊‍♂️ Creating real pool transaction...');
-        
-        // Check if program is deployed
-        const programId = new solanaWeb3.PublicKey(CONFIG.programId);
+    const maxRetries = 3;
+    let lastError;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            console.log(`🏊‍♂️ Creating real pool transaction (attempt ${attempt}/${maxRetries})...`);
+            
+            // Check if program is deployed
+            const programId = new solanaWeb3.PublicKey(CONFIG.programId);
         const programAccount = await connection.getAccountInfo(programId);
         
         if (!programAccount) {
@@ -789,10 +793,17 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // Create instruction data for InitializePool
         const instructionData = concatUint8Arrays([
-            new Uint8Array([1, 0, 0, 0]), // InitializePool instruction discriminator (variant 1, u32 little-endian)
+            new Uint8Array([1]), // InitializePool instruction discriminator (single byte for enum variant 1)
             new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer), // ratio_a_numerator  
             new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator
         ]);
+        
+        console.log('🔍 Instruction data for InitializePool:');
+        console.log('  Discriminator: [1] (single byte)');
+        console.log('  ratio_a_numerator:', ratioPrimaryPerBase);
+        console.log('  ratio_b_denominator: 1');
+        console.log('  Total data length:', instructionData.length, 'bytes');
+        console.log('  Data:', Array.from(instructionData));
         
         // Check if accounts already exist
         const existingPoolAccount = await connection.getAccountInfo(poolStatePDA[0]);
@@ -809,23 +820,72 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             console.log('WARNING: Token B vault already exists:', tokenBVaultPDA[0].toString());
         }
         
-        // ✅ SECURITY FIX: Updated account structure to match smart contract's Phase 11 ultra-secure pattern
-        // 12 accounts total, LP token mints are now PDAs, not user-controlled keypairs
+        // Get System State PDA (required for pause validation)
+        const systemStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('system_state')],
+            programId
+        );
+        
+        console.log('System State PDA:', systemStatePDA[0].toString());
+        
+        // ✅ SECURITY FIX: Updated account structure to match smart contract's expected order
+        // 13 accounts total, matching the exact order expected by process_initialize_pool
+        const accountKeys = [
+            { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // 0: User Authority Signer
+            { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program Account
+            { pubkey: systemStatePDA[0], isSigner: false, isWritable: false },        // 2: System State PDA (for pause validation)
+            { pubkey: poolStatePDA[0], isSigner: false, isWritable: true },           // 3: Pool State PDA
+            { pubkey: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), isSigner: false, isWritable: false },   // 4: SPL Token Program Account
+            { pubkey: mainTreasuryPDA[0], isSigner: false, isWritable: true },        // 5: Main Treasury PDA
+            { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },      // 6: Rent Sysvar Account
+            { pubkey: primaryTokenMint, isSigner: false, isWritable: false },         // 7: Token A Mint Account
+            { pubkey: baseTokenMint, isSigner: false, isWritable: false },            // 8: Token B Mint Account
+            { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },         // 9: Token A Vault PDA
+            { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },         // 10: Token B Vault PDA
+            { pubkey: lpTokenAMintPDA[0], isSigner: false, isWritable: true },        // 11: LP Token A Mint PDA
+            { pubkey: lpTokenBMintPDA[0], isSigner: false, isWritable: true }         // 12: LP Token B Mint PDA
+        ];
+        
+        // Validate all account keys have proper structure
+        accountKeys.forEach((account, index) => {
+            if (!account.pubkey) {
+                throw new Error(`Account ${index} missing pubkey`);
+            }
+            if (typeof account.isSigner !== 'boolean') {
+                throw new Error(`Account ${index} missing isSigner`);
+            }
+            if (typeof account.isWritable !== 'boolean') {
+                throw new Error(`Account ${index} missing isWritable`);
+            }
+        });
+        
+        // Debug: Log all account keys for verification
+        console.log('🔍 Account keys for InitializePool instruction:');
+        accountKeys.forEach((account, index) => {
+            console.log(`  ${index}: ${account.pubkey.toString()} (signer: ${account.isSigner}, writable: ${account.isWritable})`);
+        });
+        
+        // Verify that token mint accounts exist
+        console.log('🔍 Verifying token mint accounts exist...');
+        try {
+            const tokenAInfo = await connection.getAccountInfo(primaryTokenMint);
+            const tokenBInfo = await connection.getAccountInfo(baseTokenMint);
+            
+            if (!tokenAInfo) {
+                throw new Error(`Token A mint account not found: ${primaryTokenMint.toString()}`);
+            }
+            if (!tokenBInfo) {
+                throw new Error(`Token B mint account not found: ${baseTokenMint.toString()}`);
+            }
+            
+            console.log('✅ Token mint accounts verified');
+        } catch (error) {
+            console.log('❌ Token mint verification failed:', error.message);
+            throw error;
+        }
+        
         const createPoolInstruction = new solanaWeb3.TransactionInstruction({
-            keys: [
-                { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // 0: Authority/User Signer
-                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program
-                { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },      // 2: Rent Sysvar
-                { pubkey: poolStatePDA[0], isSigner: false, isWritable: true },           // 3: Pool State PDA
-                { pubkey: primaryTokenMint, isSigner: false, isWritable: false },         // 4: First Token Mint
-                { pubkey: baseTokenMint, isSigner: false, isWritable: false },            // 5: Second Token Mint
-                { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },         // 6: Token A Vault PDA
-                { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },         // 7: Token B Vault PDA
-                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },   // 8: SPL Token Program
-                { pubkey: mainTreasuryPDA[0], isSigner: false, isWritable: true },        // 9: Main Treasury PDA
-                { pubkey: lpTokenAMintPDA[0], isSigner: false, isWritable: true },        // 10: LP Token A Mint PDA
-                { pubkey: lpTokenBMintPDA[0], isSigner: false, isWritable: true }         // 11: LP Token B Mint PDA
-            ],
+            keys: accountKeys,
             programId: programId,
             data: instructionData
         });
@@ -840,22 +900,38 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             .add(computeBudgetInstruction)
             .add(createPoolInstruction);
         
-        // Set recent blockhash and fee payer
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = wallet.publicKey;
-        
         // ✅ SECURITY FIX: No longer need to sign with LP token mint keypairs
         // LP token mints are now PDAs controlled by the smart contract
         console.log('🔒 SECURITY: LP token mints are now PDAs controlled by the smart contract');
         console.log('   This prevents users from creating fake LP tokens to drain pools');
         
-        // Sign and send transaction
+        // Get fresh blockhash right before sending to avoid "Blockhash not found" errors
+        console.log('🔄 Getting fresh blockhash...');
+        const { blockhash: freshBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+        transaction.recentBlockhash = freshBlockhash;
+        transaction.feePayer = wallet.publicKey;
+        
+        console.log('📝 Requesting wallet signature...');
+        
+        // Note: Skipping pre-simulation as Backpack wallet will simulate the transaction itself
+        console.log('🔍 Transaction ready for wallet signature...');
+        
         const signature = await wallet.signAndSendTransaction(transaction);
         console.log('✅ Pool creation transaction sent:', signature);
         
-        // Wait for confirmation
-        const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+        // Wait for confirmation with retry logic for blockhash expiration
+        console.log('⏳ Waiting for transaction confirmation...');
+        let confirmation;
+        try {
+            confirmation = await connection.confirmTransaction({
+                signature: signature,
+                blockhash: freshBlockhash,
+                lastValidBlockHeight: lastValidBlockHeight
+            }, 'confirmed');
+        } catch (confirmError) {
+            console.log('⚠️ Confirmation failed, trying without blockhash...');
+            confirmation = await connection.confirmTransaction(signature, 'confirmed');
+        }
         
         if (confirmation.value.err) {
             throw new Error(`Pool creation failed: ${JSON.stringify(confirmation.value.err)}`);
@@ -881,10 +957,26 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             tokenBVault: tokenBVaultPDA[0].toString()
         };
         
-    } catch (error) {
-        console.error('❌ Pool creation error:', error);
-        throw error;
+        } catch (error) {
+            console.error(`❌ Pool creation error (attempt ${attempt}/${maxRetries}):`, error);
+            lastError = error;
+            
+            // Check if it's a blockhash error and we should retry
+            if (error.message && error.message.includes('Blockhash not found') && attempt < maxRetries) {
+                console.log(`🔄 Blockhash expired, retrying in 2 seconds... (attempt ${attempt}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                continue;
+            }
+            
+            // For other errors or final attempt, throw the error
+            if (attempt === maxRetries) {
+                throw lastError;
+            }
+        }
     }
+    
+    // This should never be reached, but just in case
+    throw lastError || new Error('Pool creation failed after all retries');
 }
 
 /**
