@@ -153,15 +153,7 @@ async function handleWalletConnected() {
         
         showStatus('success', `✅ Connected with Backpack wallet: ${publicKey.slice(0, 20)}...`);
         
-        // Check if system is initialized and show initialize button if needed
-        const systemInitialized = await checkSystemInitialized();
-        const initButton = document.getElementById('initialize-system-btn');
-        if (!systemInitialized) {
-            initButton.style.display = 'block';
-            showStatus('warning', '⚠️ System not initialized. Please click "Initialize System" before creating pools.');
-        } else {
-            initButton.style.display = 'none';
-        }
+        // System initialization is handled by deployment authority
         
         // Check balance
         await checkWalletBalance();
@@ -198,7 +190,7 @@ async function disconnectWallet() {
         document.getElementById('wallet-disconnected').style.display = 'flex';
         document.getElementById('connect-wallet-btn').textContent = 'Connect Backpack Wallet';
         document.getElementById('connect-wallet-btn').onclick = connectWallet;
-        document.getElementById('initialize-system-btn').style.display = 'none';
+        // Initialize System button removed - system initialization is deployment authority responsibility
         
         // Reset tokens section
         document.getElementById('tokens-loading').style.display = 'block';
@@ -635,80 +627,9 @@ function resetPoolCreation() {
     updatePoolCreationDisplay();
 }
 
-/**
- * Initialize the system (must be called once before any pools can be created)
- */
-async function initializeSystem() {
-    try {
-        showStatus('info', '🔧 Initializing Fixed Ratio Trading system...');
-        
-        const programId = new solanaWeb3.PublicKey(window.TRADING_CONFIG.programId);
-        
-        // Create instruction data for InitializeProgram
-        const instructionData = new Uint8Array([0, 0, 0, 0]); // InitializeProgram discriminator (Borsh enum u32)
-        
-        // Build accounts array for InitializeProgram
-        const accounts = [
-            { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // System Authority
-            { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
-            { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },      // Rent Sysvar
-        ];
-        
-        const instruction = new solanaWeb3.TransactionInstruction({
-            keys: accounts,
-            programId,
-            data: instructionData
-        });
-        
-        // Create and send transaction
-        const transaction = new solanaWeb3.Transaction().add(instruction);
-        
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = wallet.publicKey;
-        
-        const signedTransaction = await wallet.signTransaction(transaction);
-        const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-        
-        console.log('🔧 System initialization transaction:', signature);
-        showStatus('info', 'System initialization submitted, waiting for confirmation...');
-        
-        // Wait for confirmation
-        await connection.confirmTransaction(signature, 'confirmed');
-        
-        console.log('✅ System initialized successfully!');
-        showStatus('success', '✅ Fixed Ratio Trading system initialized! You can now create pools.');
-        
-        return signature;
-        
-    } catch (error) {
-        console.error('❌ Error initializing system:', error);
-        showStatus('error', 'Failed to initialize system: ' + error.message);
-        throw error;
-    }
-}
+// System initialization removed - this should be handled by deployment authority only
 
-/**
- * Check if system is initialized
- */
-async function checkSystemInitialized() {
-    try {
-        const programId = new solanaWeb3.PublicKey(window.TRADING_CONFIG.programId);
-        
-        // Check SystemState PDA
-        const [systemStatePDA] = await solanaWeb3.PublicKey.findProgramAddress(
-            [new TextEncoder().encode('system_state')],
-            programId
-        );
-        
-        const systemStateAccount = await connection.getAccountInfo(systemStatePDA);
-        return systemStateAccount !== null;
-        
-    } catch (error) {
-        console.error('Error checking system initialization:', error);
-        return false;
-    }
-}
+// System initialization check removed - system should be initialized during deployment
 
 /**
  * Create the pool
@@ -722,12 +643,7 @@ async function createPool() {
         return;
     }
     
-    // Check if system is initialized first
-    const systemInitialized = await checkSystemInitialized();
-    if (!systemInitialized) {
-        showPoolError('❌ System not initialized! Please click "Initialize System" button first.');
-        return;
-    }
+    // Note: System should be initialized during deployment by program authority
     
     if (currentRatio <= 0) {
         showPoolError('Please enter a valid exchange ratio');
@@ -966,9 +882,9 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         console.log('Main treasury PDA:', mainTreasuryPDA[0].toString());
         
         // Create instruction data for InitializePool using Borsh serialization
-        // Borsh enum discriminator: InitializeProgram=0, InitializePool=1 (as little-endian u32)
+        // Borsh enum discriminator: InitializeProgram=0, InitializePool=1 (single byte)
         const instructionData = concatUint8Arrays([
-            new Uint8Array([1, 0, 0, 0]), // InitializePool discriminator (little-endian u32)
+            new Uint8Array([1]), // InitializePool discriminator (single byte)
             new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer), // ratio_a_numerator  
             new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator
         ]);

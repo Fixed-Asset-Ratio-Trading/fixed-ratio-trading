@@ -449,6 +449,99 @@ EOF
 
 echo -e "${GREEN}✅ Deployment information saved to deployment_info.json${NC}"
 
+# Step 13.5: Initialize system with program authority (NEW)
+echo ""
+echo -e "${YELLOW}🔧 Initializing Fixed Ratio Trading system...${NC}"
+
+if command -v node &> /dev/null; then
+    # Create temporary system initialization script
+    cat > "$PROJECT_ROOT/temp_initialize_system.js" << 'INIT_EOF'
+const { PublicKey, Connection, Transaction, TransactionInstruction, Keypair } = require('@solana/web3.js');
+const fs = require('fs');
+
+async function initializeSystem() {
+    try {
+        const connection = new Connection('http://192.168.2.88:8899', 'confirmed');
+        const programId = new PublicKey('PROGRAM_ID_PLACEHOLDER');
+        
+        const authorityKeypair = JSON.parse(fs.readFileSync('/Users/davinci/.config/solana/id.json', 'utf8'));
+        const authority = Keypair.fromSecretKey(new Uint8Array(authorityKeypair));
+        
+        const [systemStatePDA] = await PublicKey.findProgramAddress([Buffer.from('system_state')], programId);
+        const [mainTreasuryPDA] = await PublicKey.findProgramAddress([Buffer.from('main_treasury')], programId);
+        
+        const BPF_LOADER_UPGRADEABLE = new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111');
+        const [programDataPDA] = await PublicKey.findProgramAddress([programId.toBuffer()], BPF_LOADER_UPGRADEABLE);
+        
+        const instructionData = new Uint8Array([0]); // InitializeProgram single byte discriminator
+        
+        const accounts = [
+            { pubkey: authority.publicKey, isSigner: true, isWritable: true },
+            { pubkey: require('@solana/web3.js').SystemProgram.programId, isSigner: false, isWritable: false },
+            { pubkey: require('@solana/web3.js').SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+            { pubkey: systemStatePDA, isSigner: false, isWritable: true },
+            { pubkey: mainTreasuryPDA, isSigner: false, isWritable: true },
+            { pubkey: programDataPDA, isSigner: false, isWritable: false },
+        ];
+        
+        const instruction = new TransactionInstruction({ keys: accounts, programId, data: instructionData });
+        const transaction = new Transaction().add(instruction);
+        
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = authority.publicKey;
+        
+        transaction.sign(authority);
+        const signature = await connection.sendRawTransaction(transaction.serialize());
+        
+        await connection.confirmTransaction(signature, 'confirmed');
+        console.log('✅ System initialized successfully');
+        
+        const systemStateAccount = await connection.getAccountInfo(systemStatePDA);
+        if (systemStateAccount) {
+            console.log('✅ SystemState PDA verified');
+            process.exit(0);
+        } else {
+            console.log('❌ SystemState PDA verification failed');
+            process.exit(1);
+        }
+    } catch (error) {
+        console.error('❌ System initialization failed:', error.message);
+        process.exit(1);
+    }
+}
+
+initializeSystem();
+INIT_EOF
+
+    # Replace placeholder with actual program ID
+    sed -i.bak "s/PROGRAM_ID_PLACEHOLDER/$PROGRAM_ID/g" "$PROJECT_ROOT/temp_initialize_system.js"
+    
+    # Check if @solana/web3.js is available
+    if [ -d "$PROJECT_ROOT/node_modules/@solana/web3.js" ]; then
+        echo "  Using existing @solana/web3.js installation..."
+        cd "$PROJECT_ROOT"
+        node temp_initialize_system.js
+        INIT_EXIT_CODE=$?
+        
+        if [ $INIT_EXIT_CODE -eq 0 ]; then
+            echo -e "${GREEN}✅ System initialization completed successfully${NC}"
+        else
+            echo -e "${YELLOW}⚠️  System initialization failed, but deployment was successful${NC}"
+            echo "   Users may need to wait for manual system initialization"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  @solana/web3.js not found, skipping automatic system initialization${NC}"
+        echo "   Run 'npm install @solana/web3.js' and initialize manually if needed"
+    fi
+    
+    # Clean up temporary file
+    rm -f "$PROJECT_ROOT/temp_initialize_system.js" "$PROJECT_ROOT/temp_initialize_system.js.bak"
+else
+    echo -e "${YELLOW}⚠️  Node.js not found, skipping automatic system initialization${NC}"
+    echo "   The program was deployed successfully but system initialization will need to be done manually"
+fi
+
 # Step 14: Start Dashboard Server
 echo ""
 echo -e "${YELLOW}🌐 Starting dashboard server...${NC}"
