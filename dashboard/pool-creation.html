@@ -582,9 +582,12 @@
                         <div class="wallet-address">Please connect your Backpack wallet</div>
                     </div>
                 </div>
-                <button class="connect-btn" id="connect-wallet-btn" onclick="connectWallet()">
-                    Connect Backpack Wallet
-                </button>
+                        <button class="connect-btn" id="connect-wallet-btn" onclick="connectWallet()">
+          Connect Backpack Wallet
+        </button>
+        <button class="connect-btn" id="initialize-system-btn" onclick="initializeSystem()" style="display: none; background: #f59e0b; margin-top: 10px;">
+          Initialize System
+        </button>
             </div>
         </div>
         
@@ -744,6 +747,6 @@
             setTimeout(checkLibraries, 100);
         });
     </script>
-    <script src="pool-creation.js?v=1753358120"></script>
+    <script src="pool-creation.js?v=1753358160"></script>
 </body>
 </html> 
