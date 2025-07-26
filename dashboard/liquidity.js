@@ -594,22 +594,88 @@ async function addLiquidity() {
         const poolPubkey = new solanaWeb3.PublicKey(poolAddress);
         const tokenMint = new solanaWeb3.PublicKey(selectedToken.mint);
         const userWallet = new solanaWeb3.PublicKey(window.backpack.publicKey);
+        const programId = new solanaWeb3.PublicKey(window.TRADING_CONFIG.programId);
         
-        showStatus('info', `Creating transaction for ${amount} ${selectedToken.symbol}...`);
+        showStatus('info', `Creating liquidity deposit transaction for ${amount} ${selectedToken.symbol}...`);
         
-        // Create a simple transfer instruction (this would be replaced with actual pool liquidity instruction)
-        // For now, we'll create a placeholder transaction that will fail gracefully
+        // Derive required PDAs using correct seed prefixes
+        const [systemStatePDA] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('system_state')],
+            programId
+        );
+        
+        // Get LP token mint PDAs (derive from pool state)
+        const [lpTokenAMint] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('lp_token_a_mint'), poolPubkey.toBytes()],
+            programId
+        );
+        const [lpTokenBMint] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('lp_token_b_mint'), poolPubkey.toBytes()],
+            programId
+        );
+        
+        // Determine which token vault and LP mint to use based on selected token
+        const isTokenA = selectedToken.mint === poolData.tokenAMint;
+        const targetVault = isTokenA ? poolData.tokenAVault : poolData.tokenBVault;
+        const targetLPMint = isTokenA ? lpTokenAMint : lpTokenBMint;
+        
+        // Find user's token account for the selected token
+        const userTokenAccount = new solanaWeb3.PublicKey(selectedToken.tokenAccount);
+        
+        // Find or create user's LP token account 
+        const userLPTokenAccount = await findOrCreateAssociatedTokenAccount(userWallet, targetLPMint);
+        
+        // Check if we need to create the associated token account first
+        const lpAccountInfo = await connection.getAccountInfo(userLPTokenAccount);
+        
+        // Create the transaction
         const transaction = new solanaWeb3.Transaction();
         
-        // Add a memo instruction to show transaction intent
-        const memoText = `Add Liquidity: ${amount} ${selectedToken.symbol} to pool ${poolAddress.slice(0, 8)}...`;
-        const memoData = new TextEncoder().encode(memoText);
-        const memoInstruction = new solanaWeb3.TransactionInstruction({
-            keys: [],
-            programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: memoData
+        // Add create associated token account instruction if needed
+        if (!lpAccountInfo) {
+            console.log(`📝 Adding instruction to create LP token account: ${userLPTokenAccount.toString()}`);
+            const createAtaIx = splToken.createAssociatedTokenAccountInstruction(
+                userWallet,          // payer
+                userLPTokenAccount,  // associatedToken
+                userWallet,          // owner
+                targetLPMint,        // mint
+                splToken.TOKEN_PROGRAM_ID,
+                splToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            );
+            transaction.add(createAtaIx);
+        }
+        
+        // Serialize instruction data: Deposit { deposit_token_mint, amount }
+        const instructionData = new Uint8Array(1 + 32 + 8); // 1 byte discriminator + 32 bytes pubkey + 8 bytes u64
+        instructionData[0] = 2; // Deposit instruction discriminator (assuming it's the 3rd instruction)
+        tokenMint.toBytes().forEach((byte, index) => {
+            instructionData[1 + index] = byte;
         });
-        transaction.add(memoInstruction);
+        const amountBytes = new ArrayBuffer(8);
+        new DataView(amountBytes).setBigUint64(0, BigInt(amountLamports), true); // little-endian
+        new Uint8Array(amountBytes).forEach((byte, index) => {
+            instructionData[1 + 32 + index] = byte;
+        });
+        
+        const depositInstruction = new solanaWeb3.TransactionInstruction({
+            programId: programId,
+            keys: [
+                { pubkey: userWallet, isSigner: true, isWritable: true },                    // User Authority Signer
+                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
+                { pubkey: systemStatePDA, isSigner: false, isWritable: false },             // System State PDA
+                { pubkey: poolPubkey, isSigner: false, isWritable: true },                  // Pool State PDA
+                { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // SPL Token Program
+                { pubkey: new solanaWeb3.PublicKey(poolData.tokenAVault), isSigner: false, isWritable: true }, // Token A Vault
+                { pubkey: new solanaWeb3.PublicKey(poolData.tokenBVault), isSigner: false, isWritable: true }, // Token B Vault
+                { pubkey: userTokenAccount, isSigner: false, isWritable: true },            // User Input Token Account
+                { pubkey: userLPTokenAccount, isSigner: false, isWritable: true },          // User Output LP Account
+                { pubkey: lpTokenAMint, isSigner: false, isWritable: true },                // LP Token A Mint
+                { pubkey: lpTokenBMint, isSigner: false, isWritable: true },                // LP Token B Mint
+            ],
+            data: instructionData
+        });
+        
+        transaction.add(depositInstruction);
         
         // Get recent blockhash
         const { blockhash } = await connection.getLatestBlockhash();
@@ -1145,6 +1211,41 @@ function setMaxAmount(operation) {
     } catch (error) {
         console.error(`❌ Error setting max amount for ${operation}:`, error);
         showStatus('error', `Failed to set maximum amount: ${error.message}`);
+    }
+}
+
+/**
+ * Find or create an associated token account for a user and mint
+ */
+async function findOrCreateAssociatedTokenAccount(ownerPubkey, mintPubkey) {
+    try {
+        // Calculate the associated token account address
+        const associatedTokenAddress = await splToken.getAssociatedTokenAddress(
+            mintPubkey,
+            ownerPubkey,
+            false, // allowOwnerOffCurve
+            splToken.TOKEN_PROGRAM_ID,
+            splToken.ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+        
+        console.log(`🔍 Checking for associated token account: ${associatedTokenAddress.toString()}`);
+        
+        // Check if the account already exists
+        const accountInfo = await connection.getAccountInfo(associatedTokenAddress);
+        
+        if (accountInfo) {
+            console.log(`✅ Associated token account already exists: ${associatedTokenAddress.toString()}`);
+            return associatedTokenAddress;
+        } else {
+            console.log(`📝 Associated token account does not exist, will be created during transaction`);
+            // Return the address - the account will be created automatically by the SPL Token program
+            // when the first tokens are minted to it
+            return associatedTokenAddress;
+        }
+        
+    } catch (error) {
+        console.error('❌ Error with associated token account:', error);
+        throw new Error(`Failed to handle associated token account: ${error.message}`);
     }
 }
 
