@@ -289,6 +289,31 @@
             box-shadow: none;
         }
         
+        .max-btn {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 60px;
+        }
+        
+        .max-btn:hover {
+            background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+        }
+        
+        .max-btn:active {
+            transform: translateY(0);
+        }
+        
         .status-message {
             padding: 15px;
             border-radius: 8px;
@@ -655,13 +680,19 @@
                 <div style="font-size: 14px; color: #666; margin-bottom: 5px;">
                     Amount of <span id="selected-token-name">TOKEN</span> to add
                 </div>
-                <input type="number" 
-                       class="amount-input" 
-                       id="add-liquidity-amount" 
-                       placeholder="0.00" 
-                       min="0" 
-                       step="0.000001"
-                       onchange="updateAddButton()">
+                <div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+                    <input type="number" 
+                           class="amount-input" 
+                           id="add-liquidity-amount" 
+                           placeholder="0.00" 
+                           min="0" 
+                           step="0.000001"
+                           onchange="updateAddButton()"
+                           style="flex: 1; max-width: 200px;">
+                    <button class="max-btn" onclick="setMaxAmount('add')" title="Set maximum available amount">
+                        MAX
+                    </button>
+                </div>
                 <div style="font-size: 12px; color: #999; margin-top: 8px;">
                     Available: <span id="available-balance">0</span> <span id="available-token-symbol">TOKEN</span>
                 </div>
@@ -712,13 +743,19 @@
                 <div style="font-size: 14px; color: #666; margin-bottom: 5px;">
                     Amount of <span id="selected-lp-token-name">LP Token</span> to remove
                 </div>
-                <input type="number" 
-                       class="amount-input" 
-                       id="remove-liquidity-amount" 
-                       placeholder="0.000000" 
-                       min="0" 
-                       step="0.000001"
-                       onchange="updateRemoveButton()">
+                <div style="display: flex; gap: 8px; align-items: center; justify-content: center;">
+                    <input type="number" 
+                           class="amount-input" 
+                           id="remove-liquidity-amount" 
+                           placeholder="0.000000" 
+                           min="0" 
+                           step="0.000001"
+                           onchange="updateRemoveButton()"
+                           style="flex: 1; max-width: 200px;">
+                    <button class="max-btn" onclick="setMaxAmount('remove')" title="Set maximum available amount">
+                        MAX
+                    </button>
+                </div>
                 <div style="font-size: 12px; color: #999; margin-top: 8px;">
                     Available: <span id="available-lp-balance">0.000000</span> <span id="available-lp-symbol">LP Token</span>
                 </div>

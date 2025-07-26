@@ -495,11 +495,11 @@ function selectToken(token) {
     document.getElementById('available-token-symbol').textContent = token.symbol;
     
     // Show amount section and button
-    document.getElementById('amount-section').style.display = 'block';
+    document.getElementById('add-liquidity-section').style.display = 'block';
     document.getElementById('add-liquidity-btn').style.display = 'block';
     
     // Reset amount input
-    document.getElementById('liquidity-amount').value = '';
+    document.getElementById('add-liquidity-amount').value = '';
     updateAddButton();
     
     showStatus('success', `Selected ${token.symbol} for liquidity addition`);
@@ -522,7 +522,7 @@ function resetTokenSelection() {
     `;
     
     // Hide amount section and button
-    document.getElementById('amount-section').style.display = 'none';
+    document.getElementById('add-liquidity-section').style.display = 'none';
     document.getElementById('add-liquidity-btn').style.display = 'none';
     
     selectedToken = null;
@@ -533,7 +533,7 @@ function resetTokenSelection() {
  */
 function updateAddButton() {
     const addBtn = document.getElementById('add-liquidity-btn');
-    const amountInput = document.getElementById('liquidity-amount');
+    const amountInput = document.getElementById('add-liquidity-amount');
     
     const amount = parseFloat(amountInput.value) || 0;
     const hasValidAmount = amount > 0;
@@ -563,7 +563,7 @@ async function addLiquidity() {
         return;
     }
     
-    const amount = parseFloat(document.getElementById('liquidity-amount').value) || 0;
+    const amount = parseFloat(document.getElementById('add-liquidity-amount').value) || 0;
     if (amount <= 0) {
         showStatus('error', 'Please enter a valid amount');
         return;
@@ -1015,6 +1015,57 @@ function updateAddButton() {
         button.style.display = 'block';
     } else {
         button.disabled = true;
+    }
+}
+
+/**
+ * Set maximum amount for liquidity operations
+ */
+function setMaxAmount(operation) {
+    try {
+        if (operation === 'add') {
+            // For adding liquidity, use the selected token's balance
+            if (!selectedToken) {
+                showStatus('error', 'Please select a token first');
+                return;
+            }
+            
+            const maxAmount = selectedToken.balance;
+            const amountInput = document.getElementById('add-liquidity-amount');
+            
+            if (amountInput && maxAmount > 0) {
+                amountInput.value = maxAmount.toString();
+                updateAddButton();
+                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${selectedToken.symbol}`);
+                console.log(`💰 Set max amount for add: ${maxAmount} ${selectedToken.symbol}`);
+            } else {
+                showStatus('error', 'No balance available');
+            }
+            
+        } else if (operation === 'remove') {
+            // For removing liquidity, use the selected LP token's balance
+            if (!selectedLPToken) {
+                showStatus('error', 'Please select an LP token first');
+                return;
+            }
+            
+            const maxAmount = selectedLPToken.balance;
+            const amountInput = document.getElementById('remove-liquidity-amount');
+            
+            if (amountInput && maxAmount > 0) {
+                amountInput.value = maxAmount.toString();
+                updateRemoveButton();
+                calculateExpectedOutput();
+                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${selectedLPToken.symbol}`);
+                console.log(`💰 Set max amount for remove: ${maxAmount} ${selectedLPToken.symbol}`);
+            } else {
+                showStatus('error', 'No LP token balance available');
+            }
+        }
+        
+    } catch (error) {
+        console.error(`❌ Error setting max amount for ${operation}:`, error);
+        showStatus('error', `Failed to set maximum amount: ${error.message}`);
     }
 }
 
