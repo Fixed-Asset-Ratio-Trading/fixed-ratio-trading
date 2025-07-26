@@ -51,48 +51,16 @@ async function loadPoolData() {
     try {
         showStatus('info', 'Loading pool information...');
         
-        // Try to load from generated state file first
-        let loadedFromState = false;
-        try {
-            const response = await fetch('state.json');
-            if (response.ok) {
-                const stateData = await response.json();
-                const pool = stateData.pools?.find(p => p.address === poolAddress);
-                if (pool) {
-                    poolData = { ...pool, dataSource: 'JSON' };
-                    loadedFromState = true;
-                    console.log('✅ Pool loaded from state.json');
-                }
-            }
-        } catch (stateError) {
-            console.log('ℹ️ State file not available, trying other sources');
+        // Initialize centralized data service if not already done
+        if (!window.TradingDataService.connection) {
+            await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
         }
         
-        // Try sessionStorage if not found in state
-        if (!loadedFromState) {
-            try {
-                const sessionPools = JSON.parse(sessionStorage.getItem('pools') || '[]');
-                const sessionPool = sessionPools.find(p => p.address === poolAddress);
-                if (sessionPool) {
-                    poolData = { ...sessionPool, dataSource: 'sessionStorage' };
-                    loadedFromState = true;
-                    console.log('✅ Pool loaded from sessionStorage');
-                }
-            } catch (sessionError) {
-                console.log('ℹ️ SessionStorage not available, trying RPC');
-            }
-        }
-        
-        // Fallback to RPC
-        if (!loadedFromState) {
-            poolData = await loadPoolFromRPC();
-            if (poolData) {
-                poolData.dataSource = 'RPC';
-                console.log('✅ Pool loaded from RPC');
-            }
-        }
+        // Get pool data using centralized service (tries state.json first, then RPC)
+        poolData = await window.TradingDataService.getPool(poolAddress, 'auto');
         
         if (poolData) {
+            console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);
             await enrichPoolData();
             updatePoolDisplay();
             initializeSwapInterface();
