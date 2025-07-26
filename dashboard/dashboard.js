@@ -338,7 +338,7 @@ async function scanForPools() {
                     }
                     
                     console.log(`🔍 Attempting to parse account ${account.pubkey.toString()} with ${account.account.data.length} bytes`);
-                    const poolData = await parsePoolState(account.account.data, account.pubkey);
+                    const poolData = window.TradingDataService.parsePoolState(account.account.data, account.pubkey.toString());
                     return poolData;
                 } catch (error) {
                     console.warn(`Failed to parse pool at ${account.pubkey.toString()}:`, error);
