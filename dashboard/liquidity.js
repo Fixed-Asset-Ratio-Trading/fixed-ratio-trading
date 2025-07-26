@@ -634,13 +634,13 @@ async function addLiquidity() {
         // Add create associated token account instruction if needed
         if (!lpAccountInfo) {
             console.log(`📝 Adding instruction to create LP token account: ${userLPTokenAccount.toString()}`);
-            const createAtaIx = splToken.createAssociatedTokenAccountInstruction(
-                userWallet,          // payer
+            const createAtaIx = window.splToken.Token.createAssociatedTokenAccountInstruction(
+                window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                window.splToken.TOKEN_PROGRAM_ID,
+                targetLPMint,        // mint
                 userLPTokenAccount,  // associatedToken
                 userWallet,          // owner
-                targetLPMint,        // mint
-                splToken.TOKEN_PROGRAM_ID,
-                splToken.ASSOCIATED_TOKEN_PROGRAM_ID
+                userWallet           // payer
             );
             transaction.add(createAtaIx);
         }
@@ -664,7 +664,7 @@ async function addLiquidity() {
                 { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
                 { pubkey: systemStatePDA, isSigner: false, isWritable: false },             // System State PDA
                 { pubkey: poolPubkey, isSigner: false, isWritable: true },                  // Pool State PDA
-                { pubkey: splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // SPL Token Program
+                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // SPL Token Program
                 { pubkey: new solanaWeb3.PublicKey(poolData.tokenAVault), isSigner: false, isWritable: true }, // Token A Vault
                 { pubkey: new solanaWeb3.PublicKey(poolData.tokenBVault), isSigner: false, isWritable: true }, // Token B Vault
                 { pubkey: userTokenAccount, isSigner: false, isWritable: true },            // User Input Token Account
@@ -1219,13 +1219,12 @@ function setMaxAmount(operation) {
  */
 async function findOrCreateAssociatedTokenAccount(ownerPubkey, mintPubkey) {
     try {
-        // Calculate the associated token account address
-        const associatedTokenAddress = await splToken.getAssociatedTokenAddress(
+        // Calculate the associated token account address using the SPL Token library
+        const associatedTokenAddress = await window.splToken.Token.getAssociatedTokenAddress(
+            window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+            window.splToken.TOKEN_PROGRAM_ID,
             mintPubkey,
-            ownerPubkey,
-            false, // allowOwnerOffCurve
-            splToken.TOKEN_PROGRAM_ID,
-            splToken.ASSOCIATED_TOKEN_PROGRAM_ID
+            ownerPubkey
         );
         
         console.log(`🔍 Checking for associated token account: ${associatedTokenAddress.toString()}`);
