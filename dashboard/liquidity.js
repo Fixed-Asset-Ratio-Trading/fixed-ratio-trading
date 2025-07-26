@@ -602,10 +602,12 @@ async function addLiquidity() {
         const transaction = new solanaWeb3.Transaction();
         
         // Add a memo instruction to show transaction intent
+        const memoText = `Add Liquidity: ${amount} ${selectedToken.symbol} to pool ${poolAddress.slice(0, 8)}...`;
+        const memoData = new TextEncoder().encode(memoText);
         const memoInstruction = new solanaWeb3.TransactionInstruction({
             keys: [],
             programId: new solanaWeb3.PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr'),
-            data: Buffer.from(`Add Liquidity: ${amount} ${selectedToken.symbol} to pool ${poolAddress.slice(0, 8)}...`, 'utf8')
+            data: memoData
         });
         transaction.add(memoInstruction);
         

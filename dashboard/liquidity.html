@@ -345,6 +345,28 @@
             border: 1px solid #fde68a;
         }
         
+        /* Fixed bottom status container styling */
+        #status-container {
+            pointer-events: none; /* Allow clicks through empty space */
+        }
+        
+        #status-container .status-message {
+            pointer-events: auto; /* Re-enable clicks on actual messages */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                transform: translateY(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
         .loading {
             text-align: center;
             padding: 40px;
@@ -612,8 +634,6 @@
             </div>
         </div>
         
-        <div id="status-container"></div>
-        
         <!-- Pool Info Section -->
         <div class="pool-info-section">
             <h2 style="color: #333; margin-bottom: 15px;">🏊‍♂️ Pool Information</h2>
@@ -783,6 +803,9 @@
             </button>
         </div>
     </div>
+
+    <!-- Status Messages (Bottom of Page) -->
+    <div id="status-container" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; max-width: 90%; width: auto;"></div>
 
     <!-- Scripts -->
     <script src="libs/solana-web3.min.js"></script>
