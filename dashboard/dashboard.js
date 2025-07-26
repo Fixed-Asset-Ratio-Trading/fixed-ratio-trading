@@ -1388,7 +1388,7 @@ function generateSystemStateFields() {
         <!-- System Status -->
         <div class="system-state-section">
             <h4 style="color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 5px;">⚙️ System Status</h4>
-            <div class="state-field"><strong>is_paused:</strong><br><code>${systemState.is_paused ? '🚨 PAUSED' : '✅ ACTIVE'}</code></div>
+            <div class="state-field"><strong>is_paused:</strong><br><code>${systemState.is_paused}</code></div>
             <div class="state-field"><strong>pause_timestamp:</strong><br><code>${systemState.pause_timestamp || 'N/A'}${systemState.pause_timestamp ? ` (${new Date(systemState.pause_timestamp * 1000).toLocaleString()})` : ''}</code></div>
             <div class="state-field"><strong>pause_reason_code:</strong><br><code>${systemState.pause_reason_code || 'N/A'}</code></div>
             <div class="state-field"><strong>pause_reason_decoded:</strong><br><code>${pauseReasonDecoded}</code></div>
