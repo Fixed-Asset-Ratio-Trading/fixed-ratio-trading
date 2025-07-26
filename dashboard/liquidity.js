@@ -656,7 +656,7 @@ async function addLiquidity() {
             try {
                 showStatus('info', 'Refreshing pool data...');
                 await loadPoolInformation();
-                await loadWalletTokens();
+                await loadUserTokensForPool();
                 showStatus('success', 'Pool data refreshed successfully!');
             } catch (refreshError) {
                 console.warn('Could not refresh pool data:', refreshError);
