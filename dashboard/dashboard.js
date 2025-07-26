@@ -140,21 +140,24 @@ async function initializeDashboard() {
             sessionStorage.removeItem('poolToUpdate'); // Clear the flag
         }
         
-        // Load initial state from JSON file
-        const initialState = await loadInitialStateFromJSON();
+        // Initialize centralized data service
+        await window.TradingDataService.initialize(window.CONFIG, connection);
+        
+        // Load initial state using centralized service
+        const initialState = await window.TradingDataService.loadAllData('auto');
         if (initialState.pools.length > 0) {
             pools = initialState.pools;
-            console.log(`📁 Pre-loaded ${pools.length} pools from JSON state file`);
+            console.log(`📁 Pre-loaded ${pools.length} pools via TradingDataService`);
         }
         
         // Phase 2.2: Store treasury and system state data
         if (initialState.mainTreasuryState) {
             mainTreasuryState = initialState.mainTreasuryState;
-            console.log('🏛️ Loaded treasury state from JSON');
+            console.log('🏛️ Loaded treasury state via TradingDataService');
         }
         if (initialState.systemState) {
             systemState = initialState.systemState;
-            console.log('⚙️ Loaded system state from JSON');
+            console.log('⚙️ Loaded system state via TradingDataService');
         }
         
         // Phase 2.2: Update treasury and system state displays
@@ -357,18 +360,18 @@ async function refreshData() {
         // Render pools
         renderPools();
         
-        // Phase 2.3: Refresh treasury and system state data
+        // Phase 2.3: Refresh treasury and system state data via centralized service
         try {
-            const refreshedState = await loadInitialStateFromJSON();
+            const refreshedState = await window.TradingDataService.loadAllData('auto');
             if (refreshedState.mainTreasuryState) {
                 mainTreasuryState = refreshedState.mainTreasuryState;
                 updateTreasuryStateDisplay();
-                console.log('🏛️ Treasury state refreshed');
+                console.log('🏛️ Treasury state refreshed via TradingDataService');
             }
             if (refreshedState.systemState) {
                 systemState = refreshedState.systemState;
                 updateSystemStateDisplay();
-                console.log('⚙️ System state refreshed');
+                console.log('⚙️ System state refreshed via TradingDataService');
             }
         } catch (stateError) {
             console.warn('⚠️ Could not refresh treasury/system state:', stateError);

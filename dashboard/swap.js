@@ -112,168 +112,21 @@ async function loadPoolData() {
  */
 async function loadPoolFromRPC() {
     try {
-        const poolPubkey = new solanaWeb3.PublicKey(poolAddress);
-        const accountInfo = await connection.getAccountInfo(poolPubkey);
-        
-        if (!accountInfo) {
-            throw new Error('Pool account not found');
+        // Initialize centralized data service if not already done
+        if (!window.TradingDataService.connection) {
+            await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
         }
         
-        // Parse the pool state (this would need to match your program's data structure)
-        const poolState = parsePoolState(accountInfo.data);
-        return {
-            address: poolAddress,
-            ...poolState
-        };
+        // Get pool data using centralized service
+        const poolState = await window.TradingDataService.getPool(poolAddress, 'rpc');
+        return poolState;
     } catch (error) {
         console.error('❌ Error loading from RPC:', error);
         return null;
     }
 }
 
-/**
- * Parse pool state from account data
- */
-function parsePoolState(data) {
-    try {
-        const dataArray = new Uint8Array(data);
-        let offset = 0;
-        
-        // Helper functions to read bytes
-        const readPubkey = () => {
-            const pubkey = dataArray.slice(offset, offset + 32);
-            offset += 32;
-            return new solanaWeb3.PublicKey(pubkey).toString();
-        };
-        
-        const readU64 = () => {
-            const view = new DataView(dataArray.buffer, offset, 8);
-            const value = view.getBigUint64(0, true); // little-endian
-            offset += 8;
-            return Number(value);
-        };
-
-        const readI64 = () => {
-            const view = new DataView(dataArray.buffer, offset, 8);
-            const value = view.getBigInt64(0, true); // little-endian
-            offset += 8;
-            return Number(value);
-        };
-
-        const readU8 = () => {
-            const value = dataArray[offset];
-            offset += 1;
-            return value;
-        };
-
-        const readBool = () => {
-            const value = dataArray[offset] !== 0;
-            offset += 1;
-            return value;
-        };
-        
-        // Parse all PoolState fields according to the struct definition
-        const owner = readPubkey();
-        const tokenAMint = readPubkey();
-        const tokenBMint = readPubkey();
-        const tokenAVault = readPubkey();
-        const tokenBVault = readPubkey();
-        const lpTokenAMint = readPubkey();
-        const lpTokenBMint = readPubkey();
-        
-        const ratioANumerator = readU64();
-        const ratioBDenominator = readU64();
-        const totalTokenALiquidity = readU64();
-        const totalTokenBLiquidity = readU64();
-        
-        // Bump seeds
-        const poolAuthorityBumpSeed = readU8();
-        const tokenAVaultBumpSeed = readU8();
-        const tokenBVaultBumpSeed = readU8();
-        const lpTokenAMintBumpSeed = readU8();
-        const lpTokenBMintBumpSeed = readU8();
-        
-        // Pool flags (bitwise operations)
-        const flags = readU8();
-        
-        // Configurable contract fees
-        const contractLiquidityFee = readU64();
-        const swapContractFee = readU64();
-        
-        // Token fee tracking
-        const collectedFeesTokenA = readU64();
-        const collectedFeesTokenB = readU64();
-        const totalFeesWithdrawnTokenA = readU64();
-        const totalFeesWithdrawnTokenB = readU64();
-        
-        // SOL fee tracking
-        const collectedLiquidityFees = readU64();
-        const collectedSwapContractFees = readU64();
-        const totalSolFeesCollected = readU64();
-        
-        // Consolidation management
-        const lastConsolidationTimestamp = readI64();
-        const totalConsolidations = readU64();
-        const totalFeesConsolidated = readU64();
-        
-        // Decode flags
-        const flagsDecoded = {
-            one_to_many_ratio: (flags & 1) !== 0,
-            liquidity_paused: (flags & 2) !== 0,
-            swaps_paused: (flags & 4) !== 0,
-            withdrawal_protection: (flags & 8) !== 0,
-            single_lp_token_mode: (flags & 16) !== 0
-        };
-        
-        return {
-            owner,
-            tokenAMint,
-            tokenBMint,
-            tokenAVault,
-            tokenBVault,
-            lpTokenAMint,
-            lpTokenBMint,
-            ratioANumerator,
-            ratioBDenominator,
-            tokenALiquidity: totalTokenALiquidity,
-            tokenBLiquidity: totalTokenBLiquidity,
-            
-            // Bump seeds
-            poolAuthorityBumpSeed,
-            tokenAVaultBumpSeed,
-            tokenBVaultBumpSeed,
-            lpTokenAMintBumpSeed,
-            lpTokenBMintBumpSeed,
-            
-            // Flags
-            flags,
-            flagsDecoded,
-            
-            // Fee configuration
-            contractLiquidityFee,
-            swapContractFee,
-            
-            // Token fee tracking
-            collectedFeesTokenA,
-            collectedFeesTokenB,
-            totalFeesWithdrawnTokenA,
-            totalFeesWithdrawnTokenB,
-            
-            // SOL fee tracking
-            collectedLiquidityFees,
-            collectedSwapContractFees,
-            totalSolFeesCollected,
-            
-            // Consolidation data
-            lastConsolidationTimestamp,
-            totalConsolidations,
-            totalFeesConsolidated
-        };
-    } catch (error) {
-        console.error('❌ Error parsing pool state:', error);
-        throw new Error(`Failed to parse pool state: ${error.message}`);
-    }
-}
+// parsePoolState function removed - now using centralized TradingDataService.parsePoolState()
 
 /**
  * Enrich pool data with token symbols

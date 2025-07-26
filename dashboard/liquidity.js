@@ -149,14 +149,13 @@ async function loadPoolInformation() {
         console.log('🔍 Loading pool information for:', poolAddress);
         showStatus('info', 'Loading pool information...');
         
-        // Get pool account data from blockchain
-        const poolAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(poolAddress));
-        if (!poolAccount) {
-            throw new Error('Pool not found on blockchain');
+        // Initialize centralized data service if not already done
+        if (!window.TradingDataService.connection) {
+            await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
         }
         
-        // Parse pool state data (simplified version)
-        poolData = await parsePoolState(poolAccount.data);
+        // Get pool data using centralized service (prioritizes RPC for real-time data)
+        poolData = await window.TradingDataService.getPool(poolAddress, 'rpc');
         
         // Try to get token symbols from sessionStorage
         const tokenSymbols = await getTokenSymbols(poolData.tokenAMint, poolData.tokenBMint);
@@ -174,151 +173,7 @@ async function loadPoolInformation() {
     }
 }
 
-/**
- * Parse pool state data (simplified version)
- */
-async function parsePoolState(data) {
-    try {
-        const dataArray = new Uint8Array(data);
-        let offset = 0;
-        
-        // Helper function to read bytes
-        const readPubkey = () => {
-            const pubkey = dataArray.slice(offset, offset + 32);
-            offset += 32;
-            return new solanaWeb3.PublicKey(pubkey).toString();
-        };
-        
-        const readU64 = () => {
-            const view = new DataView(dataArray.buffer, offset, 8);
-            const value = view.getBigUint64(0, true); // little-endian
-            offset += 8;
-            return Number(value);
-        };
-
-        const readI64 = () => {
-            const view = new DataView(dataArray.buffer, offset, 8);
-            const value = view.getBigInt64(0, true); // little-endian
-            offset += 8;
-            return Number(value);
-        };
-
-        const readU8 = () => {
-            const value = dataArray[offset];
-            offset += 1;
-            return value;
-        };
-
-        const readBool = () => {
-            const value = dataArray[offset] !== 0;
-            offset += 1;
-            return value;
-        };
-        
-        // Parse all PoolState fields according to the struct definition
-        const owner = readPubkey();
-        const tokenAMint = readPubkey();
-        const tokenBMint = readPubkey();
-        const tokenAVault = readPubkey();
-        const tokenBVault = readPubkey();
-        const lpTokenAMint = readPubkey();
-        const lpTokenBMint = readPubkey();
-        
-        const ratioANumerator = readU64();
-        const ratioBDenominator = readU64();
-        const totalTokenALiquidity = readU64();
-        const totalTokenBLiquidity = readU64();
-        
-        // Bump seeds
-        const poolAuthorityBumpSeed = readU8();
-        const tokenAVaultBumpSeed = readU8();
-        const tokenBVaultBumpSeed = readU8();
-        const lpTokenAMintBumpSeed = readU8();
-        const lpTokenBMintBumpSeed = readU8();
-        
-        // Pool flags (bitwise operations)
-        const flags = readU8();
-        
-        // Configurable contract fees
-        const contractLiquidityFee = readU64();
-        const swapContractFee = readU64();
-        
-        // Token fee tracking
-        const collectedFeesTokenA = readU64();
-        const collectedFeesTokenB = readU64();
-        const totalFeesWithdrawnTokenA = readU64();
-        const totalFeesWithdrawnTokenB = readU64();
-        
-        // SOL fee tracking
-        const collectedLiquidityFees = readU64();
-        const collectedSwapContractFees = readU64();
-        const totalSolFeesCollected = readU64();
-        
-        // Consolidation management
-        const lastConsolidationTimestamp = readI64();
-        const totalConsolidations = readU64();
-        const totalFeesConsolidated = readU64();
-        
-        // Decode flags
-        const flagsDecoded = {
-            one_to_many_ratio: (flags & 1) !== 0,
-            liquidity_paused: (flags & 2) !== 0,
-            swaps_paused: (flags & 4) !== 0,
-            withdrawal_protection: (flags & 8) !== 0,
-            single_lp_token_mode: (flags & 16) !== 0
-        };
-        
-        return {
-            address: poolAddress,
-            owner,
-            tokenAMint,
-            tokenBMint,
-            tokenAVault,
-            tokenBVault,
-            lpTokenAMint,
-            lpTokenBMint,
-            ratioANumerator,
-            ratioBDenominator,
-            tokenALiquidity: totalTokenALiquidity,
-            tokenBLiquidity: totalTokenBLiquidity,
-            
-            // Bump seeds
-            poolAuthorityBumpSeed,
-            tokenAVaultBumpSeed,
-            tokenBVaultBumpSeed,
-            lpTokenAMintBumpSeed,
-            lpTokenBMintBumpSeed,
-            
-            // Flags
-            flags,
-            flagsDecoded,
-            
-            // Fee configuration
-            contractLiquidityFee,
-            swapContractFee,
-            
-            // Token fee tracking
-            collectedFeesTokenA,
-            collectedFeesTokenB,
-            totalFeesWithdrawnTokenA,
-            totalFeesWithdrawnTokenB,
-            
-            // SOL fee tracking
-            collectedLiquidityFees,
-            collectedSwapContractFees,
-            totalSolFeesCollected,
-            
-            // Consolidation data
-            lastConsolidationTimestamp,
-            totalConsolidations,
-            totalFeesConsolidated
-        };
-        
-    } catch (error) {
-        console.error('Failed to parse pool state:', error);
-        throw new Error('Failed to parse pool state data');
-    }
-}
+// parsePoolState function removed - now using centralized TradingDataService.parsePoolState()
 
 /**
  * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
