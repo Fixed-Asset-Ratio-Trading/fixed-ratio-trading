@@ -10,17 +10,17 @@
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {
-    "tokenMetadataProgramId": "Gmam2HVGBuephn95xzDatTjEGMLwQHf2WYVkdeiENbg4",
-    "lastUpdated": "2025-01-25"
+    "tokenMetadataProgramId": "7gAerTTphm7ewSJmBLtp4DmaY5BhdJbCA1egCvg3oXPK",
+    "lastUpdated": "2025-07-27"
   },
   "wallets": {
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
   },
   "dashboard": {
     "refreshInterval": 10000,
-    "stateFile": "state.json"
+    "stateFile": "dashboard/state.json"
   },
   "version": "1.0.0",
   "lastUpdated": "2024-01-15",
   "_description": "Centralized configuration for Fixed Ratio Trading project - used by dashboard, scripts, and deployment tools"
-} 
+}

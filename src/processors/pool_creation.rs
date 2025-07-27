@@ -101,40 +101,12 @@ pub fn process_initialize_pool(
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
     
     // 🔧 FIX: Read decimals from underlying token mints to ensure LP tokens match
-    msg!("🔍 Reading token mint decimals for LP token configuration...");
     let token_a_decimals = Mint::unpack_from_slice(&token_a_mint_account.data.borrow())?.decimals;
     let token_b_decimals = Mint::unpack_from_slice(&token_b_mint_account.data.borrow())?.decimals;
-    msg!("📊 Token A decimals: {}, Token B decimals: {}", token_a_decimals, token_b_decimals);
-    msg!("✅ LP tokens will inherit matching decimal precision from underlying tokens");
     
-    // 🎯 DEFI UX BEST PRACTICES: Comprehensive Transaction Summary
-    msg!("🏊 FIXED RATIO POOL CREATION");
-    msg!("=============================");
-    msg!("💰 TRANSACTION COSTS:");
-    msg!("  • Registration Fee: {} SOL", REGISTRATION_FEE as f64 / 1_000_000_000.0);
-    msg!("  • Account Rent: ~{} SOL (5 PDA accounts)", 
-         (rent.minimum_balance(PoolState::get_packed_len()) + 
-          rent.minimum_balance(TokenAccount::LEN) * 2 + 
-          rent.minimum_balance(spl_token::state::Mint::LEN) * 2) as f64 / 1_000_000_000.0);
-    msg!("  • Total Cost: ~{} SOL", 
-         (REGISTRATION_FEE + 
-          rent.minimum_balance(PoolState::get_packed_len()) + 
-          rent.minimum_balance(TokenAccount::LEN) * 2 + 
-          rent.minimum_balance(spl_token::state::Mint::LEN) * 2) as f64 / 1_000_000_000.0);
-    msg!("");
-    msg!("🎁 WHAT YOU'LL GET:");
-    msg!("  • Complete pool infrastructure");
-    msg!("  • Ability to add liquidity and earn fees");
-    msg!("  • Pool owner privileges and fee collection rights");
-    msg!("  • LP token minting/burning capabilities");
-    msg!("");
-    msg!("📋 ACCOUNTS BEING CREATED:");
-    msg!("  • Pool State Account (stores pool configuration)");
-    msg!("  • Token A Vault (holds Token A liquidity)");
-    msg!("  • Token B Vault (holds Token B liquidity)");
-    msg!("  • LP Token A Mint (creates LP tokens for Token A)");
-    msg!("  • LP Token B Mint (creates LP tokens for Token B)");
-    msg!("=============================");
+    // Consolidated pool creation summary (single message block)
+    msg!("🏊 POOL CREATION | TokenA decimals: {} | TokenB decimals: {} | Registration: {} SOL", 
+         token_a_decimals, token_b_decimals, REGISTRATION_FEE as f64 / 1_000_000_000.0);
     
     msg!("Processing InitializePool with fixed system pause validation");
     
@@ -181,9 +153,6 @@ pub fn process_initialize_pool(
     );
     validate_treasury_account(main_treasury_pda, &expected_main_treasury, TREASURY_TYPE_MAIN)?;
     
-    msg!("💰 Step 1/6: Collecting registration fee");
-    msg!("  Amount: {} SOL", REGISTRATION_FEE as f64 / 1_000_000_000.0);
-    
     // Transfer fee to treasury
     let transfer_instruction = system_instruction::transfer(
         user_authority_signer.key,
@@ -209,8 +178,6 @@ pub fn process_initialize_pool(
     let serialized_data = treasury_state.try_to_vec()?;
     main_treasury_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
 
-    msg!("✅ Registration fee collected successfully - proceeding with pool creation");
-
     // Token normalization: Always store tokens in lexicographic order (Token A < Token B)
     let (token_a_mint_key, token_b_mint_key) = 
         if token_a_mint_account.key < token_b_mint_account.key {
@@ -218,9 +185,6 @@ pub fn process_initialize_pool(
         } else {
             (token_b_mint_account.key, token_a_mint_account.key)
         };
-
-    msg!("DEBUG: Normalized tokens: token_a_mint_key={}, token_b_mint_key={}, ratio_a_num={}, ratio_b_den={}", 
-         token_a_mint_key, token_b_mint_key, ratio_a_numerator, ratio_b_denominator);
 
     // ✅ SECURITY: Derive LP token mint PDAs to prevent user manipulation
     let (lp_token_a_mint_pda_address, lp_token_a_mint_bump_seed) = Pubkey::find_program_address(
@@ -238,9 +202,6 @@ pub fn process_initialize_pool(
         ],
         program_id,
     );
-    
-    msg!("DEBUG: LP Token A Mint PDA: {}", lp_token_a_mint_pda_address);
-    msg!("DEBUG: LP Token B Mint PDA: {}", lp_token_b_mint_pda_address);
 
     // ✅ SECURITY: Derive pool state PDA and validate provided account matches
     let (expected_pool_state_pda, pool_authority_bump_seed) = Pubkey::find_program_address(
@@ -319,8 +280,6 @@ pub fn process_initialize_pool(
         return Err(ProgramError::InvalidAccountData);
     }
 
-    msg!("✅ All PDAs validated against derived addresses");
-
     // Create seeds for signing
     let token_a_vault_seeds = &[
         TOKEN_A_VAULT_SEED_PREFIX,
@@ -349,9 +308,6 @@ pub fn process_initialize_pool(
     let pool_state_space = PoolState::get_packed_len();
     let pool_state_rent = rent.minimum_balance(pool_state_space);
     
-    msg!("🔨 Step 2/6: Creating Pool State Account");
-    msg!("  Cost: {} SOL", pool_state_rent as f64 / 1_000_000_000.0);
-    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -371,9 +327,6 @@ pub fn process_initialize_pool(
     // Create token vaults
     let vault_space = TokenAccount::LEN;
     let vault_rent = rent.minimum_balance(vault_space);
-    
-    msg!("🔨 Step 3/6: Creating Token A Vault");
-    msg!("  Cost: {} SOL", vault_rent as f64 / 1_000_000_000.0);
     
     // Create Token A vault
     invoke_signed(
@@ -416,9 +369,6 @@ pub fn process_initialize_pool(
     )?;
 
     // Create Token B vault  
-    msg!("🔨 Step 4/6: Creating Token B Vault");
-    msg!("  Cost: {} SOL", vault_rent as f64 / 1_000_000_000.0);
-    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -462,11 +412,6 @@ pub fn process_initialize_pool(
     // This ensures LP token mints exist immediately and are controlled by the smart contract
     let mint_space = spl_token::state::Mint::LEN;
     let mint_rent = rent.minimum_balance(mint_space);
-    
-    msg!("🔨 Step 5/6: Creating LP Token A Mint");
-    msg!("  Cost: {} SOL", mint_rent as f64 / 1_000_000_000.0);
-    msg!("  LP Token A Mint PDA: {}", lp_token_a_mint_pda_address);
-    msg!("  LP Token B Mint PDA: {}", lp_token_b_mint_pda_address);
 
     // Create LP Token A mint account
     invoke_signed(
@@ -490,8 +435,8 @@ pub fn process_initialize_pool(
         &token_instruction::initialize_mint(
             token_program_account.key,
             lp_token_a_mint_pda.key,
-            pool_state_pda.key, // Pool controls minting/burning
-            None, // No freeze authority
+            pool_state_pda.key,
+            None,
             token_a_decimals, // 🔧 FIX: Use Token A decimals instead of hardcoded 6
         )?,
         &[
@@ -503,9 +448,6 @@ pub fn process_initialize_pool(
     )?;
 
     // Create LP Token B mint account
-    msg!("🔨 Step 6/6: Creating LP Token B Mint");
-    msg!("  Cost: {} SOL", mint_rent as f64 / 1_000_000_000.0);
-    
     invoke_signed(
         &system_instruction::create_account(
             user_authority_signer.key,
@@ -527,8 +469,8 @@ pub fn process_initialize_pool(
         &token_instruction::initialize_mint(
             token_program_account.key,
             lp_token_b_mint_pda.key,
-            pool_state_pda.key, // Pool controls minting/burning
-            None, // No freeze authority
+            pool_state_pda.key,
+            None,
             token_b_decimals, // 🔧 FIX: Use Token B decimals instead of hardcoded 6
         )?,
         &[
@@ -539,63 +481,41 @@ pub fn process_initialize_pool(
         &[pool_state_pda_seeds], // Pool state PDA signs as mint authority
     )?;
 
-    msg!("✅ LP token mints created and controlled by smart contract");
+
 
     // ✅ EXTRACT TOKEN DECIMALS: Extract decimals from token mint accounts for one-to-many ratio calculation
     let token_a_mint_data = token_a_mint_account.try_borrow_data()?;
     let token_a_mint = spl_token::state::Mint::unpack(&token_a_mint_data)?;
-    let token_a_decimals = token_a_mint.decimals;
+    let token_a_decimals_v2 = token_a_mint.decimals;
     
     let token_b_mint_data = token_b_mint_account.try_borrow_data()?;
     let token_b_mint = spl_token::state::Mint::unpack(&token_b_mint_data)?;
-    let token_b_decimals = token_b_mint.decimals;
-
-    // ✅ ENHANCED DEBUG LOGGING: Log all inputs to check_one_to_many_ratio
-    msg!("🔍 ENHANCED DEBUG: Token Mint Information");
-    msg!("  Token A Mint: {}", token_a_mint_key);
-    msg!("  Token A Decimals (from mint): {}", token_a_decimals);
-    msg!("  Token A Supply: {}", token_a_mint.supply);
-    msg!("  Token A Is Initialized: {}", token_a_mint.is_initialized);
-    msg!("  Token B Mint: {}", token_b_mint_key);
-    msg!("  Token B Decimals (from mint): {}", token_b_decimals);
-    msg!("  Token B Supply: {}", token_b_mint.supply);
-    msg!("  Token B Is Initialized: {}", token_b_mint.is_initialized);
+    let token_b_decimals_v2 = token_b_mint.decimals;
+    
+    // Check for variable shadowing issues
+    if token_a_decimals != token_a_decimals_v2 {
+        msg!("🚨 WARNING: Token A decimals mismatch! {} vs {}", token_a_decimals, token_a_decimals_v2);
+    }
+    if token_b_decimals != token_b_decimals_v2 {
+        msg!("🚨 WARNING: Token B decimals mismatch! {} vs {}", token_b_decimals, token_b_decimals_v2);
+    }
 
     // ✅ ONE-TO-MANY RATIO FLAG: Determine if this pool qualifies for the one-to-many ratio flag
     // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
     // and both ratios represent whole numbers only (no fractional amounts)
     
-    msg!("🔍 ENHANCED DEBUG: About to call check_one_to_many_ratio");
-    msg!("  Input ratio_a_numerator: {} (simplified)", ratio_a_numerator);
-    msg!("  Input ratio_b_denominator: {} (simplified)", ratio_b_denominator);
-    msg!("  Input token_a_decimals: {}", token_a_decimals);
-    msg!("  Input token_b_decimals: {}", token_b_decimals);
-    
     // ✅ BUG FIX: Convert simplified ratio values to decimal-adjusted values
     // The check_one_to_many_ratio function expects decimal-adjusted values (e.g., 1,000,000,000 for 1.0 with 9 decimals)
     // but the pool creation stores simplified values (e.g., 160 for a 160:1 ratio)
-    let decimal_adjusted_ratio_a = ratio_a_numerator * 10_u64.pow(token_a_decimals as u32);
-    let decimal_adjusted_ratio_b = ratio_b_denominator * 10_u64.pow(token_b_decimals as u32);
-    
-    msg!("  Decimal-adjusted ratio_a_numerator: {}", decimal_adjusted_ratio_a);
-    msg!("  Decimal-adjusted ratio_b_denominator: {}", decimal_adjusted_ratio_b);
+    let decimal_adjusted_ratio_a = ratio_a_numerator * 10_u64.pow(token_a_decimals_v2 as u32);
+    let decimal_adjusted_ratio_b = ratio_b_denominator * 10_u64.pow(token_b_decimals_v2 as u32);
     
     let is_one_to_many_ratio = check_one_to_many_ratio(
         decimal_adjusted_ratio_a,
         decimal_adjusted_ratio_b,
-        token_a_decimals,
-        token_b_decimals
+        token_a_decimals_v2,
+        token_b_decimals_v2
     );
-    
-    msg!("🔍 ENHANCED DEBUG: check_one_to_many_ratio result: {}", is_one_to_many_ratio);
-    
-    msg!("🔍 One-to-Many Ratio Analysis:");
-    msg!("  Token A: {} base units ({} decimals)", ratio_a_numerator, token_a_decimals);
-    msg!("  Token B: {} base units ({} decimals)", ratio_b_denominator, token_b_decimals);
-    msg!("  Display Ratio: {} : {}", 
-         ratio_a_numerator / (10_u64.pow(token_a_decimals as u32)),
-         ratio_b_denominator / (10_u64.pow(token_b_decimals as u32)));
-    msg!("  One-to-Many Flag: {}", if is_one_to_many_ratio { "✅ SET" } else { "❌ NOT SET" });
 
     // ✅ POOL STATE: Create pool state with comprehensive configuration
     let pool_state = PoolState {
@@ -615,21 +535,11 @@ pub fn process_initialize_pool(
         token_b_vault_bump_seed,
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
-        flags: {
-            let flag_value = if is_one_to_many_ratio { 
-                msg!("🔍 ENHANCED DEBUG: Setting POOL_FLAG_ONE_TO_MANY_RATIO flag");
-                msg!("  Flag constant value: {}", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
-                msg!("  Flags will be set to: 0b{:08b} ({})", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO, crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
-                crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
-            } else { 
-                msg!("🔍 ENHANCED DEBUG: NOT setting POOL_FLAG_ONE_TO_MANY_RATIO flag");
-                msg!("  is_one_to_many_ratio returned: false");
-                msg!("  Flags will remain: 0b{:08b} ({})", 0u8, 0u8);
-                0 
-            };
-            msg!("🔍 ENHANCED DEBUG: Final flag value assigned to pool state: {}", flag_value);
-            flag_value
-        }, // Set ONE_TO_MANY_RATIO flag based on proper validation logic
+        flags: if is_one_to_many_ratio { 
+            crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
+        } else { 
+            0 
+        },
         
         // **NEW: CONFIGURABLE CONTRACT FEES** - Initialize with current constants
         contract_liquidity_fee: crate::constants::DEPOSIT_WITHDRAWAL_FEE,
@@ -650,45 +560,12 @@ pub fn process_initialize_pool(
         total_fees_consolidated: 0,
     };
 
-    // Fee collection moved to beginning of function (FEES FIRST PATTERN)
-
-    // ✅ ENHANCED DEBUG: Verify pool state flags before serialization
-    msg!("🔍 ENHANCED DEBUG: Pool State Verification BEFORE Serialization");
-    msg!("  Pool state flags field: 0b{:08b} ({})", pool_state.flags, pool_state.flags);
-    msg!("  POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO, crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO);
-    msg!("  Flag is set check: {}", (pool_state.flags & crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
-    msg!("  Expected flag state: {}", is_one_to_many_ratio);
-    
     // Serialize pool state to account
     serialize_to_account(&pool_state, pool_state_pda)?;
     
-    // ✅ ENHANCED DEBUG: Verify serialization completed
-    msg!("🔍 ENHANCED DEBUG: Pool state serialized to account: {}", pool_state_pda.key);
-
     // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
-    msg!("🎯 POOL_ID: {}", pool_state_pda.key);
-    
-    msg!("🎉 POOL CREATION COMPLETED SUCCESSFULLY!");
-    msg!("==========================================");
-    msg!("✅ INFRASTRUCTURE CREATED:");
-    msg!("  • Pool State Account: {}", pool_state_pda.key);
-    msg!("  • Token A Vault: {}", token_a_vault_pda.key);
-    msg!("  • Token B Vault: {}", token_b_vault_pda.key);
-    msg!("  • LP Token A Mint: {}", lp_token_a_mint_pda_address);
-    msg!("  • LP Token B Mint: {}", lp_token_b_mint_pda_address);
-    msg!("");
-    msg!("📊 POOL CONFIGURATION:");
-    msg!("  • Token A: {}", token_a_mint_key);
-    msg!("  • Token B: {}", token_b_mint_key);
-    msg!("  • Fixed Ratio: {} : {}", ratio_a_numerator, ratio_b_denominator);
-    msg!("  • Pool Owner: {}", user_authority_signer.key);
-    msg!("");
-    msg!("🚀 NEXT STEPS:");
-    msg!("  • Add liquidity to start earning fees");
-    msg!("  • Share pool address with other users");
-    msg!("  • Monitor pool activity and fee collection");
-    msg!("  • Consider setting up automated liquidity management");
-    msg!("==========================================");
+    msg!("🎯 POOL_ID: {} | Ratio: {}:{} | OneToMany: {}", 
+         pool_state_pda.key, ratio_a_numerator, ratio_b_denominator, is_one_to_many_ratio);
     
     Ok(())
 } 
