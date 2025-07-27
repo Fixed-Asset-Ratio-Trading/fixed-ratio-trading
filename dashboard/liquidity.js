@@ -1107,43 +1107,191 @@ function updateRemoveButton() {
  * Phase 3.1: Execute remove liquidity transaction
  */
 async function removeLiquidity() {
-    if (!poolData) {
-        showStatus('error', 'No pool data available');
+    if (!poolData || !selectedToken || !isConnected) {
+        showStatus('error', 'Please connect wallet and load pool data first');
         return;
     }
     
     const amount = parseFloat(document.getElementById('remove-liquidity-amount').value);
     const selectedLP = document.querySelector('.lp-token-option.selected');
     
-    if (!amount || !selectedLP) {
-        showStatus('error', 'Please select LP token and enter amount');
+    if (!amount || amount <= 0) {
+        showStatus('error', 'Please enter a valid amount');
         return;
     }
     
+    if (!selectedLP) {
+        showStatus('error', 'Please select an LP token to burn');
+        return;
+    }
+    
+    const removeBtn = document.getElementById('remove-liquidity-btn');
+    const originalText = removeBtn.textContent;
+    
     try {
+        removeBtn.disabled = true;
+        removeBtn.textContent = '🔄 Removing Liquidity...';
+        
+        // Determine which LP token and underlying token
         const isTokenA = selectedLP.id === 'lp-token-a-option';
-        const tokenType = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
-        const lpTokenType = isTokenA ? `LP ${poolData.tokenASymbol}` : `LP ${poolData.tokenBSymbol}`;
+        const underlyingTokenMint = isTokenA ? poolData.tokenAMint : poolData.tokenBMint;
+        const lpTokenMint = isTokenA ? poolData.lpTokenAMint : poolData.lpTokenBMint;
+        const tokenSymbol = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
+        const lpTokenSymbol = isTokenA ? `LP ${poolData.tokenASymbol}` : `LP ${poolData.tokenBSymbol}`;
         
-        showStatus('info', `Removing ${amount} ${lpTokenType} from pool...`);
+        // Check if user has enough LP tokens
+        const lpTokenData = selectedLP.dataset;
+        const lpBalance = parseFloat(lpTokenData.balance || 0);
+        const decimals = parseInt(lpTokenData.decimals || 6);
         
-        // Mock remove liquidity operation
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        if (amount > lpBalance) {
+            throw new Error(`Insufficient LP balance. You have ${lpBalance} ${lpTokenSymbol}`);
+        }
         
-        showStatus('success', `✅ Successfully removed ${amount} ${lpTokenType}! You received ${amount.toFixed(6)} ${tokenType}.`);
+        showStatus('info', `Requesting transaction approval from wallet...`);
+        console.log(`🔥 Initiating remove liquidity: ${amount} ${lpTokenSymbol} from pool ${poolAddress}`);
+        
+        // Check if wallet is still connected
+        if (!window.backpack?.isConnected) {
+            throw new Error('Wallet not connected. Please connect your Backpack wallet.');
+        }
+        
+        // Prepare transaction parameters
+        const lpAmountLamports = Math.floor(amount * Math.pow(10, decimals));
+        const poolPubkey = new solanaWeb3.PublicKey(poolAddress);
+        const withdrawTokenMint = new solanaWeb3.PublicKey(underlyingTokenMint);
+        const userWallet = new solanaWeb3.PublicKey(window.backpack.publicKey);
+        const programId = new solanaWeb3.PublicKey(window.TRADING_CONFIG.programId);
+        
+        showStatus('info', `Creating liquidity withdrawal transaction for ${amount} ${lpTokenSymbol}...`);
+        
+        // Derive required PDAs
+        const [systemStatePDA] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('system_state')],
+            programId
+        );
+        
+        // Get LP token mint PDAs
+        const [lpTokenAMint] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('lp_token_a_mint'), poolPubkey.toBytes()],
+            programId
+        );
+        
+        const [lpTokenBMint] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('lp_token_b_mint'), poolPubkey.toBytes()],
+            programId
+        );
+        
+        // Find user's LP token account (the one they're burning from)
+        const userLPTokenMint = new solanaWeb3.PublicKey(lpTokenMint);
+        const userLPTokenAccount = await window.splToken.Token.getAssociatedTokenAddress(
+            window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+            window.splToken.TOKEN_PROGRAM_ID,
+            userLPTokenMint,
+            userWallet
+        );
+        
+        // Find user's output token account (where they receive underlying tokens)
+        const userOutputTokenAccount = await window.splToken.Token.getAssociatedTokenAddress(
+            window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+            window.splToken.TOKEN_PROGRAM_ID,
+            withdrawTokenMint,
+            userWallet
+        );
+        
+        // Check if output token account exists, create if needed
+        const outputAccountInfo = await connection.getAccountInfo(userOutputTokenAccount);
+        
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction();
+        
+        // Add create associated token account instruction if needed
+        if (!outputAccountInfo) {
+            const createAtaIx = window.splToken.Token.createAssociatedTokenAccountInstruction(
+                window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                window.splToken.TOKEN_PROGRAM_ID,
+                withdrawTokenMint,
+                userOutputTokenAccount,
+                userWallet,
+                userWallet
+            );
+            transaction.add(createAtaIx);
+            console.log('✅ Added create associated token account instruction for output token');
+        }
+        
+        // Serialize withdraw instruction data: Withdraw { withdraw_token_mint, lp_amount_to_burn }
+        const instructionData = new Uint8Array(1 + 32 + 8);
+        instructionData[0] = 3; // Withdraw instruction discriminator
+        
+        // Serialize withdraw_token_mint (32 bytes)
+        withdrawTokenMint.toBytes().forEach((byte, index) => {
+            instructionData[1 + index] = byte;
+        });
+        
+        // Serialize lp_amount_to_burn (8 bytes, little-endian u64)
+        const amountBytes = new ArrayBuffer(8);
+        new DataView(amountBytes).setBigUint64(0, BigInt(lpAmountLamports), true);
+        new Uint8Array(amountBytes).forEach((byte, index) => {
+            instructionData[1 + 32 + index] = byte;
+        });
+        
+        // Create the withdraw instruction
+        const withdrawInstruction = new solanaWeb3.TransactionInstruction({
+            programId: programId,
+            keys: [
+                { pubkey: userWallet, isSigner: true, isWritable: true },                           // User Authority Signer
+                { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // System Program
+                { pubkey: systemStatePDA, isSigner: false, isWritable: false },                     // System State PDA
+                { pubkey: poolPubkey, isSigner: false, isWritable: true },                          // Pool State PDA
+                { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },   // SPL Token Program
+                { pubkey: new solanaWeb3.PublicKey(poolData.tokenAVault), isSigner: false, isWritable: true }, // Token A Vault
+                { pubkey: new solanaWeb3.PublicKey(poolData.tokenBVault), isSigner: false, isWritable: true }, // Token B Vault
+                { pubkey: userLPTokenAccount, isSigner: false, isWritable: true },                  // User LP Token Account (input)
+                { pubkey: userOutputTokenAccount, isSigner: false, isWritable: true },              // User Output Token Account
+                { pubkey: lpTokenAMint, isSigner: false, isWritable: true },                        // LP Token A Mint
+                { pubkey: lpTokenBMint, isSigner: false, isWritable: true },                        // LP Token B Mint
+            ],
+            data: instructionData
+        });
+        
+        transaction.add(withdrawInstruction);
+        
+        // Get recent blockhash
+        const { blockhash } = await connection.getRecentBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = userWallet;
+        
+        console.log('💰 Transaction prepared, requesting signature...');
+        
+        // Sign and send transaction
+        const signedTransaction = await window.backpack.signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+        
+        console.log('📡 Transaction signature:', signature);
+        showStatus('info', `⏳ Confirming transaction... Signature: ${signature.slice(0, 8)}...`);
+        
+        // Wait for confirmation
+        await connection.confirmTransaction(signature, 'confirmed');
+        
+        console.log('✅ Liquidity removal successful! Signature:', signature);
+        showStatus('success', `✅ Successfully removed ${amount} ${lpTokenSymbol}! You received ${amount.toFixed(6)} ${tokenSymbol}. Transaction: ${signature.slice(0, 8)}...`);
         
         // Reset form
         document.getElementById('remove-liquidity-amount').value = '';
         updateRemoveButton();
         
-        // Reload LP balances
-        setTimeout(() => {
-            loadLPTokenBalances();
+        // Reload balances
+        setTimeout(async () => {
+            await loadUserTokensForPool();
+            await loadLPTokenBalances();
         }, 1000);
         
     } catch (error) {
         console.error('❌ Error removing liquidity:', error);
         showStatus('error', `Failed to remove liquidity: ${error.message}`);
+    } finally {
+        removeBtn.disabled = false;
+        removeBtn.textContent = originalText;
     }
 }
 

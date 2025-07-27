@@ -23,8 +23,10 @@ use solana_program::{
 };
 use spl_token::{
     instruction as token_instruction,
-    state::{Account as TokenAccount},
+    state::{Account as TokenAccount, Mint},
 };
+
+
 
 /// Processes pool initialization with optimized account ordering and fee collection.
 /// 
@@ -97,6 +99,13 @@ pub fn process_initialize_pool(
     let lp_token_b_mint_pda = &accounts[12];                       // Index 12: LP Token B Mint PDA
 
     let rent = &Rent::from_account_info(rent_sysvar_account)?;
+    
+    // 🔧 FIX: Read decimals from underlying token mints to ensure LP tokens match
+    msg!("🔍 Reading token mint decimals for LP token configuration...");
+    let token_a_decimals = Mint::unpack_from_slice(&token_a_mint_account.data.borrow())?.decimals;
+    let token_b_decimals = Mint::unpack_from_slice(&token_b_mint_account.data.borrow())?.decimals;
+    msg!("📊 Token A decimals: {}, Token B decimals: {}", token_a_decimals, token_b_decimals);
+    msg!("✅ LP tokens will inherit matching decimal precision from underlying tokens");
     
     // 🎯 DEFI UX BEST PRACTICES: Comprehensive Transaction Summary
     msg!("🏊 FIXED RATIO POOL CREATION");
@@ -483,7 +492,7 @@ pub fn process_initialize_pool(
             lp_token_a_mint_pda.key,
             pool_state_pda.key, // Pool controls minting/burning
             None, // No freeze authority
-            6, // 6 decimals for LP tokens
+            token_a_decimals, // 🔧 FIX: Use Token A decimals instead of hardcoded 6
         )?,
         &[
             lp_token_a_mint_pda.clone(),
@@ -520,7 +529,7 @@ pub fn process_initialize_pool(
             lp_token_b_mint_pda.key,
             pool_state_pda.key, // Pool controls minting/burning
             None, // No freeze authority
-            6, // 6 decimals for LP tokens
+            token_b_decimals, // 🔧 FIX: Use Token B decimals instead of hardcoded 6
         )?,
         &[
             lp_token_b_mint_pda.clone(),
