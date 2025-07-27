@@ -62,7 +62,7 @@ pub fn process_consolidate_pool_fees(
     
     // Validate pool count within limits
     if pool_count == 0 {
-        msg!("❌ Pool count cannot be zero");
+        msg!("❌ Pool count cannot be 0");
         return Err(ProgramError::InvalidArgument);
     }
     if pool_count > MAX_POOLS_PER_CONSOLIDATION_BATCH {
