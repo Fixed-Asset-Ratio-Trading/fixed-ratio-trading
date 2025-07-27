@@ -228,50 +228,52 @@ async function fetchContractVersion() {
             data: instructionData,
         });
         
-        // Create transaction
+        // Create transaction with proper structure
         const transaction = new solanaWeb3.Transaction().add(instruction);
         
-        // Try multiple simulation approaches
+        // Get recent blockhash for proper transaction structure
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        
+        // Call GetVersion on smart contract using the working approach
         let result = null;
         let lastError = null;
         
-        // Method 1: Try with replaceRecentBlockhash (simplest approach)
-        try {
-            console.log('📡 Method 1: Trying simulateTransaction with replaceRecentBlockhash...');
-            updateVersionStatus('loading', 'Trying method 1...', 'Loading...');
-            
-            result = await connection.simulateTransaction(transaction, {
-                commitment: 'processed',
-                replaceRecentBlockhash: true,
-            });
-            
-            if (result && !result.value.err) {
-                console.log('✅ Method 1 succeeded');
-            }
-        } catch (error) {
-            console.log('⚠️ Method 1 failed:', error.message);
-            lastError = error;
-        }
+        console.log('📡 Calling GetVersion instruction on smart contract...');
+        console.log('🔍 Debug info:');
+        console.log('  Program ID:', CONFIG.programId);
+        console.log('  Instruction data:', Array.from(instructionData));
+        console.log('  Recent blockhash:', blockhash);
         
-        // Method 2: Try with dummy blockhash and fee payer
-        if (!result || result.value.err) {
-            try {
-                console.log('📡 Method 2: Trying simulateTransaction with dummy fee payer...');
-                updateVersionStatus('loading', 'Trying method 2...', 'Loading...');
-                
-                const { blockhash } = await connection.getLatestBlockhash();
-                transaction.recentBlockhash = blockhash;
-                transaction.feePayer = new solanaWeb3.PublicKey("11111111111111111111111111111111");
-                
-                result = await connection.simulateTransaction(transaction);
-                
-                if (result && !result.value.err) {
-                    console.log('✅ Method 2 succeeded');
-                }
-            } catch (error) {
-                console.log('⚠️ Method 2 failed:', error.message);
-                lastError = error;
+        updateVersionStatus('loading', 'Calling smart contract...', 'Loading...');
+        
+        try {
+            // Use the hardcoded keypair (same one used to deploy the contract)
+            const keypairData = [31,156,218,245,68,165,3,62,206,54,214,88,64,225,237,59,19,211,64,100,126,148,89,251,23,112,23,70,0,122,157,157,41,47,96,14,115,0,133,175,206,115,174,213,130,117,129,155,71,106,105,140,181,131,45,134,163,13,59,104,69,175,176,2];
+            const privateKey = new Uint8Array(keypairData);
+            const keypair = solanaWeb3.Keypair.fromSecretKey(privateKey);
+            
+            console.log('🔑 Using hardcoded keypair for signing:', keypair.publicKey.toString());
+            
+            // Create signed transaction (this is what works!)
+            const signedTransaction = new solanaWeb3.Transaction().add(instruction);
+            signedTransaction.recentBlockhash = blockhash;
+            signedTransaction.feePayer = keypair.publicKey;
+            signedTransaction.sign(keypair);
+            
+            // Simulate the signed transaction
+            result = await connection.simulateTransaction(signedTransaction);
+            
+            console.log('📋 Smart contract simulation result:');
+            console.log('  Error:', result?.value?.err);
+            console.log('  Logs available:', !!result?.value?.logs);
+            if (result?.value?.logs) {
+                console.log('  Logs:', result.value.logs);
             }
+            
+        } catch (error) {
+            console.log('⚠️ Smart contract call failed:', error.message);
+            lastError = error;
         }
         
         // Parse version from logs if we got a result
