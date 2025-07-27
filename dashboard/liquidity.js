@@ -649,8 +649,15 @@ async function addLiquidity() {
         // Check if we need to create the associated token account first
         const lpAccountInfo = await connection.getAccountInfo(userLPTokenAccount);
         
-        // Create the transaction
+        // Create the transaction with compute budget
         const transaction = new solanaWeb3.Transaction();
+        
+        // Add compute budget instruction to increase CU limit (deposit needs ~200k CUs)
+        const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
+            units: 300000 // Increase from default 200k to 300k CUs
+        });
+        transaction.add(computeBudgetInstruction);
+        console.log('✅ Added compute budget instruction: 300,000 CUs');
         
         // Add create associated token account instruction if needed
         if (!lpAccountInfo) {
@@ -698,10 +705,40 @@ async function addLiquidity() {
         
         transaction.add(depositInstruction);
         
+        // Debug: Log transaction details
+        console.log('🔍 Add Liquidity Transaction Debug:');
+        console.log('  Amount (raw):', amount);
+        console.log('  Amount (lamports):', amountLamports);
+        console.log('  Token Mint:', tokenMint.toString());
+        console.log('  Target Vault:', targetVault);
+        console.log('  Target LP Mint:', targetLPMint.toString());
+        console.log('  User Token Account:', userTokenAccount.toString());
+        console.log('  User LP Token Account:', userLPTokenAccount.toString());
+        
         // Get recent blockhash
         const { blockhash } = await connection.getLatestBlockhash();
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = userWallet;
+        
+        showStatus('info', `Testing transaction simulation first...`);
+        
+        // Simulate transaction to check for errors
+        try {
+            console.log('🧪 Simulating add liquidity transaction...');
+            const simulation = await connection.simulateTransaction(transaction);
+            console.log('📊 Simulation result:', simulation);
+            
+            if (simulation.value.err) {
+                console.log('❌ Simulation failed:', simulation.value.err);
+                console.log('📋 Simulation logs:', simulation.value.logs);
+                throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
+            }
+            
+            console.log('✅ Simulation successful - proceeding with transaction');
+        } catch (simError) {
+            console.error('❌ Simulation error:', simError);
+            throw new Error(`Simulation failed: ${simError.message}`);
+        }
         
         showStatus('info', `Waiting for transaction approval...`);
         
