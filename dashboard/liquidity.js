@@ -257,20 +257,31 @@ async function updatePoolDisplay() {
     try {
         if (connection && poolData.tokenAMint && poolData.tokenBMint) {
             console.log('🔍 Fetching token decimals for proper liquidity display...');
-            const [tokenADecimals, tokenBDecimals] = await Promise.all([
-                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint, connection),
-                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint, connection)
-            ]);
-            
-            tokenDecimals = {
-                tokenADecimals,
-                tokenBDecimals
-            };
-            
-            console.log(`✅ Token decimals: ${poolData.tokenASymbol}=${tokenADecimals}, ${poolData.tokenBSymbol}=${tokenBDecimals}`);
+            try {
+                const [tokenADecimals, tokenBDecimals] = await Promise.all([
+                    window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint, connection),
+                    window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint, connection)
+                ]);
+                
+                tokenDecimals = {
+                    tokenADecimals,
+                    tokenBDecimals
+                };
+                
+                console.log(`✅ Token decimals: ${poolData.tokenASymbol}=${tokenADecimals}, ${poolData.tokenBSymbol}=${tokenBDecimals}`);
+            } catch (error) {
+                console.error('❌ Failed to fetch token decimals:', error);
+                showStatus('error', `Failed to load pool information: ${error.message}. Please refresh the page or check your connection.`);
+                return; // Stop loading pool information if we can't get decimals
+            }
+        } else {
+            console.error('❌ Pool data missing token mint addresses or connection');
+            showStatus('error', 'Invalid pool data: missing token mint addresses or connection. Please refresh the page.');
+            return;
         }
     } catch (error) {
-        console.warn('⚠️ Could not fetch token decimals, using raw amounts:', error);
+        console.error('❌ Error loading pool information:', error);
+        showStatus('error', `Failed to load pool information: ${error.message}`);
     }
     
     // Phase 1.3: Use enhanced display utilities with flag interpretation and decimal precision
@@ -430,6 +441,13 @@ async function loadUserTokensForPool() {
                 const isTokenA = mintAddress === poolData.tokenAMint;
                 const symbol = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
                 
+                // Validate that we have the decimals from the blockchain
+                if (accountInfo.tokenAmount.decimals === undefined || accountInfo.tokenAmount.decimals === null) {
+                    console.error(`❌ Token decimals not found for ${mintAddress}`);
+                    showStatus('error', `Cannot determine decimals for token ${symbol}. This is required for safe transactions.`);
+                    return; // Stop loading tokens if we can't get decimals
+                }
+                
                 userTokens.push({
                     mint: mintAddress,
                     symbol: symbol,
@@ -519,8 +537,14 @@ function selectToken(token) {
     document.getElementById('add-liquidity-section').style.display = 'block';
     document.getElementById('add-liquidity-btn').style.display = 'block';
     
+    // Update input step based on token decimals
+    const amountInput = document.getElementById('add-liquidity-amount');
+    const step = token.decimals === 0 ? '1' : `0.${'0'.repeat(token.decimals - 1)}1`;
+    amountInput.step = step;
+    console.log(`🔧 Set input step to: ${step} for ${token.symbol} (decimals: ${token.decimals})`);
+    
     // Reset amount input
-    document.getElementById('add-liquidity-amount').value = '';
+    amountInput.value = '';
     updateAddButton();
     
     showStatus('success', `Selected ${token.symbol} for liquidity addition`);
@@ -557,8 +581,17 @@ function updateAddButton() {
     const amountInput = document.getElementById('add-liquidity-amount');
     
     const amount = parseFloat(amountInput.value) || 0;
+    console.log('🔍 Button update - amount:', amount, 'selectedToken:', selectedToken?.symbol);
     const hasValidAmount = amount > 0;
-    const hasBalance = selectedToken && amount <= selectedToken.balance;
+    
+    // Convert human-readable amount to raw units for comparison
+    const decimals = selectedToken?.decimals !== undefined ? selectedToken.decimals : 6;
+    const amountInRawUnits = amount * Math.pow(10, decimals);
+    if (selectedToken && amount > 0) {
+        console.log(`🔍 Button balance check: ${amountInRawUnits} (amount) vs ${selectedToken.balance} (balance)`);
+        console.log(`🔍 Button comparison result: ${amountInRawUnits <= selectedToken.balance}`);
+    }
+    const hasBalance = selectedToken && amountInRawUnits <= selectedToken.balance;
     
     const canAdd = isConnected && selectedToken && hasValidAmount && hasBalance;
     
@@ -579,6 +612,10 @@ function updateAddButton() {
  * Add liquidity to the pool
  */
 async function addLiquidity() {
+    console.log('🔍 Add Liquidity function called');
+    console.log('🔍 selectedToken:', selectedToken);
+    console.log('🔍 isConnected:', isConnected);
+    
     if (!selectedToken || !isConnected) {
         showStatus('error', 'Please connect wallet and select a token first');
         return;
@@ -590,8 +627,16 @@ async function addLiquidity() {
         return;
     }
     
-    if (amount > selectedToken.balance) {
-        showStatus('error', 'Insufficient balance');
+    // Convert human-readable amount to raw units for comparison
+    const decimals = selectedToken.decimals !== undefined ? selectedToken.decimals : 6;
+    console.log(`🔍 Debug conversion: amount=${amount}, decimals=${selectedToken.decimals}, calculated decimals=${decimals}, Math.pow(10, ${decimals})=${Math.pow(10, decimals)}`);
+    const amountInRawUnits = amount * Math.pow(10, decimals);
+    console.log(`🔍 Balance comparison: ${amountInRawUnits} (amount) vs ${selectedToken.balance} (balance)`);
+    console.log(`🔍 Amount type: ${typeof amountInRawUnits}, Balance type: ${typeof selectedToken.balance}`);
+    console.log(`🔍 Comparison result: ${amountInRawUnits > selectedToken.balance}`);
+    
+    if (amountInRawUnits > selectedToken.balance) {
+        showStatus('error', `Insufficient balance. Need: ${amountInRawUnits}, Have: ${selectedToken.balance}`);
         return;
     }
     
@@ -611,7 +656,9 @@ async function addLiquidity() {
         }
         
         // Prepare transaction parameters
-        const amountLamports = Math.floor(amount * Math.pow(10, selectedToken.decimals || 6));
+        const decimals = selectedToken.decimals !== undefined ? selectedToken.decimals : 6;
+        const amountLamports = Math.floor(amount * Math.pow(10, decimals));
+        console.log(`🔍 Amount conversion: ${amount} ${selectedToken.symbol} → ${amountLamports} lamports (decimals: ${selectedToken.decimals})`);
         const poolPubkey = new solanaWeb3.PublicKey(poolAddress);
         const tokenMint = new solanaWeb3.PublicKey(selectedToken.mint);
         const userWallet = new solanaWeb3.PublicKey(window.backpack.publicKey);
@@ -1089,14 +1136,26 @@ async function loadLPTokenBalances() {
             if (mintAddress === poolData.lpTokenAMint) {
                 lpTokenABalance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
                 lpTokenADecimals = accountInfo.tokenAmount.decimals;
-                console.log(`✅ Found LP Token A: ${lpTokenABalance} LP ${poolData.tokenASymbol}`);
+                
+                // Validate decimals
+                if (lpTokenADecimals === undefined || lpTokenADecimals === null) {
+                    throw new Error(`LP Token A decimals not found for ${mintAddress}`);
+                }
+                
+                console.log(`✅ Found LP Token A: ${lpTokenABalance} LP ${poolData.tokenASymbol} (decimals: ${lpTokenADecimals})`);
             }
             
             // Check if this is LP Token B
             if (mintAddress === poolData.lpTokenBMint) {
                 lpTokenBBalance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
                 lpTokenBDecimals = accountInfo.tokenAmount.decimals;
-                console.log(`✅ Found LP Token B: ${lpTokenBBalance} LP ${poolData.tokenBSymbol}`);
+                
+                // Validate decimals
+                if (lpTokenBDecimals === undefined || lpTokenBDecimals === null) {
+                    throw new Error(`LP Token B decimals not found for ${mintAddress}`);
+                }
+                
+                console.log(`✅ Found LP Token B: ${lpTokenBBalance} LP ${poolData.tokenBSymbol} (decimals: ${lpTokenBDecimals})`);
             }
         }
         
@@ -1556,14 +1615,45 @@ function setMaxAmount(operation) {
                 return;
             }
             
-            const maxAmount = selectedToken.balance;
+            // Convert raw balance to human-readable format based on decimals
+            // Use BigInt for large numbers to avoid precision issues
+            const decimals = selectedToken.decimals !== undefined ? selectedToken.decimals : 6;
+            const maxAmount = selectedToken.decimals === 0 
+                ? selectedToken.balance 
+                : Number(BigInt(selectedToken.balance) / BigInt(Math.pow(10, decimals)));
+            console.log(`🔍 Max amount calculation: ${selectedToken.balance} / Math.pow(10, ${selectedToken.decimals}) = ${maxAmount}`);
+            console.log(`🔍 Max amount type: ${typeof maxAmount}, isFinite: ${isFinite(maxAmount)}`);
             const amountInput = document.getElementById('add-liquidity-amount');
             
             if (amountInput && maxAmount > 0) {
-                amountInput.value = maxAmount.toString();
+                // Update step attribute based on token decimals
+                const step = selectedToken.decimals === 0 ? '1' : `0.${'0'.repeat(selectedToken.decimals - 1)}1`;
+                amountInput.step = step;
+                console.log(`🔧 Updated input step to: ${step} (decimals: ${selectedToken.decimals})`);
+                
+                const valueToSet = maxAmount.toString();
+                console.log(`🔧 Setting input value to: "${valueToSet}"`);
+                
+                // Remove any max attribute that might be limiting the value
+                amountInput.removeAttribute('max');
+                
+                // Try different methods to set the value
+                amountInput.value = valueToSet;
+                amountInput.setAttribute('value', valueToSet);
+                
+                // Force a change event to ensure the value is registered
+                amountInput.dispatchEvent(new Event('change', { bubbles: true }));
+                
+                // Verify the value was set correctly
+                console.log(`🔧 Input value after setting: "${amountInput.value}"`);
+                console.log(`🔧 Input getAttribute('value'): "${amountInput.getAttribute('value')}"`);
+                
                 updateAddButton();
-                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${selectedToken.symbol}`);
-                console.log(`💰 Set max amount for add: ${maxAmount} ${selectedToken.symbol}`);
+                
+                const formattedAmount = maxAmount.toLocaleString();
+                console.log(`🔧 Formatted amount: "${formattedAmount}"`);
+                showStatus('info', `Set to maximum available: ${formattedAmount} ${selectedToken.symbol}`);
+                console.log(`💰 Set max amount for add: ${maxAmount} ${selectedToken.symbol} (raw: ${selectedToken.balance})`);
             } else {
                 showStatus('error', 'No balance available');
             }

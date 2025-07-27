@@ -293,23 +293,35 @@ function formatLiquidityAmount(rawAmount, decimals = 6) {
  * @returns {Promise<number>} Token decimals (defaults to 6 if fetch fails)
  */
 async function getTokenDecimals(mintAddress, connection) {
+    if (!connection || !mintAddress) {
+        throw new Error(`Invalid parameters for getTokenDecimals: connection=${!!connection}, mintAddress=${mintAddress}`);
+    }
+    
     try {
-        if (!connection || !mintAddress) {
-            return 6; // Default SPL token decimals
-        }
-        
         const mintInfo = await connection.getParsedAccountInfo(
             new solanaWeb3.PublicKey(mintAddress)
         );
         
-        if (mintInfo.value && mintInfo.value.data.parsed) {
-            return mintInfo.value.data.parsed.info.decimals;
+        if (!mintInfo.value) {
+            throw new Error(`Token mint account not found: ${mintAddress}`);
         }
         
-        return 6; // Default fallback
+        if (!mintInfo.value.data.parsed) {
+            throw new Error(`Token mint account data not parsed: ${mintAddress}`);
+        }
+        
+        const decimals = mintInfo.value.data.parsed.info.decimals;
+        
+        if (decimals === undefined || decimals === null) {
+            throw new Error(`Token decimals not found in mint info: ${mintAddress}`);
+        }
+        
+        console.log(`✅ Fetched decimals for token ${mintAddress}: ${decimals}`);
+        return decimals;
+        
     } catch (error) {
-        console.warn(`⚠️ Could not fetch decimals for token ${mintAddress}:`, error);
-        return 6; // Default fallback
+        console.error(`❌ Failed to fetch decimals for token ${mintAddress}:`, error);
+        throw new Error(`Cannot determine token decimals for ${mintAddress}. This is required for safe transaction processing. Error: ${error.message}`);
     }
 }
 
