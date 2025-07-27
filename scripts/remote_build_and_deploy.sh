@@ -653,24 +653,31 @@ fi
 echo "  📊 Program Data: $PROGRAM_DATA_ADDRESS"
 echo "  📏 Program Size: $PROGRAM_SIZE bytes"
 if [ "$VERSION_VERIFIED" = "true" ]; then
-    echo "  🔍 Version Verified: ✅ YES"
+    echo "  🔍 Version Verified: ✅ YES - Contract responding correctly"
 elif [ "$VERSION_VERIFIED" = "false" ]; then
-    echo "  🔍 Version Verified: ❌ NO"
+    echo "  🔍 Version Verified: ❌ NO - CRITICAL ISSUE DETECTED"
 else
-    echo "  🔍 Version Verified: ⚠️  SKIPPED"
+    echo "  🔍 Version Verified: ⚠️  SKIPPED - Script not executed"
 fi
 echo ""
 echo -e "${GREEN}💡 The contract is now live on the direct validator endpoint!${NC}"
 echo -e "${YELLOW}📝 Next Steps:${NC}"
-if [ "$INITIALIZATION_STATUS" = "success" ]; then
+if [ "$VERSION_VERIFIED" = "false" ]; then
+    echo -e "${RED}🚨 CRITICAL: Version verification FAILED - DO NOT USE IN PRODUCTION${NC}"
+    echo "  1. ❌ URGENT: Fix deployment issues before proceeding"
+    echo "  2. 🔍 Run diagnostic tests: cargo test --test 54_test_get_version"
+    echo "  3. 🔄 Redeploy contract if tests fail"
+    echo "  4. 🚫 DO NOT create pools or use dashboard until fixed"
+    echo "  5. 📞 Contact development team if issues persist"
+elif [ "$INITIALIZATION_STATUS" = "success" ]; then
     echo "  1. ✅ Contract is deployed and initialized - ready for pools!"
     echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
     echo "  3. 🏊‍♂️ Create pools via dashboard (no manual initialization needed)"
     echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
     if [ "$VERSION_VERIFIED" = "true" ]; then
         echo "  5. ✅ Version verification passed - deployment confirmed"
-    elif [ "$VERSION_VERIFIED" = "false" ]; then
-        echo "  5. ⚠️  Version verification failed - check deployment"
+    else
+        echo "  5. ⚠️  Version verification skipped - manual check recommended"
     fi
 elif [ "$INITIALIZATION_STATUS" = "failed" ]; then
     echo "  1. ✅ Contract is deployed but initialization failed"
@@ -679,8 +686,8 @@ elif [ "$INITIALIZATION_STATUS" = "failed" ]; then
     echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
     if [ "$VERSION_VERIFIED" = "true" ]; then
         echo "  5. ✅ Version verification passed - deployment confirmed"
-    elif [ "$VERSION_VERIFIED" = "false" ]; then
-        echo "  5. ⚠️  Version verification failed - check deployment"
+    else
+        echo "  5. ⚠️  Version verification skipped - manual check recommended"
     fi
 else
     echo "  1. ✅ Contract is upgraded and ready for use"
@@ -688,8 +695,8 @@ else
     echo "  3. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
     if [ "$VERSION_VERIFIED" = "true" ]; then
         echo "  4. ✅ Version verification passed - deployment confirmed"
-    elif [ "$VERSION_VERIFIED" = "false" ]; then
-        echo "  4. ⚠️  Version verification failed - check deployment"
+    else
+        echo "  4. ⚠️  Version verification skipped - manual check recommended"
     fi
 fi
 echo ""
@@ -704,9 +711,9 @@ echo "🔍 VERIFYING DEPLOYED CONTRACT VERSION"
 echo "======================================================"
 echo "🔍 Verifying deployed contract version matches build..."
 
-# Create a robust Node.js script to call GetVersion instruction (based on working dashboard code)
-cat > "$PROJECT_ROOT/temp_version_check.js" << 'EOF'
-const { Connection, PublicKey, Transaction, TransactionInstruction } = require('@solana/web3.js');
+# Create a robust Node.js script to call GetVersion instruction (using the actual deployment keypair)
+cat > "$PROJECT_ROOT/temp_version_check.js" << EOF
+const { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } = require('@solana/web3.js');
 const fs = require('fs');
 
 async function verifyContractVersion() {
@@ -721,6 +728,21 @@ async function verifyContractVersion() {
         const connection = new Connection(config.solana.rpcUrl, 'confirmed');
         const programId = new PublicKey(config.program.programId);
         
+        // Load the same keypair used for deployment (program upgrade authority)
+        const keypairPath = '$KEYPAIR_PATH';
+        console.log('🔑 Loading deployment keypair from:', keypairPath);
+        
+        if (!fs.existsSync(keypairPath)) {
+            console.error('❌ CRITICAL ERROR: Deployment keypair not found at:', keypairPath);
+            console.error('   Cannot verify version without the deployment keypair');
+            process.exit(1);
+        }
+        
+        const keypairData = JSON.parse(fs.readFileSync(keypairPath, 'utf8'));
+        const keypair = Keypair.fromSecretKey(new Uint8Array(keypairData));
+        
+        console.log('🔑 Using deployment keypair:', keypair.publicKey.toString());
+        
         // Create GetVersion instruction (1-byte discriminator for unit enum!)
         const instructionData = Buffer.from([14]); // GetVersion = discriminator 14 (1 byte only!)
         const instruction = new TransactionInstruction({
@@ -729,35 +751,30 @@ async function verifyContractVersion() {
             data: instructionData,
         });
         
-        // Create transaction
-        const transaction = new Transaction().add(instruction);
+        // Get recent blockhash for proper transaction structure
+        const { blockhash } = await connection.getLatestBlockhash();
         
-        // Try multiple simulation approaches (based on working dashboard code)
-        let result = null;
+        // Create signed transaction (this is the key - must be signed!)
+        const signedTransaction = new Transaction().add(instruction);
+        signedTransaction.recentBlockhash = blockhash;
+        signedTransaction.feePayer = keypair.publicKey;
+        signedTransaction.sign(keypair); // This is what makes it work!
         
-        // Method 1: Try with replaceRecentBlockhash (simplest approach)
-        try {
-            console.log('📡 Method 1: Trying simulateTransaction with replaceRecentBlockhash...');
-            result = await connection.simulateTransaction(transaction, {
-                commitment: 'processed',
-                replaceRecentBlockhash: true,
-            });
-        } catch (error) {
-            console.log('⚠️ Method 1 failed:', error.message);
-        }
+        console.log('📡 Calling GetVersion instruction on smart contract...');
+        console.log('🔍 Debug info:');
+        console.log('  Program ID:', config.program.programId);
+        console.log('  Instruction data:', Array.from(instructionData));
+        console.log('  Recent blockhash:', blockhash);
+        console.log('  Fee payer:', keypair.publicKey.toString());
         
-        // Method 2: Try with dummy blockhash and fee payer
-        if (!result || result.value.err) {
-            try {
-                console.log('📡 Method 2: Trying simulateTransaction with dummy fee payer...');
-                const { blockhash } = await connection.getLatestBlockhash();
-                transaction.recentBlockhash = blockhash;
-                transaction.feePayer = new PublicKey("11111111111111111111111111111111");
-                
-                result = await connection.simulateTransaction(transaction);
-            } catch (error) {
-                console.log('⚠️ Method 2 failed:', error.message);
-            }
+        // Simulate the signed transaction
+        const result = await connection.simulateTransaction(signedTransaction);
+        
+        console.log('📋 Smart contract simulation result:');
+        console.log('  Error:', result?.value?.err);
+        console.log('  Logs available:', !!result?.value?.logs);
+        if (result?.value?.logs) {
+            console.log('  Logs:', result.value.logs);
         }
         
         // Parse version from logs if we got a result
@@ -788,43 +805,44 @@ async function verifyContractVersion() {
                         console.log('   - Previous version still cached in validator');
                         console.log('   - Deployment process failed silently');
                         console.log('   - Build artifacts out of sync');
+                        console.error('❌ DEPLOYMENT VERIFICATION FAILED');
                         process.exit(1);
                     }
                 }
             }
             
-            console.log('⚠️  Could not extract version from contract logs');
+            console.log('❌ Could not extract version from contract logs');
             console.log('📋 Available logs:', result.value.logs);
+            console.error('❌ VERSION EXTRACTION FAILED');
             process.exit(1);
         }
         
-        // If we reach here, both simulation methods failed
-        console.log('⚠️  RPC simulation failed to call GetVersion instruction');
+        // If we reach here, contract call failed
+        console.error('❌ RPC simulation failed to call GetVersion instruction');
         if (result && result.value.err) {
             console.error('   Simulation error:', result.value.err);
         }
-        console.log('📝 This is a known limitation with some RPC endpoints');
-        console.log('🔍 Possible causes:');
-        console.log('   1. RPC endpoint doesn\'t support transaction simulation');
-        console.log('   2. GetVersion instruction has account requirements we\'re missing');
-        console.log('   3. Network connectivity or RPC configuration issues');
-        console.log('');
-        console.log('✅ DEPLOYMENT STATUS: SUCCESS (program was deployed)');
-        console.log('⚠️  VERSION VERIFICATION: SKIPPED (RPC simulation failed)');
-        console.log('🛡️  RECOMMENDATION: Run the unit test to verify version integrity:');
-        console.log('   cargo test --test 54_test_get_version test_contract_version_matches_deployment_info');
-        console.log('');
-        process.exit(0); // Don't fail deployment due to verification issues
+        console.error('🚨 CRITICAL: Cannot verify deployed contract version');
+        console.error('   This indicates a serious deployment issue');
+        console.error('   The contract may not be working correctly');
+        console.error('');
+        console.error('🛡️  RECOMMENDATION: Check deployment manually:');
+        console.error('   cargo test --test 54_test_get_version test_contract_version_matches_deployment_info');
+        console.error('');
+        console.error('❌ DEPLOYMENT VERIFICATION FAILED');
+        process.exit(1);
         
     } catch (error) {
-        console.error('⚠️  Version verification encountered an error:', error.message);
-        console.log('✅ DEPLOYMENT STATUS: SUCCESS (program was deployed)');
-        console.log('⚠️  VERSION VERIFICATION: FAILED (script error)');
-        console.log('🔍 Error details:', error.name, error.message);
-        console.log('🛡️  RECOMMENDATION: Run the unit test to verify version integrity:');
-        console.log('   cargo test --test 54_test_get_version test_contract_version_matches_deployment_info');
-        console.log('');
-        process.exit(0); // Don't fail deployment due to verification script errors
+        console.error('❌ Version verification encountered a critical error:', error.message);
+        console.error('🔍 Error details:', error.name, error.message);
+        console.error('🚨 CRITICAL: Cannot verify deployed contract version');
+        console.error('   This indicates a serious deployment or script issue');
+        console.error('');
+        console.error('🛡️  RECOMMENDATION: Check deployment manually:');
+        console.error('   cargo test --test 54_test_get_version test_contract_version_matches_deployment_info');
+        console.error('');
+        console.error('❌ DEPLOYMENT VERIFICATION FAILED');
+        process.exit(1);
     }
 }
 
@@ -833,15 +851,33 @@ EOF
 
 # Run version verification
 echo "🚀 Running contract version verification..."
+echo "   Using deployment keypair for authentication..."
+
 if node "$PROJECT_ROOT/temp_version_check.js"; then
-    echo "✅ Contract version verification successful!"
+    echo ""
+    echo "✅ CONTRACT VERSION VERIFICATION SUCCESSFUL!"
+    echo "🎯 Deployed contract version matches expected version"
+    echo "🛡️ Deployment integrity confirmed"
     VERSION_VERIFIED=true
 else
-    echo "❌ Contract version verification failed!"
-    echo "   This could indicate:"
+    echo ""
+    echo "❌ CONTRACT VERSION VERIFICATION FAILED!"
+    echo "🚨 CRITICAL DEPLOYMENT ISSUE DETECTED"
+    echo ""
+    echo "⚠️ POSSIBLE CAUSES:"
     echo "   1. Deployment didn't include latest changes"
-    echo "   2. GetVersion instruction is not working"
-    echo "   3. Network connectivity issues"
+    echo "   2. GetVersion instruction is not working correctly"
+    echo "   3. Contract deployment was incomplete"
+    echo "   4. Build artifacts are out of sync"
+    echo "   5. Network connectivity or RPC issues"
+    echo ""
+    echo "🛠️ REQUIRED ACTIONS:"
+    echo "   - Check deployment logs above for errors"
+    echo "   - Run unit tests to verify GetVersion works:"
+    echo "     cargo test --test 54_test_get_version"
+    echo "   - Redeploy if necessary"
+    echo "   - Do not use this deployment in production"
+    echo ""
     VERSION_VERIFIED=false
 fi
 
