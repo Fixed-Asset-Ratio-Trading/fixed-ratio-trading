@@ -8,9 +8,10 @@
  * Phase 1.3: Implements special handling for One-to-many ratio pools (bit 0 flag)
  * 
  * @param {Object} pool - Pool data with ratioANumerator, ratioBDenominator, tokenASymbol, tokenBSymbol, flags, etc.
+ * @param {Object} tokenDecimals - Optional object with tokenADecimals and tokenBDecimals for proper liquidity formatting
  * @returns {Object} Display configuration with base/quote tokens and exchange rates
  */
-function getDisplayTokenOrder(pool) {
+function getDisplayTokenOrder(pool, tokenDecimals = null) {
     // Handle missing or invalid data
     if (!pool || !pool.tokenASymbol || !pool.tokenBSymbol) {
         return {
@@ -37,6 +38,16 @@ function getDisplayTokenOrder(pool) {
     const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // How many A per B
     const tokensB_per_tokenA = ratioBDenominator / ratioANumerator;  // How many B per A
     
+    // Determine how to format liquidity amounts based on available decimal information
+    const getFormattedLiquidity = (rawAmount, isTokenA) => {
+        if (tokenDecimals) {
+            const decimals = isTokenA ? tokenDecimals.tokenADecimals : tokenDecimals.tokenBDecimals;
+            return formatLiquidityAmount(rawAmount, decimals);
+        }
+        // Fallback to raw formatting if no decimals provided (for backward compatibility)
+        return formatLargeNumber(rawAmount);
+    };
+    
     if (isOneToManyRatio) {
         // **Phase 1.3: One-to-many ratio special handling**
         // Place token with value 1 (excluding decimals) first
@@ -48,8 +59,8 @@ function getDisplayTokenOrder(pool) {
             return {
                 baseToken: pool.tokenBSymbol,
                 quoteToken: pool.tokenASymbol,
-                baseLiquidity: pool.tokenBLiquidity || 0,
-                quoteLiquidity: pool.tokenALiquidity || 0,
+                baseLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
+                quoteLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
                 exchangeRate: tokensA_per_tokenB,
                 displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
                 rateText: `1 ${pool.tokenBSymbol} = ${formatNumberWithCommas(ratioANumerator)} ${pool.tokenASymbol}`,
@@ -61,8 +72,8 @@ function getDisplayTokenOrder(pool) {
             return {
                 baseToken: pool.tokenASymbol,
                 quoteToken: pool.tokenBSymbol,
-                baseLiquidity: pool.tokenALiquidity || 0,
-                quoteLiquidity: pool.tokenBLiquidity || 0,
+                baseLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
+                quoteLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
                 exchangeRate: tokensB_per_tokenA,
                 displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
                 rateText: `1 ${pool.tokenASymbol} = ${formatNumberWithCommas(ratioBDenominator)} ${pool.tokenBSymbol}`,
@@ -80,8 +91,8 @@ function getDisplayTokenOrder(pool) {
         return {
             baseToken: pool.tokenBSymbol,
             quoteToken: pool.tokenASymbol,
-            baseLiquidity: pool.tokenBLiquidity || 0,
-            quoteLiquidity: pool.tokenALiquidity || 0,
+            baseLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
+            quoteLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
             exchangeRate: tokensA_per_tokenB,
             displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
             rateText: `1 ${pool.tokenBSymbol} = ${formatExchangeRateStandard(tokensA_per_tokenB)} ${pool.tokenASymbol}`,
@@ -94,8 +105,8 @@ function getDisplayTokenOrder(pool) {
         return {
             baseToken: pool.tokenASymbol,
             quoteToken: pool.tokenBSymbol,
-            baseLiquidity: pool.tokenALiquidity || 0,
-            quoteLiquidity: pool.tokenBLiquidity || 0,
+            baseLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
+            quoteLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
             exchangeRate: tokensB_per_tokenA,
             displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
             rateText: `1 ${pool.tokenASymbol} = ${formatExchangeRateStandard(tokensB_per_tokenA)} ${pool.tokenBSymbol}`,
@@ -256,6 +267,53 @@ function formatLargeNumber(num) {
 }
 
 /**
+ * Format liquidity amounts accounting for token decimal precision
+ * 
+ * @param {number} rawAmount - Raw amount from blockchain (in smallest units)
+ * @param {number} decimals - Token decimal places (default: 6)
+ * @returns {string} Formatted amount string with units
+ */
+function formatLiquidityAmount(rawAmount, decimals = 6) {
+    if (typeof rawAmount !== 'number' || isNaN(rawAmount) || rawAmount < 0) {
+        return '0';
+    }
+    
+    // Convert from raw units to human-readable amount
+    const adjustedAmount = rawAmount / Math.pow(10, decimals);
+    
+    // Use formatLargeNumber for consistent formatting
+    return formatLargeNumber(adjustedAmount);
+}
+
+/**
+ * Get token decimals from mint address using RPC
+ * 
+ * @param {string} mintAddress - Token mint address
+ * @param {Object} connection - Solana connection object
+ * @returns {Promise<number>} Token decimals (defaults to 6 if fetch fails)
+ */
+async function getTokenDecimals(mintAddress, connection) {
+    try {
+        if (!connection || !mintAddress) {
+            return 6; // Default SPL token decimals
+        }
+        
+        const mintInfo = await connection.getParsedAccountInfo(
+            new solanaWeb3.PublicKey(mintAddress)
+        );
+        
+        if (mintInfo.value && mintInfo.value.data.parsed) {
+            return mintInfo.value.data.parsed.info.decimals;
+        }
+        
+        return 6; // Default fallback
+    } catch (error) {
+        console.warn(`⚠️ Could not fetch decimals for token ${mintAddress}:`, error);
+        return 6; // Default fallback
+    }
+}
+
+/**
  * Format numbers with commas (no abbreviations) - ideal for ratios and exact amounts
  * 
  * @param {number} num - Number to format
@@ -302,6 +360,8 @@ if (typeof window !== 'undefined') {
         formatExchangeRateStandard,
         getSimpleDisplayOrder,
         formatLargeNumber,
+        formatLiquidityAmount,
+        getTokenDecimals,
         formatNumberWithCommas,
         createPoolTitle,
         createExchangeRateDisplay,
@@ -319,6 +379,9 @@ if (typeof module !== 'undefined' && module.exports) {
         formatExchangeRateStandard,
         getSimpleDisplayOrder,
         formatLargeNumber,
+        formatLiquidityAmount,
+        getTokenDecimals,
+        formatNumberWithCommas,
         createPoolTitle,
         createExchangeRateDisplay,
         // Phase 1.3: New flag interpretation functions

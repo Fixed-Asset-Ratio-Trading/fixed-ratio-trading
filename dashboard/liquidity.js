@@ -163,7 +163,7 @@ async function loadPoolInformation() {
         poolData.tokenBSymbol = tokenSymbols.tokenB;
         
         // Update UI with pool information
-        updatePoolDisplay();
+        await updatePoolDisplay();
         
         console.log('✅ Pool information loaded:', poolData);
         
@@ -242,7 +242,7 @@ async function getTokenSymbol(tokenMint, tokenLabel) {
 /**
  * Phase 2.1: Update pool display in UI with Phase 1.3 enhancements
  */
-function updatePoolDisplay() {
+async function updatePoolDisplay() {
     if (!poolData) return;
     
     const poolLoading = document.getElementById('pool-loading');
@@ -252,8 +252,29 @@ function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // Phase 1.3: Use enhanced display utilities with flag interpretation
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
+    // Fetch token decimals for proper liquidity display
+    let tokenDecimals = null;
+    try {
+        if (connection && poolData.tokenAMint && poolData.tokenBMint) {
+            console.log('🔍 Fetching token decimals for proper liquidity display...');
+            const [tokenADecimals, tokenBDecimals] = await Promise.all([
+                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint, connection),
+                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint, connection)
+            ]);
+            
+            tokenDecimals = {
+                tokenADecimals,
+                tokenBDecimals
+            };
+            
+            console.log(`✅ Token decimals: ${poolData.tokenASymbol}=${tokenADecimals}, ${poolData.tokenBSymbol}=${tokenBDecimals}`);
+        }
+    } catch (error) {
+        console.warn('⚠️ Could not fetch token decimals, using raw amounts:', error);
+    }
+    
+    // Phase 1.3: Use enhanced display utilities with flag interpretation and decimal precision
+    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData, tokenDecimals);
     const flags = window.TokenDisplayUtils.interpretPoolFlags(poolData);
     
     // Generate pool flags section
@@ -272,12 +293,12 @@ function updatePoolDisplay() {
         
         <div class="pool-metric">
             <div class="metric-label">${display.baseToken} Liquidity</div>
-            <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.baseLiquidity)}</div>
+            <div class="metric-value">${display.baseLiquidity}</div>
         </div>
         
         <div class="pool-metric">
             <div class="metric-label">${display.quoteToken} Liquidity</div>
-            <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.quoteLiquidity)}</div>
+            <div class="metric-value">${display.quoteLiquidity}</div>
         </div>
         
         <div class="pool-metric">
