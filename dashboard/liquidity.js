@@ -1021,34 +1021,93 @@ function switchOperation(operation) {
  * Phase 3.1: Load LP token balances for connected wallet
  */
 async function loadLPTokenBalances() {
-    if (!poolData || !window.backpack?.solana?.publicKey) {
+    if (!poolData || !window.backpack?.publicKey) {
         console.log('No wallet connected or pool data unavailable');
         return;
     }
     
     try {
-        // Mock LP token balances (in real implementation, query SPL token accounts)
-        const mockLPBalances = {
-            tokenA: 1250.543210, // Mock LP Token A balance
-            tokenB: 2150.876543  // Mock LP Token B balance
-        };
+        console.log('🔍 Loading real LP token balances from blockchain...');
         
-        // Update LP token labels and balances
+        // Get all token accounts for the user
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+            window.backpack.publicKey,
+            { programId: window.splToken.TOKEN_PROGRAM_ID }
+        );
+        
+        console.log(`📊 Found ${tokenAccounts.value.length} total token accounts`);
+        
+        // Initialize LP balances
+        let lpTokenABalance = 0;
+        let lpTokenBBalance = 0;
+        let lpTokenADecimals = 6; // Default
+        let lpTokenBDecimals = 6; // Default
+        
+        // Look for LP token accounts
+        for (const tokenAccount of tokenAccounts.value) {
+            const accountInfo = tokenAccount.account.data.parsed.info;
+            const mintAddress = accountInfo.mint;
+            
+            // Check if this is LP Token A
+            if (mintAddress === poolData.lpTokenAMint) {
+                lpTokenABalance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
+                lpTokenADecimals = accountInfo.tokenAmount.decimals;
+                console.log(`✅ Found LP Token A: ${lpTokenABalance} LP ${poolData.tokenASymbol}`);
+            }
+            
+            // Check if this is LP Token B
+            if (mintAddress === poolData.lpTokenBMint) {
+                lpTokenBBalance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
+                lpTokenBDecimals = accountInfo.tokenAmount.decimals;
+                console.log(`✅ Found LP Token B: ${lpTokenBBalance} LP ${poolData.tokenBSymbol}`);
+            }
+        }
+        
+        // Update LP token labels and balances with real data
         document.getElementById('lp-token-a-label').textContent = `LP ${poolData.tokenASymbol}`;
-        document.getElementById('lp-token-a-balance').textContent = mockLPBalances.tokenA.toFixed(6);
+        document.getElementById('lp-token-a-balance').textContent = lpTokenABalance.toFixed(6);
         document.getElementById('lp-token-a-symbol').textContent = `LP ${poolData.tokenASymbol}`;
-        document.getElementById('lp-token-a-display').textContent = mockLPBalances.tokenA.toFixed(6);
+        document.getElementById('lp-token-a-display').textContent = lpTokenABalance.toFixed(6);
         
         document.getElementById('lp-token-b-label').textContent = `LP ${poolData.tokenBSymbol}`;
-        document.getElementById('lp-token-b-balance').textContent = mockLPBalances.tokenB.toFixed(6);
+        document.getElementById('lp-token-b-balance').textContent = lpTokenBBalance.toFixed(6);
         document.getElementById('lp-token-b-symbol').textContent = `LP ${poolData.tokenBSymbol}`;
-        document.getElementById('lp-token-b-display').textContent = mockLPBalances.tokenB.toFixed(6);
+        document.getElementById('lp-token-b-display').textContent = lpTokenBBalance.toFixed(6);
         
-        console.log('✅ LP token balances loaded');
+        // Enable/disable LP token options based on actual balances
+        const lpTokenAOption = document.getElementById('lp-token-a-option');
+        const lpTokenBOption = document.getElementById('lp-token-b-option');
+        
+        if (lpTokenABalance <= 0) {
+            lpTokenAOption.style.opacity = '0.5';
+            lpTokenAOption.style.pointerEvents = 'none';
+            lpTokenAOption.title = 'No LP tokens available';
+        } else {
+            lpTokenAOption.style.opacity = '1';
+            lpTokenAOption.style.pointerEvents = 'auto';
+            lpTokenAOption.title = `Click to select ${lpTokenABalance.toFixed(6)} LP ${poolData.tokenASymbol}`;
+        }
+        
+        if (lpTokenBBalance <= 0) {
+            lpTokenBOption.style.opacity = '0.5';
+            lpTokenBOption.style.pointerEvents = 'none';
+            lpTokenBOption.title = 'No LP tokens available';
+        } else {
+            lpTokenBOption.style.opacity = '1';
+            lpTokenBOption.style.pointerEvents = 'auto';
+            lpTokenBOption.title = `Click to select ${lpTokenBBalance.toFixed(6)} LP ${poolData.tokenBSymbol}`;
+        }
+        
+        console.log(`✅ LP token balances loaded: LP ${poolData.tokenASymbol}=${lpTokenABalance}, LP ${poolData.tokenBSymbol}=${lpTokenBBalance}`);
+        
+        // Show message if no LP tokens found
+        if (lpTokenABalance <= 0 && lpTokenBBalance <= 0) {
+            showStatus('info', '📭 You don\'t have any LP tokens for this pool. Add liquidity first to get LP tokens.');
+        }
         
     } catch (error) {
         console.error('❌ Error loading LP token balances:', error);
-        showStatus('error', 'Failed to load LP token balances');
+        showStatus('error', 'Failed to load LP token balances: ' + error.message);
     }
 }
 
@@ -1058,6 +1117,20 @@ async function loadLPTokenBalances() {
 function selectLPToken(tokenType) {
     const optionA = document.getElementById('lp-token-a-option');
     const optionB = document.getElementById('lp-token-b-option');
+    
+    // Check if the selected option is actually available (has balance > 0)
+    const balanceA = parseFloat(document.getElementById('lp-token-a-balance').textContent) || 0;
+    const balanceB = parseFloat(document.getElementById('lp-token-b-balance').textContent) || 0;
+    
+    if (tokenType === 'a' && balanceA <= 0) {
+        showStatus('error', `You don't have any LP ${poolData.tokenASymbol} tokens to remove`);
+        return;
+    }
+    
+    if (tokenType === 'b' && balanceB <= 0) {
+        showStatus('error', `You don't have any LP ${poolData.tokenBSymbol} tokens to remove`);
+        return;
+    }
     
     // Clear previous selections
     optionA.classList.remove('selected');
@@ -1074,6 +1147,16 @@ function selectLPToken(tokenType) {
         // Update expected output display
         document.getElementById('output-token-label').textContent = `${poolData.tokenASymbol}:`;
         
+        // Store selected LP token info for later use
+        window.selectedLPToken = {
+            type: 'a',
+            mint: poolData.lpTokenAMint,
+            symbol: `LP ${poolData.tokenASymbol}`,
+            balance: balanceA,
+            underlyingToken: poolData.tokenASymbol,
+            underlyingMint: poolData.tokenAMint
+        };
+        
     } else {
         optionB.classList.add('selected');
         document.getElementById('selected-lp-token-name').textContent = `LP ${poolData.tokenBSymbol}`;
@@ -1084,11 +1167,23 @@ function selectLPToken(tokenType) {
         
         // Update expected output display
         document.getElementById('output-token-label').textContent = `${poolData.tokenBSymbol}:`;
+        
+        // Store selected LP token info for later use
+        window.selectedLPToken = {
+            type: 'b',
+            mint: poolData.lpTokenBMint,
+            symbol: `LP ${poolData.tokenBSymbol}`,
+            balance: balanceB,
+            underlyingToken: poolData.tokenBSymbol,
+            underlyingMint: poolData.tokenBMint
+        };
     }
     
     // Reset remove amount and update button
     document.getElementById('remove-liquidity-amount').value = '';
     updateRemoveButton();
+    
+    console.log('🎯 Selected LP token:', window.selectedLPToken);
 }
 
 /**
@@ -1128,21 +1223,20 @@ function updateRemoveButton() {
  * Phase 3.1: Execute remove liquidity transaction
  */
 async function removeLiquidity() {
-    if (!poolData || !selectedToken || !isConnected) {
-        showStatus('error', 'Please connect wallet and load pool data first');
+    if (!poolData || !isConnected || !window.selectedLPToken) {
+        showStatus('error', 'Please connect wallet, load pool data, and select an LP token first');
         return;
     }
     
     const amount = parseFloat(document.getElementById('remove-liquidity-amount').value);
-    const selectedLP = document.querySelector('.lp-token-option.selected');
     
     if (!amount || amount <= 0) {
         showStatus('error', 'Please enter a valid amount');
         return;
     }
     
-    if (!selectedLP) {
-        showStatus('error', 'Please select an LP token to burn');
+    if (amount > window.selectedLPToken.balance) {
+        showStatus('error', `Insufficient LP balance. You have ${window.selectedLPToken.balance.toFixed(6)} ${window.selectedLPToken.symbol}`);
         return;
     }
     
@@ -1153,20 +1247,16 @@ async function removeLiquidity() {
         removeBtn.disabled = true;
         removeBtn.textContent = '🔄 Removing Liquidity...';
         
-        // Determine which LP token and underlying token
-        const isTokenA = selectedLP.id === 'lp-token-a-option';
-        const underlyingTokenMint = isTokenA ? poolData.tokenAMint : poolData.tokenBMint;
-        const lpTokenMint = isTokenA ? poolData.lpTokenAMint : poolData.lpTokenBMint;
-        const tokenSymbol = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
-        const lpTokenSymbol = isTokenA ? `LP ${poolData.tokenASymbol}` : `LP ${poolData.tokenBSymbol}`;
+        // Use the selected LP token data
+        const underlyingTokenMint = window.selectedLPToken.underlyingMint;
+        const lpTokenMint = window.selectedLPToken.mint;
+        const tokenSymbol = window.selectedLPToken.underlyingToken;
+        const lpTokenSymbol = window.selectedLPToken.symbol;
+        const decimals = 6; // LP tokens typically use 6 decimals
         
-        // Check if user has enough LP tokens
-        const lpTokenData = selectedLP.dataset;
-        const lpBalance = parseFloat(lpTokenData.balance || 0);
-        const decimals = parseInt(lpTokenData.decimals || 6);
-        
-        if (amount > lpBalance) {
-            throw new Error(`Insufficient LP balance. You have ${lpBalance} ${lpTokenSymbol}`);
+        // Validation was already done above, but double-check
+        if (amount > window.selectedLPToken.balance) {
+            throw new Error(`Insufficient LP balance. You have ${window.selectedLPToken.balance.toFixed(6)} ${lpTokenSymbol}`);
         }
         
         showStatus('info', `Requesting transaction approval from wallet...`);
@@ -1358,20 +1448,19 @@ function setMaxAmount(operation) {
             
         } else if (operation === 'remove') {
             // For removing liquidity, use the selected LP token's balance
-            if (!selectedLPToken) {
+            if (!window.selectedLPToken) {
                 showStatus('error', 'Please select an LP token first');
                 return;
             }
             
-            const maxAmount = selectedLPToken.balance;
+            const maxAmount = window.selectedLPToken.balance;
             const amountInput = document.getElementById('remove-liquidity-amount');
             
             if (amountInput && maxAmount > 0) {
                 amountInput.value = maxAmount.toString();
                 updateRemoveButton();
-                calculateExpectedOutput();
-                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${selectedLPToken.symbol}`);
-                console.log(`💰 Set max amount for remove: ${maxAmount} ${selectedLPToken.symbol}`);
+                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${window.selectedLPToken.symbol}`);
+                console.log(`💰 Set max amount for remove: ${maxAmount} ${window.selectedLPToken.symbol}`);
             } else {
                 showStatus('error', 'No LP token balance available');
             }
