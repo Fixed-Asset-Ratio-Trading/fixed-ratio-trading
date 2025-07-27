@@ -652,6 +652,13 @@ if [ "$INITIALIZATION_STATUS" = "success" ] && [ -n "$INITIALIZATION_TX" ]; then
 fi
 echo "  📊 Program Data: $PROGRAM_DATA_ADDRESS"
 echo "  📏 Program Size: $PROGRAM_SIZE bytes"
+if [ "$VERSION_VERIFIED" = "true" ]; then
+    echo "  🔍 Version Verified: ✅ YES"
+elif [ "$VERSION_VERIFIED" = "false" ]; then
+    echo "  🔍 Version Verified: ❌ NO"
+else
+    echo "  🔍 Version Verified: ⚠️  SKIPPED"
+fi
 echo ""
 echo -e "${GREEN}💡 The contract is now live on the direct validator endpoint!${NC}"
 echo -e "${YELLOW}📝 Next Steps:${NC}"
@@ -660,15 +667,30 @@ if [ "$INITIALIZATION_STATUS" = "success" ]; then
     echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
     echo "  3. 🏊‍♂️ Create pools via dashboard (no manual initialization needed)"
     echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+    if [ "$VERSION_VERIFIED" = "true" ]; then
+        echo "  5. ✅ Version verification passed - deployment confirmed"
+    elif [ "$VERSION_VERIFIED" = "false" ]; then
+        echo "  5. ⚠️  Version verification failed - check deployment"
+    fi
 elif [ "$INITIALIZATION_STATUS" = "failed" ]; then
     echo "  1. ✅ Contract is deployed but initialization failed"
     echo "  2. 🏗️ Initialize manually via dashboard before creating pools"
     echo "  3. 🌐 Access via dashboard pointing to $RPC_URL"
     echo "  4. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+    if [ "$VERSION_VERIFIED" = "true" ]; then
+        echo "  5. ✅ Version verification passed - deployment confirmed"
+    elif [ "$VERSION_VERIFIED" = "false" ]; then
+        echo "  5. ⚠️  Version verification failed - check deployment"
+    fi
 else
     echo "  1. ✅ Contract is upgraded and ready for use"
     echo "  2. 🌐 Access via dashboard pointing to $RPC_URL"
     echo "  3. 📊 Monitor with: $PROJECT_ROOT/scripts/monitor_pools.sh"
+    if [ "$VERSION_VERIFIED" = "true" ]; then
+        echo "  4. ✅ Version verification passed - deployment confirmed"
+    elif [ "$VERSION_VERIFIED" = "false" ]; then
+        echo "  4. ⚠️  Version verification failed - check deployment"
+    fi
 fi
 echo ""
 echo -e "${BLUE}🔗 Test connection:${NC}"
@@ -676,3 +698,100 @@ echo "  curl -X POST -H \"Content-Type: application/json\" \\"
 echo "       -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getAccountInfo\",\"params\":[\"$PROGRAM_ID\"]}' \\"
 echo "       \"$RPC_URL\""
 echo "" 
+
+echo "======================================================"
+echo "🔍 VERIFYING DEPLOYED CONTRACT VERSION"
+echo "======================================================"
+echo "🔍 Verifying deployed contract version matches build..."
+
+# Create a simple Node.js script to call GetVersion instruction
+cat > "$PROJECT_ROOT/temp_version_check.js" << 'EOF'
+const { Connection, PublicKey, Transaction, TransactionInstruction } = require('@solana/web3.js');
+const fs = require('fs');
+
+async function verifyContractVersion() {
+    try {
+        // Load configuration
+        const config = JSON.parse(fs.readFileSync('./shared-config.json', 'utf8'));
+        const deploymentInfo = JSON.parse(fs.readFileSync('./deployment_info.json', 'utf8'));
+        
+        console.log('🔍 Calling GetVersion instruction to verify deployment...');
+        console.log('📋 Expected version from build:', deploymentInfo.version);
+        
+        const connection = new Connection(config.solana.rpcUrl, 'confirmed');
+        const programId = new PublicKey(config.solana.programId);
+        
+        // Create GetVersion instruction (discriminator 14)
+        const instructionData = Buffer.from([14]);
+        const instruction = new TransactionInstruction({
+            keys: [], // GetVersion requires no accounts
+            programId: programId,
+            data: instructionData,
+        });
+        
+        // Create and simulate transaction
+        const transaction = new Transaction().add(instruction);
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = new PublicKey("11111111111111111111111111111111"); // Dummy payer
+        
+        const result = await connection.simulateTransaction(transaction);
+        
+        if (result.value.logs) {
+            console.log('📋 Contract logs from GetVersion:');
+            result.value.logs.forEach(log => console.log('   ', log));
+            
+            // Extract version from logs
+            const versionLog = result.value.logs.find(log => log.includes('Contract Version:'));
+            if (versionLog) {
+                const versionMatch = versionLog.match(/Contract Version:\s*([0-9\.]+)/);
+                if (versionMatch) {
+                    const deployedVersion = versionMatch[1];
+                    console.log('🎯 Deployed contract version:', deployedVersion);
+                    console.log('📋 Expected version from build:', deploymentInfo.version);
+                    
+                    if (deployedVersion === deploymentInfo.version) {
+                        console.log('✅ VERSION VERIFICATION SUCCESSFUL!');
+                        console.log('   Deployed version matches build version');
+                        process.exit(0);
+                    } else {
+                        console.log('❌ VERSION MISMATCH DETECTED!');
+                        console.log('   This indicates a deployment issue');
+                        console.log('   Expected:', deploymentInfo.version);
+                        console.log('   Deployed:', deployedVersion);
+                        process.exit(1);
+                    }
+                }
+            }
+        }
+        
+        console.log('⚠️  Could not extract version from contract logs');
+        console.log('   This may indicate the GetVersion instruction failed');
+        process.exit(1);
+        
+    } catch (error) {
+        console.error('❌ Version verification failed:', error.message);
+        console.log('⚠️  Deployment may have succeeded, but version verification failed');
+        process.exit(1);
+    }
+}
+
+verifyContractVersion();
+EOF
+
+# Run version verification
+echo "🚀 Running contract version verification..."
+if node "$PROJECT_ROOT/temp_version_check.js"; then
+    echo "✅ Contract version verification successful!"
+    VERSION_VERIFIED=true
+else
+    echo "❌ Contract version verification failed!"
+    echo "   This could indicate:"
+    echo "   1. Deployment didn't include latest changes"
+    echo "   2. GetVersion instruction is not working"
+    echo "   3. Network connectivity issues"
+    VERSION_VERIFIED=false
+fi
+
+# Clean up temporary script
+rm -f "$PROJECT_ROOT/temp_version_check.js" 

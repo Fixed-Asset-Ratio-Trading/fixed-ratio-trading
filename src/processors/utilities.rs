@@ -438,7 +438,7 @@ pub fn validate_liquidity_not_paused(pool_state: &PoolState) -> ProgramResult {
 /// 
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive version information
-pub fn process_get_version() -> ProgramResult {
+pub fn process_get_version(_accounts: &[AccountInfo]) -> ProgramResult {
     msg!("=== SMART CONTRACT VERSION ===");
     msg!("Contract Name: {}", env!("CARGO_PKG_NAME"));
     msg!("Contract Version: {}", env!("CARGO_PKG_VERSION"));

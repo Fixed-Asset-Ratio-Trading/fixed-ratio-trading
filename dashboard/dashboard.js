@@ -205,18 +205,84 @@ async function testConnection() {
  */
 async function fetchContractVersion() {
     try {
-        console.log('🔍 Fetching contract version...');
+        console.log('🔍 Fetching contract version from smart contract...');
         
-        // TODO: Implement proper GetVersion instruction call
-        // For now, use the version from Cargo.toml (0.12.1018)
-        // The GetVersion instruction simulation is failing due to discriminator issues
-        contractVersion = '0.12.1018';
+        if (!connection || !CONFIG.programId) {
+            console.error('❌ RPC connection or program ID not available');
+            contractVersion = null; // No version available
+            updateTitle();
+            return;
+        }
+        
+        // Create GetVersion instruction (1-byte discriminator for unit enum!)
+        const instructionData = new Uint8Array([14]); // GetVersion = discriminator 14 (1 byte only!)
+        
+        const instruction = new solanaWeb3.TransactionInstruction({
+            keys: [], // GetVersion requires no accounts
+            programId: new solanaWeb3.PublicKey(CONFIG.programId),
+            data: instructionData,
+        });
+        
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction().add(instruction);
+        
+        // Try multiple simulation approaches
+        let result = null;
+        
+        // Method 1: Try with replaceRecentBlockhash (simplest approach)
+        try {
+            console.log('📡 Trying simulateTransaction with replaceRecentBlockhash...');
+            result = await connection.simulateTransaction(transaction, {
+                commitment: 'processed',
+                replaceRecentBlockhash: true,
+            });
+        } catch (error) {
+            console.log('⚠️ Method 1 failed:', error.message);
+        }
+        
+        // Method 2: Try with dummy blockhash and fee payer
+        if (!result || result.value.err) {
+            try {
+                console.log('📡 Trying simulateTransaction with dummy fee payer...');
+                const { blockhash } = await connection.getLatestBlockhash();
+                transaction.recentBlockhash = blockhash;
+                transaction.feePayer = new solanaWeb3.PublicKey("11111111111111111111111111111111");
+                
+                result = await connection.simulateTransaction(transaction);
+            } catch (error) {
+                console.log('⚠️ Method 2 failed:', error.message);
+            }
+        }
+        
+        // Parse version from logs if we got a result
+        if (result && !result.value.err && result.value.logs) {
+            console.log('📋 Contract version logs:', result.value.logs);
+            
+            // Look for "Contract Version: X.X.X" in logs
+            const versionLog = result.value.logs.find(log => log.includes('Contract Version:'));
+            if (versionLog) {
+                const versionMatch = versionLog.match(/Contract Version:\s*([0-9\.]+)/);
+                if (versionMatch) {
+                    contractVersion = versionMatch[1];
+                    updateTitle();
+                    console.log(`✅ Contract version fetched from blockchain: ${contractVersion}`);
+                    return;
+                }
+            }
+        }
+        
+        // If we reach here, contract call failed to return version
+        console.error('❌ Failed to extract version from contract response');
+        if (result && result.value.err) {
+            console.error('   Simulation error:', result.value.err);
+        }
+        contractVersion = null; // No version available
         updateTitle();
-        console.log(`✅ Contract version set from Cargo.toml: ${contractVersion}`);
         
     } catch (error) {
         console.error('❌ Error fetching contract version:', error);
-        contractVersion = 'fetch-error';
+        contractVersion = null; // No version available
+        updateTitle();
     }
 }
 
@@ -226,16 +292,14 @@ async function fetchContractVersion() {
 function updateTitle() {
     const titleElement = document.querySelector('.header h1');
     if (titleElement) {
-        if (contractVersion && 
-            !['unknown', 'error', 'parse-error', 'not-found', 'no-logs', 'fetch-error'].includes(contractVersion)) {
+        if (contractVersion) {
+            // Only show version if we successfully got it from the contract
             titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard v${contractVersion}`;
-            console.log(`✅ Title updated with version: ${contractVersion}`);
+            console.log(`✅ Title updated with contract version: ${contractVersion}`);
         } else {
-            // Keep original title if version fetch failed
-            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard`;
-            if (contractVersion) {
-                console.warn(`⚠️ Could not display version (status: ${contractVersion})`);
-            }
+            // No version from contract - show this indicates a problem
+            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard [VERSION ERROR]`;
+            console.warn(`⚠️ No version displayed - contract version call failed`);
         }
     } else {
         console.error('❌ Could not find title element to update');

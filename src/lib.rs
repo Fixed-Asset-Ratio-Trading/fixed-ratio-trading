@@ -242,7 +242,7 @@ pub fn process_instruction(
 
         PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
 
-        PoolInstruction::GetVersion => process_get_version(),
+        PoolInstruction::GetVersion => process_get_version(accounts),
         
         // Treasury Management Instructions
         PoolInstruction::WithdrawTreasuryFees {
