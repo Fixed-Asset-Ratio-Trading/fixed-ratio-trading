@@ -363,23 +363,32 @@ if [ ! -f "$KEYPAIR_PATH" ]; then
     solana-keygen new --no-bip39-passphrase --outfile $KEYPAIR_PATH
 fi
 
-# Step 10: Check Backpack wallet balance
-echo -e "${YELLOW}💰 Checking Backpack wallet balance...${NC}"
+# Step 10: Check wallet balances
+echo -e "${YELLOW}💰 Checking wallet balances...${NC}"
 DEFAULT_WALLET_ADDRESS=$(solana-keygen pubkey $KEYPAIR_PATH)
 echo "  Default Wallet: $DEFAULT_WALLET_ADDRESS"
 echo "  Backpack Wallet: $BACKPACK_WALLET"
 
-# Check current balance
+# Check Backpack wallet balance
 BACKPACK_BALANCE=$(solana balance $BACKPACK_WALLET 2>/dev/null | awk '{print $1}' | head -1)
 # Fallback if balance command fails
 if [ -z "$BACKPACK_BALANCE" ] || [ "$BACKPACK_BALANCE" = "Error:" ]; then
     BACKPACK_BALANCE="0"
 fi
 
-echo -e "${GREEN}  Current Backpack Wallet Balance: $BACKPACK_BALANCE SOL${NC}"
+# Check default wallet balance
+DEFAULT_WALLET_BALANCE=$(solana balance $DEFAULT_WALLET_ADDRESS 2>/dev/null | awk '{print $1}' | head -1)
+# Fallback if balance command fails
+if [ -z "$DEFAULT_WALLET_BALANCE" ] || [ "$DEFAULT_WALLET_BALANCE" = "Error:" ]; then
+    DEFAULT_WALLET_BALANCE="0"
+fi
 
-# Display current balance (no automatic funding)
+echo -e "${GREEN}  Current Backpack Wallet Balance: $BACKPACK_BALANCE SOL${NC}"
+echo -e "${GREEN}  Current Default Wallet Balance: $DEFAULT_WALLET_BALANCE SOL${NC}"
+
+# Display current balances (no automatic funding)
 echo -e "${GREEN}✅ Current Backpack wallet balance: $BACKPACK_BALANCE SOL${NC}"
+echo -e "${GREEN}✅ Current Default wallet balance: $DEFAULT_WALLET_BALANCE SOL${NC}"
 FINAL_BALANCE=$BACKPACK_BALANCE
 
 # Step 11: Check if program exists on remote and compare versions
@@ -581,6 +590,7 @@ cat > "$PROJECT_ROOT/deployment_info.json" << EOF
   "program_size": "$PROGRAM_SIZE",
   "backpack_wallet": "$BACKPACK_WALLET",
   "backpack_wallet_balance": "$FINAL_BALANCE",
+  "default_wallet_balance": "$DEFAULT_WALLET_BALANCE",
   "deploy_action": "$DEPLOY_ACTION",
   "deploy_result": "$DEPLOY_RESULT",
   "initialization_status": "$INITIALIZATION_STATUS",
@@ -629,6 +639,7 @@ echo "  🌐 Direct RPC: $RPC_URL"
 echo "  📊 Program ID: $PROGRAM_ID"
 echo "  🔢 Version: $NEW_VERSION"
 echo "  💳 Default Wallet: $DEFAULT_WALLET_ADDRESS"
+echo "  💰 Default Balance: $DEFAULT_WALLET_BALANCE SOL"
 echo "  🎒 Backpack Wallet: $BACKPACK_WALLET"
 echo "  💰 Backpack Balance: $FINAL_BALANCE SOL"
 echo ""

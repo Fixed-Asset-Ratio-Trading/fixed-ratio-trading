@@ -52,7 +52,7 @@ function getDisplayTokenOrder(pool) {
                 quoteLiquidity: pool.tokenALiquidity || 0,
                 exchangeRate: tokensA_per_tokenB,
                 displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
-                rateText: `1 ${pool.tokenBSymbol} = ${ratioANumerator} ${pool.tokenASymbol}`,
+                rateText: `1 ${pool.tokenBSymbol} = ${formatNumberWithCommas(ratioANumerator)} ${pool.tokenASymbol}`,
                 isReversed: true,
                 isOneToManyRatio: true
             };
@@ -65,7 +65,7 @@ function getDisplayTokenOrder(pool) {
                 quoteLiquidity: pool.tokenBLiquidity || 0,
                 exchangeRate: tokensB_per_tokenA,
                 displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
-                rateText: `1 ${pool.tokenASymbol} = ${ratioBDenominator} ${pool.tokenBSymbol}`,
+                rateText: `1 ${pool.tokenASymbol} = ${formatNumberWithCommas(ratioBDenominator)} ${pool.tokenBSymbol}`,
                 isReversed: false,
                 isOneToManyRatio: true
             };
@@ -256,6 +256,23 @@ function formatLargeNumber(num) {
 }
 
 /**
+ * Format numbers with commas (no abbreviations) - ideal for ratios and exact amounts
+ * 
+ * @param {number} num - Number to format
+ * @returns {string} Formatted number string with commas
+ */
+function formatNumberWithCommas(num) {
+    if (typeof num !== 'number' || isNaN(num)) {
+        return '0';
+    }
+    
+    return num.toLocaleString('en-US', { 
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    });
+}
+
+/**
  * Create user-friendly pool title
  * 
  * @param {Object} pool - Pool data
@@ -285,6 +302,7 @@ if (typeof window !== 'undefined') {
         formatExchangeRateStandard,
         getSimpleDisplayOrder,
         formatLargeNumber,
+        formatNumberWithCommas,
         createPoolTitle,
         createExchangeRateDisplay,
         // Phase 1.3: New flag interpretation functions

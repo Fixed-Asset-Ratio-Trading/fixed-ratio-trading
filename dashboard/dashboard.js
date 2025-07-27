@@ -47,14 +47,19 @@ async function initializeDashboard() {
             sessionStorage.removeItem('poolToUpdate'); // Clear the flag
         }
         
-        // Initialize centralized data service
-        await window.TradingDataService.initialize(window.CONFIG, connection);
+        // Initialize centralized data service (without connection for now)
+        await window.TradingDataService.initialize(window.CONFIG, null);
         
-        // Load initial state using centralized service
+        // Load initial state using centralized service (will use state.json)
         const initialState = await window.TradingDataService.loadAllData('auto');
         if (initialState.pools.length > 0) {
             pools = initialState.pools;
             console.log(`📁 Pre-loaded ${pools.length} pools via TradingDataService`);
+            
+            // Fetch token symbols for all pools
+            console.log('🔍 Fetching token symbols for pools...');
+            await enrichPoolsWithTokenSymbols(pools);
+            console.log('✅ Token symbols loaded for all pools');
         }
         
         // Phase 2.2: Store treasury and system state data
@@ -95,6 +100,10 @@ async function initializeDashboard() {
         try {
             await testConnection();
             console.log('✅ RPC connection successful');
+            
+            // Now reinitialize TradingDataService with the actual connection
+            await window.TradingDataService.initialize(window.CONFIG, connection);
+            console.log('✅ TradingDataService reinitialized with RPC connection');
         } catch (rpcError) {
             console.error('❌ Failed to connect to RPC:', rpcError);
             showError(`RPC connection failed: ${rpcError.message}. Make sure the Solana validator is running on ${CONFIG.rpcUrl}`);
@@ -416,6 +425,13 @@ async function scanForPools() {
             console.log(`📦 Loaded ${pools.length} pools from sessionStorage (fallback)`);
         }
         
+        // Enrich pools with token symbols (for pools without symbols from sessionStorage)
+        if (pools.length > 0) {
+            console.log('🔍 Enriching pools with token symbols...');
+            await enrichPoolsWithTokenSymbols(pools.filter(pool => !pool.tokenASymbol || !pool.tokenBSymbol));
+            console.log('✅ Token symbols enriched for all pools');
+        }
+        
     } catch (error) {
         console.error('❌ Error scanning for pools:', error);
         throw error;
@@ -423,6 +439,27 @@ async function scanForPools() {
 }
 
 // parsePoolState function removed - now using centralized TradingDataService.parsePoolState()
+
+/**
+ * Enrich pools with token symbols by fetching them from localStorage/Metaplex
+ */
+async function enrichPoolsWithTokenSymbols(pools) {
+    if (!pools || pools.length === 0) return;
+    
+    try {
+        // Process pools in parallel for better performance
+        await Promise.all(pools.map(async (pool) => {
+            if (pool.tokenAMint && pool.tokenBMint) {
+                const tokenSymbols = await getTokenSymbols(pool.tokenAMint, pool.tokenBMint);
+                pool.tokenASymbol = tokenSymbols.tokenA;
+                pool.tokenBSymbol = tokenSymbols.tokenB;
+                console.log(`✅ Pool ${pool.address.slice(0, 8)}: ${tokenSymbols.tokenA}/${tokenSymbols.tokenB}`);
+            }
+        }));
+    } catch (error) {
+        console.warn('❌ Error enriching pools with token symbols:', error);
+    }
+}
 
 /**
  * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
@@ -652,107 +689,62 @@ function renderPools() {
 }
 
 /**
- * Create a pool card element
- * Phase 1.3: Enhanced with pool state flags display
+ * Create a simplified pool card element (one line per pool)
+ * Shows: Token Names, Ratio, and Action Buttons only
  */
 function createPoolCard(pool) {
     const card = document.createElement('div');
-    card.className = 'pool-card';
+    card.className = 'pool-card-simple';
     
-    // Phase 1.3: Interpret pool flags
-    const flags = window.TokenDisplayUtils.interpretPoolFlags(pool);
-    
-    const status = flags.liquidityPaused || flags.swapsPaused ? 'paused' : 'active';
-    const statusText = flags.liquidityPaused ? 'Pool Paused' : 
-                     flags.swapsPaused ? 'Swaps Paused' : 'Active';
-    
-    // Use the new display utilities for user-friendly token ordering (Phase 1.3 enhanced)
+    // Get display token order for user-friendly names and ratio
     const display = window.TokenDisplayUtils.getDisplayTokenOrder(pool);
     
-    // Create user-friendly pool title and exchange rate
-    const displayTitle = display.displayPair ? 
-        `${display.displayPair} Pool` : 
-        `Pool ${pool.address.slice(0, 8)}...${pool.address.slice(-4)}`;
+    // Create pool name from token symbols (fallback to Token A/Token B if symbols not available)
+    const poolName = display.displayPair || `${display.baseToken}/${display.quoteToken}`;
     
-    // Phase 1.3: Enhanced data source and ratio type indicators
-    const dataSourceBadge = pool.dataSource === 'RPC' 
-        ? '<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">🔗 RPC</span>'
-        : pool.dataSource === 'sessionStorage' 
-        ? '<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📦 Session</span>'
-        : pool.dataSource === 'JSON'
-        ? '<span style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 8px;">📄 JSON</span>'
-        : '';
+    // Extract ratio from the rate text (convert "1 TS = 10,000 MST" to "1:10,000")
+    let ratioText = "1:1"; // Default ratio
+    if (display.rateText) {
+        // Try to extract the numeric ratio from rate text like "1 TS = 10,000 MST"
+        const ratioMatch = display.rateText.match(/1\s+\w+\s*=\s*([\d,]+(?:\.\d+)?)/);
+        if (ratioMatch) {
+            // Use the already formatted number with commas from rateText
+            ratioText = `1:${ratioMatch[1]}`;
+        } else {
+            // Fallback: calculate ratio from raw data and format with commas
+            const ratioValue = pool.ratioANumerator / pool.ratioBDenominator;
+            if (ratioValue && ratioValue !== 1) {
+                const formattedRatio = window.TokenDisplayUtils.formatNumberWithCommas(ratioValue);
+                ratioText = `1:${formattedRatio}`;
+            } else {
+                ratioText = "1:1";
+            }
+        }
+    } else if (pool.ratioANumerator && pool.ratioBDenominator) {
+        // Direct calculation if no display.rateText available
+        const ratioValue = pool.ratioANumerator / pool.ratioBDenominator;
+        const formattedRatio = window.TokenDisplayUtils.formatNumberWithCommas(ratioValue);
+        ratioText = `1:${formattedRatio}`;
+    }
     
-    // Phase 1.3: One-to-many ratio indicator
-    const ratioTypeBadge = display.isOneToManyRatio 
-        ? '<span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; margin-left: 4px;">🎯 1:Many</span>'
-        : '';
+    // Check if pool is paused
+    const flags = window.TokenDisplayUtils.interpretPoolFlags(pool);
+    const isPaused = flags.liquidityPaused || flags.swapsPaused;
+    const pausedIndicator = isPaused ? ' <span style="color: #ef4444; font-weight: bold;">[PAUSED]</span>' : '';
     
     card.innerHTML = `
-        <div class="pool-header">
-            <div class="pool-title">
-                ${displayTitle}${dataSourceBadge}${ratioTypeBadge}
+        <div class="pool-simple-row">
+            <span class="pool-name-ratio">
+                <strong>${poolName}</strong> ratio ${ratioText}${pausedIndicator}
+            </span>
+            <div class="pool-simple-actions">
+                <button class="pool-action-btn liquidity-btn" onclick="addLiquidity('${pool.address}')" ${isPaused ? 'disabled' : ''}>
+                    Liquidity
+                </button>
+                <button class="pool-action-btn swap-btn" onclick="swapTokens('${pool.address}')" ${flags.swapsPaused ? 'disabled' : ''}>
+                    Swap
+                </button>
             </div>
-            <div class="pool-status ${status}">${statusText}</div>
-        </div>
-        
-        <div class="pool-info">
-            <div class="pool-metric">
-                <div class="metric-label">${display.baseToken} Liquidity</div>
-                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.baseLiquidity)}</div>
-            </div>
-            
-            <div class="pool-metric">
-                <div class="metric-label">${display.quoteToken} Liquidity</div>
-                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(display.quoteLiquidity)}</div>
-            </div>
-            
-            <div class="pool-metric">
-                <div class="metric-label">Exchange Rate</div>
-                <div class="metric-value">${display.rateText}</div>
-            </div>
-            
-            <div class="pool-metric" title="Pool fee rate (percentage of traded tokens)">
-                <div class="metric-label">Pool Fee Rate 📈</div>
-                <div class="metric-value">${pool.swapFeeBasisPoints} bps${pool.swapFeeBasisPoints === 0 ? ' (FREE)' : ''}</div>
-            </div>
-            
-            <div class="pool-metric" title="Contract fees collected in SOL (operational costs)">
-                <div class="metric-label">Contract Fees 💰</div>
-                <div class="metric-value">${(pool.collectedSolFees / 1000000000).toFixed(4)} SOL</div>
-            </div>
-        </div>
-        
-        <!-- Additional Fee Information -->
-        ${pool.collectedFeesTokenA > 0 || pool.collectedFeesTokenB > 0 ? `
-        <div class="pool-info" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
-            <div class="pool-metric" title="Token fees collected from pool percentage rates" style="background: #f0f9ff;">
-                <div class="metric-label">Pool Fees: ${display.baseToken}</div>
-                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(pool.collectedFeesTokenA)}</div>
-            </div>
-            
-            <div class="pool-metric" title="Token fees collected from pool percentage rates" style="background: #f0f9ff;">
-                <div class="metric-label">Pool Fees: ${display.quoteToken}</div>
-                <div class="metric-value">${window.TokenDisplayUtils.formatLargeNumber(pool.collectedFeesTokenB)}</div>
-            </div>
-        </div>
-        ` : ''}
-        
-        <div class="pool-actions">
-            <button class="liquidity-btn" onclick="addLiquidity('${pool.address}')">
-                💧 Add Liquidity
-            </button>
-            <button class="swap-btn" onclick="swapTokens('${pool.address}')">
-                🔄 Swap Tokens
-            </button>
-        </div>
-        
-        <!-- Phase 1.3: Pool State Flags Display -->
-        ${generatePoolFlagsSection(flags, pool)}
-        
-        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280;">
-            <div><strong>Pool Address:</strong> ${pool.address}</div>
-            <div><strong>Owner:</strong> ${pool.owner.slice(0, 20)}...</div>
         </div>
     `;
     
@@ -760,7 +752,7 @@ function createPoolCard(pool) {
 }
 
 /**
- * Phase 1.3: Generate pool flags status section
+ * Phase 1.3: Generate pool flags section
  * 
  * @param {Object} flags - Interpreted pool flags
  * @param {Object} pool - Pool data

@@ -26,8 +26,9 @@ CANDY_MACHINE_PROGRAM_ID="cndy3Z4yapfJBmL3ShUp5exZKqR3z33thTzeNMm2gRZ"
 AUCTION_HOUSE_PROGRAM_ID="hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk"
 
 # RPC Configuration
-RPC_URL="${RPC_URL:-http://localhost:8899}"
-WEBSOCKET_URL="${WEBSOCKET_URL:-ws://localhost:8900}"
+# Default to remote server for remote deployments, fallback to local for development
+RPC_URL="${RPC_URL:-http://192.168.2.88:8899}"
+WEBSOCKET_URL="${WEBSOCKET_URL:-ws://192.168.2.88:8900}"
 
 # Function to print colored output
 print_status() {
@@ -337,8 +338,8 @@ show_usage() {
     echo "  restart - Stop and start Metaplex deployment"
     echo ""
     echo "Environment Variables:"
-    echo "  RPC_URL      - Solana RPC endpoint (default: http://localhost:8899)"
-    echo "  WEBSOCKET_URL - Solana WebSocket endpoint (default: ws://localhost:8900)"
+    echo "  RPC_URL      - Solana RPC endpoint (default: http://192.168.2.88:8899)"
+    echo "  WEBSOCKET_URL - Solana WebSocket endpoint (default: ws://192.168.2.88:8900)"
 }
 
 # Main script logic

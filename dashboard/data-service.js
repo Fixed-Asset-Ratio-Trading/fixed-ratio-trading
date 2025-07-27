@@ -76,8 +76,38 @@ class TradingDataService {
             const stateData = await response.json();
             console.log(`✅ Loaded from state.json: ${stateData.pools?.length || 0} pools, treasury: ${!!stateData.main_treasury_state}, system: ${!!stateData.system_state}`);
             
+            // Map snake_case field names from state.json to camelCase for JavaScript compatibility
+            const mappedPools = (stateData.pools || []).map(pool => ({
+                address: pool.address,
+                owner: pool.owner,
+                tokenAMint: pool.token_a_mint,
+                tokenBMint: pool.token_b_mint,
+                tokenAVault: pool.token_a_vault,
+                tokenBVault: pool.token_b_vault,
+                lpTokenAMint: pool.lp_token_a_mint,
+                lpTokenBMint: pool.lp_token_b_mint,
+                ratioANumerator: pool.ratio_a_numerator,
+                ratioBDenominator: pool.ratio_b_denominator,
+                tokenALiquidity: pool.total_token_a_liquidity,
+                tokenBLiquidity: pool.total_token_b_liquidity,
+                poolAuthorityBumpSeed: pool.pool_authority_bump_seed,
+                tokenAVaultBumpSeed: pool.token_a_vault_bump_seed,
+                tokenBVaultBumpSeed: pool.token_b_vault_bump_seed,
+                lpTokenAMintBumpSeed: pool.lp_token_a_mint_bump_seed,
+                lpTokenBMintBumpSeed: pool.lp_token_b_mint_bump_seed,
+                flags: pool.flags,
+                collectedFeesTokenA: pool.collected_fees_token_a,
+                collectedFeesTokenB: pool.collected_fees_token_b,
+                collectedSolFees: pool.collected_sol_fees,
+                swapFeeBasisPoints: pool.swap_fee_basis_points,
+                isInitialized: pool.is_initialized !== false, // Default to true if not specified
+                isPaused: pool.is_paused || false,
+                swapsPaused: pool.swaps_paused || false,
+                dataSource: 'JSON'
+            }));
+
             return {
-                pools: stateData.pools || [],
+                pools: mappedPools,
                 mainTreasuryState: stateData.main_treasury_state,
                 systemState: stateData.system_state,
                 pdaAddresses: stateData.pda_addresses,

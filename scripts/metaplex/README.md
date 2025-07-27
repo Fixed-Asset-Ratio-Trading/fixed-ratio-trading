@@ -51,8 +51,8 @@ You can also manage Metaplex manually:
 ## 🔧 **Configuration**
 
 ### **Environment Variables**
-- `RPC_URL` - Solana RPC endpoint (default: `http://localhost:8899`)
-- `WEBSOCKET_URL` - Solana WebSocket endpoint (default: `ws://localhost:8900`)
+- `RPC_URL` - Solana RPC endpoint (default: `http://192.168.2.88:8899` for remote deployment)
+- `WEBSOCKET_URL` - Solana WebSocket endpoint (default: `ws://192.168.2.88:8900` for remote deployment)
 
 ### **Directories Created**
 - `.metaplex/` - Main Metaplex directory (git-ignored)
@@ -63,7 +63,7 @@ You can also manage Metaplex manually:
 ## ✅ **Prerequisites**
 
 1. **Solana CLI**: Installed and configured
-2. **Local Validator**: Running at `http://localhost:8899`
+2. **Solana Validator**: Running at `http://192.168.2.88:8899` (remote) or `http://localhost:8899` (local)
 3. **Internet Connection**: For downloading program binaries (first time only)
 4. **curl**: For downloading programs and health checks
 
@@ -78,7 +78,10 @@ You can also manage Metaplex manually:
 
 ### **"Program not deployed" Error**
 ```bash
-# Check validator is running
+# Check validator is running (remote)
+curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' http://192.168.2.88:8899
+
+# Check validator is running (local)
 curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' http://localhost:8899
 
 # Restart Metaplex
