@@ -201,15 +201,20 @@ async function testConnection() {
 }
 
 /**
- * Fetch contract version from the smart contract
+ * Fetch contract version from the smart contract with enhanced user feedback
  */
 async function fetchContractVersion() {
     try {
         console.log('🔍 Fetching contract version from smart contract...');
         
+        // Update UI to show loading state
+        updateVersionStatus('loading', 'Fetching from contract...', 'Loading...');
+        
         if (!connection || !CONFIG.programId) {
             console.error('❌ RPC connection or program ID not available');
-            contractVersion = null; // No version available
+            const errorMsg = !connection ? 'RPC connection not available' : 'Program ID not configured';
+            updateVersionStatus('error', 'Connection Error', errorMsg);
+            contractVersion = null;
             updateTitle();
             return;
         }
@@ -228,29 +233,44 @@ async function fetchContractVersion() {
         
         // Try multiple simulation approaches
         let result = null;
+        let lastError = null;
         
         // Method 1: Try with replaceRecentBlockhash (simplest approach)
         try {
-            console.log('📡 Trying simulateTransaction with replaceRecentBlockhash...');
+            console.log('📡 Method 1: Trying simulateTransaction with replaceRecentBlockhash...');
+            updateVersionStatus('loading', 'Trying method 1...', 'Loading...');
+            
             result = await connection.simulateTransaction(transaction, {
                 commitment: 'processed',
                 replaceRecentBlockhash: true,
             });
+            
+            if (result && !result.value.err) {
+                console.log('✅ Method 1 succeeded');
+            }
         } catch (error) {
             console.log('⚠️ Method 1 failed:', error.message);
+            lastError = error;
         }
         
         // Method 2: Try with dummy blockhash and fee payer
         if (!result || result.value.err) {
             try {
-                console.log('📡 Trying simulateTransaction with dummy fee payer...');
+                console.log('📡 Method 2: Trying simulateTransaction with dummy fee payer...');
+                updateVersionStatus('loading', 'Trying method 2...', 'Loading...');
+                
                 const { blockhash } = await connection.getLatestBlockhash();
                 transaction.recentBlockhash = blockhash;
                 transaction.feePayer = new solanaWeb3.PublicKey("11111111111111111111111111111111");
                 
                 result = await connection.simulateTransaction(transaction);
+                
+                if (result && !result.value.err) {
+                    console.log('✅ Method 2 succeeded');
+                }
             } catch (error) {
                 console.log('⚠️ Method 2 failed:', error.message);
+                lastError = error;
             }
         }
         
@@ -264,8 +284,12 @@ async function fetchContractVersion() {
                 const versionMatch = versionLog.match(/Contract Version:\s*([0-9\.]+)/);
                 if (versionMatch) {
                     contractVersion = versionMatch[1];
+                    updateVersionStatus('success', `v${contractVersion}`, 'Successfully fetched');
                     updateTitle();
                     console.log(`✅ Contract version fetched from blockchain: ${contractVersion}`);
+                    
+                    // Show success notification
+                    showStatus('success', `✅ Contract version v${contractVersion} fetched successfully!`);
                     return;
                 }
             }
@@ -273,18 +297,88 @@ async function fetchContractVersion() {
         
         // If we reach here, contract call failed to return version
         console.error('❌ Failed to extract version from contract response');
+        let errorDetail = 'Unknown error';
+        
         if (result && result.value.err) {
             console.error('   Simulation error:', result.value.err);
+            errorDetail = `RPC Simulation Error: ${JSON.stringify(result.value.err)}`;
+            updateVersionStatus('error', 'Simulation Failed', 'RPC simulation error');
+        } else if (lastError) {
+            console.error('   Last error:', lastError.message);
+            errorDetail = `Network Error: ${lastError.message}`;
+            updateVersionStatus('error', 'Network Failed', 'Connection issue');
+        } else {
+            errorDetail = 'Contract did not return version information';
+            updateVersionStatus('error', 'No Version Found', 'Contract logs missing version');
         }
-        contractVersion = null; // No version available
+        
+        // Show error notification to user
+        showStatus('error', `❌ Version fetch failed: ${errorDetail}`);
+        
+        contractVersion = null;
         updateTitle();
         
     } catch (error) {
         console.error('❌ Error fetching contract version:', error);
-        contractVersion = null; // No version available
+        updateVersionStatus('error', 'Fetch Failed', `Exception: ${error.message}`);
+        showStatus('error', `❌ Version fetch error: ${error.message}`);
+        contractVersion = null;
         updateTitle();
     }
 }
+
+/**
+ * Update version status UI elements
+ */
+function updateVersionStatus(type, version, status) {
+    const versionElement = document.getElementById('contract-version');
+    const statusElement = document.getElementById('version-status');
+    const actionsElement = document.getElementById('version-actions');
+    
+    if (versionElement) {
+        versionElement.textContent = version;
+        versionElement.className = `status-value ${type}`;
+    }
+    
+    if (statusElement) {
+        statusElement.textContent = status;
+        statusElement.className = `status-value ${type}`;
+    }
+    
+    if (actionsElement) {
+        // Show retry button only if there's an error
+        if (type === 'error') {
+            actionsElement.style.display = 'block';
+        } else {
+            actionsElement.style.display = 'none';
+        }
+    }
+}
+
+/**
+ * Retry version fetch (called from retry button)
+ */
+async function retryVersionFetch() {
+    console.log('🔄 Retrying version fetch...');
+    const retryBtn = document.getElementById('retry-version');
+    
+    if (retryBtn) {
+        retryBtn.disabled = true;
+        retryBtn.textContent = '⏳ Retrying...';
+    }
+    
+    try {
+        await fetchContractVersion();
+    } finally {
+        if (retryBtn) {
+            retryBtn.disabled = false;
+            retryBtn.textContent = '🔄 Retry';
+        }
+    }
+}
+
+// Make retryVersionFetch available globally for HTML onclick
+window.retryVersionFetch = retryVersionFetch;
 
 /**
  * Update the page title with contract version

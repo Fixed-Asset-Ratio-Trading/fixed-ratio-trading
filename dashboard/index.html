@@ -112,6 +112,7 @@
         .status-card.pools { border-left-color: #10b981; }
         .status-card.volume { border-left-color: #f59e0b; }
         .status-card.fees { border-left-color: #ef4444; }
+        .status-card.version { border-left-color: #8b5cf6; }
         
         .status-card h3 {
             color: #333;
@@ -149,6 +150,44 @@
         
         .status-value.offline {
             color: #ef4444;
+        }
+        
+        .status-value.success {
+            color: #10b981;
+            font-weight: 600;
+        }
+        
+        .status-value.error {
+            color: #ef4444;
+            font-weight: 600;
+        }
+        
+        .status-value.loading {
+            color: #6b7280;
+            font-style: italic;
+        }
+        
+        .retry-btn {
+            padding: 6px 12px;
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .retry-btn:hover {
+            background: #7c3aed;
+            transform: translateY(-1px);
+        }
+        
+        .retry-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
         }
         
         .pools-section {
@@ -626,6 +665,21 @@
                 <div class="status-item" title="Pool fees are percentage-based on traded tokens (0-0.5%)">
                     <span class="status-label">Avg Pool Fee Rate 📈</span>
                     <span class="status-value" id="avg-swap-fee">-- bps</span>
+                </div>
+            </div>
+            
+            <div class="status-card version">
+                <h3>🔍 Contract Version</h3>
+                <div class="status-item">
+                    <span class="status-label">Contract Version</span>
+                    <span class="status-value" id="contract-version">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Version Status</span>
+                    <span class="status-value" id="version-status">Loading...</span>
+                </div>
+                <div class="status-item" id="version-actions" style="display: none;">
+                    <button class="retry-btn" id="retry-version" onclick="retryVersionFetch()">🔄 Retry</button>
                 </div>
             </div>
         </div>
