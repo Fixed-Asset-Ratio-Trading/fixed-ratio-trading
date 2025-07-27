@@ -1191,31 +1191,34 @@ function selectLPToken(tokenType) {
  */
 function updateRemoveButton() {
     const amount = parseFloat(document.getElementById('remove-liquidity-amount').value) || 0;
-    const selectedLP = document.querySelector('.lp-token-option.selected');
     const button = document.getElementById('remove-liquidity-btn');
     const expectedOutput = document.getElementById('expected-output');
     
-    if (amount > 0 && selectedLP) {
-        button.disabled = false;
-        
-        // Calculate expected output (mock calculation)
-        const isTokenA = selectedLP.id === 'lp-token-a-option';
-        let expectedAmount;
-        
-        if (isTokenA) {
-            // Convert LP tokens to underlying Token A
-            expectedAmount = amount * 1.0; // 1:1 ratio for LP to underlying (simplified)
+    if (amount > 0 && window.selectedLPToken) {
+        // Check if amount is within available balance
+        if (amount <= window.selectedLPToken.balance) {
+            button.disabled = false;
+            
+            // Calculate expected output (1:1 ratio for LP to underlying - simplified)
+            const expectedAmount = amount * 1.0;
+            
+            document.getElementById('output-token-amount').textContent = expectedAmount.toFixed(6);
+            expectedOutput.style.display = 'block';
         } else {
-            // Convert LP tokens to underlying Token B
-            expectedAmount = amount * 1.0; // 1:1 ratio for LP to underlying (simplified)
+            button.disabled = true;
+            button.textContent = `❌ Insufficient Balance (${window.selectedLPToken.balance.toFixed(6)} available)`;
+            expectedOutput.style.display = 'none';
         }
-        
-        document.getElementById('output-token-amount').textContent = expectedAmount.toFixed(6);
-        expectedOutput.style.display = 'block';
         
     } else {
         button.disabled = true;
+        button.textContent = amount > 0 ? '💧 Select LP Token' : '💧 Enter Amount';
         expectedOutput.style.display = 'none';
+    }
+    
+    // Reset button text if everything is valid
+    if (!button.disabled && button.textContent.includes('❌')) {
+        button.textContent = '💧 Remove Liquidity';
     }
 }
 
@@ -1252,7 +1255,11 @@ async function removeLiquidity() {
         const lpTokenMint = window.selectedLPToken.mint;
         const tokenSymbol = window.selectedLPToken.underlyingToken;
         const lpTokenSymbol = window.selectedLPToken.symbol;
-        const decimals = 6; // LP tokens typically use 6 decimals
+        
+        // Get the actual LP token decimals from the blockchain
+        console.log('🔍 Fetching LP token decimals...');
+        const lpTokenDecimals = await window.TokenDisplayUtils.getTokenDecimals(lpTokenMint, connection);
+        console.log(`✅ LP token decimals: ${lpTokenDecimals}`);
         
         // Validation was already done above, but double-check
         if (amount > window.selectedLPToken.balance) {
@@ -1268,7 +1275,7 @@ async function removeLiquidity() {
         }
         
         // Prepare transaction parameters
-        const lpAmountLamports = Math.floor(amount * Math.pow(10, decimals));
+        const lpAmountLamports = Math.floor(amount * Math.pow(10, lpTokenDecimals));
         const poolPubkey = new solanaWeb3.PublicKey(poolAddress);
         const withdrawTokenMint = new solanaWeb3.PublicKey(underlyingTokenMint);
         const userWallet = new solanaWeb3.PublicKey(window.backpack.publicKey);
@@ -1302,6 +1309,14 @@ async function removeLiquidity() {
             userWallet
         );
         
+        // Debug: Log key information
+        console.log('🔍 Transaction Debug Info:');
+        console.log('  LP Token Mint:', lpTokenMint);
+        console.log('  Underlying Token Mint:', underlyingTokenMint);
+        console.log('  User LP Token Account:', userLPTokenAccount.toString());
+        console.log('  Amount (raw):', amount);
+        console.log('  Amount (lamports):', lpAmountLamports);
+        
         // Find user's output token account (where they receive underlying tokens)
         const userOutputTokenAccount = await window.splToken.Token.getAssociatedTokenAddress(
             window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -1313,8 +1328,15 @@ async function removeLiquidity() {
         // Check if output token account exists, create if needed
         const outputAccountInfo = await connection.getAccountInfo(userOutputTokenAccount);
         
-        // Create transaction
+        // Create transaction with compute budget
         const transaction = new solanaWeb3.Transaction();
+        
+        // Add compute budget instruction to increase CU limit (withdrawal needs ~200k CUs)
+        const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
+            units: 300000 // Increase from default 200k to 300k CUs
+        });
+        transaction.add(computeBudgetInstruction);
+        console.log('✅ Added compute budget instruction: 300,000 CUs');
         
         // Add create associated token account instruction if needed
         if (!outputAccountInfo) {
@@ -1330,21 +1352,63 @@ async function removeLiquidity() {
             console.log('✅ Added create associated token account instruction for output token');
         }
         
-        // Serialize withdraw instruction data: Withdraw { withdraw_token_mint, lp_amount_to_burn }
+        // Verify the amount is not zero (this could cause ProgramError::InvalidArgument)
+        if (lpAmountLamports === 0) {
+            throw new Error(`Invalid amount: ${amount} results in 0 lamports. Check decimal precision.`);
+        }
+        
+        console.log('🔍 Instruction Data Debug:');
+        console.log('  Discriminator: 3 (Withdraw)');
+        console.log('  Withdraw Token Mint bytes:', withdrawTokenMint.toBytes());
+        console.log('  LP Amount (lamports):', lpAmountLamports);
+        
+        // Serialize withdraw instruction data using Borsh format: Withdraw { withdraw_token_mint, lp_amount_to_burn }
         const instructionData = new Uint8Array(1 + 32 + 8);
         instructionData[0] = 3; // Withdraw instruction discriminator
         
         // Serialize withdraw_token_mint (32 bytes)
-        withdrawTokenMint.toBytes().forEach((byte, index) => {
-            instructionData[1 + index] = byte;
-        });
+        const mintBytes = withdrawTokenMint.toBytes();
+        for (let i = 0; i < 32; i++) {
+            instructionData[1 + i] = mintBytes[i];
+        }
         
         // Serialize lp_amount_to_burn (8 bytes, little-endian u64)
-        const amountBytes = new ArrayBuffer(8);
-        new DataView(amountBytes).setBigUint64(0, BigInt(lpAmountLamports), true);
-        new Uint8Array(amountBytes).forEach((byte, index) => {
-            instructionData[1 + 32 + index] = byte;
-        });
+        const amountBuffer = new ArrayBuffer(8);
+        const amountView = new DataView(amountBuffer);
+        amountView.setBigUint64(0, BigInt(lpAmountLamports), true); // little-endian
+        const amountBytes = new Uint8Array(amountBuffer);
+        for (let i = 0; i < 8; i++) {
+            instructionData[1 + 32 + i] = amountBytes[i];
+        }
+        
+        console.log('🔍 Final instruction data:', Array.from(instructionData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+        
+        // Debug: Log all account addresses
+        console.log('🔍 Account Address Debug:');
+        console.log('  User Wallet:', userWallet.toString());
+        console.log('  System Program:', solanaWeb3.SystemProgram.programId.toString());
+        console.log('  System State PDA:', systemStatePDA.toString());
+        console.log('  Pool PDA:', poolPubkey.toString());
+        console.log('  Token Program:', window.splToken.TOKEN_PROGRAM_ID.toString());
+        console.log('  Token A Vault:', poolData.tokenAVault);
+        console.log('  Token B Vault:', poolData.tokenBVault);
+        console.log('  User LP Token Account:', userLPTokenAccount.toString());
+        console.log('  User Output Token Account:', userOutputTokenAccount.toString());
+        console.log('  LP Token A Mint:', lpTokenAMint.toString());
+        console.log('  LP Token B Mint:', lpTokenBMint.toString());
+        
+        // Verify key accounts exist
+        console.log('🔍 Verifying account existence...');
+        try {
+            const lpTokenAccountInfo = await connection.getAccountInfo(userLPTokenAccount);
+            console.log('  User LP Token Account exists:', !!lpTokenAccountInfo);
+            if (lpTokenAccountInfo) {
+                console.log('    Account owner:', lpTokenAccountInfo.owner.toString());
+                console.log('    Account lamports:', lpTokenAccountInfo.lamports);
+            }
+        } catch (error) {
+            console.log('  ❌ Error checking LP token account:', error.message);
+        }
         
         // Create the withdraw instruction
         const withdrawInstruction = new solanaWeb3.TransactionInstruction({
@@ -1368,11 +1432,32 @@ async function removeLiquidity() {
         transaction.add(withdrawInstruction);
         
         // Get recent blockhash
-        const { blockhash } = await connection.getRecentBlockhash();
+        const { blockhash } = await connection.getLatestBlockhash();
         transaction.recentBlockhash = blockhash;
         transaction.feePayer = userWallet;
         
-        console.log('💰 Transaction prepared, requesting signature...');
+        console.log('💰 Transaction prepared, testing simulation first...');
+        
+        // Simulate transaction first to get detailed error info
+        try {
+            console.log('🧪 Simulating transaction...');
+            const simulation = await connection.simulateTransaction(transaction);
+            console.log('📊 Simulation result:', simulation);
+            
+            if (simulation.value.err) {
+                console.log('❌ Simulation failed:', simulation.value.err);
+                console.log('📋 Simulation logs:', simulation.value.logs);
+                throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+            } else {
+                console.log('✅ Simulation successful!');
+                console.log('📋 Simulation logs:', simulation.value.logs);
+            }
+        } catch (simError) {
+            console.log('❌ Simulation error:', simError);
+            throw new Error(`Simulation failed: ${simError.message}`);
+        }
+        
+        console.log('💰 Simulation passed, requesting signature...');
         
         // Sign and send transaction
         const signedTransaction = await window.backpack.signTransaction(transaction);

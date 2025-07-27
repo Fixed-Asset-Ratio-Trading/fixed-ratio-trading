@@ -1,12 +1,45 @@
 {
   "metadata": {
-    "generated_at": "2025-07-27T10:08:45.973Z",
+    "generated_at": "2025-07-27T11:57:33.531Z",
     "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
-    "solana_environment": "remote"
+    "solana_environment": "local/remote-testnet"
   },
-  "pools": [],
+  "pools": [
+    {
+      "address": "52u7uuScLyERCxX3zYf9r9TPm6X6zXjGPC87xvu1Nffj",
+      "owner": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t",
+      "token_a_mint": "2eq5KYpVQkKKeSj9XRwLzCADn4jDeNt5EFz9aJwyp54f",
+      "token_b_mint": "CJbuhfnp3v2S1wVtm1t2T88i6xsFr898RTaG7DTfttRr",
+      "token_a_vault": "33gttg8qEQ76kjmfqWq4Jej7R5Rd1FYspm6ffYzn8mEd",
+      "token_b_vault": "Hb6N2WApz4575ou6U1pbQvGka65qNZtnEYZd9GRVnpvQ",
+      "lp_token_a_mint": "4XnsfTcMkrZvuVRGrEmknquvbc12sesdoEESQvkBE5Ha",
+      "lp_token_b_mint": "5J1DXQkJ2oUy2jNXEVs1sHwNJ4zV28HUJGNiiaiprAJr",
+      "ratio_a_numerator": 10000,
+      "ratio_b_denominator": 1,
+      "total_token_a_liquidity": 100000000,
+      "total_token_b_liquidity": 0,
+      "pool_authority_bump_seed": 255,
+      "token_a_vault_bump_seed": 254,
+      "token_b_vault_bump_seed": 253,
+      "lp_token_a_mint_bump_seed": 254,
+      "lp_token_b_mint_bump_seed": 255,
+      "flags": 1,
+      "collected_fees_token_a": 12630446218223634000,
+      "collected_fees_token_b": 16148137439276958000,
+      "total_fees_withdrawn_token_a": 5184938655675738000,
+      "total_fees_withdrawn_token_b": 10000,
+      "total_sol_fees_collected": 1,
+      "flags_decoded": {
+        "one_to_many_ratio": true,
+        "liquidity_paused": false,
+        "swaps_paused": false,
+        "withdrawal_protection": false,
+        "single_lp_token_mode": false
+      }
+    }
+  ],
   "main_treasury_state": {
     "total_balance": 1151726080,
     "rent_exempt_minimum": 0,
@@ -20,15 +53,14 @@
     "total_liquidity_fees": 0,
     "total_regular_swap_fees": 0,
     "total_swap_contract_fees": 0,
-    "last_update_timestamp": 1753602873,
+    "last_update_timestamp": 1753617360,
     "total_consolidations_performed": 0,
     "last_consolidation_timestamp": 0
   },
   "system_state": {
-    "is_paused": false,
-    "pause_timestamp": 0,
     "pause_reason_code": 0,
-    "pause_reason_decoded": "No pause / Normal operation"
+    "is_paused": false,
+    "pause_timestamp": 0
   },
   "pda_addresses": {
     "main_treasury": "EEaT1sB9AtMQMfrDPmrHmvD66kEJ8JqVzKMqQGhjaQ6p",

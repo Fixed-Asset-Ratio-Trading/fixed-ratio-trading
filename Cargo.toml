@@ -1,6 +1,6 @@
 [package]
 name = "fixed-ratio-trading"
-version = "0.12.1023"
+version = "0.12.1024"
 edition = "2021"
 description = "Fixed Ratio Trading Smart Contract for Solana"
 license = "Apache-2.0"
