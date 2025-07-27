@@ -248,12 +248,19 @@ async function fetchContractVersion() {
         updateVersionStatus('loading', 'Calling smart contract...', 'Loading...');
         
         try {
-            // Use the hardcoded keypair (same one used to deploy the contract)
+            // ⚠️ SECURITY WARNING: HARDCODED PRIVATE KEY - FOR LOCAL DEVELOPMENT ONLY!
+            // 🚨 CRITICAL: This hardcoded private key MUST BE REMOVED for testnet or mainnet deployment!
+            // 📝 TODO: For production deployments, implement secure version fetching:
+            //    - Use environment variables for sensitive keys
+            //    - Implement backend API endpoint to call smart contract
+            //    - Use wallet adapter for user-authorized transactions
+            //    - Consider caching version in deployment metadata
+            // 🔒 This approach works locally but is NOT SECURE for production environments
             const keypairData = [31,156,218,245,68,165,3,62,206,54,214,88,64,225,237,59,19,211,64,100,126,148,89,251,23,112,23,70,0,122,157,157,41,47,96,14,115,0,133,175,206,115,174,213,130,117,129,155,71,106,105,140,181,131,45,134,163,13,59,104,69,175,176,2];
             const privateKey = new Uint8Array(keypairData);
             const keypair = solanaWeb3.Keypair.fromSecretKey(privateKey);
             
-            console.log('🔑 Using hardcoded keypair for signing:', keypair.publicKey.toString());
+            console.log('🔑 Using hardcoded keypair for signing (LOCAL DEV ONLY):', keypair.publicKey.toString());
             
             // Create signed transaction (this is what works!)
             const signedTransaction = new solanaWeb3.Transaction().add(instruction);
