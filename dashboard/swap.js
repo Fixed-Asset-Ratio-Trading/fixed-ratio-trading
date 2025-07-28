@@ -680,9 +680,7 @@ function calculateSwapOutputEnhanced() {
     // Update price impact (0% for fixed ratios)
     document.getElementById('price-impact-value').textContent = '0.00%';
     
-    // Hide slippage warning for fixed ratios
-    const warning = document.getElementById('preview-warning');
-    warning.style.display = 'none';
+    // Fixed ratio - no warnings needed
 }
 
 /**
@@ -847,17 +845,17 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     console.log('  User Output Token Account:', toTokenAccountPubkey.toString());
     
     // Create instruction data for Swap using Borsh serialization
-    // Borsh enum discriminator: Swap = 4 (based on instruction ordering)
+    // Borsh enum discriminator: Swap = 4 (single byte, based on instruction ordering)
     const inputTokenMint = new solanaWeb3.PublicKey(fromToken.mint);
     
     const instructionData = new Uint8Array([
-        4, 0, 0, 0, // Swap discriminator (u32 little-endian)
+        4, // Swap discriminator (single byte, like other instructions)
         ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
         ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer) // amount_in (u64 little-endian)
     ]);
     
     console.log('🔍 Swap instruction data:');
-    console.log('  Discriminator: [4, 0, 0, 0]');
+    console.log('  Discriminator: [4] (single byte)');
     console.log('  Input token mint:', inputTokenMint.toString());
     console.log('  Amount in base units:', amountInBaseUnits);
     console.log('  Total data length:', instructionData.length, 'bytes');
