@@ -900,9 +900,9 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
         instructions.push(createATAInstruction);
     }
     
-    // Create compute budget instruction (100K CUs should be enough for swap)
+    // Create compute budget instruction (200K CUs for swap + token transfers)
     const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-        units: 100_000
+        units: 200_000
     });
     
     instructions.push(computeBudgetInstruction);
