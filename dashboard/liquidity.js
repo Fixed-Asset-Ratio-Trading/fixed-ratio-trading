@@ -115,14 +115,20 @@ async function initializeApp() {
             return;
         }
         
-        // Get pool address from sessionStorage
-        poolAddress = sessionStorage.getItem('selectedPoolAddress');
+        // Get pool address from URL params first, then sessionStorage as fallback
+        const urlParams = new URLSearchParams(window.location.search);
+        poolAddress = urlParams.get('pool') || sessionStorage.getItem('selectedPoolAddress');
+        
         if (!poolAddress) {
-            showStatus('error', 'No pool selected. Please go back to the dashboard and select a pool.');
+            showStatus('error', 'No pool selected. Please select a pool from the dashboard or provide a pool ID in the URL (?pool=POOL_ID).');
             return;
         }
         
-        console.log('🏊‍♂️ Selected pool address:', poolAddress);
+        console.log('🎯 Loading pool for liquidity:', poolAddress);
+        console.log('📋 Pool source:', urlParams.get('pool') ? 'URL parameter' : 'SessionStorage');
+        
+        // Store pool address in sessionStorage for potential navigation
+        sessionStorage.setItem('selectedPoolAddress', poolAddress);
         
         // Load pool information
         await loadPoolInformation();
@@ -154,18 +160,40 @@ async function loadPoolInformation() {
             await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
         }
         
-        // Get pool data using centralized service (prioritizes RPC for real-time data)
-        poolData = await window.TradingDataService.getPool(poolAddress, 'rpc');
+        // Get pool data using centralized service (tries state.json first, then RPC)
+        poolData = await window.TradingDataService.getPool(poolAddress, 'auto');
         
-        // Try to get token symbols from sessionStorage
-        const tokenSymbols = await getTokenSymbols(poolData.tokenAMint, poolData.tokenBMint);
-        poolData.tokenASymbol = tokenSymbols.tokenA;
-        poolData.tokenBSymbol = tokenSymbols.tokenB;
-        
-        // Update UI with pool information
-        await updatePoolDisplay();
-        
-        console.log('✅ Pool information loaded:', poolData);
+        if (poolData) {
+            console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);
+            
+            // 🔍 DEVELOPER DEBUGGING: Log complete pool data to console
+            console.group('🔍 POOL DATA FOR DEVELOPERS');
+            console.log('📊 Complete Pool State:', poolData);
+            console.log('🏊‍♂️ Pool Address:', poolAddress);
+            console.log('🪙 Token A Mint:', poolData.tokenAMint || poolData.token_a_mint);
+            console.log('🪙 Token B Mint:', poolData.tokenBMint || poolData.token_b_mint);
+            console.log('⚖️ Ratio A Numerator:', poolData.ratioANumerator || poolData.ratio_a_numerator);
+            console.log('⚖️ Ratio B Denominator:', poolData.ratioBDenominator || poolData.ratio_b_denominator);
+            console.log('💧 Token A Liquidity:', poolData.tokenALiquidity || poolData.total_token_a_liquidity);
+            console.log('💧 Token B Liquidity:', poolData.tokenBLiquidity || poolData.total_token_b_liquidity);
+            console.log('🚩 Pool Flags:', poolData.flags);
+            console.log('🔒 Pool Owner:', poolData.owner);
+            console.groupEnd();
+            
+            // Try to get token symbols from sessionStorage
+            const tokenSymbols = await getTokenSymbols(poolData.tokenAMint || poolData.token_a_mint, 
+                                                       poolData.tokenBMint || poolData.token_b_mint);
+            poolData.tokenASymbol = tokenSymbols.tokenA;
+            poolData.tokenBSymbol = tokenSymbols.tokenB;
+            
+            // Update UI with pool information
+            await updatePoolDisplay();
+            
+            console.log('✅ Pool information loaded successfully');
+        } else {
+            showStatus('error', 'Pool not found. Please check the pool address.');
+            return;
+        }
     
     // 🔍 DEBUG: Check the actual ratio values
     console.log('🔍 RATIO DEBUG:', {
