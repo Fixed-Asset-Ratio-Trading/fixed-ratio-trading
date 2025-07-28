@@ -1186,11 +1186,8 @@ async function debugRPC() {
 function addLiquidity(poolAddress) {
     console.log('🚀 Navigating to add liquidity for pool:', poolAddress);
     
-    // Store the pool address in sessionStorage so the liquidity page can access it
-    sessionStorage.setItem('selectedPoolAddress', poolAddress);
-    
-    // Navigate to liquidity page
-    window.location.href = 'liquidity.html';
+    // Navigate directly to liquidity page with pool parameter
+    window.location.href = `liquidity.html?pool=${poolAddress}`;
 }
 
 /**
