@@ -670,7 +670,7 @@ function calculateSwapOutputEnhanced() {
             // Fixed ratio - you receive exactly the calculated amount
     
     // Update transaction preview
-    updateTransactionPreview(fromAmount, outputAmount, minimumReceived);
+    updateTransactionPreview(fromAmount, outputAmount);
     
     // Show preview and enable button
     preview.style.display = 'block';
@@ -688,7 +688,7 @@ function calculateSwapOutputEnhanced() {
 /**
  * Update transaction preview
  */
-function updateTransactionPreview(fromAmount, toAmount, minimumReceived) {
+function updateTransactionPreview(fromAmount, toAmount) {
     if (!poolData) return;
     
     const fromSymbol = swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol;
