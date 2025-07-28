@@ -769,8 +769,11 @@ async function executeSwap() {
         showStatus('info', '📝 Requesting wallet signature...');
         
         // Sign and send transaction
-        const signature = await wallet.signAndSendTransaction(transaction);
-        console.log('✅ Swap transaction sent:', signature);
+        const signatureResult = await wallet.signAndSendTransaction(transaction);
+        console.log('✅ Swap transaction sent:', signatureResult);
+        
+        // Extract signature string from result
+        const signature = signatureResult.signature || signatureResult;
         
         showStatus('info', '⏳ Confirming transaction...');
         
