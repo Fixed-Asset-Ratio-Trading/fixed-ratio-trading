@@ -11,7 +11,7 @@ let wallet = null;
 let isConnected = false;
 let userTokens = [];
 let swapDirection = 'AtoB'; // 'AtoB' or 'BtoA'
-let slippageTolerance = 0.5; // Default 0.5%
+// No slippage tolerance needed for fixed ratio trading
 
 /**
  * Initialize the swap page with library loading retry mechanism
@@ -667,8 +667,7 @@ function calculateSwapOutputEnhanced() {
     
     toAmountInput.value = outputAmount.toFixed(6);
     
-    // Calculate minimum received with slippage (though not needed for fixed ratios)
-    const minimumReceived = outputAmount * (1 - slippageTolerance / 100);
+            // Fixed ratio - you receive exactly the calculated amount
     
     // Update transaction preview
     updateTransactionPreview(fromAmount, outputAmount, minimumReceived);
@@ -697,7 +696,7 @@ function updateTransactionPreview(fromAmount, toAmount, minimumReceived) {
     
     document.getElementById('preview-from-amount').textContent = `${fromAmount.toFixed(6)} ${fromSymbol}`;
     document.getElementById('preview-to-amount').textContent = `${toAmount.toFixed(6)} ${toSymbol}`;
-    document.getElementById('preview-minimum').textContent = `${toAmount.toFixed(6)} ${toSymbol} (Fixed Rate)`;
+            // No minimum received needed - fixed ratio guarantees exact amount
     
     // Exchange rate
     const rate = toAmount / fromAmount;
@@ -932,51 +931,7 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     return transaction;
 }
 
-/**
- * Set slippage tolerance (for UI consistency, though not needed for fixed ratios)
- */
-function setSlippage(percentage) {
-    slippageTolerance = percentage;
-    
-    // Update UI
-    document.getElementById('current-slippage').textContent = percentage + '%';
-    document.getElementById('custom-slippage').value = '';
-    
-    // Update active button
-    document.querySelectorAll('.slippage-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Find and activate the correct button
-    document.querySelectorAll('.slippage-btn').forEach(btn => {
-        if (btn.textContent === percentage + '%') {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Recalculate if we have amounts
-    calculateSwapOutputEnhanced();
-}
-
-/**
- * Set custom slippage tolerance
- */
-function setCustomSlippage() {
-    const customValue = parseFloat(document.getElementById('custom-slippage').value);
-    
-    if (!isNaN(customValue) && customValue >= 0 && customValue <= 50) {
-        slippageTolerance = customValue;
-        document.getElementById('current-slippage').textContent = customValue + '%';
-        
-        // Remove active class from preset buttons
-        document.querySelectorAll('.slippage-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Recalculate
-        calculateSwapOutputEnhanced();
-    }
-}
+// Slippage functions removed - not needed for fixed ratio trading
 
 /**
  * Enhanced token selection for "from" token
@@ -1159,8 +1114,7 @@ window.executeSwap = executeSwap;
 window.selectFromToken = selectFromToken;
 window.selectToToken = selectToToken;
 window.setMaxAmount = setMaxAmount;
-window.setSlippage = setSlippage;
-window.setCustomSlippage = setCustomSlippage;
+// Slippage functions removed
 window.togglePoolStateDetails = togglePoolStateDetails;
 window.connectWallet = connectWallet;
 
