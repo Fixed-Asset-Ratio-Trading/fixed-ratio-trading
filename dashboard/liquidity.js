@@ -166,6 +166,17 @@ async function loadPoolInformation() {
         await updatePoolDisplay();
         
         console.log('✅ Pool information loaded:', poolData);
+    
+    // 🔍 DEBUG: Check the actual ratio values
+    console.log('🔍 RATIO DEBUG:', {
+        ratioANumerator: poolData.ratioANumerator,
+        ratio_a_numerator: poolData.ratio_a_numerator, 
+        ratioBDenominator: poolData.ratioBDenominator,
+        ratio_b_denominator: poolData.ratio_b_denominator,
+        tokenASymbol: poolData.tokenASymbol,
+        tokenBSymbol: poolData.tokenBSymbol,
+        flags: poolData.flags
+    });
         
     } catch (error) {
         console.error('❌ Error loading pool information:', error);
@@ -284,9 +295,47 @@ async function updatePoolDisplay() {
         showStatus('error', `Failed to load pool information: ${error.message}`);
     }
     
-    // Phase 1.3: Use enhanced display utilities with flag interpretation and decimal precision
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData, tokenDecimals);
+    // 🔧 FIXED: Use our corrected display function directly!
+    const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
+        poolData.tokenASymbol || 'Token A',
+        poolData.tokenBSymbol || 'Token B', 
+        poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
+        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1
+    );
+    
+    // Build the full display object with proper liquidity formatting
+    const getFormattedLiquidity = (rawAmount, isTokenA) => {
+        if (tokenDecimals) {
+            const decimals = isTokenA ? tokenDecimals.tokenADecimals : tokenDecimals.tokenBDecimals;
+            return window.TokenDisplayUtils.formatLiquidityAmount(rawAmount, decimals);
+        }
+        return window.TokenDisplayUtils.formatLargeNumber(rawAmount);
+    };
+    
     const flags = window.TokenDisplayUtils.interpretPoolFlags(poolData);
+    
+    const display = {
+        baseToken: correctedDisplay.baseToken,
+        quoteToken: correctedDisplay.quoteToken,
+        displayPair: correctedDisplay.displayPair,
+        rateText: correctedDisplay.rateText,
+        exchangeRate: correctedDisplay.exchangeRate,
+        baseLiquidity: getFormattedLiquidity(poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0, true),
+        quoteLiquidity: getFormattedLiquidity(poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0, false),
+        isReversed: correctedDisplay.isReversed,
+        isOneToManyRatio: flags.oneToManyRatio
+    };
+    
+    console.log('🔧 LIQUIDITY CORRECTED:', display);
+    
+    // 🔍 DEBUG: Check mint addresses for lexicographic ordering
+    console.log('🔍 MINT ADDRESS DEBUG:', {
+        tokenAMint: poolData.tokenAMint || poolData.token_a_mint,
+        tokenBMint: poolData.tokenBMint || poolData.token_b_mint,
+        tokenASymbol: poolData.tokenASymbol,
+        tokenBSymbol: poolData.tokenBSymbol,
+        lexicographicOrder: (poolData.tokenAMint || poolData.token_a_mint) < (poolData.tokenBMint || poolData.token_b_mint) ? 'TokenA < TokenB' : 'TokenB < TokenA'
+    });
     
     // Generate pool flags section
     const flagsSection = generatePoolFlagsDisplay(flags, poolData);

@@ -617,3 +617,42 @@ cd dashboard && python3 -m http.server 8000
 ---
 
 *🚀 **Welcome to the future of predictable DeFi trading.*** 
+
+# Fixed Ratio Trading Pool
+
+A Solana program that creates pools with fixed exchange rates between two tokens.
+
+## Features
+
+- **Fixed Ratios**: Pools maintain predetermined exchange rates (e.g., 1000:1, 2:1)
+- **Liquidity Management**: Add/remove liquidity with automatic LP token generation
+- **Token Swapping**: Exchange tokens at fixed rates with no slippage
+- **Pool Creation**: Create new pools with custom token ratios
+- **Token Creation**: Built-in token creation tools with Metaplex metadata
+- **Treasury Management**: Fee collection and protocol revenue tracking
+
+## Direct Pool Access
+
+The dashboard supports direct access to specific pools via URL parameters:
+
+### Swap Interface
+```
+dashboard/swap.html?pool=POOL_ADDRESS
+```
+
+Example:
+```
+dashboard/swap.html?pool=9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
+```
+
+This allows users to:
+- Bookmark specific pools for quick access
+- Share direct links to trading pairs
+- Integrate with external applications
+- Skip the pool selection process
+
+### Pool Selection
+Users can find pool addresses in the main dashboard or by:
+1. Navigating to the main dashboard (`dashboard/index.html`)
+2. Selecting a pool from the list
+3. Using the "Swap" button which automatically includes the pool ID in the URL 

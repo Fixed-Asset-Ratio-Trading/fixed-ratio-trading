@@ -47,40 +47,7 @@ async function initializeDashboard() {
             sessionStorage.removeItem('poolToUpdate'); // Clear the flag
         }
         
-        // Initialize centralized data service (without connection for now)
-        await window.TradingDataService.initialize(window.CONFIG, null);
-        
-        // Load initial state using centralized service (will use state.json)
-        const initialState = await window.TradingDataService.loadAllData('auto');
-        if (initialState.pools.length > 0) {
-            pools = initialState.pools;
-            console.log(`📁 Pre-loaded ${pools.length} pools via TradingDataService`);
-            
-            // Fetch token symbols for all pools
-            console.log('🔍 Fetching token symbols for pools...');
-            await enrichPoolsWithTokenSymbols(pools);
-            console.log('✅ Token symbols loaded for all pools');
-        }
-        
-        // Phase 2.2: Store treasury and system state data
-        if (initialState.mainTreasuryState) {
-            mainTreasuryState = initialState.mainTreasuryState;
-            console.log('🏛️ Loaded treasury state via TradingDataService');
-        }
-        if (initialState.systemState) {
-            systemState = initialState.systemState;
-            console.log('⚙️ Loaded system state via TradingDataService');
-        }
-        
-        // Phase 2.2: Update treasury and system state displays
-        updateTreasuryStateDisplay();
-        updateSystemStateDisplay();
-        
-        // Show cache clear helper if we detect stale data issues
-        checkForStaleDataIssues();
-        
-        // Initialize Solana connection
-        // Initialize Solana connection with WebSocket configuration
+        // Initialize Solana connection FIRST
         console.log('🔌 Connecting to Solana RPC...');
         const connectionConfig = {
             commitment: 'confirmed',
@@ -100,15 +67,44 @@ async function initializeDashboard() {
         try {
             await testConnection();
             console.log('✅ RPC connection successful');
-            
-            // Now reinitialize TradingDataService with the actual connection
-            await window.TradingDataService.initialize(window.CONFIG, connection);
-            console.log('✅ TradingDataService reinitialized with RPC connection');
         } catch (rpcError) {
             console.error('❌ Failed to connect to RPC:', rpcError);
             showError(`RPC connection failed: ${rpcError.message}. Make sure the Solana validator is running on ${CONFIG.rpcUrl}`);
             return;
         }
+        
+        // Now initialize centralized data service WITH the connection
+        await window.TradingDataService.initialize(window.CONFIG, connection);
+        console.log('✅ TradingDataService initialized with RPC connection');
+        
+        // Load initial state using centralized service (will try state.json first, then RPC fallback)
+        const initialState = await window.TradingDataService.loadAllData('auto');
+        if (initialState.pools.length > 0) {
+            pools = initialState.pools;
+            console.log(`📁 Pre-loaded ${pools.length} pools via TradingDataService`);
+            
+            // Fetch token symbols for all pools
+            console.log('🔍 Fetching token symbols for pools...');
+            await enrichPoolsWithTokenSymbols(pools);
+            console.log('✅ Token symbols loaded for all pools');
+        }
+        
+        // Store treasury and system state data
+        if (initialState.mainTreasuryState) {
+            mainTreasuryState = initialState.mainTreasuryState;
+            console.log('🏛️ Loaded treasury state via TradingDataService');
+        }
+        if (initialState.systemState) {
+            systemState = initialState.systemState;
+            console.log('⚙️ Loaded system state via TradingDataService');
+        }
+        
+        // Update treasury and system state displays
+        updateTreasuryStateDisplay();
+        updateSystemStateDisplay();
+        
+        // Show cache clear helper if we detect stale data issues
+        checkForStaleDataIssues();
         
         // Check if program is deployed
         const programAccount = await connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId));
@@ -863,36 +859,58 @@ function createPoolCard(pool) {
     const card = document.createElement('div');
     card.className = 'pool-card-simple';
     
-    // Get display token order for user-friendly names and ratio
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(pool);
+    // 🔧 FIXED: Use our simple corrector function directly!
+    console.log('🔍 BEFORE CORRECTION:', {
+        tokenASymbol: pool.tokenASymbol,
+        tokenBSymbol: pool.tokenBSymbol,
+        ratioANumerator: pool.ratioANumerator,
+        ratioBDenominator: pool.ratioBDenominator,
+        functionExists: !!window.TokenDisplayUtils?.getCorrectTokenDisplay
+    });
     
-    // Create pool name from token symbols (fallback to Token A/Token B if symbols not available)
-    const poolName = display.displayPair || `${display.baseToken}/${display.quoteToken}`;
+    let poolName;
     
-    // Extract ratio from the rate text (convert "1 TS = 10,000 MST" to "1:10,000")
-    let ratioText = "1:1"; // Default ratio
-    if (display.rateText) {
-        // Try to extract the numeric ratio from rate text like "1 TS = 10,000 MST"
-        const ratioMatch = display.rateText.match(/1\s+\w+\s*=\s*([\d,]+(?:\.\d+)?)/);
-        if (ratioMatch) {
-            // Use the already formatted number with commas from rateText
-            ratioText = `1:${ratioMatch[1]}`;
+    // Check if our function exists
+    if (window.TokenDisplayUtils && window.TokenDisplayUtils.getCorrectTokenDisplay) {
+        const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
+            pool.tokenASymbol || 'Token A',
+            pool.tokenBSymbol || 'Token B', 
+            pool.ratioANumerator || 1,
+            pool.ratioBDenominator || 1
+        );
+        
+        poolName = correctedDisplay.displayPair;
+        console.log('🔧 CORRECTED RESULT:', correctedDisplay);
+    
+    // 🔍 DEBUG: Show mint addresses to understand normalization
+    console.log('🔍 MINT ADDRESSES:', {
+        tokenAMint_TS: pool.tokenAMint,
+        tokenBMint_MST: pool.tokenBMint,
+        lexOrder: pool.tokenAMint < pool.tokenBMint ? 'TS < MST (normal)' : 'MST < TS (swapped)'
+    });
+    } else {
+        console.error('❌ Corrector function not found! Using fallback...');
+        // Fallback: manual correction
+        if (pool.ratioANumerator === 1) {
+            poolName = `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
+        } else if (pool.ratioBDenominator === 1) {
+            poolName = `${pool.tokenBSymbol}/${pool.tokenASymbol}`;
         } else {
-            // Fallback: calculate ratio from raw data and format with commas
-            const ratioValue = pool.ratioANumerator / pool.ratioBDenominator;
-            if (ratioValue && ratioValue !== 1) {
-                const formattedRatio = window.TokenDisplayUtils.formatNumberWithCommas(ratioValue);
-                ratioText = `1:${formattedRatio}`;
-            } else {
-                ratioText = "1:1";
-            }
+            poolName = `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
         }
-    } else if (pool.ratioANumerator && pool.ratioBDenominator) {
-        // Direct calculation if no display.rateText available
-        const ratioValue = pool.ratioANumerator / pool.ratioBDenominator;
-        const formattedRatio = window.TokenDisplayUtils.formatNumberWithCommas(ratioValue);
-        ratioText = `1:${formattedRatio}`;
+        console.log('🔧 FALLBACK RESULT:', poolName);
     }
+    
+    // Extract ratio (simple manual approach)
+    let ratioText = "1:1"; // Default ratio
+    if (pool.ratioANumerator === 1) {
+        ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(pool.ratioBDenominator)}`;
+    } else if (pool.ratioBDenominator === 1) {
+        ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(pool.ratioANumerator)}`;
+    } else {
+        ratioText = `${pool.ratioANumerator}:${pool.ratioBDenominator}`;
+    }
+    console.log('🔧 RATIO TEXT:', ratioText);
     
     // Check if pool is paused
     const flags = window.TokenDisplayUtils.interpretPoolFlags(pool);
@@ -1184,8 +1202,8 @@ function swapTokens(poolAddress) {
     // Store the pool address in sessionStorage so the swap page can access it
     sessionStorage.setItem('selectedPoolAddress', poolAddress);
     
-    // Navigate to swap page
-    window.location.href = 'swap.html';
+    // Navigate to swap page with pool ID in URL for direct access and bookmarking
+    window.location.href = `swap.html?pool=${poolAddress}`;
 }
 
 /**

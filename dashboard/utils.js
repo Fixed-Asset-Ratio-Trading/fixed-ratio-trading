@@ -4,116 +4,111 @@
  */
 
 /**
+ * SIMPLE TOKEN DISPLAY CORRECTOR
+ * If a token has precision value of 1 in the ratio, it comes first!
+ * 
+ * @param {string} tokenAName - Token A symbol/name
+ * @param {string} tokenBName - Token B symbol/name  
+ * @param {number} tokenARatio - Token A ratio value (numerator)
+ * @param {number} tokenBRatio - Token B ratio value (denominator)
+ * @param {number} tokenAPrecision - Token A decimal precision (optional)
+ * @param {number} tokenBPrecision - Token B decimal precision (optional)
+ * @returns {Object} Simple display configuration
+ */
+function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision = 6, tokenBPrecision = 6) {
+    console.log('🔧 SHOWING ACTUAL POOL RATIO:', {
+        tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision
+    });
+    
+    // CORRECT CALCULATION: Show what the pool actually represents
+    // Based on swap formula: amount_out_B = amount_in_A * ratio_B_denominator / ratio_A_numerator
+    // So: 1 TokenA gets you (ratio_B_denominator / ratio_A_numerator) TokenB
+    
+    const actualExchangeRate = tokenBRatio / tokenARatio;
+    
+    if (actualExchangeRate >= 1) {
+        // TokenA is more valuable, show as "1 TokenA = X TokenB"
+        return {
+            baseToken: tokenAName,
+            quoteToken: tokenBName,
+            displayPair: `${tokenAName}/${tokenBName}`,
+            rateText: `1 ${tokenAName} = ${formatNumberWithCommas(actualExchangeRate)} ${tokenBName}`,
+            exchangeRate: actualExchangeRate,
+            isReversed: false
+        };
+    } else {
+        // TokenB is more valuable, show as "1 TokenB = X TokenA"
+        const inverseRate = tokenARatio / tokenBRatio;
+        return {
+            baseToken: tokenBName,
+            quoteToken: tokenAName,
+            displayPair: `${tokenBName}/${tokenAName}`,
+            rateText: `1 ${tokenBName} = ${formatNumberWithCommas(inverseRate)} ${tokenAName}`,
+            exchangeRate: inverseRate,
+            isReversed: true
+        };
+    }
+}
+
+/**
+ * OVERRIDE FUNCTION: Use simple logic instead of complex getDisplayTokenOrder
+ * 
+ * @param {Object} pool - Pool data
+ * @param {Object} tokenDecimals - Optional decimal info
+ * @returns {Object} Corrected display configuration
+ */
+function getDisplayTokenOrderCorrected(pool, tokenDecimals = null) {
+    // Extract data with fallbacks for different naming conventions
+    const tokenAName = pool.tokenASymbol || 'Token A';
+    const tokenBName = pool.tokenBSymbol || 'Token B';
+    const tokenARatio = pool.ratioANumerator || pool.ratio_a_numerator || 1;
+    const tokenBRatio = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
+    const tokenAPrecision = tokenDecimals?.tokenADecimals || 6;
+    const tokenBPrecision = tokenDecimals?.tokenBDecimals || 6;
+    
+    console.log('🔧 USING CORRECTED DISPLAY LOGIC');
+    
+    const result = getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision);
+    
+    // Add additional fields that the UI expects
+    const getFormattedLiquidity = (rawAmount, isTokenA) => {
+        if (tokenDecimals) {
+            const decimals = isTokenA ? tokenDecimals.tokenADecimals : tokenDecimals.tokenBDecimals;
+            return formatLiquidityAmount(rawAmount, decimals);
+        }
+        return formatLargeNumber(rawAmount);
+    };
+    
+    const flags = interpretPoolFlags(pool);
+    
+    return {
+        baseToken: result.baseToken,
+        quoteToken: result.quoteToken,
+        displayPair: result.displayPair,
+        rateText: result.rateText,
+        exchangeRate: result.exchangeRate,
+        baseLiquidity: result.isReversed 
+            ? getFormattedLiquidity(pool.tokenBLiquidity || pool.total_token_b_liquidity || 0, false)
+            : getFormattedLiquidity(pool.tokenALiquidity || pool.total_token_a_liquidity || 0, true),
+        quoteLiquidity: result.isReversed
+            ? getFormattedLiquidity(pool.tokenALiquidity || pool.total_token_a_liquidity || 0, true) 
+            : getFormattedLiquidity(pool.tokenBLiquidity || pool.total_token_b_liquidity || 0, false),
+        isReversed: result.isReversed,
+        isOneToManyRatio: flags.oneToManyRatio
+    };
+}
+
+/**
  * Get user-friendly display order for token pairs
- * Phase 1.3: Implements special handling for One-to-many ratio pools (bit 0 flag)
+ * NOW USES THE CORRECTED LOGIC!
  * 
  * @param {Object} pool - Pool data with ratioANumerator, ratioBDenominator, tokenASymbol, tokenBSymbol, flags, etc.
  * @param {Object} tokenDecimals - Optional object with tokenADecimals and tokenBDecimals for proper liquidity formatting
  * @returns {Object} Display configuration with base/quote tokens and exchange rates
  */
 function getDisplayTokenOrder(pool, tokenDecimals = null) {
-    // Handle missing or invalid data
-    if (!pool || !pool.tokenASymbol || !pool.tokenBSymbol) {
-        return {
-            baseToken: 'Token A',
-            quoteToken: 'Token B',
-            baseLiquidity: 0,
-            quoteLiquidity: 0,
-            exchangeRate: 1,
-            displayPair: 'Token A/Token B',
-            rateText: '1 Token A = 1.000 Token B',
-            isReversed: false,
-            isOneToManyRatio: false
-        };
-    }
-
-    const ratioANumerator = pool.ratioANumerator || 1;
-    const ratioBDenominator = pool.ratioBDenominator || 1;
-    
-    // Check if this is a One-to-many ratio pool (bit 0 flag)
-    const isOneToManyRatio = checkOneToManyRatioFlag(pool);
-    
-    // CRITICAL FIX: Stored ratio means "ratioANumerator of TokenA per ratioBDenominator of TokenB"
-    // So ratioANumerator:ratioBDenominator = 10000:1 means "10000 TokenA per 1 TokenB"
-    const tokensA_per_tokenB = ratioANumerator / ratioBDenominator;  // How many A per B
-    const tokensB_per_tokenA = ratioBDenominator / ratioANumerator;  // How many B per A
-    
-    // Determine how to format liquidity amounts based on available decimal information
-    const getFormattedLiquidity = (rawAmount, isTokenA) => {
-        if (tokenDecimals) {
-            const decimals = isTokenA ? tokenDecimals.tokenADecimals : tokenDecimals.tokenBDecimals;
-            return formatLiquidityAmount(rawAmount, decimals);
-        }
-        // Fallback to raw formatting if no decimals provided (for backward compatibility)
-        return formatLargeNumber(rawAmount);
-    };
-    
-    if (isOneToManyRatio) {
-        // **Phase 1.3: One-to-many ratio special handling**
-        // Place token with value 1 (excluding decimals) first
-        // Ignore normalization for these pools
-        
-        if (ratioBDenominator === 1) {
-            // TokenB has ratio of 1, display as TokenB/TokenA
-            // Example: USDT/SOL 1002:1 → Display as SOL/USDT 1:1002
-            return {
-                baseToken: pool.tokenBSymbol,
-                quoteToken: pool.tokenASymbol,
-                baseLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
-                quoteLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
-                exchangeRate: tokensA_per_tokenB,
-                displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
-                rateText: `1 ${pool.tokenBSymbol} = ${formatNumberWithCommas(ratioANumerator)} ${pool.tokenASymbol}`,
-                isReversed: true,
-                isOneToManyRatio: true
-            };
-        } else if (ratioANumerator === 1) {
-            // TokenA has ratio of 1, display as TokenA/TokenB
-            return {
-                baseToken: pool.tokenASymbol,
-                quoteToken: pool.tokenBSymbol,
-                baseLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
-                quoteLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
-                exchangeRate: tokensB_per_tokenA,
-                displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
-                rateText: `1 ${pool.tokenASymbol} = ${formatNumberWithCommas(ratioBDenominator)} ${pool.tokenBSymbol}`,
-                isReversed: false,
-                isOneToManyRatio: true
-            };
-        }
-    }
-    
-    // **Standard pools: Keep normalized display with fractions to 3 decimal places**
-    // Determine which token should be the "base" (ratio = 1) for display
-    if (tokensA_per_tokenB >= 1.0) {
-        // Many TokenA per 1 TokenB means TokenB is more valuable
-        // Display as: TokenB/TokenA (e.g., "1 TS = 10000 MST")
-        return {
-            baseToken: pool.tokenBSymbol,
-            quoteToken: pool.tokenASymbol,
-            baseLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
-            quoteLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
-            exchangeRate: tokensA_per_tokenB,
-            displayPair: `${pool.tokenBSymbol}/${pool.tokenASymbol}`,
-            rateText: `1 ${pool.tokenBSymbol} = ${formatExchangeRateStandard(tokensA_per_tokenB)} ${pool.tokenASymbol}`,
-            isReversed: true,
-            isOneToManyRatio: false
-        };
-    } else {
-        // Many TokenB per 1 TokenA means TokenA is more valuable  
-        // Display as: TokenA/TokenB (e.g., "1 BTC = 50000 USDC")
-        return {
-            baseToken: pool.tokenASymbol,
-            quoteToken: pool.tokenBSymbol,
-            baseLiquidity: getFormattedLiquidity(pool.tokenALiquidity || 0, true),
-            quoteLiquidity: getFormattedLiquidity(pool.tokenBLiquidity || 0, false),
-            exchangeRate: tokensB_per_tokenA,
-            displayPair: `${pool.tokenASymbol}/${pool.tokenBSymbol}`,
-            rateText: `1 ${pool.tokenASymbol} = ${formatExchangeRateStandard(tokensB_per_tokenA)} ${pool.tokenBSymbol}`,
-            isReversed: false,
-            isOneToManyRatio: false
-        };
-    }
+    // Use the corrected display logic
+    return getDisplayTokenOrderCorrected(pool, tokenDecimals);
 }
 
 /**
@@ -368,6 +363,8 @@ function createExchangeRateDisplay(pool) {
 if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
         getDisplayTokenOrder,
+        getDisplayTokenOrderCorrected,  // NEW: The corrected logic
+        getCorrectTokenDisplay,         // NEW: Simple corrector function
         formatExchangeRate,
         formatExchangeRateStandard,
         getSimpleDisplayOrder,
@@ -387,6 +384,8 @@ if (typeof window !== 'undefined') {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         getDisplayTokenOrder,
+        getDisplayTokenOrderCorrected,  // NEW: The corrected logic
+        getCorrectTokenDisplay,         // NEW: Simple corrector function
         formatExchangeRate,
         formatExchangeRateStandard,
         getSimpleDisplayOrder,

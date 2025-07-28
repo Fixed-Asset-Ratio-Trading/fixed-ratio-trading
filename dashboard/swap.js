@@ -1,42 +1,151 @@
 /**
- * Phase 2.1: Swap Page JavaScript
- * Implements swap interface with Phase 1.3 display rules and expandable Pool State display
+ * Enhanced Swap Page JavaScript
+ * Implements complete swap functionality with wallet integration and real transactions
  */
 
 // Global variables
 let poolAddress = null;
 let poolData = null;
 let connection = null;
+let wallet = null;
+let isConnected = false;
+let userTokens = [];
 let swapDirection = 'AtoB'; // 'AtoB' or 'BtoA'
-// Phase 4.1: Enhanced swap settings
 let slippageTolerance = 0.5; // Default 0.5%
-let mockBalances = {
-    tokenA: 150.543210,
-    tokenB: 2500.876543
-};
 
 /**
- * Initialize the swap page
+ * Initialize the swap page with library loading retry mechanism
  */
 async function initializeSwapPage() {
-    console.log('🔄 Initializing Swap Page...');
+    console.log('🔄 Initializing Enhanced Swap Page...');
     
-    try {
-        // Initialize connection
-        await CONFIG.initialize();
-        connection = new solanaWeb3.Connection(CONFIG.rpcUrl, 'confirmed');
+    // Simple retry mechanism for library loading
+    let attempts = 0;
+    const maxAttempts = 8;
+    
+    const tryInitialize = async () => {
+        attempts++;
+        console.log(`📋 Initialization attempt ${attempts}/${maxAttempts}`);
         
-        // Get pool address from URL params or sessionStorage
+        // Check if libraries are loaded
+        if (window.solanaWeb3 && window.SPL_TOKEN_LOADED === true) {
+            console.log('✅ All libraries loaded successfully!');
+            await initializeApp();
+            return;
+        }
+        
+        // If libraries aren't loaded yet, try again
+        if (attempts < maxAttempts) {
+            console.log(`⏳ Libraries still loading... retrying in 1 second`);
+            setTimeout(tryInitialize, 1000);
+        } else {
+            console.error('❌ Failed to load libraries after', maxAttempts, 'attempts');
+            showStatus('error', '❌ Failed to load required libraries. Please refresh the page.');
+        }
+    };
+    
+    // Check for SPL Token library
+    setTimeout(() => {
+        let splTokenLib = null;
+        const possibleNames = ['splToken', 'SPLToken', 'SplToken'];
+        
+        for (const name of possibleNames) {
+            if (window[name]) {
+                splTokenLib = window[name];
+                console.log(`✅ Found SPL Token library as window.${name}`);
+                break;
+            }
+        }
+        
+        if (!splTokenLib && window.solanaWeb3) {
+            for (const name of possibleNames) {
+                if (window.solanaWeb3[name]) {
+                    splTokenLib = window.solanaWeb3[name];
+                    console.log(`✅ Found SPL Token library as solanaWeb3.${name}`);
+                    break;
+                }
+            }
+        }
+        
+        if (splTokenLib) {
+            window.splToken = splTokenLib;
+            window.SPL_TOKEN_LOADED = true;
+            console.log('✅ SPL Token library ready!');
+        } else {
+            console.error('❌ SPL Token library not found');
+            window.SPL_TOKEN_LOADED = false;
+        }
+        
+        // Start first attempt after a brief delay
+        setTimeout(tryInitialize, 1500);
+    }, 100);
+}
+
+/**
+ * Initialize the application after libraries are loaded
+ */
+async function initializeApp() {
+    try {
+        // Wait for configuration to be loaded
+        let configAttempts = 0;
+        while (!window.TRADING_CONFIG && configAttempts < 30) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            configAttempts++;
+        }
+        
+        if (!window.TRADING_CONFIG) {
+            throw new Error('Configuration failed to load after 3 seconds');
+        }
+        
+        // Set up CONFIG alias for backward compatibility
+        window.CONFIG = window.TRADING_CONFIG;
+        
+        // Initialize Solana connection
+        console.log('🔌 Connecting to Solana RPC...');
+        const connectionConfig = {
+            commitment: CONFIG.commitment,
+            disableRetryOnRateLimit: CONFIG.disableRetryOnRateLimit || true
+        };
+        
+        if (CONFIG.wsUrl) {
+            console.log('📡 Using WebSocket endpoint:', CONFIG.wsUrl);
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig, CONFIG.wsUrl);
+        } else {
+            console.log('📡 Using HTTP polling (WebSocket disabled)');
+            connectionConfig.wsEndpoint = false;
+            connection = new solanaWeb3.Connection(CONFIG.rpcUrl, connectionConfig);
+        }
+        
+        console.log('✅ SPL Token library ready');
+        
+        // Check if Backpack is installed
+        if (!window.backpack) {
+            showStatus('error', 'Backpack wallet not detected. Please install Backpack wallet extension.');
+            return;
+        }
+        
+        // Get pool address from URL params first, then sessionStorage as fallback
         const urlParams = new URLSearchParams(window.location.search);
         poolAddress = urlParams.get('pool') || sessionStorage.getItem('selectedPoolAddress');
         
         if (!poolAddress) {
-            showStatus('error', 'No pool selected. Please select a pool from the dashboard.');
+            showStatus('error', 'No pool selected. Please select a pool from the dashboard or provide a pool ID in the URL (?pool=POOL_ID).');
             return;
         }
         
         console.log('🎯 Loading pool for swap:', poolAddress);
+        
+        // Store pool address in sessionStorage for potential navigation
+        sessionStorage.setItem('selectedPoolAddress', poolAddress);
+        
         await loadPoolData();
+        
+        // Check if wallet is already connected
+        if (window.backpack.isConnected) {
+            await handleWalletConnected();
+        } else {
+            showWalletConnection();
+        }
         
     } catch (error) {
         console.error('❌ Error initializing swap page:', error);
@@ -61,6 +170,21 @@ async function loadPoolData() {
         
         if (poolData) {
             console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);
+            
+            // 🔍 DEVELOPER DEBUGGING: Log complete pool data to console
+            console.group('🔍 POOL DATA FOR DEVELOPERS');
+            console.log('📊 Complete Pool State:', poolData);
+            console.log('🏊‍♂️ Pool Address:', poolAddress);
+            console.log('🪙 Token A Mint:', poolData.tokenAMint || poolData.token_a_mint);
+            console.log('🪙 Token B Mint:', poolData.tokenBMint || poolData.token_b_mint);
+            console.log('⚖️ Ratio A Numerator:', poolData.ratioANumerator || poolData.ratio_a_numerator);
+            console.log('⚖️ Ratio B Denominator:', poolData.ratioBDenominator || poolData.ratio_b_denominator);
+            console.log('💧 Token A Liquidity:', poolData.tokenALiquidity || poolData.total_token_a_liquidity);
+            console.log('💧 Token B Liquidity:', poolData.tokenBLiquidity || poolData.total_token_b_liquidity);
+            console.log('🚩 Pool Flags:', poolData.flags);
+            console.log('🔒 Pool Owner:', poolData.owner);
+            console.groupEnd();
+            
             await enrichPoolData();
             updatePoolDisplay();
             initializeSwapInterface();
@@ -76,54 +200,35 @@ async function loadPoolData() {
 }
 
 /**
- * Load pool data from RPC
- */
-async function loadPoolFromRPC() {
-    try {
-        // Initialize centralized data service if not already done
-        if (!window.TradingDataService.connection) {
-            await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
-        }
-        
-        // Get pool data using centralized service
-        const poolState = await window.TradingDataService.getPool(poolAddress, 'rpc');
-        return poolState;
-    } catch (error) {
-        console.error('❌ Error loading from RPC:', error);
-        return null;
-    }
-}
-
-// parsePoolState function removed - now using centralized TradingDataService.parsePoolState()
-
-/**
  * Enrich pool data with token symbols
  */
 async function enrichPoolData() {
     if (!poolData) return;
     
     try {
-        const symbols = await getTokenSymbols(poolData.tokenAMint, poolData.tokenBMint);
+        const symbols = await getTokenSymbols(
+            poolData.tokenAMint || poolData.token_a_mint, 
+            poolData.tokenBMint || poolData.token_b_mint
+        );
         poolData.tokenASymbol = symbols.tokenA;
         poolData.tokenBSymbol = symbols.tokenB;
+        
+        console.log(`✅ Token symbols resolved: ${poolData.tokenASymbol}/${poolData.tokenBSymbol}`);
     } catch (error) {
         console.warn('Warning: Could not load token symbols:', error);
-        poolData.tokenASymbol = `TOKEN-${poolData.tokenAMint?.slice(0, 4) || 'A'}`;
-        poolData.tokenBSymbol = `TOKEN-${poolData.tokenBMint?.slice(0, 4) || 'B'}`;
+        poolData.tokenASymbol = `TOKEN-${(poolData.tokenAMint || poolData.token_a_mint)?.slice(0, 4) || 'A'}`;
+        poolData.tokenBSymbol = `TOKEN-${(poolData.tokenBMint || poolData.token_b_mint)?.slice(0, 4) || 'B'}`;
     }
 }
 
 /**
- * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
+ * Get token symbols from localStorage, Metaplex, or defaults
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
         console.log(`🔍 Looking up symbols for tokens: ${tokenAMint} and ${tokenBMint}`);
         
-        // Get token A symbol
         const tokenASymbol = await getTokenSymbol(tokenAMint, 'A');
-        
-        // Get token B symbol  
         const tokenBSymbol = await getTokenSymbol(tokenBMint, 'B');
         
         console.log(`✅ Token symbols found: ${tokenASymbol}/${tokenBSymbol}`);
@@ -178,7 +283,154 @@ async function getTokenSymbol(tokenMint, tokenLabel) {
 }
 
 /**
- * Phase 2.1: Update pool display with Phase 1.3 enhancements
+ * Show wallet connection UI
+ */
+function showWalletConnection() {
+    const swapLoading = document.getElementById('swap-loading');
+    swapLoading.style.display = 'block';
+    swapLoading.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <h3>💼 Connect Your Wallet</h3>
+            <p style="margin: 20px 0; color: #666;">Connect your Backpack wallet to start swapping tokens</p>
+            <button id="connect-wallet-btn" class="swap-btn" onclick="connectWallet()" style="max-width: 300px; margin: 0 auto;">
+                🔗 Connect Backpack Wallet
+            </button>
+        </div>
+    `;
+}
+
+/**
+ * Connect wallet
+ */
+async function connectWallet() {
+    try {
+        console.log('🔗 Connecting to Backpack wallet...');
+        showStatus('info', 'Connecting to wallet...');
+        
+        await window.backpack.connect();
+        await handleWalletConnected();
+        
+    } catch (error) {
+        console.error('❌ Error connecting wallet:', error);
+        showStatus('error', 'Failed to connect wallet: ' + error.message);
+    }
+}
+
+/**
+ * Handle wallet connected state
+ */
+async function handleWalletConnected() {
+    try {
+        wallet = window.backpack;
+        isConnected = true;
+        
+        console.log('✅ Wallet connected:', wallet.publicKey.toString());
+        
+        // Check wallet balance
+        await checkWalletBalance();
+        
+        // Load user tokens
+        await loadUserTokensForPool();
+        
+        // Initialize swap interface
+        initializeSwapInterface();
+        
+        showStatus('success', `Wallet connected: ${wallet.publicKey.toString().slice(0, 8)}...`);
+        
+    } catch (error) {
+        console.error('❌ Error handling wallet connection:', error);
+        showStatus('error', 'Failed to set up wallet: ' + error.message);
+    }
+}
+
+/**
+ * Check wallet balance
+ */
+async function checkWalletBalance() {
+    try {
+        const balance = await connection.getBalance(wallet.publicKey);
+        const solBalance = balance / solanaWeb3.LAMPORTS_PER_SOL;
+        
+        console.log(`💰 Wallet SOL balance: ${solBalance.toFixed(4)} SOL`);
+        
+        if (solBalance < 0.01) {
+            showStatus('error', `⚠️ Low SOL balance: ${solBalance.toFixed(4)} SOL. You need SOL for transaction fees.`);
+        }
+    } catch (error) {
+        console.error('❌ Error checking balance:', error);
+    }
+}
+
+/**
+ * Load user's tokens that match the pool tokens
+ */
+async function loadUserTokensForPool() {
+    try {
+        if (!poolData || !isConnected) return;
+        
+        showStatus('info', '🔍 Loading your pool tokens...');
+        
+        // Get all token accounts for the user
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+            wallet.publicKey,
+            { programId: window.splToken.TOKEN_PROGRAM_ID }
+        );
+        
+        console.log(`Found ${tokenAccounts.value.length} token accounts`);
+        
+        userTokens = [];
+        const tokenAMint = poolData.tokenAMint || poolData.token_a_mint;
+        const tokenBMint = poolData.tokenBMint || poolData.token_b_mint;
+        
+        for (const tokenAccount of tokenAccounts.value) {
+            const accountInfo = tokenAccount.account.data.parsed.info;
+            const mintAddress = accountInfo.mint;
+            
+            // Only include tokens that are part of this pool
+            if (mintAddress === tokenAMint || mintAddress === tokenBMint) {
+                const balance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
+                
+                // Determine which token this is
+                const isTokenA = mintAddress === tokenAMint;
+                const symbol = isTokenA ? poolData.tokenASymbol : poolData.tokenBSymbol;
+                
+                // Validate that we have the decimals from the blockchain
+                if (accountInfo.tokenAmount.decimals === undefined || accountInfo.tokenAmount.decimals === null) {
+                    console.error(`❌ Token decimals not found for ${mintAddress}`);
+                    showStatus('error', `Cannot determine decimals for token ${symbol}. This is required for safe transactions.`);
+                    return;
+                }
+                
+                userTokens.push({
+                    mint: mintAddress,
+                    symbol: symbol,
+                    balance: balance,
+                    decimals: accountInfo.tokenAmount.decimals,
+                    tokenAccount: tokenAccount.pubkey.toString(),
+                    isTokenA: isTokenA
+                });
+            }
+        }
+        
+        console.log(`✅ Found ${userTokens.length} pool tokens in wallet:`, userTokens);
+        
+        // Update swap interface with real balances
+        updateSwapInterfaceWithRealBalances();
+        
+        if (userTokens.length === 0) {
+            showStatus('info', '📭 You don\'t have any tokens from this pool in your wallet.');
+        } else {
+            clearStatus();
+        }
+        
+    } catch (error) {
+        console.error('❌ Error loading user tokens:', error);
+        showStatus('error', 'Failed to load your tokens: ' + error.message);
+    }
+}
+
+/**
+ * Update pool display
  */
 function updatePoolDisplay() {
     if (!poolData) return;
@@ -190,9 +442,30 @@ function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // Phase 1.3: Use enhanced display utilities with flag interpretation
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
+    // 🔧 FIXED: Use our corrected display function directly!
+    const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
+        poolData.tokenASymbol || 'Token A',
+        poolData.tokenBSymbol || 'Token B', 
+        poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
+        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1
+    );
+    
+    // Build the full display object 
     const flags = window.TokenDisplayUtils.interpretPoolFlags(poolData);
+    
+    const display = {
+        baseToken: correctedDisplay.baseToken,
+        quoteToken: correctedDisplay.quoteToken,
+        displayPair: correctedDisplay.displayPair,
+        rateText: correctedDisplay.rateText,
+        exchangeRate: correctedDisplay.exchangeRate,
+        baseLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0),
+        quoteLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0),
+        isReversed: correctedDisplay.isReversed,
+        isOneToManyRatio: flags.oneToManyRatio
+    };
+    
+    console.log('🔧 SWAP CORRECTED:', display);
     
     // Generate pool flags section
     const flagsSection = generatePoolFlagsDisplay(flags, poolData);
@@ -231,12 +504,12 @@ function updatePoolDisplay() {
         ${flagsSection}
     `;
     
-    // Phase 2.1: Add expandable Pool State display section
+    // Add expandable Pool State display section
     addExpandablePoolStateDisplay();
 }
 
 /**
- * Phase 2.1: Initialize swap interface
+ * Initialize swap interface
  */
 function initializeSwapInterface() {
     if (!poolData) return;
@@ -244,38 +517,61 @@ function initializeSwapInterface() {
     const swapLoading = document.getElementById('swap-loading');
     const swapForm = document.getElementById('swap-form');
     
+    if (!isConnected) {
+        showWalletConnection();
+        return;
+    }
+    
     // Hide loading, show form
     swapLoading.style.display = 'none';
     swapForm.style.display = 'grid';
     
     // Set initial token symbols and setup
-    updateSwapInterfaceEnhanced();
+    updateSwapInterfaceWithRealBalances();
     updateExchangeRate();
 }
 
 /**
- * Update swap interface based on current direction
+ * Update swap interface with real user balances
  */
-function updateSwapInterface() {
-    if (!poolData) return;
+function updateSwapInterfaceWithRealBalances() {
+    if (!poolData || !isConnected) return;
     
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
-    
+    // Update token symbols and icons
     if (swapDirection === 'AtoB') {
         document.getElementById('from-token-symbol').textContent = poolData.tokenASymbol;
         document.getElementById('to-token-symbol').textContent = poolData.tokenBSymbol;
+        document.getElementById('from-token-icon').textContent = poolData.tokenASymbol.charAt(0);
+        document.getElementById('to-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
+        
+        // Set real balances
+        const tokenABalance = userTokens.find(t => t.isTokenA)?.balance || 0;
+        const tokenBBalance = userTokens.find(t => !t.isTokenA)?.balance || 0;
+        
+        document.getElementById('from-token-balance').textContent = tokenABalance.toFixed(6);
+        document.getElementById('to-token-balance').textContent = tokenBBalance.toFixed(6);
     } else {
         document.getElementById('from-token-symbol').textContent = poolData.tokenBSymbol;
         document.getElementById('to-token-symbol').textContent = poolData.tokenASymbol;
+        document.getElementById('from-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
+        document.getElementById('to-token-icon').textContent = poolData.tokenASymbol.charAt(0);
+        
+        // Set real balances
+        const tokenABalance = userTokens.find(t => t.isTokenA)?.balance || 0;
+        const tokenBBalance = userTokens.find(t => !t.isTokenA)?.balance || 0;
+        
+        document.getElementById('from-token-balance').textContent = tokenBBalance.toFixed(6);
+        document.getElementById('to-token-balance').textContent = tokenABalance.toFixed(6);
     }
     
     // Reset amounts
     document.getElementById('from-amount').value = '';
     document.getElementById('to-amount').value = '';
     
-    // Update balances (placeholder - would need actual wallet integration)
-    document.getElementById('from-token-balance').textContent = '0';
-    document.getElementById('to-token-balance').textContent = '0';
+    // Hide preview and disable button
+    document.getElementById('transaction-preview').style.display = 'none';
+    document.getElementById('swap-btn').disabled = true;
+    document.getElementById('swap-btn').textContent = '🔄 Enter Amount to Swap';
 }
 
 /**
@@ -283,7 +579,7 @@ function updateSwapInterface() {
  */
 function toggleSwapDirection() {
     swapDirection = swapDirection === 'AtoB' ? 'BtoA' : 'AtoB';
-    updateSwapInterfaceEnhanced();
+    updateSwapInterfaceWithRealBalances();
     updateExchangeRate();
     calculateSwapOutputEnhanced();
 }
@@ -294,52 +590,127 @@ function toggleSwapDirection() {
 function updateExchangeRate() {
     if (!poolData) return;
     
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
     const exchangeRateText = document.getElementById('exchange-rate-text');
+    const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
+    const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
     
     if (swapDirection === 'AtoB') {
-        const rate = poolData.ratioBDenominator / poolData.ratioANumerator;
+        const rate = ratioB / ratioA;
         exchangeRateText.textContent = `1 ${poolData.tokenASymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenBSymbol}`;
     } else {
-        const rate = poolData.ratioANumerator / poolData.ratioBDenominator;
+        const rate = ratioA / ratioB;
         exchangeRateText.textContent = `1 ${poolData.tokenBSymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenASymbol}`;
     }
 }
 
 /**
- * Calculate swap output amount
+ * Set maximum amount from wallet balance
  */
-function calculateSwapOutput() {
+function setMaxAmount() {
+    if (!poolData || !isConnected) return;
+    
+    const fromToken = swapDirection === 'AtoB' 
+        ? userTokens.find(t => t.isTokenA)
+        : userTokens.find(t => !t.isTokenA);
+    
+    if (fromToken && fromToken.balance > 0) {
+        // Leave a small buffer for potential rounding issues
+        const maxAmount = Math.max(0, fromToken.balance - 0.000001);
+        document.getElementById('from-amount').value = maxAmount.toFixed(6);
+        calculateSwapOutputEnhanced();
+    }
+}
+
+/**
+ * Enhanced swap output calculation with preview
+ */
+function calculateSwapOutputEnhanced() {
     if (!poolData) return;
     
     const fromAmount = parseFloat(document.getElementById('from-amount').value) || 0;
     const toAmountInput = document.getElementById('to-amount');
+    const preview = document.getElementById('transaction-preview');
+    const swapBtn = document.getElementById('swap-btn');
     
     if (fromAmount <= 0) {
         toAmountInput.value = '';
-        document.getElementById('swap-btn').disabled = true;
+        preview.style.display = 'none';
+        swapBtn.disabled = true;
+        swapBtn.textContent = '🔄 Enter Amount to Swap';
         return;
     }
+    
+    // Check if user has sufficient balance
+    const fromToken = swapDirection === 'AtoB' 
+        ? userTokens.find(t => t.isTokenA)
+        : userTokens.find(t => !t.isTokenA);
+    
+    if (!fromToken || fromAmount > fromToken.balance) {
+        swapBtn.disabled = true;
+        swapBtn.textContent = '❌ Insufficient Balance';
+        preview.style.display = 'none';
+        return;
+    }
+    
+    // Calculate output amount using pool ratios
+    const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
+    const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
     
     let outputAmount;
     if (swapDirection === 'AtoB') {
         // Convert from Token A to Token B
-        outputAmount = (fromAmount * poolData.ratioBDenominator) / poolData.ratioANumerator;
+        outputAmount = (fromAmount * ratioB) / ratioA;
     } else {
         // Convert from Token B to Token A
-        outputAmount = (fromAmount * poolData.ratioANumerator) / poolData.ratioBDenominator;
+        outputAmount = (fromAmount * ratioA) / ratioB;
     }
     
     toAmountInput.value = outputAmount.toFixed(6);
-    document.getElementById('swap-btn').disabled = false;
+    
+    // Calculate minimum received with slippage (though not needed for fixed ratios)
+    const minimumReceived = outputAmount * (1 - slippageTolerance / 100);
+    
+    // Update transaction preview
+    updateTransactionPreview(fromAmount, outputAmount, minimumReceived);
+    
+    // Show preview and enable button
+    preview.style.display = 'block';
+    swapBtn.disabled = false;
+    swapBtn.textContent = '🔄 Execute Swap';
+    
+    // Update price impact (0% for fixed ratios)
+    document.getElementById('price-impact-value').textContent = '0.00%';
+    
+    // Hide slippage warning for fixed ratios
+    const warning = document.getElementById('preview-warning');
+    warning.style.display = 'none';
+}
+
+/**
+ * Update transaction preview
+ */
+function updateTransactionPreview(fromAmount, toAmount, minimumReceived) {
+    if (!poolData) return;
+    
+    const fromSymbol = swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol;
+    const toSymbol = swapDirection === 'AtoB' ? poolData.tokenBSymbol : poolData.tokenASymbol;
+    
+    document.getElementById('preview-from-amount').textContent = `${fromAmount.toFixed(6)} ${fromSymbol}`;
+    document.getElementById('preview-to-amount').textContent = `${toAmount.toFixed(6)} ${toSymbol}`;
+    document.getElementById('preview-minimum').textContent = `${toAmount.toFixed(6)} ${toSymbol} (Fixed Rate)`;
+    
+    // Exchange rate
+    const rate = toAmount / fromAmount;
+    document.getElementById('preview-rate').textContent = `1 ${fromSymbol} = ${rate.toFixed(6)} ${toSymbol}`;
 }
 
 /**
  * Execute swap transaction
  */
-function executeSwap() {
-    if (!poolData) return;
+async function executeSwap() {
+    if (!poolData || !isConnected) return;
     
+    try {
     const fromAmount = parseFloat(document.getElementById('from-amount').value);
     const toAmount = parseFloat(document.getElementById('to-amount').value);
     
@@ -348,8 +719,277 @@ function executeSwap() {
         return;
     }
     
-    // For now, show a placeholder message
-    showStatus('info', `Swap functionality not yet implemented. Would swap ${fromAmount} ${swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol} for ${toAmount} ${swapDirection === 'AtoB' ? poolData.tokenBSymbol : poolData.tokenASymbol}`);
+        // Disable swap button during transaction
+        const swapBtn = document.getElementById('swap-btn');
+        swapBtn.disabled = true;
+        swapBtn.textContent = '⏳ Processing Swap...';
+        
+        console.log('🔄 Starting swap transaction...');
+        console.log(`📊 Swapping ${fromAmount} ${swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol} for ${toAmount} ${swapDirection === 'AtoB' ? poolData.tokenBSymbol : poolData.tokenASymbol}`);
+        
+        showStatus('info', '🔄 Building swap transaction...');
+        
+        // Get user token accounts
+        const fromToken = swapDirection === 'AtoB' 
+            ? userTokens.find(t => t.isTokenA)
+            : userTokens.find(t => !t.isTokenA);
+        
+        const toToken = swapDirection === 'AtoB' 
+            ? userTokens.find(t => !t.isTokenA)
+            : userTokens.find(t => t.isTokenA);
+        
+        if (!fromToken) {
+            throw new Error('Source token account not found');
+        }
+        
+        // Check if user has destination token account
+        let toTokenAccountPubkey;
+        if (toToken) {
+            toTokenAccountPubkey = new solanaWeb3.PublicKey(toToken.tokenAccount);
+        } else {
+            // Create associated token account for destination token
+            const toTokenMint = swapDirection === 'AtoB' 
+                ? new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint)
+                : new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint);
+            
+            toTokenAccountPubkey = await window.splToken.Token.getAssociatedTokenAddress(
+                window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+                window.splToken.TOKEN_PROGRAM_ID,
+                toTokenMint,
+                wallet.publicKey
+            );
+            
+            console.log('📍 Creating associated token account for destination:', toTokenAccountPubkey.toString());
+        }
+        
+        // Build swap transaction
+        const transaction = await buildSwapTransaction(
+            fromAmount,
+            fromToken,
+            toTokenAccountPubkey
+        );
+        
+        showStatus('info', '📝 Requesting wallet signature...');
+        
+        // Sign and send transaction
+        const signature = await wallet.signAndSendTransaction(transaction);
+        console.log('✅ Swap transaction sent:', signature);
+        
+        showStatus('info', '⏳ Confirming transaction...');
+        
+        // Wait for confirmation
+        const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+        
+        if (confirmation.value.err) {
+            throw new Error(`Swap failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
+        
+        console.log('✅ Swap completed successfully!');
+        showStatus('success', `🎉 Swap completed! Transaction: ${signature.slice(0, 8)}...`);
+        
+        // Refresh user tokens after successful swap
+        await loadUserTokensForPool();
+        
+        // Reset form
+        document.getElementById('from-amount').value = '';
+        document.getElementById('to-amount').value = '';
+        document.getElementById('transaction-preview').style.display = 'none';
+        
+    } catch (error) {
+        console.error('❌ Swap failed:', error);
+        showStatus('error', `Swap failed: ${error.message}`);
+    } finally {
+        // Re-enable swap button
+        const swapBtn = document.getElementById('swap-btn');
+        swapBtn.disabled = false;
+        swapBtn.textContent = '🔄 Execute Swap';
+    }
+}
+
+/**
+ * Build swap transaction
+ */
+async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey) {
+    console.log('🔧 Building swap transaction...');
+    
+    // Convert amount to base units (using token decimals)
+    const amountInBaseUnits = Math.floor(fromAmount * Math.pow(10, fromToken.decimals));
+    console.log(`💰 Amount in base units: ${amountInBaseUnits} (${fromAmount} with ${fromToken.decimals} decimals)`);
+    
+    // Get program ID
+    const programId = new solanaWeb3.PublicKey(CONFIG.programId);
+    
+    // Get system state PDA
+    const systemStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode('system_state')],
+        programId
+    );
+    
+    // Get pool state PDA (which is our poolAddress)
+    const poolStatePDA = new solanaWeb3.PublicKey(poolAddress);
+    
+    // Get token vault PDAs
+    const tokenAVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode('token_a_vault'), poolStatePDA.toBuffer()],
+        programId
+    );
+    
+    const tokenBVaultPDA = await solanaWeb3.PublicKey.findProgramAddress(
+        [new TextEncoder().encode('token_b_vault'), poolStatePDA.toBuffer()],
+        programId
+    );
+    
+    console.log('🔍 Transaction accounts:');
+    console.log('  System State PDA:', systemStatePDA[0].toString());
+    console.log('  Pool State PDA:', poolStatePDA.toString());
+    console.log('  Token A Vault PDA:', tokenAVaultPDA[0].toString());
+    console.log('  Token B Vault PDA:', tokenBVaultPDA[0].toString());
+    console.log('  User Input Token Account:', fromToken.tokenAccount);
+    console.log('  User Output Token Account:', toTokenAccountPubkey.toString());
+    
+    // Create instruction data for Swap using Borsh serialization
+    // Borsh enum discriminator: Swap = 4 (based on instruction ordering)
+    const inputTokenMint = new solanaWeb3.PublicKey(fromToken.mint);
+    
+    const instructionData = new Uint8Array([
+        4, 0, 0, 0, // Swap discriminator (u32 little-endian)
+        ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
+        ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer) // amount_in (u64 little-endian)
+    ]);
+    
+    console.log('🔍 Swap instruction data:');
+    console.log('  Discriminator: [4, 0, 0, 0]');
+    console.log('  Input token mint:', inputTokenMint.toString());
+    console.log('  Amount in base units:', amountInBaseUnits);
+    console.log('  Total data length:', instructionData.length, 'bytes');
+    
+    // Build account keys array (9 accounts for swap)
+    const accountKeys = [
+        { pubkey: wallet.publicKey, isSigner: true, isWritable: true },                    // 0: User Authority
+        { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program
+        { pubkey: systemStatePDA[0], isSigner: false, isWritable: false },                 // 2: System State PDA
+        { pubkey: poolStatePDA, isSigner: false, isWritable: true },                       // 3: Pool State PDA
+        { pubkey: window.splToken.TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },  // 4: SPL Token Program
+        { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },                  // 5: Token A Vault
+        { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },                  // 6: Token B Vault
+        { pubkey: new solanaWeb3.PublicKey(fromToken.tokenAccount), isSigner: false, isWritable: true }, // 7: User Input Token Account
+        { pubkey: toTokenAccountPubkey, isSigner: false, isWritable: true }                // 8: User Output Token Account
+    ];
+    
+    console.log('🔍 Account keys for swap:');
+    accountKeys.forEach((account, index) => {
+        console.log(`  ${index}: ${account.pubkey.toString()} (signer: ${account.isSigner}, writable: ${account.isWritable})`);
+    });
+    
+    // Create instructions array
+    const instructions = [];
+    
+    // Check if we need to create the destination token account
+    const toTokenAccountInfo = await connection.getAccountInfo(toTokenAccountPubkey);
+    if (!toTokenAccountInfo) {
+        console.log('📍 Adding instruction to create destination token account');
+        
+        const createATAInstruction = window.splToken.Token.createAssociatedTokenAccountInstruction(
+            window.splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+            window.splToken.TOKEN_PROGRAM_ID,
+            swapDirection === 'AtoB' 
+                ? new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint)
+                : new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint),
+            toTokenAccountPubkey,
+            wallet.publicKey,
+            wallet.publicKey
+        );
+        
+        instructions.push(createATAInstruction);
+    }
+    
+    // Create compute budget instruction (100K CUs should be enough for swap)
+    const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
+        units: 100_000
+    });
+    
+    instructions.push(computeBudgetInstruction);
+    
+    // Create swap instruction
+    const swapInstruction = new solanaWeb3.TransactionInstruction({
+        keys: accountKeys,
+        programId: programId,
+        data: instructionData
+    });
+    
+    instructions.push(swapInstruction);
+    
+    // Create transaction
+    const transaction = new solanaWeb3.Transaction().add(...instructions);
+    
+    // Get fresh blockhash
+    const { blockhash } = await connection.getLatestBlockhash('finalized');
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = wallet.publicKey;
+    
+    console.log('✅ Swap transaction built successfully');
+    
+    return transaction;
+}
+
+/**
+ * Set slippage tolerance (for UI consistency, though not needed for fixed ratios)
+ */
+function setSlippage(percentage) {
+    slippageTolerance = percentage;
+    
+    // Update UI
+    document.getElementById('current-slippage').textContent = percentage + '%';
+    document.getElementById('custom-slippage').value = '';
+    
+    // Update active button
+    document.querySelectorAll('.slippage-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Find and activate the correct button
+    document.querySelectorAll('.slippage-btn').forEach(btn => {
+        if (btn.textContent === percentage + '%') {
+            btn.classList.add('active');
+        }
+    });
+    
+    // Recalculate if we have amounts
+    calculateSwapOutputEnhanced();
+}
+
+/**
+ * Set custom slippage tolerance
+ */
+function setCustomSlippage() {
+    const customValue = parseFloat(document.getElementById('custom-slippage').value);
+    
+    if (!isNaN(customValue) && customValue >= 0 && customValue <= 50) {
+        slippageTolerance = customValue;
+        document.getElementById('current-slippage').textContent = customValue + '%';
+        
+        // Remove active class from preset buttons
+        document.querySelectorAll('.slippage-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Recalculate
+        calculateSwapOutputEnhanced();
+    }
+}
+
+/**
+ * Enhanced token selection for "from" token
+ */
+function selectFromToken() {
+    toggleSwapDirection();
+}
+
+/**
+ * Enhanced token selection for "to" token  
+ */
+function selectToToken() {
+    toggleSwapDirection();
 }
 
 /**
@@ -368,16 +1008,16 @@ function clearStatus() {
     container.innerHTML = '';
 }
 
-// Copy the helper functions from liquidity.js for Phase 2.1 compliance
+// Helper functions from liquidity.js for pool display
 /**
- * Phase 2.1: Generate pool flags display section for swap page
+ * Generate pool flags display section
  */
 function generatePoolFlagsDisplay(flags, pool) {
     const hasFlags = flags.oneToManyRatio || flags.liquidityPaused || flags.swapsPaused || 
                      flags.withdrawalProtection || flags.singleLpTokenMode;
     
     if (!hasFlags && (typeof pool.flags === 'undefined' || pool.flags === 0)) {
-        return ''; // No flags to display
+        return '';
     }
     
     const flagItems = [];
@@ -413,7 +1053,7 @@ function generatePoolFlagsDisplay(flags, pool) {
 }
 
 /**
- * Phase 2.1: Add expandable Pool State display section with ALL PoolState fields
+ * Add expandable Pool State display section
  */
 function addExpandablePoolStateDisplay() {
     if (!poolData) return;
@@ -443,10 +1083,10 @@ function addExpandablePoolStateDisplay() {
     expandableSection.innerHTML = `
         <div style="padding: 20px; cursor: pointer; background: #f8f9fa; border-bottom: 1px solid #e5e7eb;" onclick="togglePoolStateDetails()">
             <h3 style="margin: 0; color: #333; display: flex; align-items: center; justify-content: between;">
-                🔍 Pool State Details (Expandable Debug Section)
+                🔍 Pool State Details (Developer Debug Section)
                 <span id="expand-indicator" style="margin-left: auto; font-size: 20px;">▼</span>
             </h3>
-            <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Click to view all PoolState struct fields</p>
+            <p style="margin: 5px 0 0 0; color: #666; font-size: 14px;">Click to view all PoolState struct fields for debugging</p>
         </div>
         <div id="pool-state-details" style="display: none; padding: 25px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
@@ -459,7 +1099,7 @@ function addExpandablePoolStateDisplay() {
 }
 
 /**
- * Phase 2.1: Generate all PoolState struct fields display (same as liquidity page)
+ * Generate all PoolState struct fields display
  */
 function generatePoolStateFields() {
     if (!poolData) return '';
@@ -486,75 +1126,18 @@ function generatePoolStateFields() {
             <div class="state-field"><strong>ratio_b_denominator:</strong><br><code>${poolData.ratio_b_denominator || poolData.ratioBDenominator || 'N/A'}</code></div>
         </div>
         
-        <!-- Liquidity Information -->
+        <!-- Additional debugging information -->
         <div class="pool-state-section">
-            <h4 style="color: #0284c7; margin: 0 0 15px 0; border-bottom: 2px solid #bae6fd; padding-bottom: 5px;">💧 Liquidity Information</h4>
-            <div class="state-field"><strong>total_token_a_liquidity:</strong><br><code>${poolData.total_token_a_liquidity || poolData.tokenALiquidity || 'N/A'}</code></div>
-            <div class="state-field"><strong>total_token_b_liquidity:</strong><br><code>${poolData.total_token_b_liquidity || poolData.tokenBLiquidity || 'N/A'}</code></div>
-        </div>
-        
-        <!-- Bump Seeds -->
-        <div class="pool-state-section">
-            <h4 style="color: #7c3aed; margin: 0 0 15px 0; border-bottom: 2px solid #ede9fe; padding-bottom: 5px;">🔑 Bump Seeds</h4>
-            <div class="state-field"><strong>pool_authority_bump_seed:</strong><br><code>${poolData.pool_authority_bump_seed || poolData.poolAuthorityBumpSeed || 'N/A'}</code></div>
-            <div class="state-field"><strong>token_a_vault_bump_seed:</strong><br><code>${poolData.token_a_vault_bump_seed || poolData.tokenAVaultBumpSeed || 'N/A'}</code></div>
-            <div class="state-field"><strong>token_b_vault_bump_seed:</strong><br><code>${poolData.token_b_vault_bump_seed || poolData.tokenBVaultBumpSeed || 'N/A'}</code></div>
-            <div class="state-field"><strong>lp_token_a_mint_bump_seed:</strong><br><code>${poolData.lp_token_a_mint_bump_seed || poolData.lpTokenAMintBumpSeed || 'N/A'}</code></div>
-            <div class="state-field"><strong>lp_token_b_mint_bump_seed:</strong><br><code>${poolData.lp_token_b_mint_bump_seed || poolData.lpTokenBMintBumpSeed || 'N/A'}</code></div>
-        </div>
-        
-        <!-- Pool Flags -->
-        <div class="pool-state-section">
-            <h4 style="color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 5px;">🚩 Pool Flags</h4>
-            <div class="state-field"><strong>flags (raw):</strong><br><code>${poolData.flags || 0} (binary: ${(poolData.flags || 0).toString(2).padStart(5, '0')})</code></div>
-            <div class="state-field"><strong>Decoded Flags:</strong><br>
-                <div style="margin-top: 5px;">
-                    ${flags.oneToManyRatio ? '🎯 One-to-Many Ratio<br>' : ''}
-                    ${flags.liquidityPaused ? '⏸️ Liquidity Paused<br>' : ''}
-                    ${flags.swapsPaused ? '🚫 Swaps Paused<br>' : ''}
-                    ${flags.withdrawalProtection ? '🛡️ Withdrawal Protection<br>' : ''}
-                    ${flags.singleLpTokenMode ? '🔗 Single LP Mode<br>' : ''}
-                    ${!flags.oneToManyRatio && !flags.liquidityPaused && !flags.swapsPaused && !flags.withdrawalProtection && !flags.singleLpTokenMode ? '✅ No Active Flags' : ''}
-                </div>
-            </div>
-        </div>
-        
-        <!-- Fee Configuration -->
-        <div class="pool-state-section">
-            <h4 style="color: #ea580c; margin: 0 0 15px 0; border-bottom: 2px solid #fed7aa; padding-bottom: 5px;">💰 Fee Configuration</h4>
-            <div class="state-field"><strong>contract_liquidity_fee:</strong><br><code>${poolData.contract_liquidity_fee || poolData.contractLiquidityFee || 'N/A'} lamports</code></div>
-            <div class="state-field"><strong>swap_contract_fee:</strong><br><code>${poolData.swap_contract_fee || poolData.swapContractFee || 'N/A'} lamports</code></div>
-        </div>
-        
-        <!-- Token Fee Tracking -->
-        <div class="pool-state-section">
-            <h4 style="color: #16a34a; margin: 0 0 15px 0; border-bottom: 2px solid #bbf7d0; padding-bottom: 5px;">📊 Token Fee Tracking</h4>
-            <div class="state-field"><strong>collected_fees_token_a:</strong><br><code>${poolData.collected_fees_token_a || poolData.collectedFeesTokenA || 'N/A'}</code></div>
-            <div class="state-field"><strong>collected_fees_token_b:</strong><br><code>${poolData.collected_fees_token_b || poolData.collectedFeesTokenB || 'N/A'}</code></div>
-            <div class="state-field"><strong>total_fees_withdrawn_token_a:</strong><br><code>${poolData.total_fees_withdrawn_token_a || poolData.totalFeesWithdrawnTokenA || 'N/A'}</code></div>
-            <div class="state-field"><strong>total_fees_withdrawn_token_b:</strong><br><code>${poolData.total_fees_withdrawn_token_b || poolData.totalFeesWithdrawnTokenB || 'N/A'}</code></div>
-        </div>
-        
-        <!-- SOL Fee Tracking -->
-        <div class="pool-state-section">
-            <h4 style="color: #9333ea; margin: 0 0 15px 0; border-bottom: 2px solid #e9d5ff; padding-bottom: 5px;">⚡ SOL Fee Tracking</h4>
-            <div class="state-field"><strong>collected_liquidity_fees:</strong><br><code>${poolData.collected_liquidity_fees || poolData.collectedLiquidityFees || 'N/A'} lamports</code></div>
-            <div class="state-field"><strong>collected_swap_contract_fees:</strong><br><code>${poolData.collected_swap_contract_fees || poolData.collectedSwapContractFees || 'N/A'} lamports</code></div>
-            <div class="state-field"><strong>total_sol_fees_collected:</strong><br><code>${poolData.total_sol_fees_collected || poolData.totalSolFeesCollected || 'N/A'} lamports</code></div>
-        </div>
-        
-        <!-- Consolidation Data -->
-        <div class="pool-state-section">
-            <h4 style="color: #be123c; margin: 0 0 15px 0; border-bottom: 2px solid #fda4af; padding-bottom: 5px;">🔄 Consolidation Data</h4>
-            <div class="state-field"><strong>last_consolidation_timestamp:</strong><br><code>${poolData.last_consolidation_timestamp || poolData.lastConsolidationTimestamp || 'N/A'}</code></div>
-            <div class="state-field"><strong>total_consolidations:</strong><br><code>${poolData.total_consolidations || poolData.totalConsolidations || 'N/A'}</code></div>
-            <div class="state-field"><strong>total_fees_consolidated:</strong><br><code>${poolData.total_fees_consolidated || poolData.totalFeesConsolidated || 'N/A'} lamports</code></div>
+            <h4 style="color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 5px;">🚩 Pool Flags & Status</h4>
+            <div class="state-field"><strong>flags (raw):</strong><br><code>${poolData.flags || 0}</code></div>
+            <div class="state-field"><strong>Swaps Paused:</strong><br><code>${flags.swapsPaused ? 'Yes' : 'No'}</code></div>
+            <div class="state-field"><strong>Liquidity Paused:</strong><br><code>${flags.liquidityPaused ? 'Yes' : 'No'}</code></div>
         </div>
     `;
 }
 
 /**
- * Phase 2.1: Toggle pool state details visibility
+ * Toggle pool state details visibility
  */
 function togglePoolStateDetails() {
     const details = document.getElementById('pool-state-details');
@@ -569,199 +1152,19 @@ function togglePoolStateDetails() {
     }
 }
 
-/**
- * Phase 4.1: Enhanced token selection for "from" token
- */
-function selectFromToken() {
-    // In a real implementation, this would show a dropdown with available tokens
-    // For now, just toggle between the two pool tokens
-    toggleSwapDirection();
-}
-
-/**
- * Phase 4.1: Enhanced token selection for "to" token  
- */
-function selectToToken() {
-    // In a real implementation, this would show a dropdown with available tokens
-    // For now, just toggle between the two pool tokens
-    toggleSwapDirection();
-}
-
-/**
- * Phase 4.1: Set maximum amount from wallet balance
- */
-function setMaxAmount() {
-    if (!poolData) return;
-    
-    const maxBalance = swapDirection === 'AtoB' ? mockBalances.tokenA : mockBalances.tokenB;
-    document.getElementById('from-amount').value = maxBalance.toFixed(6);
-    calculateSwapOutputEnhanced();
-}
-
-/**
- * Phase 4.1: Enhanced swap output calculation with preview
- */
-function calculateSwapOutputEnhanced() {
-    if (!poolData) return;
-    
-    const fromAmount = parseFloat(document.getElementById('from-amount').value) || 0;
-    const toAmountInput = document.getElementById('to-amount');
-    const preview = document.getElementById('transaction-preview');
-    const swapBtn = document.getElementById('swap-btn');
-    
-    if (fromAmount <= 0) {
-        toAmountInput.value = '';
-        preview.style.display = 'none';
-        swapBtn.disabled = true;
-        return;
-    }
-    
-    // Calculate output amount
-    let outputAmount;
-    if (swapDirection === 'AtoB') {
-        outputAmount = (fromAmount * poolData.ratioBDenominator) / poolData.ratioANumerator;
-    } else {
-        outputAmount = (fromAmount * poolData.ratioANumerator) / poolData.ratioBDenominator;
-    }
-    
-    toAmountInput.value = outputAmount.toFixed(6);
-    
-    // Calculate minimum received with slippage
-    const minimumReceived = outputAmount * (1 - slippageTolerance / 100);
-    
-    // Update transaction preview
-    updateTransactionPreview(fromAmount, outputAmount, minimumReceived);
-    
-    // Show preview and enable button
-    preview.style.display = 'block';
-    swapBtn.disabled = false;
-    
-    // Update price impact (mock calculation)
-    const priceImpact = Math.min(fromAmount * 0.01, 5); // Simple mock calculation
-    document.getElementById('price-impact-value').textContent = priceImpact.toFixed(2) + '%';
-    
-    // Show warning for high slippage
-    const warning = document.getElementById('preview-warning');
-    if (slippageTolerance > 2.0 || priceImpact > 3.0) {
-        warning.style.display = 'block';
-    } else {
-        warning.style.display = 'none';
-    }
-}
-
-/**
- * Phase 4.1: Update transaction preview
- */
-function updateTransactionPreview(fromAmount, toAmount, minimumReceived) {
-    if (!poolData) return;
-    
-    const fromSymbol = swapDirection === 'AtoB' ? poolData.tokenASymbol : poolData.tokenBSymbol;
-    const toSymbol = swapDirection === 'AtoB' ? poolData.tokenBSymbol : poolData.tokenASymbol;
-    
-    document.getElementById('preview-from-amount').textContent = `${fromAmount.toFixed(6)} ${fromSymbol}`;
-    document.getElementById('preview-to-amount').textContent = `${toAmount.toFixed(6)} ${toSymbol}`;
-    document.getElementById('preview-minimum').textContent = `${minimumReceived.toFixed(6)} ${toSymbol}`;
-    
-    // Exchange rate
-    const rate = toAmount / fromAmount;
-    document.getElementById('preview-rate').textContent = `1 ${fromSymbol} = ${rate.toFixed(6)} ${toSymbol}`;
-}
-
-/**
- * Phase 4.1: Set slippage tolerance
- */
-function setSlippage(percentage) {
-    slippageTolerance = percentage;
-    
-    // Update UI
-    document.getElementById('current-slippage').textContent = percentage + '%';
-    document.getElementById('custom-slippage').value = '';
-    
-    // Update active button
-    document.querySelectorAll('.slippage-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Find and activate the correct button
-    document.querySelectorAll('.slippage-btn').forEach(btn => {
-        if (btn.textContent === percentage + '%') {
-            btn.classList.add('active');
-        }
-    });
-    
-    // Recalculate if we have amounts
-    calculateSwapOutputEnhanced();
-}
-
-/**
- * Phase 4.1: Set custom slippage tolerance
- */
-function setCustomSlippage() {
-    const customValue = parseFloat(document.getElementById('custom-slippage').value);
-    
-    if (!isNaN(customValue) && customValue >= 0 && customValue <= 50) {
-        slippageTolerance = customValue;
-        document.getElementById('current-slippage').textContent = customValue + '%';
-        
-        // Remove active class from preset buttons
-        document.querySelectorAll('.slippage-btn').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Recalculate
-        calculateSwapOutputEnhanced();
-    }
-}
-
-/**
- * Phase 4.1: Override updateSwapInterface with enhanced features
- */
-function updateSwapInterfaceEnhanced() {
-    if (!poolData) return;
-    
-    const display = window.TokenDisplayUtils.getDisplayTokenOrder(poolData);
-    
-    // Update token symbols and icons
-    if (swapDirection === 'AtoB') {
-        document.getElementById('from-token-symbol').textContent = poolData.tokenASymbol;
-        document.getElementById('to-token-symbol').textContent = poolData.tokenBSymbol;
-        document.getElementById('from-token-icon').textContent = poolData.tokenASymbol.charAt(0);
-        document.getElementById('to-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
-        document.getElementById('from-token-balance').textContent = mockBalances.tokenA.toFixed(6);
-        document.getElementById('to-token-balance').textContent = mockBalances.tokenB.toFixed(6);
-    } else {
-        document.getElementById('from-token-symbol').textContent = poolData.tokenBSymbol;
-        document.getElementById('to-token-symbol').textContent = poolData.tokenASymbol;
-        document.getElementById('from-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
-        document.getElementById('to-token-icon').textContent = poolData.tokenASymbol.charAt(0);
-        document.getElementById('from-token-balance').textContent = mockBalances.tokenB.toFixed(6);
-        document.getElementById('to-token-balance').textContent = mockBalances.tokenA.toFixed(6);
-    }
-    
-    // Reset amounts
-    document.getElementById('from-amount').value = '';
-    document.getElementById('to-amount').value = '';
-    
-    // Hide preview
-    document.getElementById('transaction-preview').style.display = 'none';
-    document.getElementById('swap-btn').disabled = true;
-}
-
 // Export functions for global access
 window.toggleSwapDirection = toggleSwapDirection;
-window.calculateSwapOutput = calculateSwapOutput;
+window.calculateSwapOutputEnhanced = calculateSwapOutputEnhanced;
 window.executeSwap = executeSwap;
-// Phase 4.1: Export enhanced functions
 window.selectFromToken = selectFromToken;
 window.selectToToken = selectToToken;
 window.setMaxAmount = setMaxAmount;
-window.calculateSwapOutputEnhanced = calculateSwapOutputEnhanced;
 window.setSlippage = setSlippage;
 window.setCustomSlippage = setCustomSlippage;
-window.updateSwapInterfaceEnhanced = updateSwapInterfaceEnhanced;
 window.togglePoolStateDetails = togglePoolStateDetails;
+window.connectWallet = connectWallet;
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', initializeSwapPage);
 
-console.log('🔄 Swap JavaScript loaded successfully'); 
+console.log('🔄 Enhanced Swap JavaScript loaded successfully'); 

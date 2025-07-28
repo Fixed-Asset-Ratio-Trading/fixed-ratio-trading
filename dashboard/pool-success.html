@@ -306,12 +306,14 @@
             const creator = urlParams.get('creator') || 'Unknown';
             const createdAt = urlParams.get('createdAt');
             
-            // Use display utilities for user-friendly token ordering
-            const display = window.TokenDisplayUtils.getSimpleDisplayOrder(
+            // Use corrected display utilities for user-friendly token ordering
+            const display = window.TokenDisplayUtils.getCorrectTokenDisplay(
                 tokenASymbol, 
                 tokenBSymbol, 
                 parseFloat(ratio), 
-                1
+                1, 
+                6, // tokenAPrecision 
+                6  // tokenBPrecision
             );
             
             // Update UI elements with proper ordering
@@ -342,7 +344,15 @@
                 tokenBSymbol,
                 ratio,
                 creator,
-                createdAt
+                createdAt,
+                correctedDisplay: display
+            });
+            
+            console.log('🔧 POOL SUCCESS PAGE DISPLAY:', {
+                displayPair: display.displayPair,
+                rateText: display.rateText,
+                baseToken: display.baseToken,
+                quoteToken: display.quoteToken
             });
         });
     </script>

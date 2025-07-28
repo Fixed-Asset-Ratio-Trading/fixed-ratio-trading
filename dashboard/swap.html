@@ -505,7 +505,7 @@
             <h1>🔄 Swap Tokens</h1>
             <p class="subtitle">Exchange tokens in the pool at fixed ratios</p>
             <div class="nav-buttons">
-                <button class="nav-btn secondary" onclick="window.location.href='index.html'">
+                <button class="nav-btn secondary" onclick="goBackToDashboard()">
                     ← Back to Dashboard
                 </button>
             </div>
@@ -665,5 +665,32 @@
     <script src="data-service.js"></script>
     <script src="utils.js?v=1732061214"></script>
     <script src="swap.js?v=1753358090"></script>
+    <script>
+        // Handle navigation back to dashboard
+        function goBackToDashboard() {
+            // If we have a pool address, try to highlight it in the dashboard
+            const poolAddress = new URLSearchParams(window.location.search).get('pool') || 
+                               sessionStorage.getItem('selectedPoolAddress');
+            
+            if (poolAddress) {
+                // Store the pool address for the dashboard to potentially highlight
+                sessionStorage.setItem('selectedPoolAddress', poolAddress);
+            }
+            
+            window.location.href = 'index.html';
+        }
+        
+        // Update page title with pool info if available
+        document.addEventListener('DOMContentLoaded', () => {
+            const poolId = new URLSearchParams(window.location.search).get('pool');
+            if (poolId) {
+                // Update the subtitle to show this is a direct pool access
+                const subtitle = document.querySelector('.header .subtitle');
+                if (subtitle) {
+                    subtitle.innerHTML = `Exchange tokens in the pool at fixed ratios<br><small style="color: #888; font-size: 0.9em;">Pool: ${poolId.slice(0, 8)}...${poolId.slice(-8)}</small>`;
+                }
+            }
+        });
+    </script>
 </body>
 </html> 

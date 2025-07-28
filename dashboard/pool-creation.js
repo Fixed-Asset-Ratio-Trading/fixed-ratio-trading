@@ -802,6 +802,13 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             ratio: ratioPrimaryPerBase
         });
         
+        console.log('🔍 TOKEN SYMBOL MAPPING:', {
+            'tokenA.symbol': tokenA.symbol,
+            'tokenA.mint': tokenA.mint,
+            'tokenB.symbol': tokenB.symbol, 
+            'tokenB.mint': tokenB.mint
+        });
+        
         // Determine normalized token order for PDA derivation (same logic as smart contract)
         // Use string comparison for lexicographic ordering (same as Rust toString() comparison)
         const tokenAMint = primaryTokenMint.toString() < baseTokenMint.toString() 
@@ -809,10 +816,42 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         const tokenBMint = primaryTokenMint.toString() < baseTokenMint.toString() 
             ? baseTokenMint : primaryTokenMint;
         
+        // 🔧 FIX: Adjust ratio to preserve user intent when tokens are swapped
+        const tokensWereSwapped = tokenAMint.toString() !== primaryTokenMint.toString();
+        
+        let finalRatioANumerator, finalRatioBDenominator;
+        
+        if (tokensWereSwapped) {
+            // Tokens were swapped: user wanted "1 primary = X base" but now primary is TokenB
+            // So we need: "1 TokenB = X TokenA" which means "X TokenA = 1 TokenB"
+            // Therefore: ratio_a_numerator = X, ratio_b_denominator = 1
+            finalRatioANumerator = ratioPrimaryPerBase;
+            finalRatioBDenominator = 1;
+            console.log('🔄 Tokens were swapped during normalization - adjusting ratio to preserve intent');
+            console.log(`   User intent: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
+            console.log(`   After swap: ${ratioPrimaryPerBase} ${tokenA.symbol} = 1 ${tokenB.symbol}`);
+        } else {
+            // Tokens kept original order: user wanted "1 primary = X base"
+            // primary is TokenA, base is TokenB: "1 TokenA = X TokenB"
+            // Therefore: ratio_a_numerator = 1, ratio_b_denominator = X  
+            finalRatioANumerator = 1;
+            finalRatioBDenominator = ratioPrimaryPerBase;
+            console.log('✅ Tokens kept original order - using direct ratio');
+            console.log(`   Final: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
+        }
+        
         console.log('Normalized token order (for PDA derivation):', {
             tokenA: tokenAMint.toString(),
-            tokenB: tokenBMint.toString()
+            tokenB: tokenBMint.toString(),
+            tokensWereSwapped,
+            finalRatioANumerator,
+            finalRatioBDenominator
         });
+        
+        console.log('🔍 FINAL RATIO VERIFICATION:');
+        console.log(`   ratio_a_numerator: ${finalRatioANumerator} (for ${tokensWereSwapped ? tokenB.symbol : tokenA.symbol})`);
+        console.log(`   ratio_b_denominator: ${finalRatioBDenominator} (for ${tokensWereSwapped ? tokenA.symbol : tokenB.symbol})`);
+        console.log(`   Expected result: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
         
         // Create pool state PDA - same derivation logic as smart contract
         const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
@@ -820,8 +859,8 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
                 new TextEncoder().encode('pool_state'),
                 tokenAMint.toBuffer(),
                 tokenBMint.toBuffer(),
-                new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer),
-                new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator = 1
+                new Uint8Array(new BigUint64Array([BigInt(finalRatioANumerator)]).buffer),
+                new Uint8Array(new BigUint64Array([BigInt(finalRatioBDenominator)]).buffer)
             ],
             programId
         );
@@ -885,14 +924,14 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // Borsh enum discriminator: InitializeProgram=0, InitializePool=1 (single byte)
         const instructionData = concatUint8Arrays([
             new Uint8Array([1]), // InitializePool discriminator (single byte)
-            new Uint8Array(new BigUint64Array([BigInt(ratioPrimaryPerBase)]).buffer), // ratio_a_numerator  
-            new Uint8Array(new BigUint64Array([BigInt(1)]).buffer) // ratio_b_denominator
+            new Uint8Array(new BigUint64Array([BigInt(finalRatioANumerator)]).buffer), // ratio_a_numerator  
+            new Uint8Array(new BigUint64Array([BigInt(finalRatioBDenominator)]).buffer) // ratio_b_denominator
         ]);
         
         console.log('🔍 Instruction data for InitializePool:');
         console.log('  Discriminator: [1, 0, 0, 0] (Borsh enum little-endian u32)');
-        console.log('  ratio_a_numerator:', ratioPrimaryPerBase);
-        console.log('  ratio_b_denominator: 1');
+        console.log('  ratio_a_numerator:', finalRatioANumerator);
+        console.log('  ratio_b_denominator:', finalRatioBDenominator);
         console.log('  Total data length:', instructionData.length, 'bytes');
         console.log('  Data:', Array.from(instructionData));
         
