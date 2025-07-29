@@ -894,11 +894,16 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // ✅ BASIS POINTS REFACTOR: Fetch token decimals and convert to basis points
         console.log('🔧 BASIS POINTS REFACTOR: Fetching token decimals...');
         
-        // Fetch decimals for both tokens
-        const tokenADecimals = await getTokenDecimals(tokenAMint.toString(), connection);
-        const tokenBDecimals = await getTokenDecimals(tokenBMint.toString(), connection);
+        // Fetch decimals for normalized tokens (A and B after lexicographic ordering)
+        const normalizedTokenADecimals = await getTokenDecimals(tokenAMint.toString(), connection);
+        const normalizedTokenBDecimals = await getTokenDecimals(tokenBMint.toString(), connection);
         
-        console.log(`📊 Token decimals: ${tokenA.symbol}=${tokenADecimals}, ${tokenB.symbol}=${tokenBDecimals}`);
+        // Get original token decimals (as selected by user)
+        const primaryTokenDecimals = await getTokenDecimals(primaryTokenMint.toString(), connection);
+        const baseTokenDecimals = await getTokenDecimals(baseTokenMint.toString(), connection);
+        
+        console.log(`📊 Original token decimals: ${tokenA.symbol}=${primaryTokenDecimals}, ${tokenB.symbol}=${baseTokenDecimals}`);
+        console.log(`📊 Normalized token decimals: TokenA=${normalizedTokenADecimals}, TokenB=${normalizedTokenBDecimals}`);
         
         // 🔧 BASIS POINTS CONVERSION: Convert user ratio to basis points
         // User specified: "1 primary = X base" 
@@ -909,37 +914,43 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         if (tokensWereSwapped) {
             // Tokens were swapped: user wanted "1 primary = X base" but now primary is TokenB
             // So we need: "1 TokenB = X TokenA" which means "X TokenA = 1 TokenB"
-            // Convert: X TokenA (display) = 1 TokenB (display) → basis points
-            const tokenADisplay = ratioPrimaryPerBase;  // X units of tokenA (now normalized as A)
-            const tokenBDisplay = 1.0;                  // 1 unit of tokenB (now normalized as B)
+            // 
+            // CRITICAL FIX: Use correct decimals for each display amount
+            // - tokenADisplay represents user's base token (now normalized as TokenA)
+            // - tokenBDisplay represents user's primary token (now normalized as TokenB)
+            const tokenADisplay = ratioPrimaryPerBase;  // X units of user's base token (now TokenA)
+            const tokenBDisplay = 1.0;                  // 1 unit of user's primary token (now TokenB)
             
-            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, tokenADecimals);
-            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, tokenBDecimals);
+            // Use the ORIGINAL decimals for conversion (not normalized decimals)
+            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, baseTokenDecimals);    // base token decimals
+            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, primaryTokenDecimals); // primary token decimals
             
             console.log('🔄 Tokens were swapped during normalization - converting to basis points');
             console.log(`   User intent: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
-            console.log(`   After swap: ${tokenADisplay} ${tokenA.symbol} = ${tokenBDisplay} ${tokenB.symbol}`);
+            console.log(`   After swap: ${tokenADisplay} ${tokenB.symbol} = ${tokenBDisplay} ${tokenA.symbol}`);
+            console.log(`   Using decimals: base=${baseTokenDecimals}, primary=${primaryTokenDecimals}`);
             console.log(`   Basis points: ${finalRatioABasisPoints} : ${finalRatioBBasisPoints}`);
         } else {
             // Tokens kept original order: user wanted "1 primary = X base"
             // primary is TokenA, base is TokenB: "1 TokenA = X TokenB"
-            // Convert: 1 TokenA (display) = X TokenB (display) → basis points
-            const tokenADisplay = 1.0;                  // 1 unit of tokenA (primary)
-            const tokenBDisplay = ratioPrimaryPerBase;   // X units of tokenB (base)
+            const tokenADisplay = 1.0;                  // 1 unit of primary token (TokenA)
+            const tokenBDisplay = ratioPrimaryPerBase;   // X units of base token (TokenB)
             
-            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, tokenADecimals);
-            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, tokenBDecimals);
+            // Use the original decimals for conversion
+            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, primaryTokenDecimals);  // primary token decimals
+            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, baseTokenDecimals);     // base token decimals
             
             console.log('✅ Tokens kept original order - converting to basis points');
             console.log(`   Final: ${tokenADisplay} ${tokenA.symbol} = ${tokenBDisplay} ${tokenB.symbol}`);
+            console.log(`   Using decimals: primary=${primaryTokenDecimals}, base=${baseTokenDecimals}`);
             console.log(`   Basis points: ${finalRatioABasisPoints} : ${finalRatioBBasisPoints}`);
         }
         
         // 🎯 ONE-TO-MANY VALIDATION: Check if this ratio qualifies for the flag
         const originalRatioA = tokensWereSwapped ? ratioPrimaryPerBase : 1.0;
         const originalRatioB = tokensWereSwapped ? 1.0 : ratioPrimaryPerBase;
-        const originalDecimalsA = tokensWereSwapped ? tokenBDecimals : tokenADecimals;  
-        const originalDecimalsB = tokensWereSwapped ? tokenADecimals : tokenBDecimals;
+        const originalDecimalsA = tokensWereSwapped ? baseTokenDecimals : primaryTokenDecimals;  
+        const originalDecimalsB = tokensWereSwapped ? primaryTokenDecimals : baseTokenDecimals;
         
         const willSetOneToManyFlag = validateOneToManyRatio(
             originalRatioA, originalRatioB, 
@@ -962,9 +973,10 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         });
         
         console.log('🔍 FINAL RATIO VERIFICATION (BASIS POINTS):');
-        console.log(`   ratio_a_numerator: ${finalRatioABasisPoints} basis points (for ${tokensWereSwapped ? tokenB.symbol : tokenA.symbol})`);
-        console.log(`   ratio_b_denominator: ${finalRatioBBasisPoints} basis points (for ${tokensWereSwapped ? tokenA.symbol : tokenB.symbol})`);
+        console.log(`   ratio_a_numerator: ${finalRatioABasisPoints} basis points`);
+        console.log(`   ratio_b_denominator: ${finalRatioBBasisPoints} basis points`);
         console.log(`   Expected result: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
+        console.log(`   Basis points represent: ${finalRatioABasisPoints / Math.pow(10, tokensWereSwapped ? baseTokenDecimals : primaryTokenDecimals)} : ${finalRatioBBasisPoints / Math.pow(10, tokensWereSwapped ? primaryTokenDecimals : baseTokenDecimals)}`);
         
         // ✅ BASIS POINTS REFACTOR: Create pool state PDA using basis points ratios
         const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
