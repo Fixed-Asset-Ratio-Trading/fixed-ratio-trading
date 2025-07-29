@@ -714,9 +714,11 @@ function calculateSwapOutputEnhanced() {
         // ✅ BASIS POINTS REFACTOR: Get token decimals from enriched pool data
         let inputDecimals, outputDecimals, numerator, denominator;
         
-        // Use correct decimals from centralized enrichment
-        const tokenADecimals = poolData.tokenDecimals ? poolData.tokenDecimals.tokenADecimals : 6;
-        const tokenBDecimals = poolData.tokenDecimals ? poolData.tokenDecimals.tokenBDecimals : 6;
+        // Use correct decimals from pool data (either from enrichment or direct pool data)
+        const tokenADecimals = poolData.ratioADecimal !== undefined ? poolData.ratioADecimal : 
+                              (poolData.tokenDecimals ? poolData.tokenDecimals.tokenADecimals : 6);
+        const tokenBDecimals = poolData.ratioBDecimal !== undefined ? poolData.ratioBDecimal : 
+                              (poolData.tokenDecimals ? poolData.tokenDecimals.tokenBDecimals : 6);
         
         if (swapDirection === 'AtoB') {
             // Swapping from Token A to Token B
