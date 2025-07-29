@@ -714,11 +714,26 @@ function calculateSwapOutputEnhanced() {
         // ✅ BASIS POINTS REFACTOR: Get token decimals from enriched pool data
         let inputDecimals, outputDecimals, numerator, denominator;
         
-        // Use correct decimals from pool data (either from enrichment or direct pool data)
-        const tokenADecimals = poolData.ratioADecimal !== undefined ? poolData.ratioADecimal : 
-                              (poolData.tokenDecimals ? poolData.tokenDecimals.tokenADecimals : 6);
-        const tokenBDecimals = poolData.ratioBDecimal !== undefined ? poolData.ratioBDecimal : 
-                              (poolData.tokenDecimals ? poolData.tokenDecimals.tokenBDecimals : 6);
+        // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss
+        let tokenADecimals, tokenBDecimals;
+        
+        if (poolData.ratioADecimal !== undefined && poolData.ratioBDecimal !== undefined) {
+            // Use decimals from pool data (preferred)
+            tokenADecimals = poolData.ratioADecimal;
+            tokenBDecimals = poolData.ratioBDecimal;
+        } else if (poolData.tokenDecimals && 
+                   poolData.tokenDecimals.tokenADecimals !== undefined && 
+                   poolData.tokenDecimals.tokenBDecimals !== undefined) {
+            // Use decimals from enriched data (backup)
+            tokenADecimals = poolData.tokenDecimals.tokenADecimals;
+            tokenBDecimals = poolData.tokenDecimals.tokenBDecimals;
+        } else {
+            // 🚨 CRITICAL ERROR: Missing decimal data - abort to prevent fund loss
+            const error = 'CRITICAL ERROR: Token decimal information missing. Cannot calculate swaps safely. This could result in significant fund loss.';
+            console.error('❌ SWAP CALCULATION ABORTED:', error);
+            console.error('📊 Available pool data:', poolData);
+            throw new Error(error);
+        }
         
         if (swapDirection === 'AtoB') {
             // Swapping from Token A to Token B

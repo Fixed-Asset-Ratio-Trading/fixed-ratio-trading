@@ -551,6 +551,23 @@ function validateOneToManyRatio(ratioADisplay, ratioBDisplay, decimalsA, decimal
  */
 function calculateSwapOutput(inputDisplay, inputDecimals, outputDecimals, numeratorBasisPoints, denominatorBasisPoints) {
     try {
+        // 🚨 CRITICAL VALIDATION: Ensure all parameters are valid to prevent fund loss
+        if (typeof inputDisplay !== 'number' || inputDisplay < 0) {
+            throw new Error(`Invalid input amount: ${inputDisplay}. Must be a positive number.`);
+        }
+        if (typeof inputDecimals !== 'number' || inputDecimals < 0 || inputDecimals > 9) {
+            throw new Error(`Invalid input decimals: ${inputDecimals}. Must be between 0 and 9.`);
+        }
+        if (typeof outputDecimals !== 'number' || outputDecimals < 0 || outputDecimals > 9) {
+            throw new Error(`Invalid output decimals: ${outputDecimals}. Must be between 0 and 9.`);
+        }
+        if (typeof numeratorBasisPoints !== 'number' || numeratorBasisPoints <= 0) {
+            throw new Error(`Invalid numerator: ${numeratorBasisPoints}. Must be a positive number.`);
+        }
+        if (typeof denominatorBasisPoints !== 'number' || denominatorBasisPoints <= 0) {
+            throw new Error(`Invalid denominator: ${denominatorBasisPoints}. Must be a positive number.`);
+        }
+        
         // Convert input to basis points
         const inputBasisPoints = displayToBasisPoints(inputDisplay, inputDecimals);
         
@@ -608,8 +625,12 @@ async function enrichPoolWithCorrectDisplay(poolData, connection) {
             tokenDecimals = { tokenADecimals, tokenBDecimals };
             console.log(`✅ Fetched decimals: ${poolData.tokenASymbol || 'TokenA'}=${tokenADecimals}, ${poolData.tokenBSymbol || 'TokenB'}=${tokenBDecimals}`);
         } else {
-            console.warn('⚠️ Unable to fetch token decimals - using defaults');
-            tokenDecimals = { tokenADecimals: 6, tokenBDecimals: 6 };
+            // 🚨 CRITICAL ERROR: Cannot fetch token decimals - abort to prevent fund loss
+            const error = 'CRITICAL ERROR: Unable to fetch token decimals. Cannot safely perform token calculations. This could result in significant fund loss.';
+            console.error('❌ TOKEN DECIMAL FETCH FAILED:', error);
+            console.error('📊 Pool data:', poolData);
+            console.error('🔗 Connection available:', !!connection);
+            throw new Error(error);
         }
         
         // Create corrected display using proper decimals
@@ -671,9 +692,12 @@ function getCentralizedRatioText(pool) {
     const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
     const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
     
-    // Get token decimals
-    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
-    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss
+    if (pool.ratioADecimal === undefined || pool.ratioBDecimal === undefined) {
+        throw new Error('CRITICAL ERROR: Token decimal information missing from pool data. Cannot calculate ratio display safely.');
+    }
+    const tokenADecimals = pool.ratioADecimal;
+    const tokenBDecimals = pool.ratioBDecimal;
     
     // Convert to display units
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
@@ -702,9 +726,12 @@ function getCentralizedRatioDisplay(pool) {
     const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
     const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
     
-    // Get token decimals
-    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
-    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss
+    if (pool.ratioADecimal === undefined || pool.ratioBDecimal === undefined) {
+        throw new Error('CRITICAL ERROR: Token decimal information missing from pool data. Cannot calculate ratio display safely.');
+    }
+    const tokenADecimals = pool.ratioADecimal;
+    const tokenBDecimals = pool.ratioBDecimal;
     
     // Convert to display units
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
@@ -733,8 +760,13 @@ function getCentralizedDisplayInfo(pool) {
     // Get basis points values for calculations
     const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
     const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
-    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
-    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    
+    // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss  
+    if (pool.ratioADecimal === undefined || pool.ratioBDecimal === undefined) {
+        throw new Error('CRITICAL ERROR: Token decimal information missing from pool data. Cannot calculate display info safely.');
+    }
+    const tokenADecimals = pool.ratioADecimal;
+    const tokenBDecimals = pool.ratioBDecimal;
     
     // Convert to display units
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
