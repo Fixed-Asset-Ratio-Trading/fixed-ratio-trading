@@ -965,7 +965,15 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     console.log('  Amount in base units:', amountInBaseUnits);
     console.log('  Total data length:', instructionData.length, 'bytes');
     
-    // Build account keys array (9 accounts for swap)
+    // Build account keys array (11 accounts for decimal-aware swap)
+    const inputTokenMint = swapDirection === 'AtoB' 
+        ? new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint)
+        : new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint);
+    
+    const outputTokenMint = swapDirection === 'AtoB'
+        ? new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint)
+        : new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint);
+    
     const accountKeys = [
         { pubkey: wallet.publicKey, isSigner: true, isWritable: true },                    // 0: User Authority
         { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program
@@ -975,7 +983,9 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
         { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },                  // 5: Token A Vault
         { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },                  // 6: Token B Vault
         { pubkey: new solanaWeb3.PublicKey(fromToken.tokenAccount), isSigner: false, isWritable: true }, // 7: User Input Token Account
-        { pubkey: toTokenAccountPubkey, isSigner: false, isWritable: true }                // 8: User Output Token Account
+        { pubkey: toTokenAccountPubkey, isSigner: false, isWritable: true },               // 8: User Output Token Account
+        { pubkey: inputTokenMint, isSigner: false, isWritable: false },                    // 9: Input Token Mint (for decimals)
+        { pubkey: outputTokenMint, isSigner: false, isWritable: false }                    // 10: Output Token Mint (for decimals)
     ];
     
     console.log('🔍 Account keys for swap:');

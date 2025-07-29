@@ -285,9 +285,67 @@ pub fn process_swap(
     
     msg!("✅ Step 3 completed: Account validations passed");
 
-    msg!("⏳ Step 4/6: Calculating fixed-ratio exchange");
+    msg!("⏳ Step 4/6: Calculating fixed-ratio exchange with decimal adjustment");
     
-    // Get exchange ratio based on swap direction
+    // 🚨 CRITICAL FIX: Get token decimals from token mints for accurate calculations
+    // Since we don't have mint accounts directly, we need to get mint addresses from token accounts
+    // and then fetch the mint data
+    
+    let input_token_mint_key = user_input_token_data.mint;
+    let output_token_mint_key = user_output_token_data.mint;
+    
+    msg!("🔍 FETCHING TOKEN MINT DATA:");
+    msg!("   • Input token mint: {}", input_token_mint_key);
+    msg!("   • Output token mint: {}", output_token_mint_key);
+    
+    // We need to get the mint accounts from the remaining accounts
+    // Let's check if mint accounts were provided as additional accounts
+    if accounts.len() < 11 {
+        msg!("❌ INSUFFICIENT ACCOUNTS: Token mint accounts required for decimal-aware calculations");
+        msg!("   • Expected: 11 accounts (9 standard + 2 mint accounts)");
+        msg!("   • Received: {} accounts", accounts.len());
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    
+    let input_mint_account = &accounts[9];
+    let output_mint_account = &accounts[10];
+    
+    // Verify the mint accounts match the expected mints
+    if *input_mint_account.key != input_token_mint_key {
+        msg!("❌ MINT ACCOUNT MISMATCH: Input mint account doesn't match token account mint");
+        msg!("   • Expected: {}", input_token_mint_key);
+        msg!("   • Provided: {}", input_mint_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if *output_mint_account.key != output_token_mint_key {
+        msg!("❌ MINT ACCOUNT MISMATCH: Output mint account doesn't match token account mint");
+        msg!("   • Expected: {}", output_token_mint_key);
+        msg!("   • Provided: {}", output_mint_account.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Unpack mint accounts to get decimals
+    let input_mint_data = spl_token::state::Mint::unpack_from_slice(&input_mint_account.data.borrow())
+        .map_err(|_| {
+            msg!("❌ FAILED TO UNPACK INPUT TOKEN MINT");
+            ProgramError::InvalidAccountData
+        })?;
+    
+    let output_mint_data = spl_token::state::Mint::unpack_from_slice(&output_mint_account.data.borrow())
+        .map_err(|_| {
+            msg!("❌ FAILED TO UNPACK OUTPUT TOKEN MINT");
+            ProgramError::InvalidAccountData
+        })?;
+    
+    let input_decimals = input_mint_data.decimals as u32;
+    let output_decimals = output_mint_data.decimals as u32;
+    
+    msg!("🔍 TOKEN DECIMAL INFO:");
+    msg!("   • Input token decimals: {}", input_decimals);
+    msg!("   • Output token decimals: {}", output_decimals);
+    
+    // Get exchange ratio based on swap direction (these are basis points from pool creation)
     let (numerator, denominator) = if input_is_token_a {
         if pool_state_data.ratio_a_numerator == 0 {
             msg!("❌ INVALID POOL RATIO: Token A numerator is zero");
@@ -302,16 +360,39 @@ pub fn process_swap(
         (pool_state_data.ratio_b_denominator, pool_state_data.ratio_a_numerator)
     };
 
-    // Calculate output amount using fixed ratio: output = input * numerator / denominator
-    let amount_out = amount_in.checked_mul(numerator)
+    // 🔧 DECIMAL-AWARE CALCULATION: 
+    // The pool ratios are stored as basis points (accounting for decimals)
+    // But the smart contract receives amounts in native token units
+    // We need to:
+    // 1. Convert input from native units to basis points (multiply by 10^decimals)
+    // 2. Apply the ratio calculation 
+    // 3. Convert output from basis points to native units (divide by 10^decimals)
+    
+    // Convert input to basis points for calculation
+    let input_basis_points = amount_in.checked_mul(10_u64.pow(input_decimals))
+        .ok_or_else(|| {
+            msg!("❌ ARITHMETIC OVERFLOW: Input amount too large for basis points conversion");
+            ProgramError::ArithmeticOverflow
+        })?;
+    
+    // Apply ratio calculation in basis points
+    let output_basis_points = input_basis_points.checked_mul(numerator)
         .ok_or(ProgramError::ArithmeticOverflow)?
         .checked_div(denominator)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    // Convert output from basis points to native units
+    let amount_out = output_basis_points.checked_div(10_u64.pow(output_decimals))
+        .ok_or_else(|| {
+            msg!("❌ ARITHMETIC OVERFLOW: Output basis points too large for native units conversion");
+            ProgramError::ArithmeticOverflow
+        })?;
 
-    msg!("📊 FIXED RATIO CALCULATION:");
-    msg!("   • Exchange rate: {}:{} (numerator:denominator)", numerator, denominator);
-    msg!("   • Input: {} tokens", amount_in);
-    msg!("   • Output: {} tokens", amount_out);
+    msg!("📊 DECIMAL-AWARE FIXED RATIO CALCULATION:");
+    msg!("   • Exchange rate: {}:{} (numerator:denominator in basis points)", numerator, denominator);
+    msg!("   • Input: {} native tokens ({} basis points)", amount_in, input_basis_points);
+    msg!("   • Output: {} native tokens ({} basis points)", amount_out, output_basis_points);
+    msg!("   • Input decimals: {}, Output decimals: {}", input_decimals, output_decimals);
     msg!("   • Slippage protection: Fixed ratio (no slippage)");
     
     // Validate output amount is non-zero

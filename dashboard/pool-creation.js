@@ -938,71 +938,32 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         if (tokensWereSwapped) {
             // Tokens were swapped: user wanted "1 primary = X base" but now primary is TokenB
-            // 🚨 CRITICAL FIX: For swap calculations to work correctly, we need to adjust the ratio
+            // So we need: "1 TokenB = X TokenA" which means "X TokenA = 1 TokenB"
             // 
-            // User wanted: "1 primary = X base" (e.g., "1 TS = 1000 MST")
-            // After normalization: primary becomes TokenB, base becomes TokenA
-            // Smart contract for B→A uses: (ratio_b_denominator, ratio_a_numerator)
-            // 
-            // For user input "1 TS = 1000 MST" to work as "1000 MST → 1 TS":
-            // We need: ratio_b_denominator / ratio_a_numerator = 1000 MST basis points / 1 TS basis points
-            // 
-            // So if 1000 MST basis points should yield 10000 TS basis points (1.0000 TS):
-            // We need: 1000 × (ratio_a_numerator) / (ratio_b_denominator) = 10000
-            // Therefore: ratio_a_numerator / ratio_b_denominator = 10
-            // 
-            // This means we should set: ratio_a_numerator = 10000, ratio_b_denominator = 1000
-            // Which is the INVERSE of the display ratio!
+            // CRITICAL FIX: Use correct decimals for each normalized token
+            // - tokenADisplay represents user's base token (now normalized as TokenA)
+            // - tokenBDisplay represents user's primary token (now normalized as TokenB)
+            const tokenADisplay = ratioPrimaryPerBase;  // X units of user's base token (now TokenA)
+            const tokenBDisplay = 1.0;                  // 1 unit of user's primary token (now TokenB)
             
-            const tokenADisplay = 1.0;                          // 1 unit of user's primary token (now TokenB) 
-            const tokenBDisplay = ratioPrimaryPerBase;           // X units of user's base token (now TokenA)
+            // 🔧 FIX: Use the NORMALIZED token decimals for conversion
+            // After swapping: TokenA = base token, TokenB = primary token
+            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, normalizedTokenADecimals);   // TokenA decimals (base)
+            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, normalizedTokenBDecimals);   // TokenB decimals (primary)
             
-            // 🔧 CRITICAL FIX: Use INVERTED ratio to account for swap direction
-            finalRatioABasisPoints = displayToBasisPoints(tokenBDisplay, normalizedTokenADecimals);   // Base token amount in TokenA position
-            finalRatioBBasisPoints = displayToBasisPoints(tokenADisplay, normalizedTokenBDecimals);   // Primary token amount in TokenB position
-            
-            console.log('🔄 Tokens were swapped during normalization - using INVERTED ratio for smart contract');
+            console.log('🔄 Tokens were swapped during normalization - converting to basis points');
             console.log(`   User intent: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
-            console.log(`   Smart contract setup: ${tokenBDisplay} TokenA = ${tokenADisplay} TokenB`);
+            console.log(`   After swap: ${tokenADisplay} ${tokenB.symbol} = ${tokenBDisplay} ${tokenA.symbol}`);
             console.log(`   Using decimals: TokenA=${normalizedTokenADecimals}, TokenB=${normalizedTokenBDecimals}`);
             console.log(`   Basis points: ${finalRatioABasisPoints} : ${finalRatioBBasisPoints}`);
         } else {
             // Tokens kept original order: user wanted "1 primary = X base"
             // primary is TokenA, base is TokenB: "1 TokenA = X TokenB"
-            // 
-            // For A→B swaps: smart contract uses (ratio_a_numerator, ratio_b_denominator)
-            // For B→A swaps: smart contract uses (ratio_b_denominator, ratio_a_numerator)
-            // 
-            // User input: "1 primary = X base" (e.g., "1 TS = 1000 MST")
-            // TokenA = primary (TS), TokenB = base (MST)
-            // 
-            // For A→B (TS→MST): 1 TS should yield 1000 MST
-            // For B→A (MST→TS): 1000 MST should yield 1 TS
-            // 
-            // Smart contract calculation for A→B: input × ratio_a_numerator / ratio_b_denominator
-            // Smart contract calculation for B→A: input × ratio_b_denominator / ratio_a_numerator
-            // 
-            // For "1 TS = 1000 MST":
-            // A→B: 1 TS × ratio_a_numerator / ratio_b_denominator = 1000 MST
-            // B→A: 1000 MST × ratio_b_denominator / ratio_a_numerator = 1 TS
-            // 
-            // This gives us: ratio_a_numerator / ratio_b_denominator = 1000
-            // And: ratio_b_denominator / ratio_a_numerator = 1/1000
-            // 
-            // So we need: ratio_a_numerator = 1000 × ratio_b_denominator
-            // If we set ratio_b_denominator = 1 basis point (smallest unit),
-            // then ratio_a_numerator = 1000 basis points
-            // 
-            // But we need to account for decimals:
-            // 1 TS display = 10000 TS basis points (4 decimals)
-            // 1000 MST display = 1000 MST basis points (0 decimals)
-            // 
-            // So: ratio_a_numerator = 10000, ratio_b_denominator = 1000
-            
             const tokenADisplay = 1.0;                  // 1 unit of primary token (TokenA)
             const tokenBDisplay = ratioPrimaryPerBase;   // X units of base token (TokenB)
             
-            // ✅ STANDARD: Use the display amounts directly 
+            // ✅ FIX: Use the NORMALIZED token decimals for conversion
+            // No swapping: TokenA = primary token, TokenB = base token
             finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, normalizedTokenADecimals);   // TokenA decimals (primary)
             finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, normalizedTokenBDecimals);   // TokenB decimals (base)
             

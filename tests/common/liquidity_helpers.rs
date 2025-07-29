@@ -420,17 +420,30 @@ pub fn create_swap_instruction_standardized(
 ) -> Result<Instruction, Box<dyn std::error::Error>> {
     let serialized = swap_instruction_data.try_to_vec()?;
     
+    // Extract input mint from instruction data
+    let input_token_mint = match swap_instruction_data {
+        PoolInstruction::Swap { input_token_mint, .. } => *input_token_mint,
+        _ => return Err("Invalid instruction type for swap".into()),
+    };
+    
+    // Determine output mint based on input mint and pool configuration
+    let output_token_mint = if input_token_mint == pool_config.token_a_mint {
+        pool_config.token_b_mint
+    } else {
+        pool_config.token_a_mint
+    };
+    
     // Derive System State PDA (required for swap operations)
     let (system_state_pda, _) = Pubkey::find_program_address(
         &[SYSTEM_STATE_SEED_PREFIX],
         &id(),
     );
     
-    // Create instruction with FIXED account ordering (9 accounts for swaps - Main Treasury removed in Phase 4)
+    // Create instruction with FIXED account ordering (11 accounts for decimal-aware swaps)
     Ok(Instruction {
         program_id: id(),
         accounts: vec![
-            // FIXED account ordering matching swap processor expectations (9 accounts total)
+            // FIXED account ordering matching swap processor expectations (11 accounts total)
             AccountMeta::new(*user, true),                                          // Index 0: Authority/User Signer
             AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
             AccountMeta::new_readonly(system_state_pda, false),                     // Index 2: System State PDA
@@ -440,6 +453,8 @@ pub fn create_swap_instruction_standardized(
             AccountMeta::new(pool_config.token_b_vault_pda, false),                 // Index 6: Token B Vault PDA
             AccountMeta::new(*user_input_token_account, false),                     // Index 7: User Input Token Account (writable for token transfer, not signer)
             AccountMeta::new(*user_output_token_account, false),                    // Index 8: User Output Token Account (writable for token transfer, not signer)
+            AccountMeta::new_readonly(input_token_mint, false),                     // Index 9: Input Token Mint (for decimal calculations)
+            AccountMeta::new_readonly(output_token_mint, false),                    // Index 10: Output Token Mint (for decimal calculations)
         ],
         data: serialized,
     })

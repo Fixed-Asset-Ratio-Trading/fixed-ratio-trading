@@ -95,7 +95,7 @@ pub struct PoolState {
     // **NEW: CONFIGURABLE CONTRACT FEES**
     /// Contract fee for liquidity operations (deposits/withdrawals) in lamports
     /// This fee is charged in SOL to cover computational costs
-    /// **Future**: Will be modifiable via pool fee update function
+    /// **Future**: Will be modifiable via pool fee update function 
     pub contract_liquidity_fee: u64,
     
     /// Contract fee for swap operations in lamports  
