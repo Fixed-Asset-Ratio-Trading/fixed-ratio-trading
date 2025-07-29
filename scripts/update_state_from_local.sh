@@ -124,7 +124,33 @@ const SEEDS = {
     SYSTEM_STATE: 'system_state'
 };
 
-function parsePoolState(data, address) {
+// Function to get token decimals from mint account
+async function getTokenDecimals(connection, mintAddress) {
+    try {
+        const mintPublicKey = new PublicKey(mintAddress);
+        const mintAccount = await connection.getAccountInfo(mintPublicKey, 'confirmed');
+        
+        if (!mintAccount) {
+            console.warn(\`⚠️ Token mint account not found: \${mintAddress}\`);
+            return 0;
+        }
+        
+        // Parse token mint data to get decimals (at offset 44)
+        const decimals = mintAccount.data[44];
+        return decimals;
+    } catch (error) {
+        console.warn(\`⚠️ Error fetching decimals for \${mintAddress}:\`, error.message);
+        return 0;
+    }
+}
+
+// Function to convert basis points to display units
+function basisPointsToDisplay(basisPoints, decimals) {
+    const factor = Math.pow(10, decimals);
+    return basisPoints / factor;
+}
+
+async function parsePoolState(data, address, connection) {
     try {
         const dataArray = new Uint8Array(data);
         let offset = 0;
@@ -152,17 +178,40 @@ function parsePoolState(data, address) {
         };
 
         // Parse main pool fields
+        const owner = readPubkey();
+        const token_a_mint = readPubkey();
+        const token_b_mint = readPubkey();
+        const token_a_vault = readPubkey();
+        const token_b_vault = readPubkey();
+        const lp_token_a_mint = readPubkey();
+        const lp_token_b_mint = readPubkey();
+        const ratio_a_numerator = readU64();
+        const ratio_b_denominator = readU64();
+        
+        // Fetch token decimals
+        console.log(\`🔍 Fetching decimals for pool \${address.toString().slice(0, 8)}...\`);
+        const ratio_a_decimal = await getTokenDecimals(connection, token_a_mint);
+        const ratio_b_decimal = await getTokenDecimals(connection, token_b_mint);
+        
+        // Calculate actual ratios (display units)
+        const ratio_a_actual = basisPointsToDisplay(ratio_a_numerator, ratio_a_decimal);
+        const ratio_b_actual = basisPointsToDisplay(ratio_b_denominator, ratio_b_decimal);
+        
         const poolState = {
             address: address.toString(),
-            owner: readPubkey(),
-            token_a_mint: readPubkey(),
-            token_b_mint: readPubkey(),
-            token_a_vault: readPubkey(),
-            token_b_vault: readPubkey(),
-            lp_token_a_mint: readPubkey(),
-            lp_token_b_mint: readPubkey(),
-            ratio_a_numerator: readU64(),
-            ratio_b_denominator: readU64(),
+            owner: owner,
+            token_a_mint: token_a_mint,
+            token_b_mint: token_b_mint,
+            token_a_vault: token_a_vault,
+            token_b_vault: token_b_vault,
+            lp_token_a_mint: lp_token_a_mint,
+            lp_token_b_mint: lp_token_b_mint,
+            ratio_a_numerator: ratio_a_numerator,
+            ratio_a_decimal: ratio_a_decimal,
+            ratio_a_actual: ratio_a_actual,
+            ratio_b_denominator: ratio_b_denominator,
+            ratio_b_decimal: ratio_b_decimal,
+            ratio_b_actual: ratio_b_actual,
             total_token_a_liquidity: readU64(),
             total_token_b_liquidity: readU64(),
             pool_authority_bump_seed: readU8(),
@@ -334,10 +383,12 @@ async function main() {
         const pools = [];
         for (const account of accounts) {
             if (account.account.data.length > 300) { // Minimum size for PoolState
-                const poolState = parsePoolState(account.account.data, account.pubkey);
+                const poolState = await parsePoolState(account.account.data, account.pubkey, connection);
                 if (poolState) {
                     pools.push(poolState);
                     console.log(\`✅ Parsed pool: \${account.pubkey.toString()}\`);
+                    console.log(\`   📊 Token A Decimals: \${poolState.ratio_a_decimal}, Actual Ratio: \${poolState.ratio_a_actual}\`);
+                    console.log(\`   📊 Token B Decimals: \${poolState.ratio_b_decimal}, Actual Ratio: \${poolState.ratio_b_actual}\`);
                 }
             }
         }
