@@ -622,7 +622,10 @@ function setMaxAmount() {
 }
 
 /**
- * Enhanced swap output calculation with preview
+ * ✅ BASIS POINTS REFACTOR: Calculate swap output with proper basis points arithmetic
+ * 
+ * This function now correctly handles the conversion between display units and basis points,
+ * ensuring mathematical accuracy and matching the smart contract's calculation logic.
  */
 function calculateSwapOutputEnhanced() {
     if (!poolData) return;
@@ -652,35 +655,67 @@ function calculateSwapOutputEnhanced() {
         return;
     }
     
-    // Calculate output amount using pool ratios
-    const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
-    const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
-    
-    let outputAmount;
-    if (swapDirection === 'AtoB') {
-        // Convert from Token A to Token B
-        outputAmount = (fromAmount * ratioB) / ratioA;
-    } else {
-        // Convert from Token B to Token A
-        outputAmount = (fromAmount * ratioA) / ratioB;
+    try {
+        // ✅ BASIS POINTS REFACTOR: Get pool ratios in basis points (from smart contract)
+        const ratioABasisPoints = poolData.ratioANumerator || poolData.ratio_a_numerator;
+        const ratioBBasisPoints = poolData.ratioBDenominator || poolData.ratio_b_denominator;
+        
+        console.log('🔄 SWAP CALCULATION (BASIS POINTS):');
+        console.log(`  Pool ratios: ${ratioABasisPoints} : ${ratioBBasisPoints} (basis points)`);
+        console.log(`  Input: ${fromAmount} (display units)`);
+        console.log(`  Direction: ${swapDirection}`);
+        
+        // ✅ BASIS POINTS REFACTOR: Get token decimals for conversion
+        let inputDecimals, outputDecimals, numerator, denominator;
+        
+        if (swapDirection === 'AtoB') {
+            // Swapping from Token A to Token B
+            inputDecimals = fromToken.decimals;
+            outputDecimals = userTokens.find(t => !t.isTokenA)?.decimals || 6;
+            numerator = ratioBBasisPoints;     // Token B amount in basis points
+            denominator = ratioABasisPoints;   // Token A amount in basis points
+        } else {
+            // Swapping from Token B to Token A
+            inputDecimals = fromToken.decimals;
+            outputDecimals = userTokens.find(t => t.isTokenA)?.decimals || 9;
+            numerator = ratioABasisPoints;     // Token A amount in basis points
+            denominator = ratioBBasisPoints;   // Token B amount in basis points
+        }
+        
+        console.log(`  Token decimals: input=${inputDecimals}, output=${outputDecimals}`);
+        console.log(`  Calculation: (${fromAmount} * ${numerator}) / ${denominator}`);
+        
+        // ✅ BASIS POINTS REFACTOR: Use the new calculation function
+        const outputAmount = calculateSwapOutput(
+            fromAmount,         // Input in display units
+            inputDecimals,      // Input token decimals
+            outputDecimals,     // Output token decimals
+            numerator,          // Ratio numerator (basis points)
+            denominator         // Ratio denominator (basis points)
+        );
+        
+        console.log(`  Output: ${outputAmount} (display units)`);
+        
+        toAmountInput.value = outputAmount.toFixed(6);
+        
+        // Update transaction preview
+        updateTransactionPreview(fromAmount, outputAmount);
+        
+        // Show preview and enable button
+        preview.style.display = 'block';
+        swapBtn.disabled = false;
+        swapBtn.textContent = '🔄 Execute Swap';
+        
+        // Update price impact (0% for fixed ratios)
+        document.getElementById('price-impact-value').textContent = '0.00%';
+        
+    } catch (error) {
+        console.error('❌ Error calculating swap output:', error);
+        swapBtn.disabled = true;
+        swapBtn.textContent = '❌ Calculation Error';
+        preview.style.display = 'none';
+        showStatus('error', 'Error calculating swap: ' + error.message);
     }
-    
-    toAmountInput.value = outputAmount.toFixed(6);
-    
-            // Fixed ratio - you receive exactly the calculated amount
-    
-    // Update transaction preview
-    updateTransactionPreview(fromAmount, outputAmount);
-    
-    // Show preview and enable button
-    preview.style.display = 'block';
-    swapBtn.disabled = false;
-    swapBtn.textContent = '🔄 Execute Swap';
-    
-    // Update price impact (0% for fixed ratios)
-    document.getElementById('price-impact-value').textContent = '0.00%';
-    
-    // Fixed ratio - no warnings needed
 }
 
 /**

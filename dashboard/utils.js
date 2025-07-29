@@ -359,6 +359,188 @@ function createExchangeRateDisplay(pool) {
     return display.rateText;
 }
 
+// ========================================
+// BASIS POINTS REFACTOR: CONVERSION UTILITIES
+// ========================================
+
+/**
+ * **BASIS POINTS REFACTOR: Convert display units to basis points**
+ * 
+ * Converts user-friendly display amounts (like 1.0 SOL) to basis points
+ * (smallest token units) that the smart contract expects. This is the core
+ * conversion function that all pool creation and swap operations must use.
+ * 
+ * @param {number} displayAmount - Amount in display units (e.g., 1.5)
+ * @param {number} decimals - Token decimal places (e.g., 9 for SOL)
+ * @returns {number} Amount in basis points (e.g., 1500000000000000000 for 1.5 SOL)
+ * 
+ * @example
+ * // Converting 1.5 USDC (6 decimals) to basis points
+ * const basisPoints = displayToBasisPoints(1.5, 6); // Returns 1,500,000
+ * 
+ * // Converting 0.001 BTC (8 decimals) to basis points  
+ * const basisPoints = displayToBasisPoints(0.001, 8); // Returns 100,000
+ * 
+ * // Converting 1.0 SOL (9 decimals) to basis points
+ * const basisPoints = displayToBasisPoints(1.0, 9); // Returns 1,000,000,000
+ */
+function displayToBasisPoints(displayAmount, decimals) {
+    if (typeof displayAmount !== 'number' || isNaN(displayAmount) || displayAmount < 0) {
+        throw new Error(`Invalid display amount: ${displayAmount}. Must be a positive number.`);
+    }
+    
+    if (typeof decimals !== 'number' || !Number.isInteger(decimals) || decimals < 0 || decimals > 9) {
+        throw new Error(`Invalid decimals: ${decimals}. Must be an integer between 0 and 9.`);
+    }
+    
+    const factor = Math.pow(10, decimals);
+    const basisPoints = Math.floor(displayAmount * factor);
+    
+    console.log(`🔧 BASIS POINTS CONVERSION: ${displayAmount} (display) → ${basisPoints} (basis points) [${decimals} decimals]`);
+    
+    return basisPoints;
+}
+
+/**
+ * **BASIS POINTS REFACTOR: Convert basis points to display units**
+ * 
+ * Converts basis points (smallest token units) from the smart contract back to
+ * user-friendly display amounts. Used for showing swap results, pool liquidity,
+ * and other user-facing amounts.
+ * 
+ * @param {number} basisPoints - Amount in basis points (e.g., 1500000000000000000)
+ * @param {number} decimals - Token decimal places (e.g., 9 for SOL)
+ * @returns {number} Amount in display units (e.g., 1.5)
+ * 
+ * @example
+ * // Converting 1,500,000 basis points to USDC display units
+ * const display = basisPointsToDisplay(1500000, 6); // Returns 1.5
+ * 
+ * // Converting 100,000 basis points to BTC display units
+ * const display = basisPointsToDisplay(100000, 8); // Returns 0.001
+ * 
+ * // Converting 1,000,000,000 basis points to SOL display units
+ * const display = basisPointsToDisplay(1000000000, 9); // Returns 1.0
+ */
+function basisPointsToDisplay(basisPoints, decimals) {
+    if (typeof basisPoints !== 'number' || isNaN(basisPoints) || basisPoints < 0) {
+        throw new Error(`Invalid basis points: ${basisPoints}. Must be a positive number.`);
+    }
+    
+    if (typeof decimals !== 'number' || !Number.isInteger(decimals) || decimals < 0 || decimals > 9) {
+        throw new Error(`Invalid decimals: ${decimals}. Must be an integer between 0 and 9.`);
+    }
+    
+    const factor = Math.pow(10, decimals);
+    const displayAmount = basisPoints / factor;
+    
+    console.log(`🔧 BASIS POINTS CONVERSION: ${basisPoints} (basis points) → ${displayAmount} (display) [${decimals} decimals]`);
+    
+    return displayAmount;
+}
+
+/**
+ * **BASIS POINTS REFACTOR: Validate one-to-many ratio pattern**
+ * 
+ * Validates whether a ratio qualifies for the one-to-many flag by checking if:
+ * 1. Both ratios represent whole numbers in display units
+ * 2. One side equals exactly 1.0 in display units  
+ * 3. Both sides are positive
+ * 
+ * This mirrors the smart contract's validation logic and should be used in the
+ * dashboard to provide user feedback about flag setting.
+ * 
+ * @param {number} ratioADisplay - Token A amount in display units
+ * @param {number} ratioBDisplay - Token B amount in display units  
+ * @param {number} decimalsA - Token A decimal places
+ * @param {number} decimalsB - Token B decimal places
+ * @returns {boolean} True if the ratio qualifies for one-to-many flag
+ * 
+ * @example
+ * // Valid one-to-many: 1 SOL = 160 USDT
+ * const isOneToMany = validateOneToManyRatio(1.0, 160.0, 9, 6); // Returns true
+ * 
+ * // Invalid: 1.5 SOL = 240 USDT (first side not 1.0)
+ * const isOneToMany = validateOneToManyRatio(1.5, 240.0, 9, 6); // Returns false
+ * 
+ * // Invalid: 1 SOL = 160.5 USDT (not whole number)  
+ * const isOneToMany = validateOneToManyRatio(1.0, 160.5, 9, 6); // Returns false
+ */
+function validateOneToManyRatio(ratioADisplay, ratioBDisplay, decimalsA, decimalsB) {
+    try {
+        // Convert to basis points for validation
+        const basisPointsA = displayToBasisPoints(ratioADisplay, decimalsA);
+        const basisPointsB = displayToBasisPoints(ratioBDisplay, decimalsB);
+        
+        const factorA = Math.pow(10, decimalsA);
+        const factorB = Math.pow(10, decimalsB);
+        
+        // Check if both ratios represent whole numbers in display units
+        const aIsWhole = (basisPointsA % factorA) === 0;
+        const bIsWhole = (basisPointsB % factorB) === 0;
+        
+        // Check if both are positive and one equals exactly 1.0
+        const bothPositive = ratioADisplay > 0 && ratioBDisplay > 0;
+        const oneEqualsOne = ratioADisplay === 1.0 || ratioBDisplay === 1.0;
+        
+        const result = aIsWhole && bIsWhole && bothPositive && oneEqualsOne;
+        
+        console.log(`🔍 ONE-TO-MANY VALIDATION:`, {
+            ratioADisplay, ratioBDisplay, decimalsA, decimalsB,
+            aIsWhole, bIsWhole, bothPositive, oneEqualsOne, result
+        });
+        
+        return result;
+        
+    } catch (error) {
+        console.error('❌ Error validating one-to-many ratio:', error);
+        return false;
+    }
+}
+
+/**
+ * **BASIS POINTS REFACTOR: Calculate swap output in basis points**
+ * 
+ * Performs the core swap calculation using basis points arithmetic, exactly
+ * matching the smart contract's logic. This ensures precision and accuracy.
+ * 
+ * @param {number} inputDisplay - Input amount in display units
+ * @param {number} inputDecimals - Input token decimals
+ * @param {number} outputDecimals - Output token decimals  
+ * @param {number} numeratorBasisPoints - Pool ratio numerator (in basis points)
+ * @param {number} denominatorBasisPoints - Pool ratio denominator (in basis points)
+ * @returns {number} Output amount in display units
+ * 
+ * @example
+ * // Pool: 1 SOL = 160 USDT (1×10^9 : 160×10^6 basis points)
+ * // Swap: 0.5 SOL → ? USDT
+ * const output = calculateSwapOutput(0.5, 9, 6, 160000000, 1000000000); // Returns 80.0
+ */
+function calculateSwapOutput(inputDisplay, inputDecimals, outputDecimals, numeratorBasisPoints, denominatorBasisPoints) {
+    try {
+        // Convert input to basis points
+        const inputBasisPoints = displayToBasisPoints(inputDisplay, inputDecimals);
+        
+        // Perform calculation in basis points (matches smart contract)
+        const outputBasisPoints = Math.floor((inputBasisPoints * numeratorBasisPoints) / denominatorBasisPoints);
+        
+        // Convert result back to display units
+        const outputDisplay = basisPointsToDisplay(outputBasisPoints, outputDecimals);
+        
+        console.log(`🔄 SWAP CALCULATION:`, {
+            input: `${inputDisplay} (${inputBasisPoints} basis points)`,
+            output: `${outputDisplay} (${outputBasisPoints} basis points)`,
+            ratio: `${numeratorBasisPoints} : ${denominatorBasisPoints}`
+        });
+        
+        return outputDisplay;
+        
+    } catch (error) {
+        console.error('❌ Error calculating swap output:', error);
+        throw error;
+    }
+}
+
 // Make functions available globally for use in other dashboard files
 if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
@@ -376,7 +558,12 @@ if (typeof window !== 'undefined') {
         createExchangeRateDisplay,
         // Phase 1.3: New flag interpretation functions
         checkOneToManyRatioFlag,
-        interpretPoolFlags
+        interpretPoolFlags,
+        // BASIS POINTS REFACTOR: New conversion functions
+        displayToBasisPoints,
+        basisPointsToDisplay,
+        validateOneToManyRatio,
+        calculateSwapOutput
     };
 }
 
@@ -397,6 +584,11 @@ if (typeof module !== 'undefined' && module.exports) {
         createExchangeRateDisplay,
         // Phase 1.3: New flag interpretation functions
         checkOneToManyRatioFlag,
-        interpretPoolFlags
+        interpretPoolFlags,
+        // BASIS POINTS REFACTOR: New conversion functions
+        displayToBasisPoints,
+        basisPointsToDisplay,
+        validateOneToManyRatio,
+        calculateSwapOutput
     };
 } 

@@ -544,7 +544,7 @@ function swapTokens() {
 }
 
 /**
- * Update ratio display
+ * ✅ BASIS POINTS REFACTOR: Update ratio display with real-time validation
  */
 function updateRatioDisplay() {
     if (!selectedTokenA || !selectedTokenB) return;
@@ -559,8 +559,127 @@ function updateRatioDisplay() {
     document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(currentRatio);
     document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
     
+    // ✅ BASIS POINTS REFACTOR: Add real-time one-to-many validation feedback
+    updateOneToManyValidationFeedback();
+    
     // Update pool summary
     updatePoolSummary();
+}
+
+/**
+ * ✅ BASIS POINTS REFACTOR: Show real-time one-to-many ratio validation feedback
+ */
+async function updateOneToManyValidationFeedback() {
+    // Remove existing feedback
+    let feedbackDiv = document.getElementById('one-to-many-feedback');
+    if (feedbackDiv) {
+        feedbackDiv.remove();
+    }
+    
+    if (!selectedTokenA || !selectedTokenB || !currentRatio) return;
+    
+    try {
+        // Fetch token decimals (needed for validation)
+        const tokenADecimals = await getTokenDecimals(selectedTokenA.mint, connection);
+        const tokenBDecimals = await getTokenDecimals(selectedTokenB.mint, connection);
+        
+        // Check if this ratio qualifies for one-to-many flag
+        const ratioADisplay = 1.0;           // Always 1 for the first token
+        const ratioBDisplay = currentRatio;  // User input for the second token
+        
+        const isOneToMany = validateOneToManyRatio(
+            ratioADisplay, 
+            ratioBDisplay, 
+            tokenADecimals, 
+            tokenBDecimals
+        );
+        
+        // Create feedback element
+        feedbackDiv = document.createElement('div');
+        feedbackDiv.id = 'one-to-many-feedback';
+        feedbackDiv.style.cssText = `
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            font-weight: 500;
+        `;
+        
+        if (isOneToMany) {
+            feedbackDiv.style.cssText += `
+                background-color: #dbeafe;
+                border: 2px solid #3b82f6;
+                color: #1e40af;
+            `;
+            feedbackDiv.innerHTML = `
+                🎯 <strong>One-to-Many Ratio Pool</strong><br>
+                This pool will have the ONE_TO_MANY_RATIO flag set.<br>
+                <span style="font-size: 12px; color: #4b5563;">
+                    This enforces that ratios maintain whole number relationships.
+                </span>
+            `;
+        } else {
+            feedbackDiv.style.cssText += `
+                background-color: #f3f4f6;
+                border: 2px solid #d1d5db;
+                color: #4b5563;
+            `;
+            
+            // Provide specific feedback about why it's not one-to-many
+            let reason = '';
+            if (ratioADisplay !== 1.0 && ratioBDisplay !== 1.0) {
+                reason = 'Neither side equals 1.0';
+            } else if (!Number.isInteger(ratioBDisplay)) {
+                reason = 'Ratio contains decimals';
+            } else {
+                reason = 'Standard pool configuration';
+            }
+            
+            feedbackDiv.innerHTML = `
+                ℹ️ <strong>Standard Pool</strong><br>
+                No special flags will be set. (${reason})<br>
+                <span style="font-size: 12px;">
+                    For one-to-many pools, one side must equal 1.0 and use whole numbers.
+                </span>
+            `;
+        }
+        
+        // Insert after the ratio input section
+        const ratioSection = document.querySelector('.ratio-input-section');
+        if (ratioSection) {
+            ratioSection.parentNode.insertBefore(feedbackDiv, ratioSection.nextSibling);
+        }
+        
+        console.log(`🔍 ONE-TO-MANY VALIDATION: ${ratioADisplay} ${selectedTokenA.symbol} = ${ratioBDisplay} ${selectedTokenB.symbol} → ${isOneToMany ? 'FLAG SET' : 'NO FLAG'}`);
+        
+    } catch (error) {
+        console.warn('⚠️ Could not validate one-to-many ratio:', error);
+        
+        // Show warning for validation failure
+        feedbackDiv = document.createElement('div');
+        feedbackDiv.id = 'one-to-many-feedback';
+        feedbackDiv.style.cssText = `
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+            background-color: #fef3cd;
+            border: 2px solid #f59e0b;
+            color: #92400e;
+        `;
+        feedbackDiv.innerHTML = `
+            ⚠️ <strong>Validation Unavailable</strong><br>
+            Could not fetch token information for validation.<br>
+            <span style="font-size: 12px;">Pool creation will still work normally.</span>
+        `;
+        
+        const ratioSection = document.querySelector('.ratio-input-section');
+        if (ratioSection) {
+            ratioSection.parentNode.insertBefore(feedbackDiv, ratioSection.nextSibling);
+        }
+    }
 }
 
 /**
@@ -819,48 +938,89 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         // 🔧 FIX: Adjust ratio to preserve user intent when tokens are swapped
         const tokensWereSwapped = tokenAMint.toString() !== primaryTokenMint.toString();
         
-        let finalRatioANumerator, finalRatioBDenominator;
+        // ✅ BASIS POINTS REFACTOR: Fetch token decimals and convert to basis points
+        console.log('🔧 BASIS POINTS REFACTOR: Fetching token decimals...');
+        
+        // Fetch decimals for both tokens
+        const tokenADecimals = await getTokenDecimals(tokenAMint.toString(), connection);
+        const tokenBDecimals = await getTokenDecimals(tokenBMint.toString(), connection);
+        
+        console.log(`📊 Token decimals: ${tokenA.symbol}=${tokenADecimals}, ${tokenB.symbol}=${tokenBDecimals}`);
+        
+        // 🔧 BASIS POINTS CONVERSION: Convert user ratio to basis points
+        // User specified: "1 primary = X base" 
+        // We need to convert this to basis points for both sides
+        
+        let finalRatioABasisPoints, finalRatioBBasisPoints;
         
         if (tokensWereSwapped) {
             // Tokens were swapped: user wanted "1 primary = X base" but now primary is TokenB
             // So we need: "1 TokenB = X TokenA" which means "X TokenA = 1 TokenB"
-            // Therefore: ratio_a_numerator = X, ratio_b_denominator = 1
-            finalRatioANumerator = ratioPrimaryPerBase;
-            finalRatioBDenominator = 1;
-            console.log('🔄 Tokens were swapped during normalization - adjusting ratio to preserve intent');
+            // Convert: X TokenA (display) = 1 TokenB (display) → basis points
+            const tokenADisplay = ratioPrimaryPerBase;  // X units of tokenA (now normalized as A)
+            const tokenBDisplay = 1.0;                  // 1 unit of tokenB (now normalized as B)
+            
+            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, tokenADecimals);
+            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, tokenBDecimals);
+            
+            console.log('🔄 Tokens were swapped during normalization - converting to basis points');
             console.log(`   User intent: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
-            console.log(`   After swap: ${ratioPrimaryPerBase} ${tokenA.symbol} = 1 ${tokenB.symbol}`);
+            console.log(`   After swap: ${tokenADisplay} ${tokenA.symbol} = ${tokenBDisplay} ${tokenB.symbol}`);
+            console.log(`   Basis points: ${finalRatioABasisPoints} : ${finalRatioBBasisPoints}`);
         } else {
             // Tokens kept original order: user wanted "1 primary = X base"
             // primary is TokenA, base is TokenB: "1 TokenA = X TokenB"
-            // Therefore: ratio_a_numerator = 1, ratio_b_denominator = X  
-            finalRatioANumerator = 1;
-            finalRatioBDenominator = ratioPrimaryPerBase;
-            console.log('✅ Tokens kept original order - using direct ratio');
-            console.log(`   Final: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
+            // Convert: 1 TokenA (display) = X TokenB (display) → basis points
+            const tokenADisplay = 1.0;                  // 1 unit of tokenA (primary)
+            const tokenBDisplay = ratioPrimaryPerBase;   // X units of tokenB (base)
+            
+            finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, tokenADecimals);
+            finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, tokenBDecimals);
+            
+            console.log('✅ Tokens kept original order - converting to basis points');
+            console.log(`   Final: ${tokenADisplay} ${tokenA.symbol} = ${tokenBDisplay} ${tokenB.symbol}`);
+            console.log(`   Basis points: ${finalRatioABasisPoints} : ${finalRatioBBasisPoints}`);
+        }
+        
+        // 🎯 ONE-TO-MANY VALIDATION: Check if this ratio qualifies for the flag
+        const originalRatioA = tokensWereSwapped ? ratioPrimaryPerBase : 1.0;
+        const originalRatioB = tokensWereSwapped ? 1.0 : ratioPrimaryPerBase;
+        const originalDecimalsA = tokensWereSwapped ? tokenBDecimals : tokenADecimals;  
+        const originalDecimalsB = tokensWereSwapped ? tokenADecimals : tokenBDecimals;
+        
+        const willSetOneToManyFlag = validateOneToManyRatio(
+            originalRatioA, originalRatioB, 
+            originalDecimalsA, originalDecimalsB
+        );
+        
+        if (willSetOneToManyFlag) {
+            console.log('🎯 ONE-TO-MANY FLAG: This pool will have the ONE_TO_MANY_RATIO flag set');
+            showStatus('info', '🎯 This pool will have the ONE-TO-MANY ratio flag set (enforces 1:many patterns)');
+        } else {
+            console.log('ℹ️ Standard pool: No special flags will be set');
         }
         
         console.log('Normalized token order (for PDA derivation):', {
             tokenA: tokenAMint.toString(),
             tokenB: tokenBMint.toString(),
             tokensWereSwapped,
-            finalRatioANumerator,
-            finalRatioBDenominator
+            ratioABasisPoints: finalRatioABasisPoints,
+            ratioBBasisPoints: finalRatioBBasisPoints
         });
         
-        console.log('🔍 FINAL RATIO VERIFICATION:');
-        console.log(`   ratio_a_numerator: ${finalRatioANumerator} (for ${tokensWereSwapped ? tokenB.symbol : tokenA.symbol})`);
-        console.log(`   ratio_b_denominator: ${finalRatioBDenominator} (for ${tokensWereSwapped ? tokenA.symbol : tokenB.symbol})`);
+        console.log('🔍 FINAL RATIO VERIFICATION (BASIS POINTS):');
+        console.log(`   ratio_a_numerator: ${finalRatioABasisPoints} basis points (for ${tokensWereSwapped ? tokenB.symbol : tokenA.symbol})`);
+        console.log(`   ratio_b_denominator: ${finalRatioBBasisPoints} basis points (for ${tokensWereSwapped ? tokenA.symbol : tokenB.symbol})`);
         console.log(`   Expected result: 1 ${tokenA.symbol} = ${ratioPrimaryPerBase} ${tokenB.symbol}`);
         
-        // Create pool state PDA - same derivation logic as smart contract
+        // ✅ BASIS POINTS REFACTOR: Create pool state PDA using basis points ratios
         const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
                 new TextEncoder().encode('pool_state'),
                 tokenAMint.toBuffer(),
                 tokenBMint.toBuffer(),
-                new Uint8Array(new BigUint64Array([BigInt(finalRatioANumerator)]).buffer),
-                new Uint8Array(new BigUint64Array([BigInt(finalRatioBDenominator)]).buffer)
+                new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer),
+                new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer)
             ],
             programId
         );
@@ -920,18 +1080,18 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         console.log('Main treasury PDA:', mainTreasuryPDA[0].toString());
         
-        // Create instruction data for InitializePool using Borsh serialization
+        // ✅ BASIS POINTS REFACTOR: Create instruction data using basis points ratios
         // Borsh enum discriminator: InitializeProgram=0, InitializePool=1 (single byte)
         const instructionData = concatUint8Arrays([
             new Uint8Array([1]), // InitializePool discriminator (single byte)
-            new Uint8Array(new BigUint64Array([BigInt(finalRatioANumerator)]).buffer), // ratio_a_numerator  
-            new Uint8Array(new BigUint64Array([BigInt(finalRatioBDenominator)]).buffer) // ratio_b_denominator
+            new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer), // ratio_a_numerator (basis points)
+            new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer) // ratio_b_denominator (basis points)
         ]);
         
-        console.log('🔍 Instruction data for InitializePool:');
+        console.log('🔍 BASIS POINTS INSTRUCTION DATA for InitializePool:');
         console.log('  Discriminator: [1, 0, 0, 0] (Borsh enum little-endian u32)');
-        console.log('  ratio_a_numerator:', finalRatioANumerator);
-        console.log('  ratio_b_denominator:', finalRatioBDenominator);
+        console.log('  ratio_a_numerator:', finalRatioABasisPoints, 'basis points');
+        console.log('  ratio_b_denominator:', finalRatioBBasisPoints, 'basis points');
         console.log('  Total data length:', instructionData.length, 'bytes');
         console.log('  Data:', Array.from(instructionData));
         
