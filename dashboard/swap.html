@@ -464,6 +464,12 @@
             .pool-state-section {
                 margin-bottom: 15px;
             }
+            
+            /* Stack From and To tokens vertically on mobile */
+            .swap-form [style*="grid-template-columns: 1fr 1fr"] {
+                grid-template-columns: 1fr !important;
+                gap: 15px !important;
+            }
         }
     </style>
 </head>
@@ -502,86 +508,66 @@
             </div>
             
             <div id="swap-form" class="swap-form" style="display: none;">
-                <!-- Phase 4.1: Enhanced From Token -->
-                <div class="token-input-section">
-                    <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">From</label>
-                    <div class="token-selector-enhanced" id="from-token-selector" onclick="selectFromToken()">
-                        <div class="token-display">
-                            <div class="token-icon" id="from-token-icon">A</div>
-                            <div class="token-details">
-                                <div class="token-name" id="from-token-symbol">TOKEN A</div>
-                                <div class="token-balance-enhanced">Balance: <span id="from-token-balance">0.000000</span></div>
+                <!-- Side by side From and To tokens -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                    <!-- From Token -->
+                    <div class="token-input-section">
+                        <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">From</label>
+                        <div class="token-selector-enhanced" id="from-token-selector" onclick="toggleSwapDirection()">
+                            <div class="token-display">
+                                <div class="token-icon" id="from-token-icon">A</div>
+                                <div class="token-details">
+                                    <div class="token-name" id="from-token-symbol">TOKEN A</div>
+                                    <div class="token-balance-enhanced">Balance: <span id="from-token-balance">0.000000</span></div>
+                                </div>
+                                <div class="token-dropdown-arrow">▼</div>
                             </div>
-                            <div class="token-dropdown-arrow">▼</div>
+                        </div>
+                        <input type="number" 
+                               class="amount-input" 
+                               id="from-amount" 
+                               placeholder="0.000000" 
+                               min="0" 
+                               step="0.000001"
+                               oninput="calculateSwapOutputEnhanced()"
+                               style="margin-top: 10px;">
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
+                            <span onclick="setMaxAmount()" style="color: #3b82f6; cursor: pointer; text-decoration: underline;">MAX</span>
                         </div>
                     </div>
-                    <input type="number" 
-                           class="amount-input" 
-                           id="from-amount" 
-                           placeholder="0.000000" 
-                           min="0" 
-                           step="0.000001"
-                           oninput="calculateSwapOutputEnhanced()"
-                           style="margin-top: 10px;">
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
-                        <span onclick="setMaxAmount()" style="color: #3b82f6; cursor: pointer; text-decoration: underline;">MAX</span>
-                    </div>
-                </div>
-                
-                <!-- Swap Direction Button -->
-                <div class="swap-direction-btn">
-                    <button class="direction-btn" onclick="toggleSwapDirection()">
-                        ⇅
-                    </button>
-                </div>
-                
-                <!-- Phase 4.1: Enhanced To Token -->
-                <div class="token-input-section">
-                    <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">To</label>
-                    <div class="token-selector-enhanced" id="to-token-selector" onclick="selectToToken()">
-                        <div class="token-display">
-                            <div class="token-icon" id="to-token-icon">B</div>
-                            <div class="token-details">
-                                <div class="token-name" id="to-token-symbol">TOKEN B</div>
-                                <div class="token-balance-enhanced">Balance: <span id="to-token-balance">0.000000</span></div>
+                    
+                    <!-- To Token -->
+                    <div class="token-input-section">
+                        <label style="font-size: 14px; color: #374151; font-weight: 600; margin-bottom: 8px; display: block;">To</label>
+                        <div class="token-selector-enhanced" id="to-token-selector">
+                            <div class="token-display">
+                                <div class="token-icon" id="to-token-icon">B</div>
+                                <div class="token-details">
+                                    <div class="token-name" id="to-token-symbol">TOKEN B</div>
+                                    <div class="token-balance-enhanced">Balance: <span id="to-token-balance">0.000000</span></div>
+                                </div>
                             </div>
-                            <div class="token-dropdown-arrow">▼</div>
                         </div>
-                    </div>
-                    <input type="number" 
-                           class="amount-input" 
-                           id="to-amount" 
-                           placeholder="0.000000" 
-                           readonly
-                           style="background: #f3f4f6; margin-top: 10px;">
-                    <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
-                        Expected output
-                    </div>
-                </div>
-                
-                <!-- Phase 4.1: Enhanced Exchange Rate Display -->
-                <div class="exchange-rate-display">
-                    <div style="font-size: 14px; color: #374151; margin-bottom: 8px; font-weight: 600;">📊 Exchange Rate Information</div>
-                    <div id="exchange-rate-text" style="font-size: 16px; font-weight: 600; color: #1f2937; margin-bottom: 5px;">
-                        Loading...
-                    </div>
-                    <div id="price-impact" style="font-size: 12px; color: #6b7280;">
-                        Price impact: <span id="price-impact-value">0.00%</span>
-                    </div>
-                </div>
-                
-                <!-- Fixed Ratio Information -->
-                <div class="fixed-ratio-info">
-                    <div class="fixed-ratio-icon">🎯</div>
-                    <div class="fixed-ratio-content">
-                        <div class="fixed-ratio-title">Fixed Ratio Trading - No Slippage</div>
-                        <div class="fixed-ratio-text">
-                            This pool uses a fixed exchange rate. You receive exactly the calculated amount - no slippage tolerance needed!
+                        <input type="number" 
+                               class="amount-input" 
+                               id="to-amount" 
+                               placeholder="0.000000" 
+                               min="0" 
+                               step="0.000001"
+                               oninput="calculateSwapInputFromOutput()"
+                               style="margin-top: 10px;">
+                        <div style="font-size: 12px; color: #6b7280; margin-top: 5px; text-align: right;">
+                            Output amount
                         </div>
                     </div>
                 </div>
                 
-                <!-- Phase 4.1: Transaction Preview -->
+                <!-- Execute Swap Button -->
+                <button class="swap-btn" id="swap-btn" onclick="executeSwap()" disabled>
+                    🔄 Execute Swap
+                </button>
+                
+                <!-- Transaction Preview -->
                 <div class="transaction-preview" id="transaction-preview">
                     <div class="preview-header">
                         📋 Transaction Preview
@@ -598,7 +584,6 @@
                         <span class="preview-label">Exchange Rate:</span>
                         <span class="preview-value" id="preview-rate">-</span>
                     </div>
-
                     <div class="preview-item">
                         <span class="preview-label">Network Fee:</span>
                         <span class="preview-value" id="preview-fee">~0.000005 SOL</span>
@@ -607,10 +592,6 @@
                         🎯 Fixed ratio - you receive exactly the calculated amount
                     </div>
                 </div>
-                
-                <button class="swap-btn" id="swap-btn" onclick="executeSwap()" disabled>
-                    🔄 Review Swap
-                </button>
             </div>
         </div>
     </div>

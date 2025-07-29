@@ -616,21 +616,22 @@ function toggleSwapDirection() {
 }
 
 /**
- * Update exchange rate display
+ * Update exchange rate display (removed from UI)
  */
 function updateExchangeRate() {
+    // Exchange rate display removed from UI - function kept for compatibility
     if (!poolData) return;
     
-    const exchangeRateText = document.getElementById('exchange-rate-text');
+    // Log exchange rate for debugging purposes only
     const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
     const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
     
     if (swapDirection === 'AtoB') {
         const rate = ratioB / ratioA;
-        exchangeRateText.textContent = `1 ${poolData.tokenASymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenBSymbol}`;
+        console.log(`Exchange rate: 1 ${poolData.tokenASymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenBSymbol}`);
     } else {
         const rate = ratioA / ratioB;
-        exchangeRateText.textContent = `1 ${poolData.tokenBSymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenASymbol}`;
+        console.log(`Exchange rate: 1 ${poolData.tokenBSymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenASymbol}`);
     }
 }
 
@@ -772,9 +773,6 @@ function calculateSwapOutputEnhanced() {
         preview.style.display = 'block';
         swapBtn.disabled = false;
         swapBtn.textContent = '🔄 Execute Swap';
-        
-        // Update price impact (0% for fixed ratios)
-        document.getElementById('price-impact-value').textContent = '0.00%';
         
     } catch (error) {
         console.error('❌ Error calculating swap output:', error);
@@ -966,10 +964,6 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     console.log('  Total data length:', instructionData.length, 'bytes');
     
     // Build account keys array (11 accounts for decimal-aware swap)
-    const inputTokenMint = swapDirection === 'AtoB' 
-        ? new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint)
-        : new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint);
-    
     const outputTokenMint = swapDirection === 'AtoB'
         ? new solanaWeb3.PublicKey(poolData.tokenBMint || poolData.token_b_mint)
         : new solanaWeb3.PublicKey(poolData.tokenAMint || poolData.token_a_mint);
@@ -1058,6 +1052,154 @@ function selectFromToken() {
  */
 function selectToToken() {
     toggleSwapDirection();
+}
+
+/**
+ * Calculate required input amount when user edits output amount
+ */
+function calculateSwapInputFromOutput() {
+    if (!poolData || !isConnected) return;
+    
+    const toAmountInput = document.getElementById('to-amount');
+    const fromAmountInput = document.getElementById('from-amount');
+    const preview = document.getElementById('transaction-preview');
+    const swapBtn = document.getElementById('swap-btn');
+    
+    const toAmount = parseFloat(toAmountInput.value) || 0;
+    
+    if (toAmount <= 0) {
+        fromAmountInput.value = '';
+        preview.style.display = 'none';
+        swapBtn.disabled = true;
+        swapBtn.textContent = '🔄 Enter Amount to Swap';
+        return;
+    }
+    
+    try {
+        // Get pool ratios in basis points
+        const ratioABasisPoints = poolData.ratioANumerator || poolData.ratio_a_numerator;
+        const ratioBBasisPoints = poolData.ratioBDenominator || poolData.ratio_b_denominator;
+        
+        // Get token decimals
+        let inputDecimals, outputDecimals, numerator, denominator;
+        let tokenADecimals, tokenBDecimals;
+        
+        if (poolData.ratioADecimal !== undefined && poolData.ratioBDecimal !== undefined) {
+            tokenADecimals = poolData.ratioADecimal;
+            tokenBDecimals = poolData.ratioBDecimal;
+        } else if (poolData.tokenDecimals && 
+                   poolData.tokenDecimals.tokenADecimals !== undefined && 
+                   poolData.tokenDecimals.tokenBDecimals !== undefined) {
+            tokenADecimals = poolData.tokenDecimals.tokenADecimals;
+            tokenBDecimals = poolData.tokenDecimals.tokenBDecimals;
+        } else {
+            throw new Error('Token decimal information missing');
+        }
+        
+        if (swapDirection === 'AtoB') {
+            // Reverse calculation: given output B, calculate required input A
+            inputDecimals = tokenADecimals;
+            outputDecimals = tokenBDecimals;
+            // For reverse: input = (output * denominator) / numerator
+            numerator = ratioBBasisPoints;
+            denominator = ratioABasisPoints;
+        } else {
+            // Reverse calculation: given output A, calculate required input B
+            inputDecimals = tokenBDecimals;
+            outputDecimals = tokenADecimals;
+            // For reverse: input = (output * denominator) / numerator
+            numerator = ratioABasisPoints;
+            denominator = ratioBBasisPoints;
+        }
+        
+        // Calculate required input amount (reverse calculation)
+        const requiredInput = calculateSwapInputReverse(
+            toAmount,           // Desired output in display units
+            inputDecimals,      // Input token decimals
+            outputDecimals,     // Output token decimals
+            numerator,          // Ratio numerator (basis points)
+            denominator         // Ratio denominator (basis points)
+        );
+        
+        fromAmountInput.value = requiredInput.toFixed(6);
+        
+        // Update transaction preview
+        updateTransactionPreview(requiredInput, toAmount);
+        
+        // Check if user has sufficient balance
+        const fromToken = swapDirection === 'AtoB' 
+            ? userTokens.find(t => t.isTokenA)
+            : userTokens.find(t => !t.isTokenA);
+        
+        if (fromToken) {
+            const fromAmountBasisPoints = window.TokenDisplayUtils.displayToBasisPoints(requiredInput, fromToken.decimals);
+            
+            if (fromAmountBasisPoints > fromToken.balance) {
+                swapBtn.disabled = true;
+                swapBtn.textContent = '❌ Insufficient Balance';
+                preview.style.display = 'none';
+                return;
+            }
+        }
+        
+        // Enable swap button
+        preview.style.display = 'block';
+        swapBtn.disabled = false;
+        swapBtn.textContent = '🔄 Execute Swap';
+        
+    } catch (error) {
+        console.error('❌ Error calculating required input:', error);
+        swapBtn.disabled = true;
+        swapBtn.textContent = '❌ Calculation Error';
+        preview.style.display = 'none';
+        showStatus('error', 'Error calculating required input: ' + error.message);
+    }
+}
+
+/**
+ * Calculate required input amount for a desired output (reverse calculation)
+ */
+function calculateSwapInputReverse(outputDisplay, inputDecimals, outputDecimals, numeratorBasisPoints, denominatorBasisPoints) {
+    try {
+        // Validation
+        if (typeof outputDisplay !== 'number' || outputDisplay < 0) {
+            throw new Error(`Invalid output amount: ${outputDisplay}. Must be a positive number.`);
+        }
+        if (typeof inputDecimals !== 'number' || inputDecimals < 0 || inputDecimals > 9) {
+            throw new Error(`Invalid input decimals: ${inputDecimals}. Must be between 0 and 9.`);
+        }
+        if (typeof outputDecimals !== 'number' || outputDecimals < 0 || outputDecimals > 9) {
+            throw new Error(`Invalid output decimals: ${outputDecimals}. Must be between 0 and 9.`);
+        }
+        if (typeof numeratorBasisPoints !== 'number' || numeratorBasisPoints <= 0) {
+            throw new Error(`Invalid numerator: ${numeratorBasisPoints}. Must be a positive number.`);
+        }
+        if (typeof denominatorBasisPoints !== 'number' || denominatorBasisPoints <= 0) {
+            throw new Error(`Invalid denominator: ${denominatorBasisPoints}. Must be a positive number.`);
+        }
+        
+        // Convert desired output to basis points
+        const outputBasisPoints = window.TokenDisplayUtils.displayToBasisPoints(outputDisplay, outputDecimals);
+        
+        // Reverse calculation: input = (output * denominator) / numerator
+        // Use ceiling to ensure we always have enough input
+        const inputBasisPoints = Math.ceil((outputBasisPoints * denominatorBasisPoints) / numeratorBasisPoints);
+        
+        // Convert result back to display units
+        const inputDisplay = window.TokenDisplayUtils.basisPointsToDisplay(inputBasisPoints, inputDecimals);
+        
+        console.log(`🔄 REVERSE SWAP CALCULATION:`, {
+            desiredOutput: `${outputDisplay} (${outputBasisPoints} basis points)`,
+            requiredInput: `${inputDisplay} (${inputBasisPoints} basis points)`,
+            ratio: `${numeratorBasisPoints} : ${denominatorBasisPoints}`
+        });
+        
+        return inputDisplay;
+        
+    } catch (error) {
+        console.error('❌ Error calculating required input:', error);
+        throw error;
+    }
 }
 
 /**
