@@ -163,6 +163,29 @@ async function loadPoolInformation() {
         // Get pool data using centralized service (tries state.json first, then RPC)
         poolData = await window.TradingDataService.getPool(poolAddress, 'auto');
         
+        // 🔧 MERGE: Add decimal information from state.json if missing
+        if (poolData && (!poolData.ratioADecimal || !poolData.ratioBDecimal)) {
+            try {
+                const stateData = await window.TradingDataService.loadFromStateFile();
+                const statePool = stateData.pools.find(p => p.address === poolAddress);
+                
+                if (statePool) {
+                    // Merge decimal information from state.json
+                    poolData = {
+                        ...poolData,
+                        ratioADecimal: statePool.ratioADecimal,
+                        ratioAActual: statePool.ratioAActual,
+                        ratioBDecimal: statePool.ratioBDecimal,
+                        ratioBActual: statePool.ratioBActual,
+                        dataSource: poolData.dataSource + '+state'
+                    };
+                    console.log('✅ Merged decimal information from state.json');
+                }
+            } catch (error) {
+                console.warn('⚠️ Could not merge decimal information from state.json:', error);
+            }
+        }
+        
         if (poolData) {
             console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);
             
@@ -187,7 +210,9 @@ async function loadPoolInformation() {
             poolData.tokenBSymbol = tokenSymbols.tokenB;
             
             // Update UI with pool information
+            console.log('🔄 About to update pool display...');
             await updatePoolDisplay();
+            console.log('✅ Pool display updated successfully');
             
             console.log('✅ Pool information loaded successfully');
         } else {
@@ -201,6 +226,10 @@ async function loadPoolInformation() {
         ratio_a_numerator: poolData.ratio_a_numerator, 
         ratioBDenominator: poolData.ratioBDenominator,
         ratio_b_denominator: poolData.ratio_b_denominator,
+        ratioADecimal: poolData.ratioADecimal,
+        ratioBDecimal: poolData.ratioBDecimal,
+        ratioAActual: poolData.ratioAActual,
+        ratioBActual: poolData.ratioBActual,
         tokenASymbol: poolData.tokenASymbol,
         tokenBSymbol: poolData.tokenBSymbol,
         flags: poolData.flags
@@ -282,6 +311,7 @@ async function getTokenSymbol(tokenMint, tokenLabel) {
  * Phase 2.1: Update pool display in UI with Phase 1.3 enhancements
  */
 async function updatePoolDisplay() {
+    console.log('🔄 updatePoolDisplay() called with poolData:', poolData ? 'exists' : 'null');
     if (!poolData) return;
     
     const poolLoading = document.getElementById('pool-loading');
@@ -291,18 +321,22 @@ async function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // 🔧 CENTRALIZED: Use centralized pool enrichment function
-    console.log('🔧 LIQUIDITY: Using centralized pool display enrichment...');
-    poolData = await window.TokenDisplayUtils.enrichPoolWithCorrectDisplay(poolData, connection);
+    // ✅ CENTRALIZED: Use centralized display functions for consistency
+    console.log('🔧 LIQUIDITY: Using centralized display functions...');
     
-    if (!poolData || !poolData.correctedDisplay) {
-        console.error('❌ Failed to enrich pool data for display');
+    const displayInfo = window.TokenDisplayUtils?.getCentralizedDisplayInfo(poolData);
+    
+    if (!displayInfo) {
+        console.error('❌ Failed to get centralized display info');
         showStatus('error', 'Failed to load pool information. Please refresh the page.');
         return;
     }
     
-    const correctedDisplay = poolData.correctedDisplay;
-    const tokenDecimals = poolData.tokenDecimals;
+    // Get token decimals for liquidity formatting
+    const tokenDecimals = {
+        tokenADecimals: displayInfo.tokenADecimals,
+        tokenBDecimals: displayInfo.tokenBDecimals
+    };
     
     // Build the full display object with proper liquidity formatting
     const getFormattedLiquidity = (rawAmount, isTokenA) => {
@@ -316,14 +350,14 @@ async function updatePoolDisplay() {
     const flags = window.TokenDisplayUtils.interpretPoolFlags(poolData);
     
     const display = {
-        baseToken: correctedDisplay.baseToken,
-        quoteToken: correctedDisplay.quoteToken,
-        displayPair: correctedDisplay.displayPair,
-        rateText: correctedDisplay.rateText,
-        exchangeRate: correctedDisplay.exchangeRate,
+        baseToken: displayInfo.tokenASymbol,
+        quoteToken: displayInfo.tokenBSymbol,
+        displayPair: displayInfo.pairName,
+        rateText: displayInfo.ratioText,
+        exchangeRate: displayInfo.exchangeRate,
         baseLiquidity: getFormattedLiquidity(poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0, true),
         quoteLiquidity: getFormattedLiquidity(poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0, false),
-        isReversed: correctedDisplay.isReversed,
+        isReversed: false, // Always show TokenA/TokenB order
         isOneToManyRatio: flags.oneToManyRatio
     };
     

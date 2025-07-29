@@ -168,6 +168,29 @@ async function loadPoolData() {
         // Get pool data using centralized service (tries state.json first, then RPC)
         poolData = await window.TradingDataService.getPool(poolAddress, 'auto');
         
+        // 🔧 MERGE: Add decimal information from state.json if missing
+        if (poolData && (!poolData.ratioADecimal || !poolData.ratioBDecimal)) {
+            try {
+                const stateData = await window.TradingDataService.loadFromStateFile();
+                const statePool = stateData.pools.find(p => p.address === poolAddress);
+                
+                if (statePool) {
+                    // Merge decimal information from state.json
+                    poolData = {
+                        ...poolData,
+                        ratioADecimal: statePool.ratioADecimal,
+                        ratioAActual: statePool.ratioAActual,
+                        ratioBDecimal: statePool.ratioBDecimal,
+                        ratioBActual: statePool.ratioBActual,
+                        dataSource: poolData.dataSource + '+state'
+                    };
+                    console.log('✅ Merged decimal information from state.json');
+                }
+            } catch (error) {
+                console.warn('⚠️ Could not merge decimal information from state.json:', error);
+            }
+        }
+        
         if (poolData) {
             console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);
             
@@ -220,9 +243,8 @@ async function enrichPoolData() {
         poolData.tokenBSymbol = `TOKEN-${(poolData.tokenBMint || poolData.token_b_mint)?.slice(0, 4) || 'B'}`;
     }
     
-    // 🔧 CENTRALIZED: Use centralized pool enrichment function
-    console.log('🔧 SWAP: Using centralized pool display enrichment...');
-    poolData = await window.TokenDisplayUtils.enrichPoolWithCorrectDisplay(poolData, connection);
+    // ✅ CENTRALIZED: Pool data is ready for display - no additional enrichment needed
+    console.log('✅ SWAP: Pool data ready for centralized display functions');
 }
 
 /**
@@ -446,28 +468,25 @@ function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // 🔧 CENTRALIZED: Use the enriched display data from centralized function
-    const correctedDisplay = poolData.correctedDisplay || {
-        baseToken: 'Token A',
-        quoteToken: 'Token B',
-        displayPair: 'Token A/Token B',
-        rateText: '1 Token A = 1 Token B',
-        exchangeRate: 1,
-        isReversed: false
-    };
+    // ✅ CENTRALIZED: Use centralized display functions for consistency
+    const displayInfo = window.TokenDisplayUtils?.getCentralizedDisplayInfo(poolData);
+    
+    if (!displayInfo) {
+        throw new Error('Failed to get centralized display info');
+    }
     
     // Build the full display object 
     const flags = window.TokenDisplayUtils.interpretPoolFlags(poolData);
     
     const display = {
-        baseToken: correctedDisplay.baseToken,
-        quoteToken: correctedDisplay.quoteToken,
-        displayPair: correctedDisplay.displayPair,
-        rateText: correctedDisplay.rateText,
-        exchangeRate: correctedDisplay.exchangeRate,
+        baseToken: displayInfo.tokenASymbol,
+        quoteToken: displayInfo.tokenBSymbol,
+        displayPair: displayInfo.pairName,
+        rateText: displayInfo.ratioText,
+        exchangeRate: displayInfo.exchangeRate,
         baseLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0),
         quoteLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0),
-        isReversed: correctedDisplay.isReversed,
+        isReversed: false, // Always show TokenA/TokenB order
         isOneToManyRatio: flags.oneToManyRatio
     };
     

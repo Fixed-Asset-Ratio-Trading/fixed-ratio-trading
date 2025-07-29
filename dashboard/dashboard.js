@@ -883,103 +883,21 @@ function createPoolCard(pool) {
     const card = document.createElement('div');
     card.className = 'pool-card-simple';
     
-    // 🔧 FIXED: Use our simple corrector function directly!
-    console.log('🔍 BEFORE CORRECTION:', {
-        tokenASymbol: pool.tokenASymbol,
-        tokenBSymbol: pool.tokenBSymbol,
-        ratioANumerator: pool.ratioANumerator,
-        ratioBDenominator: pool.ratioBDenominator,
-        functionExists: !!window.TokenDisplayUtils?.getCorrectTokenDisplay
-    });
+    // ✅ CENTRALIZED: Use centralized functions for consistent display
+    const displayInfo = window.TokenDisplayUtils?.getCentralizedDisplayInfo(pool);
     
-    let poolName;
+    let poolName, ratioText;
     
-    // 🔧 CENTRALIZED: Use centralized display function for consistency
-    if (window.TokenDisplayUtils && window.TokenDisplayUtils.getCorrectTokenDisplay) {
-        // Use actual token decimals if available (from state.json), otherwise use defaults
-        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
-        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    if (displayInfo) {
+        poolName = displayInfo.pairName;
+        ratioText = displayInfo.ratioDisplay;
         
-        console.log('🔍 TOKEN DECIMALS INFO:', {
-            tokenADecimals: tokenADecimals,
-            tokenBDecimals: tokenBDecimals,
-            decimalsFromData: pool.ratioADecimal !== undefined,
-            tokenAActual: pool.ratioAActual,
-            tokenBActual: pool.ratioBActual
-        });
-        
-        const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
-            pool.tokenASymbol || 'Token A',
-            pool.tokenBSymbol || 'Token B', 
-            pool.ratioANumerator || 1,
-            pool.ratioBDenominator || 1,
-            tokenADecimals,
-            tokenBDecimals
-        );
-        
-        poolName = correctedDisplay.displayPair;
-        console.log('🔧 CORRECTED RESULT:', correctedDisplay);
-    
-    // 🔍 DEBUG: Show mint addresses to understand normalization
-    console.log('🔍 MINT ADDRESSES:', {
-        tokenAMint_TS: pool.tokenAMint,
-        tokenBMint_MST: pool.tokenBMint,
-        lexOrder: pool.tokenAMint < pool.tokenBMint ? 'TS < MST (normal)' : 'MST < TS (swapped)'
-    });
+        console.log('✅ CENTRALIZED DISPLAY INFO:', displayInfo);
     } else {
-        console.error('❌ Corrector function not found! Using fallback...');
-        // Fallback: manual correction
-        if (pool.ratioANumerator === 1) {
-            poolName = `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
-        } else if (pool.ratioBDenominator === 1) {
-            poolName = `${pool.tokenBSymbol}/${pool.tokenASymbol}`;
-        } else {
-            poolName = `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
-        }
-        console.log('🔧 FALLBACK RESULT:', poolName);
-    }
-    
-    // Extract ratio using actual display units (not basis points)
-    let ratioText = "1:1"; // Default ratio
-    
-    // Use actual display ratios if available from state.json
-    if (pool.ratioAActual !== undefined && pool.ratioBActual !== undefined) {
-        // Use the actual display values from the enhanced state.json
-        const displayRatioA = pool.ratioAActual;
-        const displayRatioB = pool.ratioBActual;
-        
-        if (displayRatioA === 1) {
-            ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
-        } else if (displayRatioB === 1) {
-            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:1`;
-        } else {
-            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
-        }
-        
-        console.log('🔧 RATIO TEXT (using actual values):', {
-            displayRatioA, displayRatioB, ratioText
-        });
-    } else {
-        // Fallback: convert basis points to display units manually
-        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
-        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
-        
-        const displayRatioA = pool.ratioANumerator / Math.pow(10, tokenADecimals);
-        const displayRatioB = pool.ratioBDenominator / Math.pow(10, tokenBDecimals);
-        
-        if (displayRatioA === 1) {
-            ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
-        } else if (displayRatioB === 1) {
-            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:1`;
-        } else {
-            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
-        }
-        
-        console.log('🔧 RATIO TEXT (calculated from basis points):', {
-            basisPointsA: pool.ratioANumerator,
-            basisPointsB: pool.ratioBDenominator,
-            displayRatioA, displayRatioB, ratioText
-        });
+        // Fallback if centralized functions not available
+        poolName = `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
+        ratioText = "1:1";
+        console.warn('⚠️ Centralized display functions not available, using fallback');
     }
     
     // Check if pool is paused

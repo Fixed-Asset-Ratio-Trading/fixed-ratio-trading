@@ -646,6 +646,117 @@ async function enrichPoolWithCorrectDisplay(poolData, connection) {
     }
 }
 
+/**
+ * 🎯 CENTRALIZED: Get consistent pair name across all pages
+ * Always returns "TokenA/TokenB" format regardless of ratio
+ * 
+ * @param {Object} pool - Pool data
+ * @returns {string} Consistent pair name (e.g., "TS/MST")
+ */
+function getCentralizedPairName(pool) {
+    const tokenASymbol = pool.tokenASymbol || 'Token A';
+    const tokenBSymbol = pool.tokenBSymbol || 'Token B';
+    return `${tokenASymbol}/${tokenBSymbol}`;
+}
+
+/**
+ * 🎯 CENTRALIZED: Get consistent ratio display across all pages
+ * Always shows "1 TokenA = X TokenB" format
+ * 
+ * @param {Object} pool - Pool data
+ * @returns {string} Consistent ratio text (e.g., "1 TS = 10,000 MST")
+ */
+function getCentralizedRatioText(pool) {
+    // Get basis points values
+    const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
+    const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
+    
+    // Get token decimals
+    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
+    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    
+    // Convert to display units
+    const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
+    const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
+    
+    // Calculate exchange rate: 1 TokenA = X TokenB
+    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
+    const exchangeRate = ratioADisplay / ratioBDisplay;
+    
+    const tokenASymbol = pool.tokenASymbol || 'Token A';
+    const tokenBSymbol = pool.tokenBSymbol || 'Token B';
+    
+    return `1 ${tokenASymbol} = ${formatNumberWithCommas(exchangeRate)} ${tokenBSymbol}`;
+}
+
+/**
+ * 🎯 CENTRALIZED: Get consistent ratio display for dashboard cards
+ * Shows simplified ratio format (e.g., "1:10,000")
+ * 
+ * @param {Object} pool - Pool data
+ * @returns {string} Simplified ratio text
+ */
+function getCentralizedRatioDisplay(pool) {
+    // Get basis points values
+    const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
+    const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
+    
+    // Get token decimals
+    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
+    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    
+    // Convert to display units
+    const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
+    const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
+    
+    // Calculate exchange rate: 1 TokenA = X TokenB
+    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
+    const exchangeRate = ratioADisplay / ratioBDisplay;
+    
+    return `1:${formatNumberWithCommas(exchangeRate)}`;
+}
+
+/**
+ * 🎯 CENTRALIZED: Get complete display info for any page
+ * Returns consistent object with all display information
+ * 
+ * @param {Object} pool - Pool data
+ * @returns {Object} Complete display information
+ */
+function getCentralizedDisplayInfo(pool) {
+    const pairName = getCentralizedPairName(pool);
+    const ratioText = getCentralizedRatioText(pool);
+    const ratioDisplay = getCentralizedRatioDisplay(pool);
+    
+    // Get basis points values for calculations
+    const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
+    const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
+    const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
+    const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+    
+    // Convert to display units
+    const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
+    const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
+    // Calculate exchange rate: 1 TokenA = X TokenB
+    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
+    const exchangeRate = ratioADisplay / ratioBDisplay;
+    
+    return {
+        pairName: pairName,
+        ratioText: ratioText,
+        ratioDisplay: ratioDisplay,
+        exchangeRate: exchangeRate,
+        tokenASymbol: pool.tokenASymbol || 'Token A',
+        tokenBSymbol: pool.tokenBSymbol || 'Token B',
+        ratioABasisPoints: ratioABasisPoints,
+        ratioBBasisPoints: ratioBBasisPoints,
+        tokenADecimals: tokenADecimals,
+        tokenBDecimals: tokenBDecimals,
+        ratioADisplay: ratioADisplay,
+        ratioBDisplay: ratioBDisplay
+    };
+}
+
 // Make functions available globally for use in other dashboard files
 if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
@@ -670,7 +781,12 @@ if (typeof window !== 'undefined') {
         validateOneToManyRatio,
         calculateSwapOutput,
         // CENTRALIZED DISPLAY: New unified function
-        enrichPoolWithCorrectDisplay
+        enrichPoolWithCorrectDisplay,
+        // CENTRALIZED: New centralized display functions
+        getCentralizedPairName,
+        getCentralizedRatioText,
+        getCentralizedRatioDisplay,
+        getCentralizedDisplayInfo
     };
 }
 
@@ -698,6 +814,11 @@ if (typeof module !== 'undefined' && module.exports) {
         validateOneToManyRatio,
         calculateSwapOutput,
         // CENTRALIZED DISPLAY: New unified function
-        enrichPoolWithCorrectDisplay
+        enrichPoolWithCorrectDisplay,
+        // CENTRALIZED: New centralized display functions
+        getCentralizedPairName,
+        getCentralizedRatioText,
+        getCentralizedRatioDisplay,
+        getCentralizedDisplayInfo
     };
 } 
