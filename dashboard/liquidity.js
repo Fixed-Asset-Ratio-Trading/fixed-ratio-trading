@@ -485,7 +485,7 @@ async function loadUserTokensForPool() {
             
             // Only include tokens that are part of this pool
             if (mintAddress === poolData.tokenAMint || mintAddress === poolData.tokenBMint) {
-                const balance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
+                const balance = parseInt(accountInfo.tokenAmount.amount) || 0;
                 
                 // Determine which token this is
                 const isTokenA = mintAddress === poolData.tokenAMint;
