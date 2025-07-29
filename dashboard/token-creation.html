@@ -390,6 +390,70 @@
             </form>
         </div>
         
+        <!-- Add Metadata to Existing Tokens Section -->
+        <div class="token-creation-form" style="margin-top: 40px;">
+            <h2 style="color: #333; margin-bottom: 25px;">🏷️ Add Metadata to Existing Token</h2>
+            <p style="color: #666; margin-bottom: 25px;">Create metadata for tokens that were created without it (so they show proper names instead of addresses)</p>
+            
+            <!-- Quick fixes for your current tokens -->
+            <div style="margin-bottom: 30px; padding: 20px; background: #fef3c7; border-radius: 12px; border: 2px solid #f59e0b;">
+                <h3 style="color: #92400e; margin-bottom: 15px;">⚡ Quick Fix: Your Current Pool Tokens</h3>
+                <p style="color: #78350f; margin-bottom: 15px; font-size: 14px;">These are the tokens from your current pool that need metadata:</p>
+                
+                <!-- Token A -->
+                <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #1e40af; margin-bottom: 10px;">🪙 Token A (Pool Token)</h4>
+                    <p style="color: #374151; margin-bottom: 10px; font-size: 14px; font-family: monospace;">xiXj6zX6jx9WNjCzimEKaSFyK91fQysKP9JF2oCNqho</p>
+                    <button type="button" class="nav-btn" onclick="addMetadataForTokenA()" style="background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        🏷️ Add Metadata as "Trading Shares (TS)"
+                    </button>
+                </div>
+                
+                <!-- Token B -->
+                <div style="padding: 15px; background: white; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <h4 style="color: #10b981; margin-bottom: 10px;">🪙 Token B (Pool Token)</h4>
+                    <p style="color: #374151; margin-bottom: 10px; font-size: 14px; font-family: monospace;">BR4V3iDYYgjsvtLWA6Th473J1G6abxkQkyHGT9cAkHwn</p>
+                    <button type="button" class="nav-btn" onclick="addMetadataForTokenB()" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;">
+                        🏷️ Add Metadata as "Market Shares (MS)"
+                    </button>
+                </div>
+            </div>
+            
+            <h3 style="color: #666; margin-bottom: 20px;">📝 Or Add Metadata for Any Token</h3>
+            
+            <form id="metadata-form">
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="existing-token-mint">Token Mint Address</label>
+                        <input type="text" id="existing-token-mint" placeholder="e.g., xiXj6zX6jx9WNjCzimEKaSFyK91fQysKP9JF2oCNqho" required>
+                        <div class="form-help">The mint address of the existing token</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="metadata-token-name">Token Name</label>
+                        <input type="text" id="metadata-token-name" placeholder="e.g., Trading Shares" required>
+                        <div class="form-help">The display name for your token</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="metadata-token-symbol">Token Symbol</label>
+                        <input type="text" id="metadata-token-symbol" placeholder="e.g., TS" maxlength="10" required>
+                        <div class="form-help">Short symbol (up to 10 characters)</div>
+                    </div>
+                    
+                    <div class="form-group full-width">
+                        <label for="metadata-token-description">Description</label>
+                        <textarea id="metadata-token-description" placeholder="Describe your token..."></textarea>
+                        <div class="form-help">Optional description for your token</div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="create-token-btn" id="add-metadata-btn" disabled style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    🏷️ Add Metadata
+                </button>
+            </form>
+        </div>
+
 
     </div>
 

@@ -323,6 +323,11 @@ async function handleWalletConnected() {
         // Update form state
         updateCreateButtonState();
         
+        // Also validate metadata form if it exists
+        if (window.validateMetadataForm) {
+            window.validateMetadataForm();
+        }
+        
 
         
     } catch (error) {
@@ -352,6 +357,11 @@ async function disconnectWallet() {
         
         // Update form state
         updateCreateButtonState();
+        
+        // Also validate metadata form if it exists
+        if (window.validateMetadataForm) {
+            window.validateMetadataForm();
+        }
         
         showStatus('info', 'Wallet disconnected');
         
@@ -921,3 +931,257 @@ function showStatus(type, message) {
         }, 10000);
     }
 } 
+
+/**
+ * Add metadata for Token A (Trading Shares)
+ */
+async function addMetadataForTokenA() {
+    const tokenMint = 'xiXj6zX6jx9WNjCzimEKaSFyK91fQysKP9JF2oCNqho';
+    const tokenName = 'Trading Shares';
+    const tokenSymbol = 'TS';
+    const description = 'Trading Shares token for Fixed Ratio Trading pool';
+    
+    await createMetadataForExistingToken(tokenMint, tokenName, tokenSymbol, description);
+}
+
+/**
+ * Add metadata for Token B (Market Shares)  
+ */
+async function addMetadataForTokenB() {
+    const tokenMint = 'BR4V3iDYYgjsvtLWA6Th473J1G6abxkQkyHGT9cAkHwn';
+    const tokenName = 'Market Shares';
+    const tokenSymbol = 'MS';
+    const description = 'Market Shares token for Fixed Ratio Trading pool';
+    
+    await createMetadataForExistingToken(tokenMint, tokenName, tokenSymbol, description);
+}
+
+/**
+ * Create metadata for an existing token
+ */
+async function createMetadataForExistingToken(tokenMintAddress, name, symbol, description = '') {
+    try {
+        if (!isConnected) {
+            showStatus('error', 'Please connect your Backpack wallet first');
+            return;
+        }
+
+        if (!TOKEN_METADATA_PROGRAM_ID) {
+            showStatus('error', 'Token Metadata Program not configured. Check your Metaplex setup.');
+            return;
+        }
+
+        showStatus('info', `Creating metadata for ${symbol}...`);
+        console.log(`🏷️ Creating metadata for existing token: ${name} (${symbol})`);
+
+        const mintPubkey = new solanaWeb3.PublicKey(tokenMintAddress);
+        const userPublicKey = wallet.publicKey;
+
+        // Derive metadata account PDA
+        const seeds = [
+            new TextEncoder().encode('metadata'),
+            TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+            mintPubkey.toBuffer()
+        ];
+
+        const [metadataAccount] = solanaWeb3.PublicKey.findProgramAddressSync(
+            seeds,
+            TOKEN_METADATA_PROGRAM_ID
+        );
+
+        console.log(`📋 Metadata account PDA: ${metadataAccount.toString()}`);
+
+        // Check if metadata already exists
+        try {
+            const existingMetadata = await connection.getAccountInfo(metadataAccount);
+            if (existingMetadata) {
+                showStatus('warning', `⚠️ Metadata already exists for this token! You can still try to update it.`);
+                console.log('⚠️ Metadata account already exists');
+            }
+        } catch (error) {
+            console.log('✅ No existing metadata found, proceeding with creation');
+        }
+
+        // Get mint info to check authority
+        const mintInfo = await connection.getAccountInfo(mintPubkey);
+        if (!mintInfo) {
+            throw new Error('Token mint does not exist');
+        }
+
+        // Create the metadata instruction
+        const metadataUri = ''; // We're not using external URI for now
+        const metadataInstruction = createMetadataInstruction(
+            metadataAccount,
+            mintPubkey,
+            userPublicKey, // Mint authority (assuming user is the authority)
+            userPublicKey, // Payer
+            userPublicKey, // Update authority
+            name,
+            symbol,
+            metadataUri
+        );
+
+        // Create transaction
+        const transaction = new solanaWeb3.Transaction();
+        
+        // Add compute budget to handle metadata creation
+        const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
+            units: 200000 // Metadata creation needs more compute units
+        });
+        transaction.add(computeBudgetInstruction);
+        
+        transaction.add(metadataInstruction);
+
+        // Get recent blockhash
+        const { blockhash } = await connection.getLatestBlockhash();
+        transaction.recentBlockhash = blockhash;
+        transaction.feePayer = userPublicKey;
+
+        showStatus('info', `Please approve the transaction in your wallet...`);
+
+        // Sign and send transaction
+        const signedTransaction = await wallet.signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+
+        showStatus('info', `Transaction sent: ${signature.slice(0, 8)}... Waiting for confirmation...`);
+        console.log(`📡 Transaction signature: ${signature}`);
+
+        // Wait for confirmation
+        const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+
+        if (confirmation.value.err) {
+            throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+        }
+
+        // Success!
+        showStatus('success', `
+            <div style="text-align: left;">
+                <div style="font-weight: bold; margin-bottom: 8px;">🎉 Metadata Created Successfully!</div>
+                <div style="font-size: 14px; line-height: 1.4;">
+                    • Token: ${name} (${symbol})<br>
+                    • Mint: ${tokenMintAddress.slice(0, 8)}...${tokenMintAddress.slice(-4)}<br>
+                    • Metadata PDA: ${metadataAccount.toString().slice(0, 8)}...${metadataAccount.toString().slice(-4)}<br>
+                    • Transaction: <a href="https://explorer.solana.com/tx/${signature}?cluster=custom&customUrl=${encodeURIComponent(connection.rpcEndpoint)}" target="_blank" style="color: #059669;">${signature.slice(0, 8)}...${signature.slice(-4)}</a><br>
+                    • Status: Confirmed ✅
+                </div>
+            </div>
+        `);
+
+        console.log(`✅ Metadata creation successful! Signature: ${signature}`);
+        console.log(`🔍 Your token should now show as "${name} (${symbol})" in the dashboard`);
+
+        // Store in localStorage for future reference
+        try {
+            const existingTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
+            const tokenEntry = {
+                mint: tokenMintAddress,
+                name: name,
+                symbol: symbol,
+                description: description,
+                metadataCreated: true,
+                metadataAccount: metadataAccount.toString(),
+                createdAt: new Date().toISOString()
+            };
+            
+            // Check if already exists and update, otherwise add
+            const existingIndex = existingTokens.findIndex(t => t.mint === tokenMintAddress);
+            if (existingIndex !== -1) {
+                existingTokens[existingIndex] = { ...existingTokens[existingIndex], ...tokenEntry };
+            } else {
+                existingTokens.push(tokenEntry);
+            }
+            
+            localStorage.setItem('createdTokens', JSON.stringify(existingTokens));
+            console.log('💾 Token metadata info saved to localStorage');
+        } catch (storageError) {
+            console.warn('⚠️ Could not save to localStorage:', storageError);
+        }
+
+    } catch (error) {
+        console.error('❌ Error creating metadata:', error);
+        
+        let errorMessage = 'Failed to create metadata';
+        if (error.message.includes('User rejected')) {
+            errorMessage = 'Transaction cancelled by user';
+        } else if (error.message.includes('Mint authority')) {
+            errorMessage = 'You are not the mint authority for this token';
+        } else if (error.message.includes('already exists')) {
+            errorMessage = 'Metadata already exists for this token';
+        } else {
+            errorMessage = `Metadata creation failed: ${error.message}`;
+        }
+        
+        showStatus('error', `❌ ${errorMessage}`);
+    }
+}
+
+// Initialize the metadata form when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Add event listeners for the metadata form
+    const metadataForm = document.getElementById('metadata-form');
+    if (metadataForm) {
+        const mintInput = document.getElementById('existing-token-mint');
+        const nameInput = document.getElementById('metadata-token-name');
+        const symbolInput = document.getElementById('metadata-token-symbol');
+        const addMetadataBtn = document.getElementById('add-metadata-btn');
+
+        // Validation function for metadata form
+        window.validateMetadataForm = () => {
+            const mint = mintInput?.value?.trim();
+            const name = nameInput?.value?.trim();
+            const symbol = symbolInput?.value?.trim();
+            
+            const isValid = mint && name && symbol && 
+                            mint.length > 40 && // Basic check for Solana address length
+                            name.length > 0 && 
+                            symbol.length > 0 && symbol.length <= 10;
+            
+            if (addMetadataBtn) {
+                addMetadataBtn.disabled = !isValid || !isConnected;
+                
+                // Update button text based on connection state
+                if (!isConnected) {
+                    addMetadataBtn.textContent = '🔌 Connect Wallet First';
+                } else if (!isValid) {
+                    addMetadataBtn.textContent = '🏷️ Fill Required Fields';
+                } else {
+                    addMetadataBtn.textContent = '🏷️ Add Metadata';
+                }
+            }
+        };
+
+        // Add event listeners for real-time validation
+        [mintInput, nameInput, symbolInput].forEach(input => {
+            if (input) {
+                input.addEventListener('input', window.validateMetadataForm);
+            }
+        });
+
+        // Handle form submission
+        metadataForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const mint = mintInput.value.trim();
+            const name = nameInput.value.trim();
+            const symbol = symbolInput.value.trim();
+            const description = document.getElementById('metadata-token-description')?.value?.trim() || '';
+            
+            if (!mint || !name || !symbol) {
+                showStatus('error', 'Please fill in all required fields');
+                return;
+            }
+
+            await createMetadataForExistingToken(mint, name, symbol, description);
+        });
+
+        // Initial validation
+        window.validateMetadataForm();
+    }
+});
+
+// Export functions for global access
+window.addMetadataForTokenA = addMetadataForTokenA;
+window.addMetadataForTokenB = addMetadataForTokenB;
+window.createMetadataForExistingToken = createMetadataForExistingToken;
+
+console.log('🏷️ Metadata creation functions loaded successfully'); 
