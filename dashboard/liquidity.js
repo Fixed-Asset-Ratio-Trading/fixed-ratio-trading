@@ -1416,19 +1416,9 @@ async function removeLiquidity() {
     
     // ✅ CRITICAL VALIDATION: Check if pool has sufficient underlying liquidity
     const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
-    
-    // Debug the poolData properties to see what's available
-    console.log(`🔍 POOLDATA DEBUG:`, {
-        totalTokenALiquidity: poolData.totalTokenALiquidity,
-        total_token_a_liquidity: poolData.total_token_a_liquidity,
-        totalTokenBLiquidity: poolData.totalTokenBLiquidity,
-        total_token_b_liquidity: poolData.total_token_b_liquidity,
-        underlyingToken: underlyingToken
-    });
-    
     const poolLiquidity = underlyingToken === 'TS' 
-        ? (poolData.totalTokenALiquidity || poolData.total_token_a_liquidity || 0)
-        : (poolData.totalTokenBLiquidity || poolData.total_token_b_liquidity || 0);
+        ? (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0)
+        : (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0);
     
     console.log(`🔍 LIQUIDITY VALIDATION: ${underlyingToken} pool liquidity = ${poolLiquidity}, withdrawal amount = ${amount}`);
     
@@ -1772,19 +1762,9 @@ function setMaxAmount(operation) {
             
             // Check pool liquidity for the underlying token
             const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
-            
-            // Debug the poolData properties for max calculation
-            console.log(`🔍 MAX POOLDATA DEBUG:`, {
-                totalTokenALiquidity: poolData.totalTokenALiquidity,
-                total_token_a_liquidity: poolData.total_token_a_liquidity,
-                totalTokenBLiquidity: poolData.totalTokenBLiquidity,
-                total_token_b_liquidity: poolData.total_token_b_liquidity,
-                underlyingToken: underlyingToken
-            });
-            
             const poolLiquidity = underlyingToken === 'TS' 
-                ? (poolData.totalTokenALiquidity || poolData.total_token_a_liquidity || 0)
-                : (poolData.totalTokenBLiquidity || poolData.total_token_b_liquidity || 0);
+                ? (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0)
+                : (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0);
             
             console.log(`🔍 MAX CALCULATION: User LP balance = ${window.selectedLPToken.balance}, Pool ${underlyingToken} liquidity = ${poolLiquidity}`);
             
