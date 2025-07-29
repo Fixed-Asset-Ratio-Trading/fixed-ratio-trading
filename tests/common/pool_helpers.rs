@@ -1163,149 +1163,11 @@ pub async fn consolidate_multiple_pools(
 // BASIS POINTS REFACTOR: DISPLAY UNIT HELPERS
 // ========================================
 
-/// **BASIS POINTS REFACTOR: Convert display units to basis points**
-/// 
-/// Converts a display unit amount (e.g., 1.0 SOL) to its corresponding basis point
-/// representation (e.g., 1000000000000000000000000). This is necessary because the
-/// smart contract expects amounts in basis points for token amounts.
-/// 
-/// # Arguments
-/// * `display_amount` - The amount in display units (e.g., 1.0)
-/// * `decimals` - The number of decimal places for the display unit
-/// 
-/// # Returns
-/// The amount in basis points (e.g., 1000000000000000000000000)
-#[allow(dead_code)]
-pub fn display_to_basis_points(display_amount: f64, decimals: u8) -> u64 {
-    let factor = 10u64.pow(decimals as u32);
-    (display_amount * factor as f64).round() as u64
-}
-
-/// **BASIS POINTS REFACTOR: Convert basis points to display units**
-/// 
-/// Converts a basis point amount (e.g., 1000000000000000000000000) back to its
-/// display unit representation (e.g., 1.0 SOL). This is useful for test
-/// scenarios where you want to verify the correct amount of tokens in display units.
-/// 
-/// # Arguments
-/// * `basis_points` - The amount in basis points (e.g., 1000000000000000000000000)
-/// * `decimals` - The number of decimal places for the display unit
-/// 
-/// # Returns
-/// The amount in display units (e.g., 1.0)
-#[allow(dead_code)]
-pub fn basis_points_to_display(basis_points: u64, decimals: u8) -> f64 {
-    let factor = 10u64.pow(decimals as u32);
-    basis_points as f64 / factor as f64
-}
-
-/// **BASIS POINTS REFACTOR: Create pool using a normalized config**
-/// 
-/// This function is a wrapper for `create_pool_new_pattern` that takes a `PoolConfig`
-/// and creates the pool using the normalized token mints and ratios.
-/// 
-/// # Arguments
-/// * `banks` - Banks client for transaction processing
-/// * `payer` - Account that pays for pool creation
-/// * `recent_blockhash` - Recent blockhash for transaction
-/// * `multiple_mint` - Multiple token mint keypair (abundant token)
-/// * `base_mint` - Base token mint keypair (valuable token)
-/// * `pool_config` - The normalized pool configuration
-/// 
-/// # Returns
-/// Pool configuration with all derived addresses
-#[allow(dead_code)]
-pub async fn create_pool_with_config(
-    banks: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: solana_sdk::hash::Hash,
-    multiple_mint: &Keypair,
-    base_mint: &Keypair,
-    pool_config: PoolConfig,
-) -> Result<PoolConfig, BanksClientError> {
-    // Check if pool already exists
-    if let Some(_existing_pool) = get_pool_state(banks, &pool_config.pool_state_pda).await {
-        return Err(BanksClientError::Io(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "Pool already exists with this configuration"
-        )));
-    }
-
-    // Derive main treasury PDA for fee collection
-    let (main_treasury_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::MAIN_TREASURY_SEED_PREFIX],
-        &id(),
-    );
-
-    // Derive system state PDA for pause validation
-    let (system_state_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::SYSTEM_STATE_SEED_PREFIX],
-        &id(),
-    );
-
-    // Derive LP token mint PDAs
-    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
-        &id(),
-    );
-    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
-        &[frt_constants::LP_TOKEN_B_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
-        &id(),
-    );
-
-    // Use main treasury for all operations (Phase 3: Centralized Treasury)
-    // Old specialized treasuries have been consolidated into main treasury
-
-    // ✅ CORRECTED ACCOUNT ORDERING: Match processor expectations (13 accounts)
-    let initialize_pool_ix = Instruction {
-        program_id: id(),
-        accounts: vec![
-            // Account ordering matching processor documentation:
-            AccountMeta::new(payer.pubkey(), true),                          // Index 0: User Authority Signer
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program Account
-            AccountMeta::new_readonly(system_state_pda, false),              // Index 2: System State PDA
-            AccountMeta::new(pool_config.pool_state_pda, false),                  // Index 3: Pool State PDA
-            AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program Account
-            AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
-            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),   // Index 6: Rent Sysvar Account
-            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 7: Token A Mint Account
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 8: Token B Mint Account
-            AccountMeta::new(pool_config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
-            AccountMeta::new(pool_config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
-            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA
-            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 12: LP Token B Mint PDA
-        ],
-        data: PoolInstruction::InitializePool {
-            ratio_a_numerator: pool_config.ratio_a_numerator,
-            ratio_b_denominator: pool_config.ratio_b_denominator,
-        }.try_to_vec().unwrap(),
-    };
-
-    // ✅ COMPUTE BUDGET: Add compute budget instruction for pool creation (500K CUs)
-    use solana_sdk::compute_budget::ComputeBudgetInstruction;
-    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
-    
-    // ✅ PHASE 9 SECURITY: Send transaction with compute budget and pool creation instruction
-    let mut transaction = Transaction::new_with_payer(
-        &[compute_budget_ix, initialize_pool_ix], 
-        Some(&payer.pubkey())
-    );
-    let signers = [payer]; // Only payer signs - LP token mints are derived as PDAs
-    transaction.sign(&signers[..], recent_blockhash);
-    banks.process_transaction(transaction).await?;
-
-    Ok(pool_config)
-} 
-
-// ========================================
-// BASIS POINTS REFACTOR: DISPLAY UNIT HELPERS
-// ========================================
-
 /// **BASIS POINTS REFACTOR: Pool Configuration for Display Units**
 /// 
 /// Configuration for creating pools using display units, which will be converted
 /// to basis points before sending to the smart contract.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub struct PoolConfigDisplayUnits {
     /// Multiple token (abundant token) display amount in the ratio
@@ -1372,7 +1234,7 @@ pub async fn create_pool_with_display_units(
     println!("  Base: {} (display) → {} (basis points)", 
         config.base_ratio_display, base_ratio_basis_points);
     
-    // Use the existing pool creation logic with basis points
+    // Use the normalize_pool_config function with basis points
     let pool_config = normalize_pool_config(
         &config.multiple_mint.pubkey(),
         &config.base_mint.pubkey(),
@@ -1380,9 +1242,87 @@ pub async fn create_pool_with_display_units(
         base_ratio_basis_points,
     );
     
-    // Create the pool using the normalized configuration
-    create_pool_with_config(banks, payer, recent_blockhash, &config.multiple_mint, &config.base_mint, pool_config).await
+    // Create the pool using the same logic as create_pool_new_pattern but with our config
+    create_pool_with_normalized_config(banks, payer, recent_blockhash, &config.multiple_mint, &config.base_mint, pool_config).await
 }
+
+/// Internal helper function to create a pool from a normalized config
+async fn create_pool_with_normalized_config(
+    banks: &mut BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    multiple_mint: &Keypair,
+    base_mint: &Keypair,
+    config: PoolConfig,
+) -> Result<PoolConfig, solana_program_test::BanksClientError> {
+    // Check if pool already exists
+    if let Some(_existing_pool) = get_pool_state(banks, &config.pool_state_pda).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "Pool already exists with this configuration"
+        )));
+    }
+
+    use solana_sdk::transaction::Transaction;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
+    use fixed_ratio_trading::types::instructions::PoolInstruction;
+    use borsh::BorshSerialize;
+
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_B_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+
+    // Create InitializePool instruction
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new_readonly(system_state_pda, false),              // Index 2: System State PDA
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar
+            AccountMeta::new_readonly(multiple_mint.pubkey(), false),        // Index 7: Token A Mint
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 8: Token B Mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: config.ratio_a_numerator,
+            ratio_b_denominator: config.ratio_b_denominator,
+        }.try_to_vec().unwrap(),
+    };
+
+    // Add compute budget and send transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&payer.pubkey())
+    );
+    transaction.sign(&[payer], recent_blockhash);
+    banks.process_transaction(transaction).await?;
+
+    Ok(config)
+} 
 
 /// **BASIS POINTS REFACTOR: Convenience function for common test scenarios**
 /// 
@@ -1431,48 +1371,4 @@ pub async fn create_simple_display_pool(
     };
     
     create_pool_with_display_units(banks, payer, recent_blockhash, config).await
-}
-
-/// **BASIS POINTS REFACTOR: Create pool with basis points (for backwards compatibility)**
-/// 
-/// This function creates a pool using basis point ratios directly. It's used internally
-/// by the display unit functions and can be used when you already have basis point values.
-/// 
-/// # Arguments
-/// * `banks` - Banks client for transaction processing
-/// * `payer` - Account that pays for pool creation
-/// * `recent_blockhash` - Recent blockhash for transaction
-/// * `multiple_mint` - Multiple token mint keypair (abundant token)
-/// * `base_mint` - Base token mint keypair (valuable token)
-/// * `pool_config` - The normalized pool configuration
-/// 
-/// # Returns
-/// Pool configuration with all derived addresses
-#[allow(dead_code)]
-pub async fn create_pool_with_config(
-    banks: &mut BanksClient,
-    payer: &Keypair,
-    recent_blockhash: solana_sdk::hash::Hash,
-    multiple_mint: &Keypair,
-    base_mint: &Keypair,
-    pool_config: PoolConfig,
-) -> Result<PoolConfig, solana_program_test::BanksClientError> {
-    // Check if pool already exists
-    if let Some(_existing_pool) = get_pool_state(banks, &pool_config.pool_state_pda).await {
-        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            "Pool already exists with this configuration"
-        )));
-    }
-
-    // Use the existing create_pool_new_pattern function with the configuration
-    create_pool_new_pattern(
-        banks,
-        payer,
-        recent_blockhash,
-        multiple_mint,
-        base_mint,
-        Some(pool_config.ratio_a_numerator),
-        Some(pool_config.ratio_b_denominator),
-    ).await
 } 

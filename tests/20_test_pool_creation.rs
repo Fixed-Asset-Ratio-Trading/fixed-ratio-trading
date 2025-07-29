@@ -903,7 +903,7 @@ async fn test_pool_creation_basis_points_refactor() -> TestResult {
     
     // Verify the pool state contains correct basis point ratios
     let pool_state = get_pool_state(&mut banks_client, &pool_config.pool_state_pda).await
-        .ok_or("Pool state not found")?;
+        .ok_or_else(|| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "Pool state not found")))?;
     
     // Expected basis point ratios:
     // 1.0 BTC = 1 * 10^8 = 100,000,000 basis points
@@ -959,7 +959,7 @@ async fn test_pool_creation_basis_points_refactor() -> TestResult {
     ).await?;
     
     let pool_state_2 = get_pool_state(&mut banks_client, &pool_config_2.pool_state_pda).await
-        .ok_or("Pool state 2 not found")?;
+        .ok_or_else(|| BanksClientError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "Pool state 2 not found")))?;
     
     // Verify one-to-many flag is NOT set (neither side = 1.0)
     assert!(!pool_state_2.one_to_many_ratio(), 
