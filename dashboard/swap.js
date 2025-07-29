@@ -219,6 +219,27 @@ async function enrichPoolData() {
         poolData.tokenASymbol = `TOKEN-${(poolData.tokenAMint || poolData.token_a_mint)?.slice(0, 4) || 'A'}`;
         poolData.tokenBSymbol = `TOKEN-${(poolData.tokenBMint || poolData.token_b_mint)?.slice(0, 4) || 'B'}`;
     }
+    
+    // Fetch token decimals for proper ratio display
+    try {
+        if (connection && (poolData.tokenAMint || poolData.token_a_mint) && (poolData.tokenBMint || poolData.token_b_mint)) {
+            console.log('🔍 Fetching token decimals for proper swap ratio display...');
+            const [tokenADecimals, tokenBDecimals] = await Promise.all([
+                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint || poolData.token_a_mint, connection),
+                window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint || poolData.token_b_mint, connection)
+            ]);
+            
+            poolData.tokenDecimals = {
+                tokenADecimals,
+                tokenBDecimals
+            };
+            
+            console.log(`✅ Token decimals: ${poolData.tokenASymbol}=${tokenADecimals}, ${poolData.tokenBSymbol}=${tokenBDecimals}`);
+        }
+    } catch (error) {
+        console.warn('Warning: Could not load token decimals:', error);
+        poolData.tokenDecimals = null;
+    }
 }
 
 /**
@@ -442,12 +463,14 @@ function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // 🔧 FIXED: Use our corrected display function directly!
+    // 🔧 FIXED: Use our corrected display function with proper token decimals!
     const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
         poolData.tokenASymbol || 'Token A',
         poolData.tokenBSymbol || 'Token B', 
         poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
-        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1
+        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1,
+        poolData.tokenDecimals ? poolData.tokenDecimals.tokenADecimals : 6,  // Use actual TS decimals (4) not default (6)
+        poolData.tokenDecimals ? poolData.tokenDecimals.tokenBDecimals : 6   // Use actual MST decimals (0) not default (6)
     );
     
     // Build the full display object 

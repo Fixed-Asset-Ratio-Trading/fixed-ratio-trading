@@ -323,12 +323,14 @@ async function updatePoolDisplay() {
         showStatus('error', `Failed to load pool information: ${error.message}`);
     }
     
-    // 🔧 FIXED: Use our corrected display function directly!
+    // 🔧 FIXED: Use our corrected display function with proper token decimals!
     const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
         poolData.tokenASymbol || 'Token A',
         poolData.tokenBSymbol || 'Token B', 
         poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
-        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1
+        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1,
+        tokenDecimals ? tokenDecimals.tokenADecimals : 6,  // Use actual TS decimals (4) not default (6)
+        tokenDecimals ? tokenDecimals.tokenBDecimals : 6   // Use actual MST decimals (0) not default (6)
     );
     
     // Build the full display object with proper liquidity formatting
