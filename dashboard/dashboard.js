@@ -872,11 +872,25 @@ function createPoolCard(pool) {
     
     // Check if our function exists
     if (window.TokenDisplayUtils && window.TokenDisplayUtils.getCorrectTokenDisplay) {
+        // Use actual token decimals if available (from state.json), otherwise fetch from mint accounts
+        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6; // fallback to 6
+        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6; // fallback to 6
+        
+        console.log('🔍 TOKEN DECIMALS INFO:', {
+            tokenADecimals: tokenADecimals,
+            tokenBDecimals: tokenBDecimals,
+            decimalsFromData: pool.ratioADecimal !== undefined,
+            tokenAActual: pool.ratioAActual,
+            tokenBActual: pool.ratioBActual
+        });
+        
         const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
             pool.tokenASymbol || 'Token A',
             pool.tokenBSymbol || 'Token B', 
             pool.ratioANumerator || 1,
-            pool.ratioBDenominator || 1
+            pool.ratioBDenominator || 1,
+            tokenADecimals,
+            tokenBDecimals
         );
         
         poolName = correctedDisplay.displayPair;
@@ -901,16 +915,48 @@ function createPoolCard(pool) {
         console.log('🔧 FALLBACK RESULT:', poolName);
     }
     
-    // Extract ratio (simple manual approach)
+    // Extract ratio using actual display units (not basis points)
     let ratioText = "1:1"; // Default ratio
-    if (pool.ratioANumerator === 1) {
-        ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(pool.ratioBDenominator)}`;
-    } else if (pool.ratioBDenominator === 1) {
-        ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(pool.ratioANumerator)}`;
+    
+    // Use actual display ratios if available from state.json
+    if (pool.ratioAActual !== undefined && pool.ratioBActual !== undefined) {
+        // Use the actual display values from the enhanced state.json
+        const displayRatioA = pool.ratioAActual;
+        const displayRatioB = pool.ratioBActual;
+        
+        if (displayRatioA === 1) {
+            ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
+        } else if (displayRatioB === 1) {
+            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:1`;
+        } else {
+            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
+        }
+        
+        console.log('🔧 RATIO TEXT (using actual values):', {
+            displayRatioA, displayRatioB, ratioText
+        });
     } else {
-        ratioText = `${pool.ratioANumerator}:${pool.ratioBDenominator}`;
+        // Fallback: convert basis points to display units manually
+        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
+        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
+        
+        const displayRatioA = pool.ratioANumerator / Math.pow(10, tokenADecimals);
+        const displayRatioB = pool.ratioBDenominator / Math.pow(10, tokenBDecimals);
+        
+        if (displayRatioA === 1) {
+            ratioText = `1:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
+        } else if (displayRatioB === 1) {
+            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:1`;
+        } else {
+            ratioText = `${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioA)}:${window.TokenDisplayUtils.formatNumberWithCommas(displayRatioB)}`;
+        }
+        
+        console.log('🔧 RATIO TEXT (calculated from basis points):', {
+            basisPointsA: pool.ratioANumerator,
+            basisPointsB: pool.ratioBDenominator,
+            displayRatioA, displayRatioB, ratioText
+        });
     }
-    console.log('🔧 RATIO TEXT:', ratioText);
     
     // Check if pool is paused
     const flags = window.TokenDisplayUtils.interpretPoolFlags(pool);

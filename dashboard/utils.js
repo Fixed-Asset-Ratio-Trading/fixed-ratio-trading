@@ -20,11 +20,25 @@ function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio
         tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision
     });
     
+    // BASIS POINTS REFACTOR: Convert basis points to display units using token decimals
+    const tokenADisplayUnits = tokenARatio / Math.pow(10, tokenAPrecision);
+    const tokenBDisplayUnits = tokenBRatio / Math.pow(10, tokenBPrecision);
+    
+    console.log('🔧 BASIS POINTS CONVERSION:', {
+        tokenABasisPoints: tokenARatio,
+        tokenADecimals: tokenAPrecision,
+        tokenADisplay: tokenADisplayUnits,
+        tokenBBasisPoints: tokenBRatio,
+        tokenBDecimals: tokenBPrecision,
+        tokenBDisplay: tokenBDisplayUnits
+    });
+    
     // CORRECT CALCULATION: Show what the pool actually represents
     // Based on swap formula: amount_out_B = amount_in_A * ratio_B_denominator / ratio_A_numerator
     // So: 1 TokenA gets you (ratio_B_denominator / ratio_A_numerator) TokenB
+    // But now using display units instead of basis points
     
-    const actualExchangeRate = tokenBRatio / tokenARatio;
+    const actualExchangeRate = tokenBDisplayUnits / tokenADisplayUnits;
     
     if (actualExchangeRate >= 1) {
         // TokenA is more valuable, show as "1 TokenA = X TokenB"
@@ -38,7 +52,7 @@ function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio
         };
     } else {
         // TokenB is more valuable, show as "1 TokenB = X TokenA"
-        const inverseRate = tokenARatio / tokenBRatio;
+        const inverseRate = tokenADisplayUnits / tokenBDisplayUnits;
         return {
             baseToken: tokenBName,
             quoteToken: tokenAName,
