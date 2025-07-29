@@ -912,9 +912,9 @@ async function executeSwap() {
 async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey) {
     console.log('🔧 Building swap transaction...');
     
-    // Convert amount to base units (using token decimals)
-    const amountInBaseUnits = Math.floor(fromAmount * Math.pow(10, fromToken.decimals));
-    console.log(`💰 Amount in base units: ${amountInBaseUnits} (${fromAmount} with ${fromToken.decimals} decimals)`);
+    // Convert amount to basis points (using TokenDisplayUtils for consistency)
+    const amountInBaseUnits = window.TokenDisplayUtils.displayToBasisPoints(fromAmount, fromToken.decimals);
+    console.log(`💰 Amount in basis points: ${amountInBaseUnits} (${fromAmount} display units with ${fromToken.decimals} decimals)`);
     
     // Get program ID
     const programId = new solanaWeb3.PublicKey(CONFIG.programId);
