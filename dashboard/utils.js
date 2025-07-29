@@ -408,7 +408,13 @@ function displayToBasisPoints(displayAmount, decimals) {
     }
     
     const factor = Math.pow(10, decimals);
-    const basisPoints = Math.floor(displayAmount * factor);
+    const exactCalculation = displayAmount * factor;
+    const basisPoints = Math.round(exactCalculation);
+    
+    // Debug log when rounding occurs (helps track precision fixes)
+    if (Math.abs(exactCalculation - basisPoints) > 0.001) {
+        console.log(`🔧 ROUNDING APPLIED: ${exactCalculation} → ${basisPoints} (diff: ${Math.abs(exactCalculation - basisPoints)})`);
+    }
     
     console.log(`🔧 BASIS POINTS CONVERSION: ${displayAmount} (display) → ${basisPoints} (basis points) [${decimals} decimals]`);
     
@@ -446,7 +452,20 @@ function basisPointsToDisplay(basisPoints, decimals) {
     }
     
     const factor = Math.pow(10, decimals);
-    const displayAmount = basisPoints / factor;
+    
+    // Use more precise calculation for better floating-point handling
+    let displayAmount;
+    if (decimals === 0) {
+        // No conversion needed for 0 decimals
+        displayAmount = basisPoints;
+    } else {
+        // Use BigInt for precise division, then convert to number
+        displayAmount = Number(BigInt(basisPoints)) / factor;
+        
+        // Round to avoid floating-point precision issues (keep reasonable precision)
+        const precision = Math.min(decimals, 6); // Max 6 decimal places for display
+        displayAmount = Math.round(displayAmount * Math.pow(10, precision)) / Math.pow(10, precision);
+    }
     
     console.log(`🔧 BASIS POINTS CONVERSION: ${basisPoints} (basis points) → ${displayAmount} (display) [${decimals} decimals]`);
     

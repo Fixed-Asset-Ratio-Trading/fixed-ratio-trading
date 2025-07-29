@@ -392,7 +392,7 @@ async function loadUserTokensForPool() {
             
             // Only include tokens that are part of this pool
             if (mintAddress === tokenAMint || mintAddress === tokenBMint) {
-                const balance = parseFloat(accountInfo.tokenAmount.uiAmount) || 0;
+                const balance = parseInt(accountInfo.tokenAmount.amount) || 0;
                 
                 // Determine which token this is
                 const isTokenA = mintAddress === tokenAMint;
@@ -550,24 +550,30 @@ function updateSwapInterfaceWithRealBalances() {
         document.getElementById('from-token-icon').textContent = poolData.tokenASymbol.charAt(0);
         document.getElementById('to-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
         
-        // Set real balances
-        const tokenABalance = userTokens.find(t => t.isTokenA)?.balance || 0;
-        const tokenBBalance = userTokens.find(t => !t.isTokenA)?.balance || 0;
+        // Set real balances - convert from basis points to display units
+        const tokenA = userTokens.find(t => t.isTokenA);
+        const tokenB = userTokens.find(t => !t.isTokenA);
         
-        document.getElementById('from-token-balance').textContent = tokenABalance.toFixed(6);
-        document.getElementById('to-token-balance').textContent = tokenBBalance.toFixed(6);
+        const tokenADisplayBalance = tokenA ? window.TokenDisplayUtils.basisPointsToDisplay(tokenA.balance, tokenA.decimals) : 0;
+        const tokenBDisplayBalance = tokenB ? window.TokenDisplayUtils.basisPointsToDisplay(tokenB.balance, tokenB.decimals) : 0;
+        
+        document.getElementById('from-token-balance').textContent = tokenADisplayBalance.toFixed(tokenA?.decimals || 6);
+        document.getElementById('to-token-balance').textContent = tokenBDisplayBalance.toFixed(tokenB?.decimals || 6);
     } else {
         document.getElementById('from-token-symbol').textContent = poolData.tokenBSymbol;
         document.getElementById('to-token-symbol').textContent = poolData.tokenASymbol;
         document.getElementById('from-token-icon').textContent = poolData.tokenBSymbol.charAt(0);
         document.getElementById('to-token-icon').textContent = poolData.tokenASymbol.charAt(0);
         
-        // Set real balances
-        const tokenABalance = userTokens.find(t => t.isTokenA)?.balance || 0;
-        const tokenBBalance = userTokens.find(t => !t.isTokenA)?.balance || 0;
+        // Set real balances - convert from basis points to display units
+        const tokenA = userTokens.find(t => t.isTokenA);
+        const tokenB = userTokens.find(t => !t.isTokenA);
         
-        document.getElementById('from-token-balance').textContent = tokenBBalance.toFixed(6);
-        document.getElementById('to-token-balance').textContent = tokenABalance.toFixed(6);
+        const tokenADisplayBalance = tokenA ? window.TokenDisplayUtils.basisPointsToDisplay(tokenA.balance, tokenA.decimals) : 0;
+        const tokenBDisplayBalance = tokenB ? window.TokenDisplayUtils.basisPointsToDisplay(tokenB.balance, tokenB.decimals) : 0;
+        
+        document.getElementById('from-token-balance').textContent = tokenBDisplayBalance.toFixed(tokenB?.decimals || 6);
+        document.getElementById('to-token-balance').textContent = tokenADisplayBalance.toFixed(tokenA?.decimals || 6);
     }
     
     // Reset amounts
@@ -620,9 +626,14 @@ function setMaxAmount() {
         : userTokens.find(t => !t.isTokenA);
     
     if (fromToken && fromToken.balance > 0) {
-        // Leave a small buffer for potential rounding issues
-        const maxAmount = Math.max(0, fromToken.balance - 0.000001);
-        document.getElementById('from-amount').value = maxAmount.toFixed(6);
+        // Convert balance from basis points to display units
+        const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(fromToken.balance, fromToken.decimals);
+        
+        // Leave a small buffer for potential rounding issues (but much smaller for 0-decimal tokens)
+        const bufferAmount = fromToken.decimals === 0 ? 0 : 0.000001;
+        const maxAmount = Math.max(0, displayBalance - bufferAmount);
+        
+        document.getElementById('from-amount').value = maxAmount.toFixed(fromToken.decimals);
         calculateSwapOutputEnhanced();
     }
 }
@@ -654,7 +665,17 @@ function calculateSwapOutputEnhanced() {
         ? userTokens.find(t => t.isTokenA)
         : userTokens.find(t => !t.isTokenA);
     
-    if (!fromToken || fromAmount > fromToken.balance) {
+    if (!fromToken) {
+        swapBtn.disabled = true;
+        swapBtn.textContent = '❌ Token Not Found';
+        preview.style.display = 'none';
+        return;
+    }
+    
+    // Convert user input to basis points for comparison with stored balance
+    const fromAmountBasisPoints = window.TokenDisplayUtils.displayToBasisPoints(fromAmount, fromToken.decimals);
+    
+    if (fromAmountBasisPoints > fromToken.balance) {
         swapBtn.disabled = true;
         swapBtn.textContent = '❌ Insufficient Balance';
         preview.style.display = 'none';

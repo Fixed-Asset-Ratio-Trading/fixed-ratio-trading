@@ -555,9 +555,23 @@ function updateTokenSelection() {
         // Convert balance from basis points to display units for user-friendly display
         const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(token.balance, token.decimals);
         
+        // 🔍 DEBUG: Check for precision issues in balance conversion
+        console.log(`🔍 BALANCE DEBUG [${token.symbol}]: ${token.balance} basis points → ${displayBalance} display units (${token.decimals} decimals)`);
+        
+        // 🔧 UX IMPROVEMENT: Round very close numbers to whole numbers for better display
+        let finalDisplayBalance = displayBalance;
+        if (Math.abs(displayBalance - Math.round(displayBalance)) < 0.00001) {
+            finalDisplayBalance = Math.round(displayBalance);
+            if (finalDisplayBalance !== displayBalance) {
+                console.log(`🔧 ROUNDED FOR UX: ${displayBalance} → ${finalDisplayBalance}`);
+            }
+        } else if (Math.abs(displayBalance - Math.round(displayBalance)) > 0.00001) {
+            console.log(`⚠️ PRECISION ISSUE DETECTED: Expected whole number, got ${displayBalance}`);
+        }
+        
         tokenOption.innerHTML = `
             <div class="token-symbol">${token.symbol}</div>
-            <div class="token-balance">Balance: ${displayBalance.toLocaleString()}</div>
+            <div class="token-balance">Balance: ${finalDisplayBalance.toLocaleString()}</div>
         `;
         
         tokenChoice.appendChild(tokenOption);
@@ -583,8 +597,15 @@ function selectToken(token) {
     
     // Update amount section - convert balance from basis points to display units
     const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(token.balance, token.decimals);
+    
+    // 🔧 UX IMPROVEMENT: Round very close numbers to whole numbers for better display
+    let finalDisplayBalance = displayBalance;
+    if (Math.abs(displayBalance - Math.round(displayBalance)) < 0.00001) {
+        finalDisplayBalance = Math.round(displayBalance);
+    }
+    
     document.getElementById('selected-token-name').textContent = token.symbol;
-    document.getElementById('available-balance').textContent = displayBalance.toLocaleString();
+    document.getElementById('available-balance').textContent = finalDisplayBalance.toLocaleString();
     document.getElementById('available-token-symbol').textContent = token.symbol;
     
     // Show amount section and button
