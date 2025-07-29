@@ -578,10 +578,34 @@ async function scanForPools() {
             console.log('🎯 Using on-chain data only (ignoring other sources)');
         }
         
-        // Prioritize on-chain data - if we have on-chain pools, use them exclusively
+        // Merge on-chain data with state.json decimal information
         if (onChainPools.length > 0) {
-            pools = onChainPools;
-            console.log(`✅ Loaded ${pools.length} pools from RPC (on-chain data)`);
+            // Create a map of pools from state.json by address for quick lookup
+            const statePoolsMap = new Map();
+            pools.forEach(pool => {
+                statePoolsMap.set(pool.address, pool);
+            });
+            
+            // Merge on-chain data with decimal information from state.json
+            pools = onChainPools.map(onChainPool => {
+                const statePool = statePoolsMap.get(onChainPool.address);
+                if (statePool) {
+                    // Merge: Use on-chain data but preserve decimal info from state.json
+                    return {
+                        ...onChainPool,
+                        ratioADecimal: statePool.ratioADecimal,
+                        ratioAActual: statePool.ratioAActual,
+                        ratioBDecimal: statePool.ratioBDecimal,
+                        ratioBActual: statePool.ratioBActual,
+                        dataSource: 'rpc+state'
+                    };
+                } else {
+                    // On-chain pool not in state.json
+                    return onChainPool;
+                }
+            });
+            
+            console.log(`✅ Loaded ${pools.length} pools from RPC (merged with state.json decimal data)`);
         } else {
             // Fallback to sessionStorage only if no on-chain data
             pools = localPools;
