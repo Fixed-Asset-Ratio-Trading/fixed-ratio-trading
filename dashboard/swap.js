@@ -622,15 +622,17 @@ function updateExchangeRate() {
     // Exchange rate display removed from UI - function kept for compatibility
     if (!poolData) return;
     
-    // Log exchange rate for debugging purposes only
-    const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
-    const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
+    // Use actual display values, not raw basis points
+    const ratioAActual = poolData.ratioAActual || poolData.ratio_a_actual || 1;
+    const ratioBActual = poolData.ratioBActual || poolData.ratio_b_actual || 1;
     
     if (swapDirection === 'AtoB') {
-        const rate = ratioB / ratioA;
+        // A→B: How many B tokens for 1 A token
+        const rate = ratioBActual / ratioAActual;
         console.log(`Exchange rate: 1 ${poolData.tokenASymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenBSymbol}`);
     } else {
-        const rate = ratioA / ratioB;
+        // B→A: How many A tokens for 1 B token  
+        const rate = ratioAActual / ratioBActual;
         console.log(`Exchange rate: 1 ${poolData.tokenBSymbol} = ${window.TokenDisplayUtils.formatExchangeRateStandard(rate)} ${poolData.tokenASymbol}`);
     }
 }

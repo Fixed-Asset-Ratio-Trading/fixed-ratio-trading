@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated_at": "2025-07-29T15:43:43.795Z",
+    "generated_at": "2025-07-29T18:33:19.853Z",
     "program_id": "2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
@@ -8,19 +8,19 @@
   },
   "pools": [],
   "main_treasury_state": {
-    "total_balance": 0,
+    "total_balance": 1151726080,
     "rent_exempt_minimum": 0,
     "total_withdrawn": 0,
-    "pool_creation_count": 0,
+    "pool_creation_count": 1,
     "liquidity_operation_count": 0,
     "regular_swap_count": 0,
     "treasury_withdrawal_count": 0,
     "failed_operation_count": 0,
-    "total_pool_creation_fees": 0,
+    "total_pool_creation_fees": 1150000000,
     "total_liquidity_fees": 0,
     "total_regular_swap_fees": 0,
     "total_swap_contract_fees": 0,
-    "last_update_timestamp": 0,
+    "last_update_timestamp": 1753804990,
     "total_consolidations_performed": 0,
     "last_consolidation_timestamp": 0
   },

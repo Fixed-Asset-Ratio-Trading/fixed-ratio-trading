@@ -99,7 +99,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
         &env.payer,
         env.recent_blockhash,
         &primary_mint,
-        Some(6),
+        Some(4),
     ).await?;
     
     create_mint(
@@ -107,7 +107,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
         &env.payer,
         env.recent_blockhash,
         &base_mint,
-        Some(6),
+        Some(0),
     ).await?;
     
     // 6. BATCH OPERATION 2: Initialize treasury system (single operation)

@@ -360,38 +360,67 @@ pub fn process_swap(
         (pool_state_data.ratio_b_denominator, pool_state_data.ratio_a_numerator)
     };
 
-    // 🔧 DECIMAL-AWARE CALCULATION: 
-    // The pool ratios are stored as basis points (accounting for decimals)
-    // But the smart contract receives amounts in native token units
-    // We need to:
-    // 1. Convert input from native units to basis points (multiply by 10^decimals)
-    // 2. Apply the ratio calculation 
-    // 3. Convert output from basis points to native units (divide by 10^decimals)
+    // 🔧 DECIMAL-AWARE CALCULATION WITH PRECISION FIX: 
+    // 
+    // ISSUE: Integer division truncation when output tokens have more decimals
+    // SOLUTION: Work entirely in smallest units, then convert to native at the end
+    //
+    // Example fix: 1000 tokens (0 decimals) → 1 token (4 decimals)
+    // - Input: 1000 * 10^0 = 1000 smallest units  
+    // - Ratio calculation: 1000 * 1 / 1000 = 1 smallest output unit
+    // - BUT: 1 token at 4 decimals = 10^4 = 10,000 smallest units
+    // - FIX: Scale output to account for decimal difference
     
-    // Convert input to basis points for calculation
-    let input_basis_points = amount_in.checked_mul(10_u64.pow(input_decimals))
+    // Convert input to smallest units
+    let input_smallest_units = amount_in.checked_mul(10_u64.pow(input_decimals))
         .ok_or_else(|| {
-            msg!("❌ ARITHMETIC OVERFLOW: Input amount too large for basis points conversion");
+            msg!("❌ ARITHMETIC OVERFLOW: Input amount too large for smallest units conversion");
             ProgramError::ArithmeticOverflow
         })?;
     
-    // Apply ratio calculation in basis points
-    let output_basis_points = input_basis_points.checked_mul(numerator)
+    // Apply ratio calculation in smallest units
+    let output_smallest_units_raw = input_smallest_units.checked_mul(numerator)
         .ok_or(ProgramError::ArithmeticOverflow)?
         .checked_div(denominator)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    // Convert output from basis points to native units
-    let amount_out = output_basis_points.checked_div(10_u64.pow(output_decimals))
+    // PRECISION FIX: Scale the output to account for decimal differences
+    // If output has more decimals, we need to scale up the result
+    let output_smallest_units = if output_decimals > input_decimals {
+        let decimal_scale = 10_u64.pow(output_decimals - input_decimals);
+        output_smallest_units_raw.checked_mul(decimal_scale)
+            .ok_or_else(|| {
+                msg!("❌ ARITHMETIC OVERFLOW: Decimal scaling overflow");
+                ProgramError::ArithmeticOverflow
+            })?
+    } else if input_decimals > output_decimals {
+        let decimal_scale = 10_u64.pow(input_decimals - output_decimals);
+        output_smallest_units_raw.checked_div(decimal_scale)
+            .ok_or_else(|| {
+                msg!("❌ ARITHMETIC OVERFLOW: Decimal scaling underflow");
+                ProgramError::ArithmeticOverflow
+            })?
+    } else {
+        output_smallest_units_raw
+    };
+    
+    // Convert from smallest units to native token units
+    let amount_out = output_smallest_units.checked_div(10_u64.pow(output_decimals))
         .ok_or_else(|| {
-            msg!("❌ ARITHMETIC OVERFLOW: Output basis points too large for native units conversion");
+            msg!("❌ ARITHMETIC OVERFLOW: Output smallest units too large for native units conversion");
             ProgramError::ArithmeticOverflow
         })?;
 
     msg!("📊 DECIMAL-AWARE FIXED RATIO CALCULATION:");
-    msg!("   • Exchange rate: {}:{} (numerator:denominator in basis points)", numerator, denominator);
-    msg!("   • Input: {} native tokens ({} basis points)", amount_in, input_basis_points);
-    msg!("   • Output: {} native tokens ({} basis points)", amount_out, output_basis_points);
+    msg!("   • Exchange rate: {}:{} (numerator:denominator)", numerator, denominator);
+    msg!("   • Input: {} native tokens ({} smallest units)", amount_in, input_smallest_units);
+    msg!("   • Raw calculation: {} * {} / {} = {}", input_smallest_units, numerator, denominator, output_smallest_units_raw);
+    msg!("   • Decimal scaling: {} → {} (factor: {})", 
+         output_smallest_units_raw, output_smallest_units,
+         if output_decimals > input_decimals { 10_u64.pow(output_decimals - input_decimals) }
+         else if input_decimals > output_decimals { 10_u64.pow(input_decimals - output_decimals) }
+         else { 1u64 });
+    msg!("   • Output: {} native tokens ({} smallest units)", amount_out, output_smallest_units);
     msg!("   • Input decimals: {}, Output decimals: {}", input_decimals, output_decimals);
     msg!("   • Slippage protection: Fixed ratio (no slippage)");
     
