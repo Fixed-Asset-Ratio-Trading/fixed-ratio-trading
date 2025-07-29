@@ -13,6 +13,24 @@ use solana_program::{
 /// **PHASE 1: DISTRIBUTED COLLECTION ARCHITECTURE**
 /// Updated to support distributed SOL fee collection with batch consolidation.
 /// Pool creation fees still go directly to MainTreasuryState (optimal for one-time fees).
+/// 
+/// **BASIS POINTS REFACTOR: Critical Implementation Notes**
+/// 
+/// All token amounts and ratios in this structure are stored in **basis points** (smallest token units).
+/// External applications are responsible for converting between display units and basis points.
+/// The smart contract assumes all input values are already in basis points and performs no conversion.
+/// 
+/// **Basis Points Examples:**
+/// - 1.5 USDC (6 decimals) = 1,500,000 basis points
+/// - 0.001 BTC (8 decimals) = 100,000 basis points  
+/// - 1.0 SOL (9 decimals) = 1,000,000,000 basis points
+/// 
+/// **Conversion Responsibility:**
+/// - **Input**: Client converts display units → basis points before sending to contract
+/// - **Storage**: Contract stores basis points directly (this structure)
+/// - **Calculations**: Contract performs all calculations in basis points
+/// - **Output**: Client converts basis points → display units for user interface
+/// - **Decimals**: Fetched from token mint accounts when needed (not stored here)
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct PoolState {
     pub owner: Pubkey,
@@ -22,9 +40,43 @@ pub struct PoolState {
     pub token_b_vault: Pubkey,
     pub lp_token_a_mint: Pubkey,
     pub lp_token_b_mint: Pubkey,
+    
+    /// **BASIS POINTS: Token A ratio numerator in basis points**
+    /// 
+    /// This value represents the Token A side of the pool's fixed exchange ratio
+    /// in the smallest token units (basis points). External applications must
+    /// convert from display units to basis points before pool creation.
+    /// 
+    /// Example: For "1.0 SOL = 160.0 USDT" with SOL having 9 decimals:
+    /// ratio_a_numerator = 1,000,000,000 (1.0 * 10^9)
     pub ratio_a_numerator: u64,
+    
+    /// **BASIS POINTS: Token B ratio denominator in basis points**
+    /// 
+    /// This value represents the Token B side of the pool's fixed exchange ratio
+    /// in the smallest token units (basis points). External applications must
+    /// convert from display units to basis points before pool creation.
+    /// 
+    /// Example: For "1.0 SOL = 160.0 USDT" with USDT having 6 decimals:
+    /// ratio_b_denominator = 160,000,000 (160.0 * 10^6)
     pub ratio_b_denominator: u64,
+    
+    /// **BASIS POINTS: Total Token A liquidity in basis points**
+    /// 
+    /// This tracks the total amount of Token A deposited into the pool
+    /// in basis points. Updated during deposit/withdrawal operations.
+    /// 
+    /// Example: If 50.5 SOL (9 decimals) is deposited:
+    /// total_token_a_liquidity = 50,500,000,000 (50.5 * 10^9)
     pub total_token_a_liquidity: u64,
+    
+    /// **BASIS POINTS: Total Token B liquidity in basis points**
+    /// 
+    /// This tracks the total amount of Token B deposited into the pool
+    /// in basis points. Updated during deposit/withdrawal operations.
+    /// 
+    /// Example: If 1,200.75 USDT (6 decimals) is deposited:
+    /// total_token_b_liquidity = 1,200,750,000 (1200.75 * 10^6)
     pub total_token_b_liquidity: u64,
     pub pool_authority_bump_seed: u8,
     pub token_a_vault_bump_seed: u8,

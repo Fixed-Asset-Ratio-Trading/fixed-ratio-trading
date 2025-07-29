@@ -204,27 +204,23 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
     Ok(())
 }
 
-/// **POOL_FLAG_ONE_TO_MANY_RATIO Validation Function**
+/// **BASIS POINTS REFACTOR: One-to-Many Ratio Validation**
 /// 
-/// Determines if a pool qualifies for the POOL_FLAG_ONE_TO_MANY_RATIO flag based on
-/// specific whole-number ratio patterns. This function analyzes token ratios in display
-/// units to identify pools suitable for applications targeting these specific patterns.
-///
-/// **Flag Logic Definition**: The flag should be set when the pool has a token ratio where:
-/// * One or both tokens have a ratio value of exactly 1 (representing 1 whole token, not fractional)
+/// Validates if a pool qualifies for the POOL_FLAG_ONE_TO_MANY_RATIO based on specific criteria:
+/// * Both ratios must represent whole numbers when converted to display units
+/// * One of the ratios must equal exactly 1.0 in display units (representing 1 whole token, not fractional)
 /// * The corresponding token(s) must have whole number values only (no fractional amounts)
 /// * Both ratios must be positive (greater than zero)
 ///
 /// **Technical Implementation**:
-/// 1. Converts base units to display units using token decimal factors
-/// 2. Validates both ratios represent whole numbers (no fractional parts)
-/// 3. Ensures both ratios are positive
-/// 4. Checks if one of the ratios equals exactly 1.0 in display units
+/// 1. Validates both ratios represent whole numbers (no fractional parts in display units)
+/// 2. Ensures both ratios are positive
+/// 3. Checks if one of the ratios equals exactly 1.0 in display units
 ///
 /// **Valid Examples** (returns true):
-/// * ✅ 1 SOL = 160 USDT (one token equals exactly 1, other is whole number)
-/// * ✅ 1000 DOGE = 1 USDC (one token equals exactly 1, other is whole number)
-/// * ✅ 1 BTC = 50000 USDT (one token equals exactly 1, other is whole number)
+/// * ✅ 1 SOL = 160 USDT (1.0 * 10^9 basis points, 160.0 * 10^6 basis points)
+/// * ✅ 1000 DOGE = 1 USDC (1000.0 * 10^8 basis points, 1.0 * 10^6 basis points)
+/// * ✅ 1 BTC = 50000 USDT (1.0 * 10^8 basis points, 50000.0 * 10^6 basis points)
 ///
 /// **Invalid Examples** (returns false):
 /// * ❌ 1 SOL = 160.55 USDT (fractional value violates whole-number requirement)
@@ -241,8 +237,8 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 /// flag based on the provided token ratios and their decimal configurations.
 ///
 /// # Arguments
-/// * `ratio_a_numerator` - Token A base units in the ratio
-/// * `ratio_b_denominator` - Token B base units in the ratio
+/// * `ratio_a_basis_points` - Token A ratio in basis points (client-converted)
+/// * `ratio_b_basis_points` - Token B ratio in basis points (client-converted)
 /// * `token_a_decimals` - Number of decimal places for token A (used for display conversion)
 /// * `token_b_decimals` - Number of decimal places for token B (used for display conversion)
 ///
@@ -255,8 +251,8 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 /// 
 /// // ✅ Valid: 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
-///     1_000_000_000,  // 1.0 SOL in base units
-///     2_000_000,      // 2.0 USDC in base units
+///     1_000_000_000,  // 1.0 SOL in basis points
+///     2_000_000,      // 2.0 USDC in basis points
 ///     9,              // SOL decimals
 ///     6               // USDC decimals
 /// ); // Returns true - one token equals 1, both are whole numbers
@@ -264,48 +260,48 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 /// 
 /// // ❌ Invalid: 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
 /// let is_one_to_many = check_one_to_many_ratio(
-///     100_000_000,    // 1.0 BTC in base units
-///     1_010_000,      // 1.01 USDT in base units
+///     100_000_000,    // 1.0 BTC in basis points
+///     1_010_000,      // 1.01 USDT in basis points
 ///     8,              // BTC decimals
 ///     6               // USDT decimals
-/// ); // Returns false - 1.01 is not a whole number
+/// ); // Returns false - 1.01 USDT is not a whole number
 /// assert!(!is_one_to_many);
 /// ```
 pub fn check_one_to_many_ratio(
-    ratio_a_numerator: u64,
-    ratio_b_denominator: u64, 
+    ratio_a_basis_points: u64,
+    ratio_b_basis_points: u64, 
     token_a_decimals: u8,
     token_b_decimals: u8
 ) -> bool {
     // ✅ ENHANCED DEBUG LOGGING: Step-by-step tracing
     use solana_program::msg;
     
-    msg!("🔍 ENHANCED DEBUG: Entering check_one_to_many_ratio");
-    msg!("  Input: ratio_a_numerator={}, ratio_b_denominator={}", ratio_a_numerator, ratio_b_denominator);
+    msg!("🔍 BASIS POINTS REFACTOR: Entering check_one_to_many_ratio");
+    msg!("  Input: ratio_a_basis_points={}, ratio_b_basis_points={}", ratio_a_basis_points, ratio_b_basis_points);
     msg!("  Input: token_a_decimals={}, token_b_decimals={}", token_a_decimals, token_b_decimals);
     
-    let token_a_decimal_factor = 10_u64.pow(token_a_decimals as u32);
-    let token_b_decimal_factor = 10_u64.pow(token_b_decimals as u32);
+    let token_a_factor = 10_u64.pow(token_a_decimals as u32);
+    let token_b_factor = 10_u64.pow(token_b_decimals as u32);
     
     msg!("🔍 Step 1: Calculated decimal factors");
-    msg!("  token_a_decimal_factor: {} (10^{})", token_a_decimal_factor, token_a_decimals);
-    msg!("  token_b_decimal_factor: {} (10^{})", token_b_decimal_factor, token_b_decimals);
+    msg!("  token_a_factor: {} (10^{})", token_a_factor, token_a_decimals);
+    msg!("  token_b_factor: {} (10^{})", token_b_factor, token_b_decimals);
     
-    // Check if both ratios represent whole numbers (no fractional parts)
-    let a_is_whole = (ratio_a_numerator % token_a_decimal_factor) == 0;
-    let b_is_whole = (ratio_b_denominator % token_b_decimal_factor) == 0;
+    // Check if both ratios represent whole numbers (no fractional parts in display units)
+    let a_is_whole = (ratio_a_basis_points % token_a_factor) == 0;
+    let b_is_whole = (ratio_b_basis_points % token_b_factor) == 0;
     
-    msg!("🔍 Step 2: Checking if ratios represent whole numbers");
-    msg!("  a_is_whole: {} ({} % {} == 0)", a_is_whole, ratio_a_numerator, token_a_decimal_factor);
-    msg!("  b_is_whole: {} ({} % {} == 0)", b_is_whole, ratio_b_denominator, token_b_decimal_factor);
+    msg!("🔍 Step 2: Checking if ratios represent whole numbers in display units");
+    msg!("  a_is_whole: {} ({} % {} == 0)", a_is_whole, ratio_a_basis_points, token_a_factor);
+    msg!("  b_is_whole: {} ({} % {} == 0)", b_is_whole, ratio_b_basis_points, token_b_factor);
     
-    // Convert to display units
-    let display_ratio_a = ratio_a_numerator / token_a_decimal_factor;
-    let display_ratio_b = ratio_b_denominator / token_b_decimal_factor;
+    // Convert to display units for validation
+    let display_ratio_a = ratio_a_basis_points / token_a_factor;
+    let display_ratio_b = ratio_b_basis_points / token_b_factor;
     
     msg!("🔍 Step 3: Converting to display units");
-    msg!("  display_ratio_a: {} ({} / {})", display_ratio_a, ratio_a_numerator, token_a_decimal_factor);
-    msg!("  display_ratio_b: {} ({} / {})", display_ratio_b, ratio_b_denominator, token_b_decimal_factor);
+    msg!("  display_ratio_a: {} ({} / {})", display_ratio_a, ratio_a_basis_points, token_a_factor);
+    msg!("  display_ratio_b: {} ({} / {})", display_ratio_b, ratio_b_basis_points, token_b_factor);
     
     // Check if both are greater than zero, whole numbers, and one equals exactly 1
     let both_positive = display_ratio_a > 0 && display_ratio_b > 0;
@@ -324,7 +320,7 @@ pub fn check_one_to_many_ratio(
     msg!("  one_equals_one: {}", one_equals_one);
     msg!("  final_result: {} (a_is_whole && b_is_whole && both_positive && one_equals_one)", final_result);
     
-    msg!("🔍 ENHANCED DEBUG: Exiting check_one_to_many_ratio with result: {}", final_result);
+    msg!("🔍 BASIS POINTS REFACTOR: Exiting check_one_to_many_ratio with result: {}", final_result);
     
     final_result
 } 

@@ -65,22 +65,32 @@ fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Resul
     }
 }
 
-/// Processes token swaps at fixed exchange ratios with deterministic pricing
-/// 
-/// This function handles all token swap operations in the pool, using predetermined 
-/// fixed exchange rates to convert one token type to another. The swap process
-/// includes fee collection, liquidity validation, ratio-based calculations,
-/// and atomic token transfers.
+/// **Fixed-Ratio Token Swap with Basis Points Architecture**
 ///
-/// # How It Works
-/// 1. **Account Validation**: Validates all required accounts and user permissions
-/// 2. **System Checks**: Ensures system and pool are not paused
-/// 3. **Fee Collection**: Collects fixed swap fee from user's SOL balance
-/// 4. **Direction Detection**: Determines swap direction (A→B or B→A) from user's input token
-/// 5. **Ratio Calculation**: Calculates output amount using fixed pool ratios
-/// 6. **Liquidity Check**: Verifies pool has sufficient output tokens available
-/// 7. **Token Transfers**: Executes atomic input/output token transfers
-/// 8. **State Updates**: Updates pool liquidity balances and saves state
+/// Performs deterministic token swaps using pre-configured fixed exchange ratios stored
+/// in basis points. This function implements exact input swapping where users specify
+/// the input amount and receive a deterministic output amount based on the pool's ratio.
+/// 
+/// **BASIS POINTS REFACTOR: All Values in Basis Points**
+/// 
+/// This function operates entirely in basis points (smallest token units) with no
+/// decimal conversion performed by the contract. All calculations preserve precision
+/// and handle large numbers efficiently.
+/// 
+/// **Input/Output Flow:**
+/// - Input: `amount_in` in basis points (from SPL token transfer)
+/// - Pool ratios: Already stored in basis points (set during pool creation)
+/// - Calculation: Pure basis point arithmetic
+/// - Output: Result in basis points (for SPL token transfer)
+/// 
+/// **Example Calculation:**
+/// ```
+/// Pool: 1.0 SOL = 160.0 USDT (1,000,000,000 : 160,000,000 basis points)
+/// Input: 0.5 SOL = 500,000,000 basis points
+/// Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
+/// ```
+///
+/// # Key Features
 ///
 /// # Fixed Ratio Exchange
 /// - Exchange rates are predetermined and constant (e.g., 2:1, 3:1, etc.)

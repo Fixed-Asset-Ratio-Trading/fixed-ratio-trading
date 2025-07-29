@@ -35,10 +35,38 @@ use spl_token::{
 /// maximum efficiency for pool creation operations including LP token mint creation,
 /// token vault setup, and pool state initialization.
 /// 
+/// **BASIS POINTS REFACTOR: Critical Input Assumptions**
+/// 
+/// This function assumes that all ratio inputs are **already converted to basis points**
+/// by the client application. The contract performs **no decimal conversion** internally.
+/// 
+/// **Client Responsibility:**
+/// - Convert display units to basis points before calling this function
+/// - Validate one-to-many ratio requirements before submission  
+/// - Fetch token decimals from mint accounts for conversion calculations
+/// 
+/// **Contract Responsibility:**
+/// - Fetch token decimals for validation purposes only
+/// - Validate that basis point ratios represent whole numbers (one-to-many check)
+/// - Store basis point values directly without conversion
+/// 
+/// **Example Client Conversion:**
+/// ```javascript
+/// // User wants: "1.0 SOL = 160.0 USDT"
+/// const solDecimals = 9; // Fetched from SOL mint account
+/// const usdtDecimals = 6; // Fetched from USDT mint account
+/// 
+/// const ratioABasisPoints = 1.0 * Math.pow(10, solDecimals);   // 1,000,000,000
+/// const ratioBBasisPoints = 160.0 * Math.pow(10, usdtDecimals); // 160,000,000
+/// 
+/// // Send basis points to contract
+/// await initializePool(ratioABasisPoints, ratioBBasisPoints);
+/// ```
+/// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `ratio_a_numerator` - Token A base units in the ratio
-/// * `ratio_b_denominator` - Token B base units in the ratio  
+/// * `ratio_a_numerator` - Token A ratio in basis points (client-converted)
+/// * `ratio_b_denominator` - Token B ratio in basis points (client-converted)
 /// * `accounts` - Array of accounts in secure order (13 accounts minimum)
 /// 
 /// # Account Info
@@ -504,15 +532,11 @@ pub fn process_initialize_pool(
     // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
     // and both ratios represent whole numbers only (no fractional amounts)
     
-    // ✅ BUG FIX: Convert simplified ratio values to decimal-adjusted values
-    // The check_one_to_many_ratio function expects decimal-adjusted values (e.g., 1,000,000,000 for 1.0 with 9 decimals)
-    // but the pool creation stores simplified values (e.g., 160 for a 160:1 ratio)
-    let decimal_adjusted_ratio_a = ratio_a_numerator * 10_u64.pow(token_a_decimals_v2 as u32);
-    let decimal_adjusted_ratio_b = ratio_b_denominator * 10_u64.pow(token_b_decimals_v2 as u32);
-    
+    // 🔧 BASIS POINTS REFACTOR: Input ratios are already in basis points (client responsibility)
+    // Contract fetches decimals for validation only, no conversion needed
     let is_one_to_many_ratio = check_one_to_many_ratio(
-        decimal_adjusted_ratio_a,
-        decimal_adjusted_ratio_b,
+        ratio_a_numerator,     // Already in basis points
+        ratio_b_denominator,   // Already in basis points
         token_a_decimals_v2,
         token_b_decimals_v2
     );
