@@ -85,9 +85,9 @@ fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Resul
 /// 
 /// **Example Calculation:**
 /// ```
-/// Pool: 1.0 SOL = 160.0 USDT (1,000,000,000 : 160,000,000 basis points)
-/// Input: 0.5 SOL = 500,000,000 basis points
-/// Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
+/// // Pool: 1.0 SOL = 160.0 USDT (1,000,000,000 : 160,000,000 basis points)
+/// // Input: 0.5 SOL = 500,000,000 basis points
+/// // Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
 /// ```
 ///
 /// # Key Features
