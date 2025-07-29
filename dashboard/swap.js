@@ -671,19 +671,23 @@ function calculateSwapOutputEnhanced() {
         console.log(`  Input: ${fromAmount} (display units)`);
         console.log(`  Direction: ${swapDirection}`);
         
-        // ✅ BASIS POINTS REFACTOR: Get token decimals for conversion
+        // ✅ BASIS POINTS REFACTOR: Get token decimals from enriched pool data
         let inputDecimals, outputDecimals, numerator, denominator;
+        
+        // Use correct decimals from centralized enrichment
+        const tokenADecimals = poolData.tokenDecimals ? poolData.tokenDecimals.tokenADecimals : 6;
+        const tokenBDecimals = poolData.tokenDecimals ? poolData.tokenDecimals.tokenBDecimals : 6;
         
         if (swapDirection === 'AtoB') {
             // Swapping from Token A to Token B
-            inputDecimals = fromToken.decimals;
-            outputDecimals = userTokens.find(t => !t.isTokenA)?.decimals || 6;
+            inputDecimals = tokenADecimals;   // TS = 4 decimals
+            outputDecimals = tokenBDecimals;  // MST = 0 decimals
             numerator = ratioBBasisPoints;     // Token B amount in basis points
             denominator = ratioABasisPoints;   // Token A amount in basis points
         } else {
             // Swapping from Token B to Token A
-            inputDecimals = fromToken.decimals;
-            outputDecimals = userTokens.find(t => t.isTokenA)?.decimals || 9;
+            inputDecimals = tokenBDecimals;   // MST = 0 decimals
+            outputDecimals = tokenADecimals;  // TS = 4 decimals
             numerator = ratioABasisPoints;     // Token A amount in basis points
             denominator = ratioBBasisPoints;   // Token B amount in basis points
         }
