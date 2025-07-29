@@ -1170,8 +1170,8 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             { pubkey: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), isSigner: false, isWritable: false },   // 4: SPL Token Program Account
             { pubkey: mainTreasuryPDA[0], isSigner: false, isWritable: true },        // 5: Main Treasury PDA
             { pubkey: solanaWeb3.SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },      // 6: Rent Sysvar Account
-            { pubkey: primaryTokenMint, isSigner: false, isWritable: false },         // 7: Token A Mint Account
-            { pubkey: baseTokenMint, isSigner: false, isWritable: false },            // 8: Token B Mint Account
+            { pubkey: tokenAMint, isSigner: false, isWritable: false },         // 7: Token A Mint Account (normalized order)
+            { pubkey: tokenBMint, isSigner: false, isWritable: false },            // 8: Token B Mint Account (normalized order)
             { pubkey: tokenAVaultPDA[0], isSigner: false, isWritable: true },         // 9: Token A Vault PDA
             { pubkey: tokenBVaultPDA[0], isSigner: false, isWritable: true },         // 10: Token B Vault PDA
             { pubkey: lpTokenAMintPDA[0], isSigner: false, isWritable: true },        // 11: LP Token A Mint PDA
@@ -1239,17 +1239,27 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // Get fresh blockhash right before sending to avoid "Blockhash not found" errors
         console.log('🔄 Getting fresh blockhash...');
-        const { blockhash: freshBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
+        const startTime = Date.now();
+        const { blockhash: freshBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+        const blockhashTime = Date.now();
+        
+        console.log(`📅 Fresh blockhash: ${freshBlockhash.slice(0, 8)}... (valid until block ${lastValidBlockHeight})`);
+        console.log(`⏰ Blockhash fetch time: ${blockhashTime - startTime}ms`);
+        
         transaction.recentBlockhash = freshBlockhash;
         transaction.feePayer = wallet.publicKey;
         
         console.log('📝 Requesting wallet signature...');
+        console.log(`⚡ Time since blockhash: ${Date.now() - blockhashTime}ms`);
         
         // Note: Skipping pre-simulation as Backpack wallet will simulate the transaction itself
         console.log('🔍 Transaction ready for wallet signature...');
+        console.log(`⚡ Time elapsed since blockhash: ${Date.now() - blockhashTime}ms`);
         
         const signature = await wallet.signAndSendTransaction(transaction);
+        const sentTime = Date.now();
         console.log('✅ Pool creation transaction sent:', signature);
+        console.log(`⚡ Total time from blockhash to send: ${sentTime - blockhashTime}ms`);
         
         // Wait for confirmation with retry logic for blockhash expiration
         console.log('⏳ Waiting for transaction confirmation...');
@@ -1261,8 +1271,16 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
                 lastValidBlockHeight: lastValidBlockHeight
             }, 'confirmed');
         } catch (confirmError) {
-            console.log('⚠️ Confirmation failed, trying without blockhash...');
-            confirmation = await connection.confirmTransaction(signature, 'confirmed');
+            console.log('⚠️ Confirmation with blockhash failed:', confirmError.message);
+            console.log(`🕐 Time elapsed since blockhash: ${Date.now() - blockhashTime}ms`);
+            console.log('🔄 Trying confirmation without blockhash...');
+            
+            try {
+                confirmation = await connection.confirmTransaction(signature, 'confirmed');
+            } catch (retryError) {
+                console.log('❌ Confirmation retry also failed:', retryError.message);
+                throw retryError;
+            }
         }
         
         if (confirmation.value.err) {
