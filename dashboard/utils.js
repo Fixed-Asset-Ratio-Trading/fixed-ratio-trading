@@ -680,8 +680,9 @@ function getCentralizedRatioText(pool) {
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
     
     // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
-    const exchangeRate = ratioADisplay / ratioBDisplay;
+    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
+    // So: exchangeRate = ratioBDisplay / ratioADisplay
+    const exchangeRate = ratioBDisplay / ratioADisplay;
     
     const tokenASymbol = pool.tokenASymbol || 'Token A';
     const tokenBSymbol = pool.tokenBSymbol || 'Token B';
@@ -710,8 +711,9 @@ function getCentralizedRatioDisplay(pool) {
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
     
     // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
-    const exchangeRate = ratioADisplay / ratioBDisplay;
+    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
+    // So: exchangeRate = ratioBDisplay / ratioADisplay
+    const exchangeRate = ratioBDisplay / ratioADisplay;
     
     return `1:${formatNumberWithCommas(exchangeRate)}`;
 }
@@ -738,8 +740,9 @@ function getCentralizedDisplayInfo(pool) {
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
     // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 10,000 MST", we need: exchangeRate = 10000
-    const exchangeRate = ratioADisplay / ratioBDisplay;
+    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
+    // So: exchangeRate = ratioBDisplay / ratioADisplay
+    const exchangeRate = ratioBDisplay / ratioADisplay;
     
     return {
         pairName: pairName,
