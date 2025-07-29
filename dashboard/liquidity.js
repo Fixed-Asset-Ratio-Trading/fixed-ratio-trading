@@ -1414,6 +1414,26 @@ async function removeLiquidity() {
         return;
     }
     
+    // ✅ CRITICAL VALIDATION: Check if pool has sufficient underlying liquidity
+    const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
+    const poolLiquidity = underlyingToken === 'TS' 
+        ? (poolData.totalTokenALiquidity || poolData.total_token_a_liquidity || 0)
+        : (poolData.totalTokenBLiquidity || poolData.total_token_b_liquidity || 0);
+    
+    console.log(`🔍 LIQUIDITY VALIDATION: ${underlyingToken} pool liquidity = ${poolLiquidity}, withdrawal amount = ${amount}`);
+    
+    if (poolLiquidity === undefined || poolLiquidity === null || poolLiquidity <= 0) {
+        showStatus('error', `❌ Pool has no ${underlyingToken} liquidity! Cannot withdraw ${underlyingToken} tokens when the pool is empty.`);
+        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidity} ${underlyingToken}, cannot withdraw ${amount}`);
+        return;
+    }
+    
+    if (amount > poolLiquidity) {
+        showStatus('error', `❌ Pool has insufficient ${underlyingToken} liquidity! Pool has ${poolLiquidity.toLocaleString()} ${underlyingToken}, but you're trying to withdraw ${amount.toLocaleString()} ${underlyingToken}.`);
+        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidity} ${underlyingToken}, cannot withdraw ${amount}`);
+        return;
+    }
+    
     const removeBtn = document.getElementById('remove-liquidity-btn');
     const originalText = removeBtn.textContent;
     
@@ -1734,22 +1754,44 @@ function setMaxAmount(operation) {
             }
             
         } else if (operation === 'remove') {
-            // For removing liquidity, use the selected LP token's balance
+            // For removing liquidity, consider both LP token balance AND pool liquidity
             if (!window.selectedLPToken) {
                 showStatus('error', 'Please select an LP token first');
                 return;
             }
             
-            const maxAmount = window.selectedLPToken.balance;
+            // Check pool liquidity for the underlying token
+            const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
+            const poolLiquidity = underlyingToken === 'TS' 
+                ? (poolData.totalTokenALiquidity || poolData.total_token_a_liquidity || 0)
+                : (poolData.totalTokenBLiquidity || poolData.total_token_b_liquidity || 0);
+            
+            console.log(`🔍 MAX CALCULATION: User LP balance = ${window.selectedLPToken.balance}, Pool ${underlyingToken} liquidity = ${poolLiquidity}`);
+            
+            // Max amount is limited by both user's LP tokens AND pool's underlying liquidity
+            let maxAmount = window.selectedLPToken.balance;
+            let limitReason = 'LP token balance';
+            
+            if (poolLiquidity === undefined || poolLiquidity === null || poolLiquidity <= 0) {
+                showStatus('error', `❌ Cannot withdraw: Pool has no ${underlyingToken} liquidity!`);
+                console.error(`❌ POOL EMPTY: No ${underlyingToken} liquidity available for withdrawal`);
+                return;
+            }
+            
+            if (poolLiquidity < maxAmount) {
+                maxAmount = poolLiquidity;
+                limitReason = `pool ${underlyingToken} liquidity`;
+            }
+            
             const amountInput = document.getElementById('remove-liquidity-amount');
             
             if (amountInput && maxAmount > 0) {
                 amountInput.value = maxAmount.toString();
                 updateRemoveButton();
-                showStatus('info', `Set to maximum available: ${maxAmount.toLocaleString()} ${window.selectedLPToken.symbol}`);
-                console.log(`💰 Set max amount for remove: ${maxAmount} ${window.selectedLPToken.symbol}`);
+                showStatus('info', `Set to maximum withdrawable: ${maxAmount.toLocaleString()} ${window.selectedLPToken.symbol} (limited by ${limitReason})`);
+                console.log(`💰 Set max amount for remove: ${maxAmount} ${window.selectedLPToken.symbol} (limited by ${limitReason})`);
             } else {
-                showStatus('error', 'No LP token balance available');
+                showStatus('error', 'No withdrawable balance available');
             }
         }
         

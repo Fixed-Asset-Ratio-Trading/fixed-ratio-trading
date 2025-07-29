@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "fixed-ratio-trading"
-version = "0.12.1025"
+version = "0.12.1026"
 dependencies = [
  "bincode",
  "borsh 0.10.4",
