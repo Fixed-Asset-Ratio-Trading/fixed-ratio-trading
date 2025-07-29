@@ -584,17 +584,21 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(9)).await?; // SOL-like (9 decimals)
     create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(6)).await?; // USDT-like (6 decimals)
     
-    // Create pool with 160:1 ratio (160 USDT for 1 SOL) - this should set the POOL_FLAG_ONE_TO_MANY_RATIO flag
-    println!("   Creating pool with 160:1 ratio (should set POOL_FLAG_ONE_TO_MANY_RATIO flag)");
+    // Create pool with 1:160 ratio (1 SOL = 160 USDT) - this should set the POOL_FLAG_ONE_TO_MANY_RATIO flag
+    // ✅ FIXED: Use basis points approach instead of legacy function
+    println!("   Creating pool with 1:160 ratio (1 SOL = 160 USDT) - should set POOL_FLAG_ONE_TO_MANY_RATIO flag");
     
-    // Create the pool
-    let pool_result = create_pool_new_pattern(
+    // Create the pool using basis points conversion
+    let pool_result = create_simple_display_pool(
         &mut banks_client,
         &funder,
         recent_blockhash,
-        &token_a_mint,
-        &token_b_mint,
-        Some(160), // 160:1 ratio (160 USDT for 1 SOL)
+        &token_a_mint,     // SOL-like (multiple)
+        &token_b_mint,     // USDT-like (base) 
+        1.0,               // 1.0 SOL (display units)
+        160.0,             // 160.0 USDT (display units)
+        9,                 // SOL decimals
+        6,                 // USDT decimals
     ).await;
 
     // Handle the Result properly - it might fail due to the bug we're investigating
