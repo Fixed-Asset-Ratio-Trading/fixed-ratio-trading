@@ -882,11 +882,36 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         });
         
         // Determine normalized token order for PDA derivation (same logic as smart contract)
-        // Use string comparison for lexicographic ordering (same as Rust toString() comparison)
-        const tokenAMint = primaryTokenMint.toString() < baseTokenMint.toString() 
-            ? primaryTokenMint : baseTokenMint;
-        const tokenBMint = primaryTokenMint.toString() < baseTokenMint.toString() 
-            ? baseTokenMint : primaryTokenMint;
+        // CRITICAL FIX: Use byte-level comparison like Rust Pubkey comparison, not string comparison
+        console.log('🔍 TOKEN ORDERING DEBUG:');
+        console.log(`   primaryTokenMint: ${primaryTokenMint.toString()}`);
+        console.log(`   baseTokenMint: ${baseTokenMint.toString()}`);
+        
+        // Convert to byte arrays for proper comparison (same as Rust Pubkey::cmp)
+        const primaryTokenBytes = primaryTokenMint.toBytes();
+        const baseTokenBytes = baseTokenMint.toBytes();
+        
+        // Byte-level lexicographic comparison (same as Rust Pubkey < Pubkey)
+        let primaryIsLessThanBase = false;
+        for (let i = 0; i < 32; i++) {
+            if (primaryTokenBytes[i] < baseTokenBytes[i]) {
+                primaryIsLessThanBase = true;
+                break;
+            } else if (primaryTokenBytes[i] > baseTokenBytes[i]) {
+                primaryIsLessThanBase = false;
+                break;
+            }
+        }
+        
+        console.log(`   primaryTokenMint < baseTokenMint (byte comparison): ${primaryIsLessThanBase}`);
+        console.log(`   primaryTokenMint < baseTokenMint (string comparison): ${primaryTokenMint.toString() < baseTokenMint.toString()}`);
+        
+        const tokenAMint = primaryIsLessThanBase ? primaryTokenMint : baseTokenMint;
+        const tokenBMint = primaryIsLessThanBase ? baseTokenMint : primaryTokenMint;
+            
+        console.log(`   Normalized tokenAMint: ${tokenAMint.toString()}`);
+        console.log(`   Normalized tokenBMint: ${tokenBMint.toString()}`);
+        console.log(`   Tokens were swapped: ${tokenAMint.toString() !== primaryTokenMint.toString()}`);
         
         // 🔧 FIX: Adjust ratio to preserve user intent when tokens are swapped
         const tokensWereSwapped = tokenAMint.toString() !== primaryTokenMint.toString();
@@ -979,18 +1004,54 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         console.log(`   Basis points represent: ${finalRatioABasisPoints / Math.pow(10, tokensWereSwapped ? baseTokenDecimals : primaryTokenDecimals)} : ${finalRatioBBasisPoints / Math.pow(10, tokensWereSwapped ? primaryTokenDecimals : baseTokenDecimals)}`);
         
         // ✅ BASIS POINTS REFACTOR: Create pool state PDA using basis points ratios
+        console.log('🔍 PDA DERIVATION DEBUG:');
+        console.log(`   POOL_STATE_SEED_PREFIX: "pool_state"`);
+        console.log(`   tokenAMint: ${tokenAMint.toString()}`);
+        console.log(`   tokenBMint: ${tokenBMint.toString()}`);
+        console.log(`   finalRatioABasisPoints: ${finalRatioABasisPoints} (0x${finalRatioABasisPoints.toString(16)})`);
+        console.log(`   finalRatioBBasisPoints: ${finalRatioBBasisPoints} (0x${finalRatioBBasisPoints.toString(16)})`);
+        
+        // Show the exact byte arrays being used as seeds
+        const seedPrefix = new TextEncoder().encode('pool_state');
+        const tokenABuffer = tokenAMint.toBuffer();
+        const tokenBBuffer = tokenBMint.toBuffer();
+        const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer);
+        const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer);
+        
+        console.log('🔍 PDA SEED BYTES:');
+        console.log(`   seedPrefix: [${Array.from(seedPrefix).join(', ')}]`);
+        console.log(`   tokenABuffer: [${Array.from(tokenABuffer).slice(0, 8).join(', ')}...] (${tokenABuffer.length} bytes)`);
+        console.log(`   tokenBBuffer: [${Array.from(tokenBBuffer).slice(0, 8).join(', ')}...] (${tokenBBuffer.length} bytes)`);
+        console.log(`   ratioABytes: [${Array.from(ratioABytes).join(', ')}] (little-endian u64)`);
+        console.log(`   ratioBBytes: [${Array.from(ratioBBytes).join(', ')}] (little-endian u64)`);
+        
         const poolStatePDA = await solanaWeb3.PublicKey.findProgramAddress(
             [
-                new TextEncoder().encode('pool_state'),
-                tokenAMint.toBuffer(),
-                tokenBMint.toBuffer(),
-                new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer),
-                new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer)
+                seedPrefix,
+                tokenABuffer,
+                tokenBBuffer,
+                ratioABytes,
+                ratioBBytes
             ],
             programId
         );
         
-        console.log('Pool state PDA:', poolStatePDA[0].toString());
+        console.log('🔍 CLIENT COMPUTED PDA:', poolStatePDA[0].toString());
+        
+        // ✅ SMART CONTRACT SIMULATION: Predict what the contract will compute
+        console.log('🤖 SMART CONTRACT PDA SIMULATION:');
+        console.log('   The contract will receive:');
+        console.log(`     token_a_mint: ${tokenAMint.toString()}`);
+        console.log(`     token_b_mint: ${tokenBMint.toString()}`);
+        console.log(`     ratio_a_numerator: ${finalRatioABasisPoints} (from instruction data)`);
+        console.log(`     ratio_b_denominator: ${finalRatioBBasisPoints} (from instruction data)`);
+        console.log('   The contract will derive PDA using:');
+        console.log(`     POOL_STATE_SEED_PREFIX: "pool_state"`);
+        console.log(`     token_a_mint_key.as_ref(): ${tokenAMint.toString()}`);
+        console.log(`     token_b_mint_key.as_ref(): ${tokenBMint.toString()}`);
+        console.log(`     ratio_a_numerator.to_le_bytes(): [${Array.from(ratioABytes).join(', ')}]`);
+        console.log(`     ratio_b_denominator.to_le_bytes(): [${Array.from(ratioBBytes).join(', ')}]`);
+        console.log('   Expected contract result should match client PDA above.');
         
         // ✅ SECURITY FIX: Derive LP token mint PDAs (controlled by smart contract)
         // This prevents users from creating fake LP tokens to drain pools
@@ -1047,10 +1108,14 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         
         // ✅ BASIS POINTS REFACTOR: Create instruction data using basis points ratios
         // Borsh enum discriminator: InitializeProgram=0, InitializePool=1 (single byte)
+        const discriminator = new Uint8Array([1]); // InitializePool discriminator (single byte)
+        const ratioAInstructionBytes = new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer); // ratio_a_numerator (basis points)
+        const ratioBInstructionBytes = new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer); // ratio_b_denominator (basis points)
+        
         const instructionData = concatUint8Arrays([
-            new Uint8Array([1]), // InitializePool discriminator (single byte)
-            new Uint8Array(new BigUint64Array([BigInt(finalRatioABasisPoints)]).buffer), // ratio_a_numerator (basis points)
-            new Uint8Array(new BigUint64Array([BigInt(finalRatioBBasisPoints)]).buffer) // ratio_b_denominator (basis points)
+            discriminator,
+            ratioAInstructionBytes,
+            ratioBInstructionBytes
         ]);
         
         console.log('🔍 BASIS POINTS INSTRUCTION DATA for InitializePool:');
@@ -1059,6 +1124,18 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         console.log('  ratio_b_denominator:', finalRatioBBasisPoints, 'basis points');
         console.log('  Total data length:', instructionData.length, 'bytes');
         console.log('  Data:', Array.from(instructionData));
+        
+        console.log('🔍 INSTRUCTION DATA BYTES BREAKDOWN:');
+        console.log(`   discriminator: [${Array.from(discriminator).join(', ')}]`);
+        console.log(`   ratioAInstructionBytes: [${Array.from(ratioAInstructionBytes).join(', ')}] (should match PDA ratioABytes)`);
+        console.log(`   ratioBInstructionBytes: [${Array.from(ratioBInstructionBytes).join(', ')}] (should match PDA ratioBBytes)`);
+        
+        // Verify that instruction bytes match PDA bytes
+        const pdaRatioAMatch = Array.from(ratioAInstructionBytes).join(',') === Array.from(ratioABytes).join(',');
+        const pdaRatioBMatch = Array.from(ratioBInstructionBytes).join(',') === Array.from(ratioBBytes).join(',');
+        console.log(`🔍 PDA/INSTRUCTION BYTES MATCH CHECK:`);
+        console.log(`   ratio_a_numerator match: ${pdaRatioAMatch ? '✅' : '❌'}`);
+        console.log(`   ratio_b_denominator match: ${pdaRatioBMatch ? '✅' : '❌'}`);
         
         // Check if accounts already exist
         const existingPoolAccount = await connection.getAccountInfo(poolStatePDA[0]);
