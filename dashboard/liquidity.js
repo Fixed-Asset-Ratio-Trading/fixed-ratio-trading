@@ -552,9 +552,12 @@ function updateTokenSelection() {
         tokenOption.className = 'token-option';
         tokenOption.onclick = () => selectToken(token);
         
+        // Convert balance from basis points to display units for user-friendly display
+        const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(token.balance, token.decimals);
+        
         tokenOption.innerHTML = `
             <div class="token-symbol">${token.symbol}</div>
-            <div class="token-balance">Balance: ${token.balance.toLocaleString()}</div>
+            <div class="token-balance">Balance: ${displayBalance.toLocaleString()}</div>
         `;
         
         tokenChoice.appendChild(tokenOption);
@@ -578,9 +581,10 @@ function selectToken(token) {
         }
     });
     
-    // Update amount section
+    // Update amount section - convert balance from basis points to display units
+    const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(token.balance, token.decimals);
     document.getElementById('selected-token-name').textContent = token.symbol;
-    document.getElementById('available-balance').textContent = token.balance.toLocaleString();
+    document.getElementById('available-balance').textContent = displayBalance.toLocaleString();
     document.getElementById('available-token-symbol').textContent = token.symbol;
     
     // Show amount section and button
