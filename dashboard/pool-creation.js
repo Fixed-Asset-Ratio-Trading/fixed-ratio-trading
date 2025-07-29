@@ -550,17 +550,74 @@ function updateRatioDisplay() {
     if (!selectedTokenA || !selectedTokenB) return;
     
     const ratioInput = document.getElementById('ratio-input');
-    currentRatio = parseFloat(ratioInput.value) || 1;
+    const inputValue = ratioInput.value;
     
-    // Respect user's selection order: first selected token (Token A) should appear first
-    // Display as: 1 Token A = currentRatio Token B
-    document.getElementById('ratio-token-a').textContent = selectedTokenA.symbol;
-    document.getElementById('ratio-token-b').textContent = selectedTokenB.symbol;
-    document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(currentRatio);
-    document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
+    // Validate input for whole numbers only
+    const isValid = validateRatioInput(inputValue);
     
-    // Update pool summary
-    updatePoolSummary();
+    if (isValid) {
+        currentRatio = parseFloat(inputValue) || 1;
+        
+        // Respect user's selection order: first selected token (Token A) should appear first
+        // Display as: 1 Token A = currentRatio Token B
+        document.getElementById('ratio-token-a').textContent = selectedTokenA.symbol;
+        document.getElementById('ratio-token-b').textContent = selectedTokenB.symbol;
+        document.getElementById('ratio-value').textContent = window.TokenDisplayUtils.formatExchangeRate(currentRatio);
+        document.getElementById('ratio-input-label').textContent = selectedTokenB.symbol;
+        
+        // Update pool summary
+        updatePoolSummary();
+    }
+    
+    // Always update button state based on validation
+    updateCreateButtonState();
+}
+
+/**
+ * Validate ratio input - only allow whole numbers
+ */
+function validateRatioInput(value) {
+    const ratioInput = document.getElementById('ratio-input');
+    let errorDiv = document.getElementById('ratio-error');
+    
+    // Remove existing error message
+    if (errorDiv) {
+        errorDiv.remove();
+    }
+    
+    // Check if value is empty
+    if (!value || value.trim() === '') {
+        ratioInput.classList.remove('invalid');
+        return false;
+    }
+    
+    const numValue = parseFloat(value);
+    
+    // Check if it's a valid number and a whole number
+    const isWholeNumber = Number.isInteger(numValue) && numValue >= 1;
+    
+    if (!isWholeNumber) {
+        // Add invalid styling
+        ratioInput.classList.add('invalid');
+        
+        // Create error message
+        errorDiv = document.createElement('div');
+        errorDiv.id = 'ratio-error';
+        errorDiv.className = 'validation-error';
+        errorDiv.textContent = 'Please enter a whole number (1, 2, 160, etc.)';
+        
+        // Insert error message after the input
+        const ratioSection = document.querySelector('.ratio-input-section');
+        if (ratioSection) {
+            ratioSection.appendChild(errorDiv);
+        }
+        
+        return false;
+    } else {
+        // Remove invalid styling
+        ratioInput.classList.remove('invalid');
+        return true;
+    }
 }
 
 
@@ -589,13 +646,27 @@ function updatePoolSummary() {
  */
 function updateCreateButtonState() {
     const createBtn = document.getElementById('create-pool-btn');
+    const ratioInput = document.getElementById('ratio-input');
+    
+    // Check if ratio input is valid (whole number)
+    const isRatioValid = validateRatioInput(ratioInput.value);
     
     const canCreate = isConnected && 
                      selectedTokenA && 
                      selectedTokenB &&
-                     currentRatio > 0;
+                     currentRatio > 0 &&
+                     isRatioValid;
     
     createBtn.disabled = !canCreate;
+    
+    // Update button text based on validation state
+    if (!isRatioValid && selectedTokenA && selectedTokenB) {
+        createBtn.textContent = '❌ Invalid Ratio - Use Whole Numbers';
+    } else if (canCreate) {
+        createBtn.textContent = '🏊‍♂️ Create Pool';
+    } else {
+        createBtn.textContent = '🏊‍♂️ Create Pool';
+    }
 }
 
 /**
