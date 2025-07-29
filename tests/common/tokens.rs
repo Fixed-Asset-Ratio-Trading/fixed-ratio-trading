@@ -27,11 +27,136 @@ SOFTWARE.
 //! This module provides utilities for creating and managing SPL tokens
 //! in integration tests, including mint creation, token account setup,
 //! and token minting operations.
+//! 
+//! **BASIS POINTS REFACTOR: Test Utilities**
+//! 
+//! This module now includes utilities for converting between display units and
+//! basis points for test scenarios. All pool creation and token operations
+//! should use basis points to match the smart contract's expectations.
 
 use solana_program_test::BanksClient;
 use solana_sdk::{signature::Keypair, signer::Signer, program_pack::Pack};
-use spl_token::{instruction as token_instruction, state::Account as TokenAccount};
+use spl_token::{instruction as token_instruction, state::Account as TokenAccount, state::Mint};
 use crate::common::{constants, TestResult};
+
+/// **BASIS POINTS REFACTOR: Conversion Utilities**
+/// 
+/// These utilities handle conversion between display units and basis points
+/// for test scenarios, ensuring consistency with the smart contract's basis
+/// point architecture.
+
+/// Convert display units to basis points
+/// 
+/// # Arguments
+/// * `display_amount` - Amount in display units (e.g., 1.5 for 1.5 USDC)
+/// * `decimals` - Number of decimal places for the token
+/// 
+/// # Returns
+/// Amount in basis points (smallest token units)
+/// 
+/// # Examples
+/// ```
+/// let basis_points = display_to_basis_points(1.5, 6); // 1,500,000 for 1.5 USDC
+/// let basis_points = display_to_basis_points(0.001, 8); // 100,000 for 0.001 BTC
+/// ```
+#[allow(dead_code)]
+pub fn display_to_basis_points(display_amount: f64, decimals: u8) -> u64 {
+    (display_amount * 10_f64.powi(decimals as i32)) as u64
+}
+
+/// Convert basis points to display units
+/// 
+/// # Arguments
+/// * `basis_points` - Amount in basis points (smallest token units)
+/// * `decimals` - Number of decimal places for the token
+/// 
+/// # Returns
+/// Amount in display units as f64
+/// 
+/// # Examples
+/// ```
+/// let display = basis_points_to_display(1_500_000, 6); // 1.5 for 1.5 USDC
+/// let display = basis_points_to_display(100_000, 8); // 0.001 for 0.001 BTC
+/// ```
+#[allow(dead_code)]
+pub fn basis_points_to_display(basis_points: u64, decimals: u8) -> f64 {
+    basis_points as f64 / 10_f64.powi(decimals as i32)
+}
+
+/// Format token amount with proper decimal places for display
+/// 
+/// # Arguments
+/// * `basis_points` - Amount in basis points
+/// * `decimals` - Number of decimal places for the token
+/// * `precision` - Number of decimal places to show (default: 6)
+/// 
+/// # Returns
+/// Formatted string representation
+#[allow(dead_code)]
+pub fn format_token_amount(basis_points: u64, decimals: u8, precision: Option<usize>) -> String {
+    let precision = precision.unwrap_or(6);
+    let display_amount = basis_points_to_display(basis_points, decimals);
+    format!("{:.1$}", display_amount, precision)
+}
+
+/// Assert that swap calculation results match expected values in basis points
+/// 
+/// # Arguments
+/// * `input_display` - Input amount in display units
+/// * `expected_output_display` - Expected output amount in display units
+/// * `input_decimals` - Input token decimals
+/// * `output_decimals` - Output token decimals
+/// * `actual_output_basis_points` - Actual output from swap in basis points
+#[allow(dead_code)]
+pub fn assert_swap_calculation(
+    input_display: f64,
+    expected_output_display: f64,
+    input_decimals: u8,
+    output_decimals: u8,
+    actual_output_basis_points: u64,
+) {
+    let expected_basis_points = display_to_basis_points(expected_output_display, output_decimals);
+    assert_eq!(
+        actual_output_basis_points, 
+        expected_basis_points,
+        "Swap calculation mismatch: input {} (display) = {} basis points, expected {} (display) = {} basis points, got {} basis points",
+        input_display,
+        display_to_basis_points(input_display, input_decimals),
+        expected_output_display,
+        expected_basis_points,
+        actual_output_basis_points
+    );
+}
+
+/// Get token decimals from a mint account
+/// 
+/// # Arguments
+/// * `banks` - Banks client for account fetching
+/// * `mint_pubkey` - Mint account pubkey
+/// 
+/// # Returns
+/// Number of decimal places for the token
+#[allow(dead_code)]
+pub async fn get_token_decimals(
+    banks: &mut BanksClient,
+    mint_pubkey: &solana_program::pubkey::Pubkey,
+) -> Result<u8, solana_program_test::BanksClientError> {
+    let mint_account = banks.get_account(*mint_pubkey).await?
+        .ok_or_else(|| {
+            solana_program_test::BanksClientError::Io(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Mint account not found")
+            )
+        })?;
+    
+    let mint_data = Mint::unpack(&mint_account.data)
+        .map_err(|e| {
+            solana_program_test::BanksClientError::Io(
+                std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Failed to unpack mint: {}", e))
+            )
+        })?;
+    
+    Ok(mint_data.decimals)
+}
 
 /// Helper function to create a token mint
 /// 

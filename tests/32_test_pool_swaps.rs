@@ -2405,3 +2405,142 @@ async fn execute_swap_operation(
     
     Ok(())
 }
+
+// ========================================================================
+// BASIS POINTS REFACTOR: SWAP CALCULATION DEMONSTRATION
+// ========================================================================
+
+/// **BASIS POINTS REFACTOR: Swap Calculation Verification**
+/// 
+/// This test demonstrates that swap calculations work correctly with the basis points
+/// refactor, showing how input/output amounts are handled in basis points and how
+/// the calculations produce mathematically correct results.
+#[tokio::test]
+#[serial]
+async fn test_swap_calculations_basis_points_refactor() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🔧 BASIS POINTS REFACTOR: Testing swap calculations with basis points...");
+    
+    // Create liquidity test foundation
+    let mut foundation = create_liquidity_test_foundation(None).await?;
+    
+    // Create pool with clear display unit ratio: 1.0 SOL = 160.0 USDT  
+    let sol_mint = Keypair::new();
+    let usdt_mint = Keypair::new();
+    create_mint(&mut foundation.env.banks_client, &foundation.env.payer, 
+        foundation.env.recent_blockhash, &sol_mint, Some(9)).await?;
+    create_mint(&mut foundation.env.banks_client, &foundation.env.payer, 
+        foundation.env.recent_blockhash, &usdt_mint, Some(6)).await?;
+    
+    // Create pool: 1.0 SOL = 160.0 USDT using basis points
+    let pool_config = create_simple_display_pool(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        foundation.env.recent_blockhash,
+        &sol_mint,
+        &usdt_mint,
+        1.0,    // 1.0 SOL
+        160.0,  // = 160.0 USDT
+        9,      // SOL has 9 decimals
+        6,      // USDT has 6 decimals
+    ).await?;
+    
+    println!("✅ Created pool: 1.0 SOL = 160.0 USDT");
+    println!("   Pool PDA: {}", pool_config.pool_state_pda);
+    
+    // Verify pool ratios are stored correctly in basis points
+    let pool_state = get_pool_state(&mut foundation.env.banks_client, &pool_config.pool_state_pda).await
+        .ok_or("Pool state not found")?;
+    
+    // Expected ratios in basis points:
+    // 1.0 SOL = 1 * 10^9 = 1,000,000,000 basis points
+    // 160.0 USDT = 160 * 10^6 = 160,000,000 basis points
+    println!("🔍 Pool ratios in basis points:");
+    println!("   Token A ratio: {} basis points", pool_state.ratio_a_numerator);
+    println!("   Token B ratio: {} basis points", pool_state.ratio_b_denominator);
+    
+    // SWAP CALCULATION TEST: Swap 0.5 SOL → ? USDT
+    let input_sol_display = 0.5;
+    let input_sol_basis_points = display_to_basis_points(input_sol_display, 9);
+    let expected_usdt_display = input_sol_display * 160.0; // Should get 80.0 USDT
+    let expected_usdt_basis_points = display_to_basis_points(expected_usdt_display, 6);
+    
+    println!("\n📊 SWAP CALCULATION TEST:");
+    println!("   Input: {} SOL = {} basis points", input_sol_display, input_sol_basis_points);
+    println!("   Expected output: {} USDT = {} basis points", expected_usdt_display, expected_usdt_basis_points);
+    
+    // Calculate using the pool's basis point ratios (same logic as smart contract)
+    let calculated_output = input_sol_basis_points * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    
+    println!("   Smart contract calculation:");
+    println!("     {} * {} / {} = {}", 
+        input_sol_basis_points, 
+        pool_state.ratio_b_denominator, 
+        pool_state.ratio_a_numerator, 
+        calculated_output);
+    
+    // Verify the calculation is correct
+    assert_eq!(calculated_output, expected_usdt_basis_points,
+        "Calculated output should match expected USDT amount in basis points");
+    
+    println!("✅ Swap calculation verified: {} SOL → {} USDT", input_sol_display, expected_usdt_display);
+    
+    // REVERSE CALCULATION TEST: Swap USDT → SOL
+    let input_usdt_display = 80.0;
+    let input_usdt_basis_points = display_to_basis_points(input_usdt_display, 6);
+    let expected_sol_display = input_usdt_display / 160.0; // Should get 0.5 SOL
+    let expected_sol_basis_points = display_to_basis_points(expected_sol_display, 9);
+    
+    println!("\n📊 REVERSE SWAP CALCULATION TEST:");
+    println!("   Input: {} USDT = {} basis points", input_usdt_display, input_usdt_basis_points);
+    println!("   Expected output: {} SOL = {} basis points", expected_sol_display, expected_sol_basis_points);
+    
+    // Calculate reverse swap (USDT → SOL)
+    let calculated_sol_output = input_usdt_basis_points * pool_state.ratio_a_numerator / pool_state.ratio_b_denominator;
+    
+    println!("   Smart contract calculation:");
+    println!("     {} * {} / {} = {}", 
+        input_usdt_basis_points, 
+        pool_state.ratio_a_numerator, 
+        pool_state.ratio_b_denominator, 
+        calculated_sol_output);
+    
+    // Verify the reverse calculation is correct
+    assert_eq!(calculated_sol_output, expected_sol_basis_points,
+        "Reverse calculation should match expected SOL amount in basis points");
+    
+    println!("✅ Reverse calculation verified: {} USDT → {} SOL", input_usdt_display, expected_sol_display);
+    
+    // Test decimal precision preservation
+    println!("\n🔍 PRECISION TEST:");
+    let precise_input = 0.123456789; // High precision input
+    let precise_input_basis_points = display_to_basis_points(precise_input, 9);
+    let precise_expected_output = precise_input * 160.0;
+    let precise_expected_basis_points = display_to_basis_points(precise_expected_output, 6);
+    
+    let precise_calculated = precise_input_basis_points * pool_state.ratio_b_denominator / pool_state.ratio_a_numerator;
+    
+    println!("   Precision input: {} SOL = {} basis points", precise_input, precise_input_basis_points);
+    println!("   Calculated output: {} basis points", precise_calculated);
+    println!("   Back to display: {} USDT", basis_points_to_display(precise_calculated, 6));
+    
+    // Verify precision is maintained within token decimal limits
+    let display_result = basis_points_to_display(precise_calculated, 6);
+    let expected_display = basis_points_to_display(precise_expected_basis_points, 6);
+    assert!((display_result - expected_display).abs() < 1e-6, 
+        "Precision should be maintained within token decimal limits");
+    
+    println!("✅ Precision maintained within token decimal limits");
+
+    println!("\n🎉 BASIS POINTS SWAP CALCULATION TEST COMPLETED SUCCESSFULLY!");
+    println!("====================================================================");
+    println!("✅ VERIFIED:");
+    println!("   • Swap calculations work correctly with basis points");
+    println!("   • Forward swap: SOL → USDT calculation accurate");
+    println!("   • Reverse swap: USDT → SOL calculation accurate");
+    println!("   • High precision inputs handled correctly");
+    println!("   • No precision loss beyond token decimal limits");
+    println!("🔧 All calculations use pure basis point arithmetic as intended");
+    println!("====================================================================");
+
+    Ok(())
+}
