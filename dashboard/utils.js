@@ -555,6 +555,78 @@ function calculateSwapOutput(inputDisplay, inputDecimals, outputDecimals, numera
     }
 }
 
+/**
+ * CENTRALIZED POOL DISPLAY FUNCTION - Handles decimals and display logic
+ * Use this function across all dashboard pages for consistent pool display
+ */
+async function enrichPoolWithCorrectDisplay(poolData, connection) {
+    try {
+        console.log('🔧 CENTRALIZING POOL DISPLAY: Starting enrichment...');
+        
+        // Skip if already enriched or missing required data
+        if (!poolData || poolData._displayEnriched) {
+            console.log('📋 Pool already enriched or invalid data, skipping...');
+            return poolData;
+        }
+        
+        // Fetch token decimals if not already available
+        let tokenDecimals = null;
+        if (poolData.ratioADecimal !== undefined && poolData.ratioBDecimal !== undefined) {
+            // Use decimals from state.json if available
+            tokenDecimals = {
+                tokenADecimals: poolData.ratioADecimal,
+                tokenBDecimals: poolData.ratioBDecimal
+            };
+            console.log(`✅ Using decimals from pool data: TS=${tokenDecimals.tokenADecimals}, MST=${tokenDecimals.tokenBDecimals}`);
+        } else if (connection && (poolData.tokenAMint || poolData.token_a_mint) && (poolData.tokenBMint || poolData.token_b_mint)) {
+            // Fetch from blockchain if not in pool data
+            console.log('🔍 Fetching token decimals from blockchain...');
+            const [tokenADecimals, tokenBDecimals] = await Promise.all([
+                getTokenDecimals(poolData.tokenAMint || poolData.token_a_mint, connection),
+                getTokenDecimals(poolData.tokenBMint || poolData.token_b_mint, connection)
+            ]);
+            
+            tokenDecimals = { tokenADecimals, tokenBDecimals };
+            console.log(`✅ Fetched decimals: ${poolData.tokenASymbol || 'TokenA'}=${tokenADecimals}, ${poolData.tokenBSymbol || 'TokenB'}=${tokenBDecimals}`);
+        } else {
+            console.warn('⚠️ Unable to fetch token decimals - using defaults');
+            tokenDecimals = { tokenADecimals: 6, tokenBDecimals: 6 };
+        }
+        
+        // Create corrected display using proper decimals
+        const correctedDisplay = getCorrectTokenDisplay(
+            poolData.tokenASymbol || 'Token A',
+            poolData.tokenBSymbol || 'Token B',
+            poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
+            poolData.ratioBDenominator || poolData.ratio_b_denominator || 1,
+            tokenDecimals.tokenADecimals,
+            tokenDecimals.tokenBDecimals
+        );
+        
+        // Enrich pool data with display information
+        const enrichedPool = {
+            ...poolData,
+            tokenDecimals: tokenDecimals,
+            correctedDisplay: correctedDisplay,
+            _displayEnriched: true  // Mark as enriched to avoid re-processing
+        };
+        
+        console.log('🎯 CENTRALIZED ENRICHMENT COMPLETE:', {
+            poolAddress: enrichedPool.address?.slice(0, 8) + '...',
+            tokenPair: correctedDisplay.displayPair,
+            exchangeRate: correctedDisplay.rateText,
+            decimals: `${tokenDecimals.tokenADecimals}:${tokenDecimals.tokenBDecimals}`
+        });
+        
+        return enrichedPool;
+        
+    } catch (error) {
+        console.error('❌ Error enriching pool display:', error);
+        // Return original pool data if enrichment fails
+        return poolData;
+    }
+}
+
 // Make functions available globally for use in other dashboard files
 if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
@@ -577,7 +649,9 @@ if (typeof window !== 'undefined') {
         displayToBasisPoints,
         basisPointsToDisplay,
         validateOneToManyRatio,
-        calculateSwapOutput
+        calculateSwapOutput,
+        // CENTRALIZED DISPLAY: New unified function
+        enrichPoolWithCorrectDisplay
     };
 }
 
@@ -603,6 +677,8 @@ if (typeof module !== 'undefined' && module.exports) {
         displayToBasisPoints,
         basisPointsToDisplay,
         validateOneToManyRatio,
-        calculateSwapOutput
+        calculateSwapOutput,
+        // CENTRALIZED DISPLAY: New unified function
+        enrichPoolWithCorrectDisplay
     };
 } 

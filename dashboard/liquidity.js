@@ -291,47 +291,18 @@ async function updatePoolDisplay() {
     poolLoading.style.display = 'none';
     poolDetails.style.display = 'grid';
     
-    // Fetch token decimals for proper liquidity display
-    let tokenDecimals = null;
-    try {
-        if (connection && poolData.tokenAMint && poolData.tokenBMint) {
-            console.log('🔍 Fetching token decimals for proper liquidity display...');
-            try {
-                const [tokenADecimals, tokenBDecimals] = await Promise.all([
-                    window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint, connection),
-                    window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint, connection)
-                ]);
-                
-                tokenDecimals = {
-                    tokenADecimals,
-                    tokenBDecimals
-                };
-                
-                console.log(`✅ Token decimals: ${poolData.tokenASymbol}=${tokenADecimals}, ${poolData.tokenBSymbol}=${tokenBDecimals}`);
-            } catch (error) {
-                console.error('❌ Failed to fetch token decimals:', error);
-                showStatus('error', `Failed to load pool information: ${error.message}. Please refresh the page or check your connection.`);
-                return; // Stop loading pool information if we can't get decimals
-            }
-        } else {
-            console.error('❌ Pool data missing token mint addresses or connection');
-            showStatus('error', 'Invalid pool data: missing token mint addresses or connection. Please refresh the page.');
-            return;
-        }
-    } catch (error) {
-        console.error('❌ Error loading pool information:', error);
-        showStatus('error', `Failed to load pool information: ${error.message}`);
+    // 🔧 CENTRALIZED: Use centralized pool enrichment function
+    console.log('🔧 LIQUIDITY: Using centralized pool display enrichment...');
+    poolData = await window.TokenDisplayUtils.enrichPoolWithCorrectDisplay(poolData, connection);
+    
+    if (!poolData || !poolData.correctedDisplay) {
+        console.error('❌ Failed to enrich pool data for display');
+        showStatus('error', 'Failed to load pool information. Please refresh the page.');
+        return;
     }
     
-    // 🔧 FIXED: Use our corrected display function with proper token decimals!
-    const correctedDisplay = window.TokenDisplayUtils.getCorrectTokenDisplay(
-        poolData.tokenASymbol || 'Token A',
-        poolData.tokenBSymbol || 'Token B', 
-        poolData.ratioANumerator || poolData.ratio_a_numerator || 1,
-        poolData.ratioBDenominator || poolData.ratio_b_denominator || 1,
-        tokenDecimals ? tokenDecimals.tokenADecimals : 6,  // Use actual TS decimals (4) not default (6)
-        tokenDecimals ? tokenDecimals.tokenBDecimals : 6   // Use actual MST decimals (0) not default (6)
-    );
+    const correctedDisplay = poolData.correctedDisplay;
+    const tokenDecimals = poolData.tokenDecimals;
     
     // Build the full display object with proper liquidity formatting
     const getFormattedLiquidity = (rawAmount, isTokenA) => {

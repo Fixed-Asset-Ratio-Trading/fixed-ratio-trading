@@ -894,11 +894,11 @@ function createPoolCard(pool) {
     
     let poolName;
     
-    // Check if our function exists
+    // 🔧 CENTRALIZED: Use centralized display function for consistency
     if (window.TokenDisplayUtils && window.TokenDisplayUtils.getCorrectTokenDisplay) {
-        // Use actual token decimals if available (from state.json), otherwise fetch from mint accounts
-        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6; // fallback to 6
-        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6; // fallback to 6
+        // Use actual token decimals if available (from state.json), otherwise use defaults
+        const tokenADecimals = pool.ratioADecimal !== undefined ? pool.ratioADecimal : 6;
+        const tokenBDecimals = pool.ratioBDecimal !== undefined ? pool.ratioBDecimal : 6;
         
         console.log('🔍 TOKEN DECIMALS INFO:', {
             tokenADecimals: tokenADecimals,
