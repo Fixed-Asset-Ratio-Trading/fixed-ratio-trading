@@ -21,6 +21,15 @@ use crate::common::{
     TestResult,
 };
 
+/// Conditional debug print macro that only prints when debug logging is enabled
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") {
+            println!($($arg)*);
+        }
+    };
+}
+
 /// Configuration for creating a test foundation with full control over parameters
 #[derive(Debug, Clone)]
 pub struct TestFoundationConfig {
@@ -214,7 +223,7 @@ pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     ).await?;
     
     // 5. Initialize treasury system
-    println!("🏛️ Initializing treasury system...");
+    debug_println!("🏛️ Initializing treasury system...");
     let system_authority = Keypair::new();
     initialize_treasury_system(
         &mut env.banks_client,
@@ -238,12 +247,12 @@ pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     ).await?;
     
     // 7. Fund users with SOL
-    println!("💰 Funding users with SOL...");
+    debug_println!("💰 Funding users with SOL...");
     crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 10_000_000_000).await?;
     crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 10_000_000_000).await?;
     
     // 8. Create token accounts
-    println!("🏦 Creating token accounts...");
+    debug_println!("🏦 Creating token accounts...");
     
     // ✅ PHASE 10 SECURITY: Derive LP token mint PDAs (controlled by smart contract)
     let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
@@ -330,7 +339,7 @@ pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     ).await?;
     
     // 9. Mint tokens to users
-    println!("🪙 Minting tokens to users...");
+    debug_println!("🪙 Minting tokens to users...");
     mint_tokens(
         &mut env.banks_client,
         &env.payer,
@@ -400,17 +409,21 @@ pub async fn create_liquidity_test_foundation_with_fees(
     pool_ratio: Option<u64>, // e.g., Some(3) for 3:1 ratio
     generate_actual_fees: bool, // If true, performs real operations to generate fees
 ) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
-    println!("🏗️ Creating OPTIMIZED liquidity test foundation...");
+    // Check if debug logging is enabled
+    let debug_enabled = std::env::var("RUST_LOG")
+        .unwrap_or_default()
+        .contains("debug");
+    
+    if debug_enabled {
+        println!("🏗️ Creating OPTIMIZED liquidity test foundation...");
+    }
     
     // 1. Create test environment (check for debug logging preference)
-    let mut env = if std::env::var("RUST_LOG")
-        .unwrap_or_default()
-        .contains("debug") 
-    {
-        println!("🔧 CREATING TEST ENVIRONMENT WITH DEBUG LOGGING");
+    let mut env = if debug_enabled {
+        if debug_enabled { println!("🔧 CREATING TEST ENVIRONMENT WITH DEBUG LOGGING"); }
         crate::common::setup::start_test_environment_with_debug().await
     } else {
-        println!("🔧 CREATING TEST ENVIRONMENT WITH MINIMAL LOGGING");
+        if debug_enabled { println!("🔧 CREATING TEST ENVIRONMENT WITH MINIMAL LOGGING"); }
         crate::common::setup::start_test_environment().await
     };
     
@@ -442,7 +455,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
     let user2_lp_b_account = Keypair::new();
     
     // 5. BATCH OPERATION 1: Create token mints (reduce sequential calls)
-    println!("📦 Creating token mints...");
+    debug_println!("📦 Creating token mints...");
     create_mint(
         &mut env.banks_client,
         &env.payer,
@@ -460,7 +473,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
     ).await?;
     
     // 6. BATCH OPERATION 2: Initialize treasury system (single operation)
-    println!("🏛️ Initializing treasury system...");
+    debug_println!("🏛️ Initializing treasury system...");
     let system_authority = Keypair::new();
     initialize_treasury_system(
         &mut env.banks_client,
@@ -470,7 +483,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
     ).await?;
     
     // 7. BATCH OPERATION 3: Create pool (single operation)
-    println!("🏊 Creating pool...");
+    debug_println!("🏊 Creating pool...");
     let pool_config = crate::common::pool_helpers::create_pool_new_pattern(
         &mut env.banks_client,
         &env.payer,
@@ -481,12 +494,12 @@ pub async fn create_liquidity_test_foundation_with_fees(
     ).await?;
     
     // 8. BATCH OPERATION 4: Fund users with SOL (increased amounts for fee operations)
-    println!("💰 Funding users with SOL...");
+    debug_println!("💰 Funding users with SOL...");
     crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 10_000_000_000).await?; // 10 SOL for fees
     crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 10_000_000_000).await?; // 10 SOL for fees
     
     // 9. BATCH OPERATION 5: Create token accounts (optimized batch processing)
-    println!("🏦 Creating token accounts...");
+    debug_println!("🏦 Creating token accounts...");
     
     // ✅ PHASE 10 SECURITY: Derive LP token mint PDAs (controlled by smart contract)
     let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
@@ -522,7 +535,7 @@ pub async fn create_liquidity_test_foundation_with_fees(
     }
     
     // 10. BATCH OPERATION 6: Mint tokens (reduced amounts for faster processing)
-    println!("🪙 Minting tokens to users...");
+    debug_println!("🪙 Minting tokens to users...");
     let user1_primary_amount = 5_000_000u64; // 5M tokens (reduced from 10M)
     let user1_base_amount = 2_500_000u64;    // 2.5M tokens (reduced from 5M)
     let user2_primary_amount = 1_000_000u64; // 1M tokens (reduced from 2M)
@@ -648,9 +661,9 @@ pub async fn create_liquidity_test_foundation_with_fees(
         }
     }
 
-    println!("✅ OPTIMIZED liquidity test foundation created successfully!");
-    println!("   - Reduced token amounts for faster processing");
-    println!("   - Batched operations to minimize sequential processing");
+    debug_println!("✅ OPTIMIZED liquidity test foundation created successfully!");
+    debug_println!("   - Reduced token amounts for faster processing");
+    debug_println!("   - Batched operations to minimize sequential processing");
     if generate_actual_fees {
         println!("   - Generated actual fees through real operations");
     }

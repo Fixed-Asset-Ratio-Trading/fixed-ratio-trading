@@ -12,6 +12,11 @@
 #![allow(unused_results)]
 #![allow(unused_comparisons)]
 
+// ============================================================================
+// 🎯 DEBUG CONFIGURATION - SET TO true TO ENABLE VERBOSE LOGGING
+// ============================================================================
+const ENABLE_DEBUG_LOGGING: bool = false; // Set to true for verbose Solana runtime logs
+
 use solana_program_test::*;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -19,6 +24,16 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use serial_test::serial;
+use env_logger;
+
+/// Apply debug logging configuration based on the ENABLE_DEBUG_LOGGING constant
+fn setup_debug_logging() {
+    if ENABLE_DEBUG_LOGGING {
+        std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+        std::env::set_var("SOLANA_LOG", "debug");
+        let _ = env_logger::try_init();
+    }
+}
 
 mod common;
 use common::{
@@ -1573,6 +1588,8 @@ async fn test_phase_2_1_integration_with_phase_1() -> TestResult {
 #[tokio::test]
 #[serial]
 async fn test_real_deposit_with_pool_state_verification() -> TestResult {
+    setup_debug_logging();
+    
     println!("🧪 Testing REAL DEPOSIT with comprehensive pool state verification...");
     println!("====================================================================");
     
@@ -1638,6 +1655,8 @@ async fn test_real_deposit_with_pool_state_verification() -> TestResult {
 #[tokio::test]
 #[serial]
 async fn test_liquidity_operations_basis_points_refactor() -> Result<(), Box<dyn std::error::Error>> {
+    setup_debug_logging();
+    
     println!("🔧 BASIS POINTS REFACTOR: Testing liquidity operations with basis points...");
     
     // Create liquidity test foundation

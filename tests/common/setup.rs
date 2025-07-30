@@ -50,6 +50,15 @@ use std::env;
 use env_logger;
 use borsh::BorshSerialize;
 
+/// Conditional debug print macro that only prints when debug logging is enabled
+macro_rules! debug_println {
+    ($($arg:tt)*) => {
+        if std::env::var("RUST_LOG").unwrap_or_default().contains("debug") {
+            println!($($arg)*);
+        }
+    };
+}
+
 // =============================================================================
 // TEST-ONLY CONSTANTS
 // =============================================================================
@@ -220,10 +229,10 @@ pub struct PoolTestContext {
 /// # Returns
 /// Configured ProgramTest instance
 pub fn create_program_test() -> ProgramTest {
-    println!("🔧 CREATING PROGRAM TEST WITH OUR PROGRAM:");
-    println!("   • Program name: fixed-ratio-trading");
-    println!("   • Program ID: {}", fixed_ratio_trading::id());
-    println!("   • Processor: fixed_ratio_trading::process_instruction");
+    debug_println!("🔧 CREATING PROGRAM TEST WITH OUR PROGRAM:");
+    debug_println!("   • Program name: fixed-ratio-trading");
+    debug_println!("   • Program ID: {}", fixed_ratio_trading::id());
+    debug_println!("   • Processor: fixed_ratio_trading::process_instruction");
     
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
@@ -233,7 +242,7 @@ pub fn create_program_test() -> ProgramTest {
     
     // Set debug logging and compute units
     program_test.set_compute_max_units(100_000);
-    println!("   • Program test created successfully");
+    debug_println!("   • Program test created successfully");
     program_test
 }
 
@@ -571,12 +580,12 @@ pub async fn initialize_treasury_system(
     recent_blockhash: solana_sdk::hash::Hash,
     system_authority: &Keypair,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🏦 Initializing treasury system for tests...");
+    debug_println!("🏦 Initializing treasury system for tests...");
     
     // Fund the system authority account with SOL for account creation fees
     let system_authority_balance = banks_client.get_balance(system_authority.pubkey()).await?;
     if system_authority_balance < 10_000_000_000 {  // 10 SOL
-        println!("📦 Airdropping SOL to system authority for account creation...");
+        debug_println!("📦 Airdropping SOL to system authority for account creation...");
         // Transfer SOL from payer to system authority
         let transfer_ix = system_instruction::transfer(
             &payer.pubkey(),
@@ -621,8 +630,8 @@ pub async fn initialize_treasury_system(
     transaction.sign(&[payer, system_authority], recent_blockhash);
     banks_client.process_transaction(transaction).await?;
     
-    println!("✅ Treasury system initialized successfully");
-    println!("   • SystemState PDA: {}", system_state_pda);
-    println!("   • MainTreasury PDA: {}", main_treasury_pda);
+    debug_println!("✅ Treasury system initialized successfully");
+    debug_println!("   • SystemState PDA: {}", system_state_pda);
+    debug_println!("   • MainTreasury PDA: {}", main_treasury_pda);
     Ok(())
 }
