@@ -2696,10 +2696,10 @@ async fn test_mixed_decimal_token_swap_precision() -> TestResult {
     println!("   • User2 Token B: {} basis points ({} tokens)", 
              USER2_TOKEN_B_BALANCE, USER2_TOKEN_B_BALANCE / 10_u64.pow(TOKEN_B_DECIMALS as u32));
     
-    // Force debug logging for program execution
-    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
-    std::env::set_var("SOLANA_LOG", "debug");
-    env_logger::init();
+    // Force debug logging for program execution (disabled to reduce log output)
+    // std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+    // std::env::set_var("SOLANA_LOG", "debug");
+    // let _ = env_logger::try_init();
     
     println!("\n🔍 PROGRAM VERIFICATION:");
     println!("   • Our Program ID: {}", fixed_ratio_trading::id());

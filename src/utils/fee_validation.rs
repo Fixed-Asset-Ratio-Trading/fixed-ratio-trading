@@ -173,7 +173,7 @@ pub fn collect_liquidity_fee_distributed<'a>(
     program_id: &Pubkey,
     fee_amount: u64,
 ) -> ProgramResult {
-    println!("🔍 DEBUG: collect_liquidity_fee_distributed called with fee: {} lamports!", fee_amount);
+
     let result = collect_fee_to_pool_state(
         payer_account,
         pool_state_account,
@@ -183,9 +183,9 @@ pub fn collect_liquidity_fee_distributed<'a>(
         FeeType::Liquidity,
     );
     if let Err(ref e) = result {
-        println!("❌ DEBUG: Fee collection failed with error: {:?}", e);
+
     } else {
-        println!("✅ DEBUG: Fee collection completed successfully");
+
     }
     result
 }
@@ -215,9 +215,7 @@ pub fn collect_fee_to_pool_state<'a>(
         msg,
     };
     
-    println!("🔍 FEE COLLECTION DEBUG: Starting fee collection");
-    println!("   Fee amount: {} lamports", fee_amount);
-    println!("   Fee type: {:?}", fee_type);
+
     
     // Validate payer has sufficient SOL balance for fee payment
     let validation_result = validate_fee_payment(payer_account, fee_amount, VALIDATION_CONTEXT_FEE);
@@ -240,9 +238,7 @@ pub fn collect_fee_to_pool_state<'a>(
     
     // Load and validate pool state
     let mut pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
-    println!("✅ Pool state loaded successfully");
-    println!("   Before update - collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
-    println!("   Before update - total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
+
     
     // Transfer SOL to pool state account
     invoke(
@@ -258,53 +254,50 @@ pub fn collect_fee_to_pool_state<'a>(
         ],
     )?;
     msg!("✅ SOL transfer completed: {} lamports", fee_amount);
-    println!("🔍 DEBUG: SOL transfer completed, proceeding to timestamp");
+
     
     // Update pool state based on fee type
     let current_timestamp = Clock::get()
         .map_err(|e| {
-            println!("❌ DEBUG: Failed to get clock: {:?}", e);
+
             PoolError::FeeValidationFailed {
                 reason: format!("Failed to get system clock: {:?}", e),
             }
         })?
         .unix_timestamp;
     
-    println!("🔍 DEBUG: Got timestamp: {}, proceeding to fee type match", current_timestamp);
+
     
-    println!("🔍 DEBUG: About to match fee_type: {:?}", fee_type);
+
     match fee_type {
         FeeType::Liquidity => {
-            println!("🔍 DEBUG: Matched Liquidity fee type, updating...");
+
             msg!("🔍 Updating liquidity fees...");
-            println!("🔍 DEBUG: About to call add_liquidity_fee with amount: {}", fee_amount);
+
             pool_state.add_liquidity_fee(fee_amount, current_timestamp);
-            println!("🔍 DEBUG: add_liquidity_fee completed");
-            println!("🔍 DEBUG: After add_liquidity_fee - collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
-            println!("🔍 DEBUG: After add_liquidity_fee - total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
+
+
             msg!("   After update - collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
         },
         FeeType::RegularSwap => {
-            println!("🔍 DEBUG: Matched RegularSwap fee type, updating...");
+
             msg!("🔍 Updating swap contract fees...");
             pool_state.add_swap_contract_fee(fee_amount, current_timestamp);
-            println!("🔍 DEBUG: add_swap_contract_fee completed");
+
             msg!("   After update - collected_swap_contract_fees: {}", pool_state.collected_swap_contract_fees);
         },
     }
-    println!("🔍 DEBUG: About to print total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
+
     msg!("   After update - total_sol_fees_collected: {}", pool_state.total_sol_fees_collected);
     
-    println!("🔍 DEBUG: About to serialize pool state for saving...");
+
     // Save updated pool state with bounds checking
     let serialized_data = pool_state.try_to_vec()?;
-    println!("🔍 DEBUG: Pool state serialization completed, proceeding to save...");
-    println!("🔍 DEBUG: Serialized data size: {} bytes", serialized_data.len());
-    println!("🔍 DEBUG: Pool state account size: {} bytes", pool_state_account.data_len());
+
     msg!("✅ Pool state serialized, size: {} bytes", serialized_data.len());
     
     if pool_state_account.data_len() < serialized_data.len() {
-        println!("❌ DEBUG: Account too small for serialized data!");
+
         return Err(PoolError::FeeValidationFailed {
             reason: format!(
                 "Pool state account too small for serialized data: account size {}, required {}",
@@ -315,14 +308,14 @@ pub fn collect_fee_to_pool_state<'a>(
     }
     
     // Copy serialized data to account
-    println!("🔍 DEBUG: About to copy serialized data to account...");
+
     pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
-    println!("🔍 DEBUG: Data copied to account successfully");
+
     
     // 🔧 CRITICAL FIX: Ensure data is flushed to account storage
     // In test environments, we need to explicitly commit the data
     drop(pool_state_account.data.borrow_mut()); // Release the borrow
-    println!("🔍 DEBUG: Account data borrow released");
+
     msg!("✅ Pool state saved to account");
     
     // Verify the save worked by reading it back
@@ -333,7 +326,7 @@ pub fn collect_fee_to_pool_state<'a>(
     msg!("   total_sol_fees_collected: {}", verification_state.total_sol_fees_collected);
     msg!("   pending_sol_fees(): {}", verification_state.pending_sol_fees());
     
-    msg!("🔍 FEE COLLECTION DEBUG: Completed successfully");
+    // msg!("🔍 FEE COLLECTION DEBUG: Completed successfully");
     
     Ok(())
 } 
