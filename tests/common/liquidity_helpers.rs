@@ -777,6 +777,7 @@ pub async fn execute_swap_operation(
     let swap_instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_token_mint,
         amount_in,
+        expected_amount_out: 0, // Placeholder for utility function
     };
     
     let swap_ix = create_swap_instruction_standardized(

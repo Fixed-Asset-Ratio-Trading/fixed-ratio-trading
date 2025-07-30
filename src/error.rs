@@ -50,6 +50,14 @@ pub enum PoolError {
         max_amount: u64,
     },
     
+    /// Calculated amount does not match expected amount
+    #[error("Amount mismatch: Expected {expected}, Calculated {calculated}, Difference {difference}")]
+    AmountMismatch {
+        expected: u64,
+        calculated: u64,
+        difference: u64,
+    },
+    
     /// Rent exemption error
     #[error("Insufficient funds: Required {required}, Available {available}, Account {account}")]
     RentExemptError {
@@ -213,6 +221,7 @@ impl PoolError {
             PoolError::InvalidLiquidityFee { .. } => 1044,
             PoolError::InvalidSwapFee { .. } => 1045,
             PoolError::FeeUpdateValidationFailed { .. } => 1046,
+            PoolError::AmountMismatch { .. } => 1047,
         }
     }
 }

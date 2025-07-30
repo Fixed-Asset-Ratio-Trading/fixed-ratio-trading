@@ -572,6 +572,7 @@ async fn test_cu_measurement_regular_swap() {
     let swap_instruction_data = PoolInstruction::Swap {
         input_token_mint: token_a_mint,
         amount_in: swap_amount,
+        expected_amount_out: 0, // Placeholder for test utility
     };
     
     let swap_instruction = create_swap_instruction_standardized(

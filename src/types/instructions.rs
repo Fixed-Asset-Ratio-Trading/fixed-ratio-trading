@@ -113,6 +113,7 @@ pub enum PoolInstruction {
     Swap {
         input_token_mint: Pubkey,
         amount_in: u64,
+        expected_amount_out: u64,
     },
 
 

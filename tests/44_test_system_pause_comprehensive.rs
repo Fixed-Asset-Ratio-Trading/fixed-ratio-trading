@@ -920,6 +920,7 @@ async fn test_swap_blocked_when_paused() -> TestResult {
         data: PoolInstruction::Swap {
             input_token_mint: foundation.pool_config.token_a_mint,
             amount_in: 1000,
+            expected_amount_out: 0, // Placeholder for test utility
         }.try_to_vec().unwrap(),
     };
 

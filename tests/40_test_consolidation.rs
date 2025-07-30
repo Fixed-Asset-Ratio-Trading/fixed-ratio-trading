@@ -966,6 +966,7 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
     let swap_instruction = PoolInstruction::Swap {
         input_token_mint: foundation.primary_mint.pubkey(),
         amount_in: 50_000_000, // 50K tokens
+        expected_amount_out: 0, // Placeholder for test utility
     };
     
     let accounts = vec![

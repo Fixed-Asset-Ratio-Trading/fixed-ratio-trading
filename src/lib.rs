@@ -68,7 +68,7 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
-
+    msg,
     declare_id,
 };
 
@@ -174,7 +174,9 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    msg!("🎯 ENTRY POINT: Processing instruction with {} bytes", instruction_data.len());
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;
+    msg!("✅ DESERIALIZATION: Instruction deserialized successfully");
 
     match instruction {
         PoolInstruction::InitializeProgram {
@@ -199,7 +201,8 @@ pub fn process_instruction(
         PoolInstruction::Swap {
             input_token_mint: _,
             amount_in,
-        } => process_swap(program_id, amount_in, accounts),
+            expected_amount_out,
+        } => process_swap(program_id, amount_in, expected_amount_out, accounts),
 
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction,

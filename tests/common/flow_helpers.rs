@@ -641,6 +641,7 @@ pub async fn execute_basic_trading_flow(
         let swap_instruction_data = fixed_ratio_trading::types::instructions::PoolInstruction::Swap {
             input_token_mint: *input_mint,
             amount_in: swap_op.amount,
+            expected_amount_out: 0, // Placeholder for utility function
         };
         
         let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(
