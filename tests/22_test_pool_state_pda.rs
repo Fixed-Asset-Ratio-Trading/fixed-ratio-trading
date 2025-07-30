@@ -547,12 +547,68 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 #[serial]
 async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 CRITICAL TEST: Pool State Flag Persistence Verification");
-    println!("==========================================================");
+    // ============================================================================
+    // 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
+    // ============================================================================
+    
+    // Token Configuration
+    const TOKEN_A_DECIMALS: u8 = 9;           // SOL-like token (9 decimals)
+    const TOKEN_B_DECIMALS: u8 = 6;           // USDT-like token (6 decimals)
+    
+    // Pool Ratio Configuration (Display Units)
+    const TOKEN_A_RATIO_DISPLAY: f64 = 1.0;   // Token A amount in ratio (1.0 SOL)
+    const TOKEN_B_RATIO_DISPLAY: f64 = 160.0; // Token B amount in ratio (160.0 USDT)
+    // Result: 1.0 SOL = 160.0 USDT (1:160 ratio)
+    // After normalization: 160.0 USDT = 1.0 SOL (160:1 ratio in basis points)
+    
+    // Expected Basis Points Conversion (after normalization)
+    // Note: Tokens are reordered during normalization - the actual order depends on pubkey comparison
+    // Based on test results, SOL becomes Token A and USDT becomes Token B
+    // 1.0 SOL = 1 * 10^9 = 1,000,000,000 basis points (becomes Token A)
+    // 160.0 USDT = 160 * 10^6 = 160,000,000 basis points (becomes Token B)
+    const EXPECTED_TOKEN_A_BASIS_POINTS: u64 = 1_000_000_000; // After normalization (SOL becomes Token A)
+    const EXPECTED_TOKEN_B_BASIS_POINTS: u64 = 160_000_000;   // After normalization (USDT becomes Token B)
+    
+    // Flag Verification
+    const EXPECT_FLAG_TO_BE_SET: bool = true; // Should the one-to-many flag be set?
+    const FLAG_CONSTANT_VALUE: u8 = 1;        // POOL_FLAG_ONE_TO_MANY_RATIO value
+    
+    // ============================================================================
+    // 🧪 TEST SETUP AND EXECUTION
+    // ============================================================================
+    
+    println!("🧪 TEST: Pool State Flag Persistence Verification");
+    println!("==================================================");
+    println!("🎯 PURPOSE: Test that the one-to-many ratio flag is correctly set and persisted");
+    println!("🔍 SCENARIO: Creating a pool with 1:160 ratio (1 SOL = 160 USDT)");
+    println!("✅ EXPECTED: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for this ratio");
+    
+    println!("\n📋 TOKEN CONFIGURATION:");
+    println!("   • Token A (SOL-like): {} decimals", TOKEN_A_DECIMALS);
+    println!("   • Token B (USDT-like): {} decimals", TOKEN_B_DECIMALS);
+    println!("   • Pool Ratio: {}:{} ({} Token A = {} Token B)", 
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
+    
+    println!("\n🔢 BASIS POINTS CONVERSION:");
+    println!("   • Original: {} SOL = {} USDT", TOKEN_A_RATIO_DISPLAY, TOKEN_B_RATIO_DISPLAY);
+    println!("   • After normalization: {} SOL (Token A) = {} USDT (Token B)", 
+             EXPECTED_TOKEN_A_BASIS_POINTS / 10_u64.pow(TOKEN_A_DECIMALS as u32), 
+             EXPECTED_TOKEN_B_BASIS_POINTS / 10_u64.pow(TOKEN_B_DECIMALS as u32));
+    println!("   • Token A: {} basis points (SOL)", EXPECTED_TOKEN_A_BASIS_POINTS);
+    println!("   • Token B: {} basis points (USDT)", EXPECTED_TOKEN_B_BASIS_POINTS);
+    
+    println!("\n🎯 FLAG VERIFICATION:");
+    println!("   • Expect Flag to be Set: {}", EXPECT_FLAG_TO_BE_SET);
+    println!("   • Flag Constant Value: 0b{:08b} ({})", FLAG_CONSTANT_VALUE, FLAG_CONSTANT_VALUE);
+    
+    // Force debug logging for program execution
+    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+    std::env::set_var("SOLANA_LOG", "debug");
+    env_logger::init();
     
     use crate::common::*;
     use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
-    use fixed_ratio_trading::utils::validation::check_one_to_many_ratio;
     use solana_sdk::signer::keypair::Keypair;
     
     // Setup test environment
@@ -574,34 +630,34 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
 
     println!("✅ Treasury system initialized");
 
-    // **TEST CASE 1: Create pool that SHOULD have the flag set**
-    println!("\n🎯 TEST CASE 1: One-to-Many Ratio Pool (flag should be SET)");
+    // **TEST CASE: Create pool that SHOULD have the flag set**
+    println!("\n🎯 TEST CASE: One-to-Many Ratio Pool (flag should be SET)");
     
     let token_a_mint = Keypair::new();
     let token_b_mint = Keypair::new();
     
     // Create token mints with appropriate decimals
-    create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(9)).await?; // SOL-like (9 decimals)
-    create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(6)).await?; // USDT-like (6 decimals)
+    create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(TOKEN_A_DECIMALS)).await?;
+    create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(TOKEN_B_DECIMALS)).await?;
     
-    // Create pool with 1:160 ratio (1 SOL = 160 USDT) - this should set the POOL_FLAG_ONE_TO_MANY_RATIO flag
-    // ✅ FIXED: Use basis points approach instead of legacy function
-    println!("   Creating pool with 1:160 ratio (1 SOL = 160 USDT) - should set POOL_FLAG_ONE_TO_MANY_RATIO flag");
+    println!("   Creating pool with {}:{} ratio ({} Token A = {} Token B) - should set POOL_FLAG_ONE_TO_MANY_RATIO flag", 
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
     
-    // Create the pool using basis points conversion
+    // Create the pool using basis points conversion with create_simple_display_pool
     let pool_result = create_simple_display_pool(
         &mut banks_client,
         &funder,
         recent_blockhash,
         &token_a_mint,     // SOL-like (multiple)
         &token_b_mint,     // USDT-like (base) 
-        1.0,               // 1.0 SOL (display units)
-        160.0,             // 160.0 USDT (display units)
-        9,                 // SOL decimals
-        6,                 // USDT decimals
+        TOKEN_A_RATIO_DISPLAY,  // 1.0 SOL (display units)
+        TOKEN_B_RATIO_DISPLAY,  // 160.0 USDT (display units)
+        TOKEN_A_DECIMALS,       // SOL decimals
+        TOKEN_B_DECIMALS,       // USDT decimals
     ).await;
 
-    // Handle the Result properly - it might fail due to the bug we're investigating
+    // Handle the Result properly
     match pool_result {
         Ok(pool_config) => {
             println!("✅ Pool created successfully");
@@ -615,21 +671,43 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
                 println!("   Owner: {}", pool_state.owner);
                 println!("   Token A: {}", pool_state.token_a_mint);
                 println!("   Token B: {}", pool_state.token_b_mint);
-                println!("   Ratio A: {}", pool_state.ratio_a_numerator);
-                println!("   Ratio B: {}", pool_state.ratio_b_denominator);
+                println!("   Ratio A: {} basis points", pool_state.ratio_a_numerator);
+                println!("   Ratio B: {} basis points", pool_state.ratio_b_denominator);
                 println!("   Flags: 0b{:08b} ({})", pool_state.flags, pool_state.flags);
+                
+                // **VERIFY BASIS POINTS CONVERSION**
+                println!("\n🔢 BASIS POINTS VERIFICATION:");
+                println!("   Expected Token A: {} basis points", EXPECTED_TOKEN_A_BASIS_POINTS);
+                println!("   Actual Token A: {} basis points", pool_state.ratio_a_numerator);
+                println!("   Expected Token B: {} basis points", EXPECTED_TOKEN_B_BASIS_POINTS);
+                println!("   Actual Token B: {} basis points", pool_state.ratio_b_denominator);
+                println!("   Token A match: {}", pool_state.ratio_a_numerator == EXPECTED_TOKEN_A_BASIS_POINTS);
+                println!("   Token B match: {}", pool_state.ratio_b_denominator == EXPECTED_TOKEN_B_BASIS_POINTS);
                 
                 // **CRITICAL CHECK: Verify the flag is set correctly**
                 let flag_is_set = (pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0;
                 
                 println!("\n🎯 FLAG VERIFICATION:");
-                println!("   Expected flag to be set: true (160:1 ratio should set flag)");
+                println!("   Expected flag to be set: {}", EXPECT_FLAG_TO_BE_SET);
                 println!("   Flag actually set: {}", flag_is_set);
                 println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
                 
-                // For 160:1 ratio, the flag should be set
-                assert!(flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for 160:1 ratio but is NOT SET!");
-                println!("✅ SUCCESS: Flag is correctly SET as expected");
+                // Verify basis points conversion first
+                assert_eq!(pool_state.ratio_a_numerator, EXPECTED_TOKEN_A_BASIS_POINTS, 
+                    "❌ BUG: Token A basis points conversion incorrect!");
+                assert_eq!(pool_state.ratio_b_denominator, EXPECTED_TOKEN_B_BASIS_POINTS, 
+                    "❌ BUG: Token B basis points conversion incorrect!");
+                
+                // Then verify flag setting
+                if EXPECT_FLAG_TO_BE_SET {
+                    assert!(flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for {}:{} ratio but is NOT SET!", 
+                        TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
+                    println!("✅ SUCCESS: Flag is correctly SET as expected");
+                } else {
+                    assert!(!flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should NOT be SET for {}:{} ratio but IS SET!", 
+                        TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
+                    println!("✅ SUCCESS: Flag is correctly NOT SET as expected");
+                }
             } else {
                 println!("❌ CRITICAL: Could not retrieve pool state from blockchain!");
                 return Err("Pool state not found on blockchain".into());
@@ -641,9 +719,11 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
         }
     }
 
-    println!("\n🎉 CRITICAL TEST COMPLETED!");
+    println!("\n🎉 TEST COMPLETED SUCCESSFULLY!");
     println!("===========================================");
     println!("✅ Pool state flag persistence verified on blockchain");
+    println!("✅ Basis points conversion verified");
+    println!("✅ One-to-many flag behavior verified");
     
     Ok(())
 }
