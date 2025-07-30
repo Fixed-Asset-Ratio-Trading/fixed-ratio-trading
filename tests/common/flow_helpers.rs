@@ -1030,12 +1030,7 @@ pub async fn execute_consolidation_flow(
             Some(9),
         ).await?;
         
-        // Create pool configuration using normalization
-        let _pool_config = crate::common::pool_helpers::normalize_pool_config_legacy(
-            &primary_mint.pubkey(),
-            &base_mint.pubkey(),
-            ratio,
-        );
+
         
         // Create the pool using the new pattern
         let pool_config_result = crate::common::pool_helpers::create_pool_new_pattern(

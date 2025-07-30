@@ -99,7 +99,8 @@ async fn test_cu_measurement_pool_creation() {
     // STEP 3: Build Pool Creation Instruction
     // =============================================
     let ratio = 3u64; // Use 3:1 ratio for testing
-    let config = normalize_pool_config_legacy(&primary_mint.pubkey(), &base_mint.pubkey(), ratio);
+    // Use modern normalize_pool_config instead of legacy function
+    let config = normalize_pool_config(&primary_mint.pubkey(), &base_mint.pubkey(), ratio, 1);
     
     // Derive required PDAs
     let (main_treasury_pda, _) = Pubkey::find_program_address(

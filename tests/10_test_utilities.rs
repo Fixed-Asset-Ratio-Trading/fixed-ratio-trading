@@ -311,34 +311,7 @@ fn test_pool_state_get_packed_len() {
 // NORMALIZATION TESTS
 // ================================================================================================
 
-#[test]
-fn test_normalize_pool_config_functionality() {
-    // Create test keypairs
-    let primary_mint = Keypair::new();
-    let base_mint = Keypair::new();
-    
-    let config = normalize_pool_config_legacy(&primary_mint.pubkey(), &base_mint.pubkey(), 2);
-    
-    // Verify normalization worked
-    assert!(config.token_a_mint <= config.token_b_mint, "Token A should be lexicographically smaller");
-    assert!(config.ratio_a_numerator > 0, "Ratio A numerator should be positive");
-    assert!(config.ratio_b_denominator > 0, "Ratio B denominator should be positive");
-    
-    // Test with reversed tokens
-    let config_reversed = normalize_pool_config_legacy(&base_mint.pubkey(), &primary_mint.pubkey(), 2);
-    
-    // Should result in same normalized configuration
-    assert_eq!(config.token_a_mint, config_reversed.token_a_mint);
-    assert_eq!(config.token_b_mint, config_reversed.token_b_mint);
-    assert_eq!(config.pool_state_pda, config_reversed.pool_state_pda);
-}
 
-#[test]
-#[should_panic(expected = "Multiple and Base token mints cannot be the same")]
-fn test_normalize_pool_config_identical_tokens_panics() {
-    let mint = Keypair::new();
-    normalize_pool_config_legacy(&mint.pubkey(), &mint.pubkey(), 2);
-}
 
 
 

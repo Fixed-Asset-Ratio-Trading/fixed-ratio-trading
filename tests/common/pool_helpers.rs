@@ -79,24 +79,7 @@ pub struct PoolConfig {
     pub base_vault_bump: u8,
 }
 
-/// Backwards compatibility wrapper for normalize_pool_config
-/// 
-/// # Arguments
-/// * `multiple_mint` - Multiple token mint (abundant token)
-/// * `base_mint` - Base token mint (valuable token)
-/// * `multiple_per_base` - Ratio of multiple tokens per base token (legacy format)
-/// 
-/// # Returns
-/// Normalized pool configuration with all derived addresses
-pub fn normalize_pool_config_legacy(
-    multiple_mint: &Pubkey,
-    base_mint: &Pubkey,
-    multiple_per_base: u64,
-) -> PoolConfig {
-    // Convert legacy single ratio to new dual ratio format
-    // For backwards compatibility, we assume denominator of 1
-    normalize_pool_config(multiple_mint, base_mint, multiple_per_base, 1)
-}
+
 
 /// Normalize pool parameters and derive PDAs
 /// 
@@ -225,8 +208,8 @@ pub async fn create_pool_new_pattern(
 ) -> Result<PoolConfig, BanksClientError> {
     let ratio = multiple_per_base.unwrap_or(constants::DEFAULT_RATIO);
     
-    // Get normalized pool configuration
-    let config = normalize_pool_config_legacy(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio);
+    // Get normalized pool configuration using modern function
+    let config = normalize_pool_config(&multiple_mint.pubkey(), &base_mint.pubkey(), ratio, 1);
 
     // Check if pool already exists
     if let Some(_existing_pool) = get_pool_state(banks, &config.pool_state_pda).await {
