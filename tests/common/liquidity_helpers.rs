@@ -119,6 +119,7 @@ pub async fn create_liquidity_test_foundation(
 
 /// Creates a liquidity test foundation with custom display unit ratios
 /// This function uses create_simple_display_pool for proper decimal handling
+#[allow(dead_code)]
 pub async fn create_liquidity_test_foundation_with_custom_pool(
     multiple_display: f64,
     base_display: f64,
@@ -136,6 +137,7 @@ pub async fn create_liquidity_test_foundation_with_custom_pool(
 
 /// Creates a liquidity test foundation with custom display unit ratios and token creation order
 /// This function uses create_simple_display_pool for proper decimal handling
+#[allow(dead_code)]
 pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     multiple_display: f64,
     base_display: f64,
