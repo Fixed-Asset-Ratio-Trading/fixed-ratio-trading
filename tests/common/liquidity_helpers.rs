@@ -150,12 +150,17 @@ pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     println!("   • Base token: {} ({} decimals)", base_display, base_decimals);
     println!("   • Create Token B First: {}", create_token_b_first);
     
-    // 1. Create test environment with DEBUG LOGGING
-    println!("🔧 FORCING DEBUG LOGGING FOR PROGRAM EXECUTION");
-    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
-    std::env::set_var("SOLANA_LOG", "debug");
-    
-    let mut env = crate::common::setup::start_test_environment_with_debug().await;
+    // 1. Create test environment (check for debug logging preference)
+    let mut env = if std::env::var("RUST_LOG")
+        .unwrap_or_default()
+        .contains("debug") 
+    {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH DEBUG LOGGING");
+        crate::common::setup::start_test_environment_with_debug().await
+    } else {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH MINIMAL LOGGING");
+        crate::common::setup::start_test_environment().await
+    };
     
     // 2. Create token mints with optional creation order control
     let keypair1 = Keypair::new();
@@ -397,12 +402,17 @@ pub async fn create_liquidity_test_foundation_with_fees(
 ) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
     println!("🏗️ Creating OPTIMIZED liquidity test foundation...");
     
-    // 1. Create test environment with DEBUG LOGGING
-    println!("🔧 FORCING DEBUG LOGGING FOR PROGRAM EXECUTION");
-    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
-    std::env::set_var("SOLANA_LOG", "debug");
-    
-    let mut env = crate::common::setup::start_test_environment_with_debug().await;
+    // 1. Create test environment (check for debug logging preference)
+    let mut env = if std::env::var("RUST_LOG")
+        .unwrap_or_default()
+        .contains("debug") 
+    {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH DEBUG LOGGING");
+        crate::common::setup::start_test_environment_with_debug().await
+    } else {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH MINIMAL LOGGING");
+        crate::common::setup::start_test_environment().await
+    };
     
     // 2. Create lexicographically ordered token mints
     let keypair1 = Keypair::new();

@@ -72,6 +72,23 @@ use solana_program::{
     declare_id,
 };
 
+// Conditional logging macro - disable verbose logging during tests
+#[cfg(not(test))]
+#[macro_export]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {
+        msg!($($arg)*);
+    };
+}
+
+#[cfg(test)]
+#[macro_export]
+macro_rules! debug_msg {
+    ($($arg:tt)*) => {
+        // Logging disabled during tests for cleaner output
+    };
+}
+
 #[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
 use solana_program::entrypoint;
 
@@ -174,10 +191,10 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    msg!("🚨🚨🚨 PROGRAM ENTRY POINT - INSTRUCTION RECEIVED! 🚨🚨🚨");
-    msg!("🎯 ENTRY POINT: Processing instruction with {} bytes", instruction_data.len());
+    debug_msg!("🚨🚨🚨 PROGRAM ENTRY POINT - INSTRUCTION RECEIVED! 🚨🚨🚨");
+    debug_msg!("🎯 ENTRY POINT: Processing instruction with {} bytes", instruction_data.len());
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;
-    msg!("✅ DESERIALIZATION: Instruction deserialized successfully");
+    debug_msg!("✅ DESERIALIZATION: Instruction deserialized successfully");
 
     match instruction {
         PoolInstruction::InitializeProgram {
@@ -204,13 +221,8 @@ pub fn process_instruction(
             amount_in,
             expected_amount_out,
         } => {
-            msg!("🚨🚨🚨 LIB.RS: SWAP INSTRUCTION RECEIVED!");
-            msg!("   • amount_in: {}", amount_in);
-            msg!("   • expected_amount_out: {}", expected_amount_out);
-            msg!("   • About to call process_swap...");
-            let result = process_swap(program_id, amount_in, expected_amount_out, accounts);
-            msg!("🚨🚨🚨 LIB.RS: process_swap RETURNED!");
-            result
+            // Process swap instruction
+            process_swap(program_id, amount_in, expected_amount_out, accounts)
         },
 
         PoolInstruction::SetSwapOwnerOnly {

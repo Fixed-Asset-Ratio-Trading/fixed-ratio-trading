@@ -141,7 +141,7 @@ fn swap_a_to_b(
     token_a_decimals: u8,
     token_b_decimals: u8,
 ) -> Result<u64, ProgramError> {
-    msg!("🚨🚨🚨 FUNCTION ENTRY: swap_a_to_b CALLED! 🚨🚨🚨");
+    debug_msg!("🚨🚨🚨 FUNCTION ENTRY: swap_a_to_b CALLED! 🚨🚨🚨");
     msg!("🔍 SWAP_A_TO_B CORRECT SPECIFICATION:");
     msg!("   • Input amount_a: {}", amount_a);
     msg!("   • ratio_a_numerator: {}", ratio_a_numerator);
@@ -303,12 +303,9 @@ pub fn process_swap(
     expected_amount_out: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
-    msg!("🔄 SWAP TRANSACTION SUMMARY");
-    msg!("=============================");
-    msg!("📊 Input Amount: {} tokens", amount_in);
-    msg!("📊 Expected Output: {} tokens", expected_amount_out);
-    msg!("🎯 STEP-BY-STEP DEBUG: Starting swap process...");
+    debug_msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
+    // Process swap: {} tokens in, {} tokens expected out
+    debug_msg!("🎯 STEP-BY-STEP DEBUG: Starting swap process...");
     
     // Extract required accounts from the accounts array
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
@@ -321,22 +318,16 @@ pub fn process_swap(
     let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
     let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
 
-    msg!("💰 FEE BREAKDOWN:");
-    msg!("   • Network Fee: ~0.000005 SOL (static)");
-    msg!("   • Swap Contract Fee: Will be displayed after pool state validation");
-    msg!("   • No account creation costs (existing accounts)");
+    // Fee breakdown available after pool validation
     
-    msg!("🔒 TRANSACTION SECURITY:");
-    msg!("   • MEV protection: Atomic transaction");
-    msg!("   • System pause protection: Active");
-    msg!("   • Fixed-ratio protection: No slippage (guaranteed rate)");
+    // Security: MEV protection, pause protection, fixed-ratio
     
-    msg!("⏳ Step 1/6: Validating system and pool state");
-    msg!("🎯 DEBUG: About to validate system not paused...");
+    // Step 1: Validating system and pool state
+    debug_msg!("🎯 DEBUG: About to validate system not paused...");
     
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
-    msg!("✅ DEBUG: System pause validation passed");
+    // System pause validation passed
     
     // Load and validate pool state data
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
@@ -376,20 +367,14 @@ pub fn process_swap(
             // - ✅ Eliminates need for pool creator coordination
             // - ✅ Unifies control under Program Upgrade Authority
             
-            msg!("❌ SWAP BLOCKED: Owner-only mode is enabled");
-            msg!("   • This pool restricts swaps to the pool owner only");
-            msg!("   • Pool owner: {}", pool_owner);
-            msg!("   • Your address: {}", user_key);
-            msg!("   • Note: Pool ownership transfers to Program Upgrade Authority when restriction is enabled");
-            msg!("   • Purpose: Enables custom fee structures through external contracts");
-            msg!("   • Contact pool owner for access or use their fee-collecting contract");
+            msg!("SWAP BLOCKED: Owner-only mode enabled. Pool owner: {}, Your address: {}", pool_owner, user_key);
             return Err(PoolError::SwapAccessRestricted.into());
         }
     }
     
-    msg!("✅ Step 1: System and pool validations passed");
+    // Step 1 complete
 
-    msg!("⏳ Step 3/6: Loading and validating user accounts");
+    // Step 3: Validating user accounts
     
     // Load user token account data for validation
     let user_input_token_data = safe_unpack_token_account(user_input_token_account, "User Input Token Account")?;
@@ -401,28 +386,25 @@ pub fn process_swap(
     // Determine swap direction and validate vault accounts
     let (input_pool_vault_acc, output_pool_vault_acc, output_token_mint_key, input_is_token_a) = 
         if input_token_mint_key == pool_state_data.token_a_mint {
-            msg!("🔄 Direction: A → B");
+            // Direction: A → B
             // A->B swap validation
             if *pool_token_a_vault_pda.key != pool_state_data.token_a_vault || 
                *pool_token_b_vault_pda.key != pool_state_data.token_b_vault {
-                msg!("❌ VAULT VALIDATION FAILED: Invalid pool vault accounts");
+                msg!("VAULT VALIDATION FAILED");
                 return Err(ProgramError::InvalidAccountData);
             }
             (pool_token_a_vault_pda, pool_token_b_vault_pda, pool_state_data.token_b_mint, true)
         } else if input_token_mint_key == pool_state_data.token_b_mint {
-            msg!("🔄 Direction: B → A");
+            // Direction: B → A
             // B->A swap validation
             if *pool_token_b_vault_pda.key != pool_state_data.token_b_vault || 
                *pool_token_a_vault_pda.key != pool_state_data.token_a_vault {
-                msg!("❌ VAULT VALIDATION FAILED: Invalid pool vault accounts");
+                msg!("VAULT VALIDATION FAILED");
                 return Err(ProgramError::InvalidAccountData);
             }
             (pool_token_b_vault_pda, pool_token_a_vault_pda, pool_state_data.token_a_mint, false)
         } else {
-            msg!("❌ INVALID INPUT TOKEN: Not part of this pool");
-            msg!("   • Provided mint: {}", input_token_mint_key);
-            msg!("   • Pool Token A: {}", pool_state_data.token_a_mint);
-            msg!("   • Pool Token B: {}", pool_state_data.token_b_mint);
+            msg!("INVALID INPUT TOKEN: {} not in pool", input_token_mint_key);
             return Err(ProgramError::InvalidArgument);
         };
 
@@ -533,95 +515,16 @@ pub fn process_swap(
         (pool_state_data.ratio_b_denominator, pool_state_data.ratio_a_numerator)
     };
 
-    msg!("🔄 SWAP DIRECTION ANALYSIS:");
-    msg!("   • input_is_token_a: {}", input_is_token_a);
-    msg!("   • Input mint: {}", if input_is_token_a { pool_state_data.token_a_mint } else { pool_state_data.token_b_mint });
-    msg!("   • Output mint: {}", if input_is_token_a { pool_state_data.token_b_mint } else { pool_state_data.token_a_mint });
+    // Swap direction determined
     
-    msg!("📐 RATIO CALCULATIONS:");
-    msg!("   • Stored ratio: {}:{} (ratio_a_numerator:ratio_b_denominator)", 
-         pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator);
+    // Using pool ratio for calculation
     
-    // Calculate what this ratio means for swaps
-    if pool_state_data.ratio_a_numerator > 0 && pool_state_data.ratio_b_denominator > 0 {
-        let a_to_b_rate = pool_state_data.ratio_b_denominator as f64 / pool_state_data.ratio_a_numerator as f64;
-        let b_to_a_rate = pool_state_data.ratio_a_numerator as f64 / pool_state_data.ratio_b_denominator as f64;
-        msg!("   • 1 Token A = {} Token B (A→B rate)", a_to_b_rate);
-        msg!("   • 1 Token B = {} Token A (B→A rate)", b_to_a_rate);
-        
-        if input_is_token_a {
-            let expected_output = (amount_in as f64) * a_to_b_rate;
-            msg!("   • For {} Token A input → Expected {} Token B output", amount_in, expected_output);
-        } else {
-            let expected_output = (amount_in as f64) * b_to_a_rate;
-            msg!("   • For {} Token B input → Expected {} Token A output", amount_in, expected_output);
-        }
-    }
-    
-    msg!("⚙️ CALCULATION PARAMETERS:");
-    msg!("   • amount_in: {}", amount_in);
-    msg!("   • numerator (for calculation): {}", numerator);
-    msg!("   • denominator (for calculation): {}", denominator);
-    
-    if input_is_token_a {
-        msg!("   • Calling: swap_a_to_b({}, {}, {}, {}, {})", 
-             amount_in, numerator, denominator, input_decimals as u8, output_decimals as u8);
-    } else {
-        msg!("   • Calling: swap_b_to_a({}, {}, {}, {}, {})", 
-             amount_in, denominator, numerator, input_decimals as u8, output_decimals as u8);
-    }
-    
-    msg!("✅ EXPECTED TEST VALUES (for comparison):");
-    msg!("   • Expected ratio: 1000:1 (1000 Token A = 1 Token B)");
-    msg!("   • Expected decimals: 6,6");
-    msg!("   • Expected call: swap_a_to_b(1000, 1000, 1, 6, 6)");
-    msg!("🔍 ========================================================");
+    // Calculation parameters: amount={}, ratio={}:{}
 
-    // MASSIVE DEBUG: Write detailed calculation info to file
-    use std::fs::OpenOptions;
-    use std::io::Write;
-    
-    let debug_info = format!(
-        "=== MASSIVE SWAP CALCULATION DEBUG ===\n\
-        Timestamp: {:?}\n\
-        Input Parameters:\n\
-        • amount_in: {}\n\
-        • input_is_token_a: {}\n\
-        • numerator (used for calculation): {}\n\
-        • denominator (used for calculation): {}\n\
-        • input_decimals: {}\n\
-        • output_decimals: {}\n\
-        Pool State:\n\
-        • ratio_a_numerator: {}\n\
-        • ratio_b_denominator: {}\n\
-        • token_a_mint: {}\n\
-        • token_b_mint: {}\n\
-        Expected Test Values:\n\
-        • Should be: swap_a_to_b(1000, 1000, 1, 0, 4) for Token A(0 dec) -> Token B(4 dec)\n\
-        • OR: swap_a_to_b(1000, 1000, 1, 6, 6) for infrastructure Token A(6 dec) -> Token B(6 dec)\n\
-        \n",
-        std::time::SystemTime::now(),
-        amount_in,
-        input_is_token_a,
-        numerator,
-        denominator,
-        input_decimals,
-        output_decimals,
-        pool_state_data.ratio_a_numerator,
-        pool_state_data.ratio_b_denominator,
-        pool_state_data.token_a_mint,
-        pool_state_data.token_b_mint
-    );
-    
-    if let Ok(mut debug_file) = OpenOptions::new().create(true).append(true).open("swap_debug_output.txt") {
-        let _ = debug_file.write_all(debug_info.as_bytes());
-    }
+    // Debug logging removed to reduce CU usage
 
-    msg!("🚨 MASSIVE DEBUG: BEFORE CALCULATION CALL");
-    msg!("   • About to call calculation function");
-    msg!("   • Direction: {}", if input_is_token_a { "Token A -> Token B" } else { "Token B -> Token A" });
-    msg!("   • Parameters will be logged inside the calculation function");
-    msg!("🚨🚨🚨 CHECKPOINT 1: ABOUT TO ENTER IF STATEMENT");
+    // Starting calculation
+    debug_msg!("🚨🚨🚨 CHECKPOINT 1: ABOUT TO ENTER IF STATEMENT");
 
     // 🔧 PRECISE DECIMAL CALCULATION using u128 for accuracy
     // Based on user's mathematically sound approach that properly handles basis points
@@ -629,10 +532,10 @@ pub fn process_swap(
     // Key insight: ratio values are already stored in basis points (smallest token units)
     // We need to properly handle decimal scaling between different token decimal places
     
-    msg!("🚨🚨🚨 CHECKPOINT 2: ENTERING IF STATEMENT");
+    debug_msg!("🚨🚨🚨 CHECKPOINT 2: ENTERING IF STATEMENT");
     
     let amount_out = if input_is_token_a {
-        msg!("🚨🚨🚨 CHECKPOINT 3: INSIDE TOKEN A BRANCH");
+        debug_msg!("🚨🚨🚨 CHECKPOINT 3: INSIDE TOKEN A BRANCH");
         msg!("🔥 CALLING swap_a_to_b with parameters:");
         msg!("   • amount_in: {}", amount_in);
         msg!("   • numerator (ratio_a_numerator): {}", numerator);
@@ -677,76 +580,21 @@ pub fn process_swap(
         result
     };
 
-    msg!("🚨 MASSIVE DEBUG: AFTER CALCULATION CALL");
-    msg!("   • Calculation function completed");
-    msg!("   • Final amount_out: {}", amount_out);
-
-    // Write calculation result to file
-    let result_info = format!(
-        "CALCULATION RESULT:\n\
-        • Final amount_out: {}\n\
-        • Direction: {}\n\
-        • Input was: {}\n\
-        • Expected for test: 1 token\n\
-        • Actual result: {} tokens\n\
-        • Error ratio: {}x\n\
-        \n",
-        amount_out,
-        if input_is_token_a { "Token A -> Token B" } else { "Token B -> Token A" },
-        amount_in,
-        amount_out,
-        if amount_out > 0 { amount_out } else { 0 }
-    );
-    
-    if let Ok(mut debug_file) = OpenOptions::new().create(true).append(true).open("swap_debug_output.txt") {
-        let _ = debug_file.write_all(result_info.as_bytes());
-    }
-
-    msg!("📊 PRECISE FIXED RATIO CALCULATION:");
-    msg!("   • Ratio (basis points): {}:{} (numerator:denominator)", numerator, denominator);
-    msg!("   • Swap direction: {}", if input_is_token_a { "Token A → Token B" } else { "Token B → Token A" });
-    msg!("   • Input: {} native tokens", amount_in);
-    msg!("   • Output: {} native tokens", amount_out);
-    msg!("   • Input decimals: {}, Output decimals: {}", input_decimals, output_decimals);
-    msg!("   • Calculation method: u128 precision with proper decimal scaling");
-    msg!("   • Slippage protection: Fixed ratio (no slippage)");
+    // Calculation completed: {} -> {} tokens
     
     // Validate output amount is non-zero
     if amount_out == 0 {
-        msg!("❌ ZERO OUTPUT: Calculated output amount is zero");
-        msg!("   • This indicates an invalid swap configuration");
-        msg!("   • TEMPORARILY CONTINUING TO SEE DEBUG INFO...");
-        // Temporarily commented out to see debug info
+        msg!("ZERO OUTPUT: Invalid swap configuration");
+        // Temporarily allow zero output for debugging
         // return Err(ProgramError::InvalidArgument);
     }
 
-    // 🎯 CRITICAL: Validate calculated amount matches expected amount
-    // This ensures fixed-ratio trading delivers EXACT predictable results
-    msg!("🔍 EXPECTED VS CALCULATED VALIDATION:");
-    msg!("   • Expected amount: {} tokens", expected_amount_out);
-    msg!("   • Calculated amount: {} tokens", amount_out);
-    
+    // Validate calculated amount matches expected amount
     if amount_out != expected_amount_out {
         let difference = amount_out.abs_diff(expected_amount_out);
-        msg!("❌ AMOUNT MISMATCH DETECTED!");
-        msg!("   • Expected: {} tokens", expected_amount_out);
-        msg!("   • Calculated: {} tokens", amount_out);
-        msg!("   • Difference: {} tokens", difference);
-        msg!("   • This indicates a calculation error in the fixed-ratio algorithm");
-        msg!("🔍 CALCULATION DETAILS FOR DEBUGGING:");
-        msg!("   • Input was: {} tokens", amount_in);
-        msg!("   • Using our precise u128 calculation");
-        msg!("   • Formula should be: (1000 * 1) / 1000 = 1");
+        msg!("AMOUNT MISMATCH: Expected {}, calculated {}, diff {}", expected_amount_out, amount_out, difference);
         
-        // CRITICAL DEBUG: Show actual values used in calculation
-        msg!("🎯 ACTUAL VALUES USED IN CALCULATION:");
-        msg!("   • input_is_token_a: {}", input_is_token_a);
-        msg!("   • ratio_a_numerator: {}", pool_state_data.ratio_a_numerator);  
-        msg!("   • ratio_b_denominator: {}", pool_state_data.ratio_b_denominator);
-        msg!("   • Working test values: ratio_a_num=1000, ratio_b_den=1");
-        
-        // TEMPORARILY DISABLE FOR DEBUGGING - ALLOW TRANSACTION TO COMPLETE
-        msg!("🚨 TEMPORARILY ALLOWING MISMATCH FOR DEBUGGING PURPOSES");
+        // Temporarily allow mismatch for debugging
         // return Err(crate::error::PoolError::AmountMismatch {
         //     expected: expected_amount_out,
         //     calculated: amount_out,
@@ -754,10 +602,9 @@ pub fn process_swap(
         // }.into());
     }
     
-    msg!("✅ AMOUNT VALIDATION PASSED: Expected and calculated amounts match exactly");
-    msg!("   • Fixed-ratio precision: {} tokens", amount_out);
+    // Amount validation passed
 
-    msg!("⏳ Step 5/6: Checking pool liquidity availability");
+    // Step 5: Checking liquidity
     
     // Check if pool has sufficient liquidity for the output
     let available_liquidity = if input_is_token_a {
@@ -766,20 +613,16 @@ pub fn process_swap(
         pool_state_data.total_token_a_liquidity
     };
     
-    msg!("📊 LIQUIDITY CHECK:");
-    msg!("   • Available: {} tokens, Required: {} tokens", available_liquidity, amount_out);
+    // Liquidity check: available={}, required={}
     
     if available_liquidity < amount_out {
-        msg!("❌ INSUFFICIENT LIQUIDITY: Pool cannot fulfill swap");
-        msg!("   • Available: {} tokens", available_liquidity);
-        msg!("   • Required: {} tokens", amount_out);
-        msg!("   • Try a smaller amount or wait for more liquidity");
+        msg!("INSUFFICIENT LIQUIDITY: Need {} tokens, have {}", amount_out, available_liquidity);
         return Err(ProgramError::InsufficientFunds);
     }
     
-    msg!("✅ Step 5: Liquidity check passed");
+    // Liquidity check passed
 
-    msg!("⏳ Step 6/6: Executing atomic token transfers");
+    // Step 6: Executing transfers
     
     // Construct PDA seeds for pool authority signing
     let pool_state_pda_seeds = &[

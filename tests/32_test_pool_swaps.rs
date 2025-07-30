@@ -2698,6 +2698,9 @@ async fn test_mixed_decimal_token_swap_precision() -> TestResult {
     // 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
     // ============================================================================
     
+    // Debug Configuration
+    const ENABLE_DEBUG_LOGGING: bool = false; // Set to true to enable verbose Solana runtime logs for debugging
+    
     // Token Configuration
     const TOKEN_A_DECIMALS: u8 = 4;           // Token A decimal places
     const TOKEN_B_DECIMALS: u8 = 0;           // Token B decimal places
@@ -2769,7 +2772,18 @@ async fn test_mixed_decimal_token_swap_precision() -> TestResult {
     
     println!("\n🔍 PROGRAM VERIFICATION:");
     println!("   • Our Program ID: {}", fixed_ratio_trading::id());
-    println!("   • About to create foundation with debug logging...");
+    
+    // Apply debug logging configuration if enabled
+    if ENABLE_DEBUG_LOGGING {
+        println!("🔧 ENABLING DEBUG LOGGING FOR PROGRAM EXECUTION");
+        std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+        std::env::set_var("SOLANA_LOG", "debug");
+        let _ = env_logger::try_init();
+        println!("   • Debug logging enabled - expect verbose output");
+    } else {
+        println!("🔇 DEBUG LOGGING DISABLED - using minimal output for clean testing");
+        println!("   • Set ENABLE_DEBUG_LOGGING = true to enable verbose logs for debugging");
+    }
     
     println!("\n⏳ Setting up foundation with custom decimal configuration...");
     
