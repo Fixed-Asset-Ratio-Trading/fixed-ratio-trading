@@ -544,6 +544,97 @@ async fn test_get_pool_state_pda() -> Result<(), Box<dyn std::error::Error>> {
 // POOL STATE FLAG PERSISTENCE TESTS (from 96_test_pool_state_flag_persistence.rs)
 //=============================================================================
 
+/// Helper function to create a pool with basis points that handles normalization automatically
+async fn create_pool_with_basis_points(
+    banks: &mut solana_program_test::BanksClient,
+    payer: &Keypair,
+    recent_blockhash: solana_sdk::hash::Hash,
+    token_a_mint: &Keypair,
+    token_b_mint: &Keypair,
+    token_a_basis_points: u64,
+    token_b_basis_points: u64,
+    _token_a_decimals: u8,
+    _token_b_decimals: u8,
+) -> Result<crate::common::pool_helpers::PoolConfig, solana_program_test::BanksClientError> {
+    use solana_sdk::transaction::Transaction;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
+    use fixed_ratio_trading::types::instructions::PoolInstruction;
+    use fixed_ratio_trading::id;
+    use fixed_ratio_trading::constants as frt_constants;
+    use borsh::BorshSerialize;
+    
+    // Use normalize_pool_config to handle token reordering and ratio adjustment
+    let config = crate::common::pool_helpers::normalize_pool_config(
+        &token_a_mint.pubkey(),
+        &token_b_mint.pubkey(),
+        token_a_basis_points,
+        token_b_basis_points,
+    );
+
+    // Check if pool already exists
+    if let Some(_existing_pool) = get_pool_state(banks, &config.pool_state_pda).await {
+        return Err(solana_program_test::BanksClientError::Io(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "Pool already exists with this configuration"
+        )));
+    }
+
+    // Derive required PDAs
+    let (main_treasury_pda, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[frt_constants::MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[frt_constants::SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    let (lp_token_a_mint_pda, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = solana_sdk::pubkey::Pubkey::find_program_address(
+        &[frt_constants::LP_TOKEN_B_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+
+    // Create InitializePool instruction with normalized ratios
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(payer.pubkey(), true),                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new_readonly(system_state_pda, false),              // Index 2: System State PDA
+            AccountMeta::new(config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar
+            AccountMeta::new_readonly(token_a_mint.pubkey(), false),         // Index 7: Token A Mint
+            AccountMeta::new_readonly(token_b_mint.pubkey(), false),         // Index 8: Token B Mint
+            AccountMeta::new(config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: config.ratio_a_numerator,      // Normalized basis points
+            ratio_b_denominator: config.ratio_b_denominator,  // Normalized basis points
+        }.try_to_vec().unwrap(),
+    };
+
+    // Add compute budget and send transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&payer.pubkey())
+    );
+    transaction.sign(&[payer], recent_blockhash);
+    banks.process_transaction(transaction).await?;
+
+    Ok(config)
+}
+
 #[tokio::test]
 #[serial]
 async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<dyn std::error::Error>> {
@@ -554,20 +645,17 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     // Token Configuration
     const TOKEN_A_DECIMALS: u8 = 9;           // SOL-like token (9 decimals)
     const TOKEN_B_DECIMALS: u8 = 6;           // USDT-like token (6 decimals)
+    const CREATE_TOKEN_B_FIRST: bool = false; // Set to true to test normalization with reversed token order
     
     // Pool Ratio Configuration (Display Units)
     const TOKEN_A_RATIO_DISPLAY: f64 = 1.0;   // Token A amount in ratio (1.0 SOL)
     const TOKEN_B_RATIO_DISPLAY: f64 = 160.0; // Token B amount in ratio (160.0 USDT)
     // Result: 1.0 SOL = 160.0 USDT (1:160 ratio)
-    // After normalization: 160.0 USDT = 1.0 SOL (160:1 ratio in basis points)
     
-    // Expected Basis Points Conversion (after normalization)
-    // Note: Tokens are reordered during normalization - the actual order depends on pubkey comparison
-    // Based on test results, SOL becomes Token A and USDT becomes Token B
-    // 1.0 SOL = 1 * 10^9 = 1,000,000,000 basis points (becomes Token A)
-    // 160.0 USDT = 160 * 10^6 = 160,000,000 basis points (becomes Token B)
-    const EXPECTED_TOKEN_A_BASIS_POINTS: u64 = 1_000_000_000; // After normalization (SOL becomes Token A)
-    const EXPECTED_TOKEN_B_BASIS_POINTS: u64 = 160_000_000;   // After normalization (USDT becomes Token B)
+    // Basis Points Conversion (BEFORE normalization)
+    // All values passed to contract MUST be in basis points
+    const TOKEN_A_BASIS_POINTS: u64 = 1_000_000_000; // 1.0 SOL = 1 * 10^9 basis points
+    const TOKEN_B_BASIS_POINTS: u64 = 160_000_000;   // 160.0 USDT = 160 * 10^6 basis points
     
     // Flag Verification
     const EXPECT_FLAG_TO_BE_SET: bool = true; // Should the one-to-many flag be set?
@@ -586,17 +674,16 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     println!("\n📋 TOKEN CONFIGURATION:");
     println!("   • Token A (SOL-like): {} decimals", TOKEN_A_DECIMALS);
     println!("   • Token B (USDT-like): {} decimals", TOKEN_B_DECIMALS);
+    println!("   • Create Token B First: {}", CREATE_TOKEN_B_FIRST);
     println!("   • Pool Ratio: {}:{} ({} Token A = {} Token B)", 
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
     
-    println!("\n🔢 BASIS POINTS CONVERSION:");
+    println!("\n🔢 BASIS POINTS CONVERSION (BEFORE NORMALIZATION):");
     println!("   • Original: {} SOL = {} USDT", TOKEN_A_RATIO_DISPLAY, TOKEN_B_RATIO_DISPLAY);
-    println!("   • After normalization: {} SOL (Token A) = {} USDT (Token B)", 
-             EXPECTED_TOKEN_A_BASIS_POINTS / 10_u64.pow(TOKEN_A_DECIMALS as u32), 
-             EXPECTED_TOKEN_B_BASIS_POINTS / 10_u64.pow(TOKEN_B_DECIMALS as u32));
-    println!("   • Token A: {} basis points (SOL)", EXPECTED_TOKEN_A_BASIS_POINTS);
-    println!("   • Token B: {} basis points (USDT)", EXPECTED_TOKEN_B_BASIS_POINTS);
+    println!("   • Token A: {} basis points (SOL)", TOKEN_A_BASIS_POINTS);
+    println!("   • Token B: {} basis points (USDT)", TOKEN_B_BASIS_POINTS);
+    println!("   • NOTE: Values will be reordered during normalization based on pubkey comparison");
     
     println!("\n🎯 FLAG VERIFICATION:");
     println!("   • Expect Flag to be Set: {}", EXPECT_FLAG_TO_BE_SET);
@@ -605,7 +692,7 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     // Force debug logging for program execution
     std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
     std::env::set_var("SOLANA_LOG", "debug");
-    env_logger::init();
+    let _ = env_logger::try_init(); // Use try_init to avoid panic if already initialized
     
     use crate::common::*;
     use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
@@ -633,28 +720,57 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     // **TEST CASE: Create pool that SHOULD have the flag set**
     println!("\n🎯 TEST CASE: One-to-Many Ratio Pool (flag should be SET)");
     
+    // ✅ FIXED: Create tokens in specified order to test normalization
     let token_a_mint = Keypair::new();
     let token_b_mint = Keypair::new();
     
-    // Create token mints with appropriate decimals
-    create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(TOKEN_A_DECIMALS)).await?;
-    create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(TOKEN_B_DECIMALS)).await?;
+    // Create token mints in the specified order
+    if CREATE_TOKEN_B_FIRST {
+        println!("   🔄 Creating Token B first, then Token A (testing normalization)");
+        create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(TOKEN_B_DECIMALS)).await?;
+        create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(TOKEN_A_DECIMALS)).await?;
+    } else {
+        println!("   🔄 Creating Token A first, then Token B (standard order)");
+        create_mint(&mut banks_client, &funder, recent_blockhash, &token_a_mint, Some(TOKEN_A_DECIMALS)).await?;
+        create_mint(&mut banks_client, &funder, recent_blockhash, &token_b_mint, Some(TOKEN_B_DECIMALS)).await?;
+    }
+    
+    // Debug: Check token pubkey ordering for normalization understanding
+    let token_a_smaller = token_a_mint.pubkey().to_bytes() < token_b_mint.pubkey().to_bytes();
+    println!("\n🔍 NORMALIZATION ANALYSIS:");
+    println!("   • Token A mint: {} (SOL-like)", token_a_mint.pubkey());
+    println!("   • Token B mint: {} (USDT-like)", token_b_mint.pubkey());
+    println!("   • Token A < Token B: {}", token_a_smaller);
+    
+    // Determine the expected final ordering after normalization
+    let (normalized_token_a_basis_points, normalized_token_b_basis_points) = if token_a_smaller {
+        // Token A becomes Token A (no reordering)
+        (TOKEN_A_BASIS_POINTS, TOKEN_B_BASIS_POINTS)
+    } else {
+        // Token B becomes Token A (tokens reordered)
+        (TOKEN_B_BASIS_POINTS, TOKEN_A_BASIS_POINTS)
+    };
+    
+    println!("   • Expected after normalization:");
+    println!("     - Token A: {} basis points", normalized_token_a_basis_points);
+    println!("     - Token B: {} basis points", normalized_token_b_basis_points);
     
     println!("   Creating pool with {}:{} ratio ({} Token A = {} Token B) - should set POOL_FLAG_ONE_TO_MANY_RATIO flag", 
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
     
-    // Create the pool using basis points conversion with create_simple_display_pool
-    let pool_result = create_simple_display_pool(
+    // ✅ FIXED: Create pool using a simple basis points approach that handles normalization
+    // Pass the basis points directly to a helper function that handles normalization automatically
+    let pool_result = create_pool_with_basis_points(
         &mut banks_client,
         &funder,
         recent_blockhash,
-        &token_a_mint,     // SOL-like (multiple)
-        &token_b_mint,     // USDT-like (base) 
-        TOKEN_A_RATIO_DISPLAY,  // 1.0 SOL (display units)
-        TOKEN_B_RATIO_DISPLAY,  // 160.0 USDT (display units)
-        TOKEN_A_DECIMALS,       // SOL decimals
-        TOKEN_B_DECIMALS,       // USDT decimals
+        &token_a_mint,      // SOL-like mint
+        &token_b_mint,      // USDT-like mint
+        TOKEN_A_BASIS_POINTS, // 1.0 SOL in basis points
+        TOKEN_B_BASIS_POINTS, // 160.0 USDT in basis points
+        TOKEN_A_DECIMALS,   // SOL decimals
+        TOKEN_B_DECIMALS,   // USDT decimals
     ).await;
 
     // Handle the Result properly
@@ -677,12 +793,12 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
                 
                 // **VERIFY BASIS POINTS CONVERSION**
                 println!("\n🔢 BASIS POINTS VERIFICATION:");
-                println!("   Expected Token A: {} basis points", EXPECTED_TOKEN_A_BASIS_POINTS);
+                println!("   Expected Token A: {} basis points", normalized_token_a_basis_points);
                 println!("   Actual Token A: {} basis points", pool_state.ratio_a_numerator);
-                println!("   Expected Token B: {} basis points", EXPECTED_TOKEN_B_BASIS_POINTS);
+                println!("   Expected Token B: {} basis points", normalized_token_b_basis_points);
                 println!("   Actual Token B: {} basis points", pool_state.ratio_b_denominator);
-                println!("   Token A match: {}", pool_state.ratio_a_numerator == EXPECTED_TOKEN_A_BASIS_POINTS);
-                println!("   Token B match: {}", pool_state.ratio_b_denominator == EXPECTED_TOKEN_B_BASIS_POINTS);
+                println!("   Token A match: {}", pool_state.ratio_a_numerator == normalized_token_a_basis_points);
+                println!("   Token B match: {}", pool_state.ratio_b_denominator == normalized_token_b_basis_points);
                 
                 // **CRITICAL CHECK: Verify the flag is set correctly**
                 let flag_is_set = (pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0;
@@ -693,10 +809,12 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
                 println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
                 
                 // Verify basis points conversion first
-                assert_eq!(pool_state.ratio_a_numerator, EXPECTED_TOKEN_A_BASIS_POINTS, 
-                    "❌ BUG: Token A basis points conversion incorrect!");
-                assert_eq!(pool_state.ratio_b_denominator, EXPECTED_TOKEN_B_BASIS_POINTS, 
-                    "❌ BUG: Token B basis points conversion incorrect!");
+                assert_eq!(pool_state.ratio_a_numerator, normalized_token_a_basis_points, 
+                    "❌ BUG: Token A basis points conversion incorrect! Expected: {}, Got: {}", 
+                    normalized_token_a_basis_points, pool_state.ratio_a_numerator);
+                assert_eq!(pool_state.ratio_b_denominator, normalized_token_b_basis_points, 
+                    "❌ BUG: Token B basis points conversion incorrect! Expected: {}, Got: {}", 
+                    normalized_token_b_basis_points, pool_state.ratio_b_denominator);
                 
                 // Then verify flag setting
                 if EXPECT_FLAG_TO_BE_SET {

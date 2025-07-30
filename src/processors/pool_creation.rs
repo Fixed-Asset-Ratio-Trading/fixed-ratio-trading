@@ -528,6 +528,21 @@ pub fn process_initialize_pool(
         msg!("🚨 WARNING: Token B decimals mismatch! {} vs {}", token_b_decimals, token_b_decimals_v2);
     }
 
+    // ✅ FIXED: Determine correct decimals for one-to-many ratio calculation
+    // The ratios have been normalized, so we need to determine which token is which
+    // based on the same logic used in normalize_pool_config
+    let token_a_is_the_multiple = token_a_mint_account.key.to_bytes() < token_b_mint_account.key.to_bytes();
+    
+    // Determine which decimals correspond to which ratio after normalization
+    let (ratio_a_decimals, ratio_b_decimals) = if token_a_is_the_multiple {
+        // Token A is the multiple token (abundant) - use token A decimals for ratio A
+        (token_a_decimals_v2, token_b_decimals_v2)
+    } else {
+        // Token B is the multiple token (abundant) - ratios were swapped during normalization
+        // So ratio A now corresponds to token B decimals, and ratio B corresponds to token A decimals
+        (token_b_decimals_v2, token_a_decimals_v2)
+    };
+
     // ✅ ONE-TO-MANY RATIO FLAG: Determine if this pool qualifies for the one-to-many ratio flag
     // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
     // and both ratios represent whole numbers only (no fractional amounts)
@@ -537,8 +552,8 @@ pub fn process_initialize_pool(
     let is_one_to_many_ratio = check_one_to_many_ratio(
         ratio_a_numerator,     // Already in basis points
         ratio_b_denominator,   // Already in basis points
-        token_a_decimals_v2,
-        token_b_decimals_v2
+        ratio_a_decimals,      // Correct decimals for ratio A after normalization
+        ratio_b_decimals       // Correct decimals for ratio B after normalization
     );
 
     // ✅ POOL STATE: Create pool state with comprehensive configuration
