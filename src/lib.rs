@@ -76,7 +76,7 @@ use solana_program::{
 use solana_program::entrypoint;
 
 // ⚠️ IMPORTANT: When changing the program ID, also update PROGRAM_AUTHORITY in constants.rs
-declare_id!("2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx");
+declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
 
 // Declare the entrypoint
 #[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
@@ -174,6 +174,7 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    msg!("🚨🚨🚨 PROGRAM ENTRY POINT - INSTRUCTION RECEIVED! 🚨🚨🚨");
     msg!("🎯 ENTRY POINT: Processing instruction with {} bytes", instruction_data.len());
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;
     msg!("✅ DESERIALIZATION: Instruction deserialized successfully");
@@ -202,7 +203,15 @@ pub fn process_instruction(
             input_token_mint: _,
             amount_in,
             expected_amount_out,
-        } => process_swap(program_id, amount_in, expected_amount_out, accounts),
+        } => {
+            msg!("🚨🚨🚨 LIB.RS: SWAP INSTRUCTION RECEIVED!");
+            msg!("   • amount_in: {}", amount_in);
+            msg!("   • expected_amount_out: {}", expected_amount_out);
+            msg!("   • About to call process_swap...");
+            let result = process_swap(program_id, amount_in, expected_amount_out, accounts);
+            msg!("🚨🚨🚨 LIB.RS: process_swap RETURNED!");
+            result
+        },
 
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction,

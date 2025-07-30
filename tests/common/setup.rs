@@ -43,7 +43,6 @@ use fixed_ratio_trading::{
         SYSTEM_STATE_SEED_PREFIX,
         MAIN_TREASURY_SEED_PREFIX,
     },
-    process_instruction,
 };
 
 
@@ -221,14 +220,20 @@ pub struct PoolTestContext {
 /// # Returns
 /// Configured ProgramTest instance
 pub fn create_program_test() -> ProgramTest {
+    println!("🔧 CREATING PROGRAM TEST WITH OUR PROGRAM:");
+    println!("   • Program name: fixed-ratio-trading");
+    println!("   • Program ID: {}", fixed_ratio_trading::id());
+    println!("   • Processor: fixed_ratio_trading::process_instruction");
+    
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         fixed_ratio_trading::id(),
-        processor!(process_instruction),
+        processor!(fixed_ratio_trading::process_instruction),
     );
     
-    // Minimize logging output
+    // Set debug logging and compute units
     program_test.set_compute_max_units(100_000);
+    println!("   • Program test created successfully");
     program_test
 }
 

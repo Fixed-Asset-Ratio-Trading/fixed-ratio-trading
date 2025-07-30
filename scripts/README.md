@@ -59,13 +59,13 @@ node scripts/initialize_system.js <PROGRAM_ID> http://localhost:8899 ./keypair.j
 **Examples:**
 ```bash
 # Initialize for local deployment
-node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx
+node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn
 
 # Initialize for remote deployment
-node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx http://192.168.2.88:8899
+node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn http://192.168.2.88:8899
 
 # Initialize with custom keypair
-node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx http://localhost:8899 ./my-keypair.json
+node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn http://localhost:8899 ./my-keypair.json
 ```
 
 **Requirements:**

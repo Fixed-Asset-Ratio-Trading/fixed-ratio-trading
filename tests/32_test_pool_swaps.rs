@@ -93,6 +93,8 @@ use common::{
         create_batch_b_to_a_swaps,
         LiquidityTestFoundation,
         create_liquidity_test_foundation,
+        create_liquidity_test_foundation_with_custom_pool,
+        create_liquidity_test_foundation_with_custom_pool_advanced,
         execute_deposit_operation,
     },
     // **PHASE 3.1 & 3.2**: Import flow helpers for comprehensive end-to-end testing
@@ -2625,27 +2627,131 @@ async fn test_decimal_aware_swap_calculations_documented() -> Result<(), Box<dyn
 /// output tokens have more decimal places than input tokens.
 #[tokio::test]
 #[serial]
-async fn test_decimal_precision_zero_output_issue() -> TestResult {
-    println!("🧪 TESTING DECIMAL PRECISION ISSUE - Zero Output Bug");
+async fn test_mixed_decimal_token_swap_precision() -> TestResult {
+    // ============================================================================
+    // 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
+    // ============================================================================
+    
+    // Token Configuration
+    const TOKEN_A_DECIMALS: u8 = 4;           // Token A decimal places
+    const TOKEN_B_DECIMALS: u8 = 0;           // Token B decimal places
+    const CREATE_TOKEN_B_FIRST: bool = false; // Set to true for normalization testing
+    
+    // Pool Ratio Configuration (Display Units)
+    const TOKEN_A_RATIO_DISPLAY: f64 = 1000.0; // Token A amount in ratio
+    const TOKEN_B_RATIO_DISPLAY: f64 = 1.0;    // Token B amount in ratio
+    // Result: 1000 Token A = 1 Token B (1000:1 ratio)
+    
+    // Test Amounts
+    const SWAP_INPUT_AMOUNT_BASIS_POINTS: u64 = 10_000_000; // 1000 tokens (with 4 decimals)
+    const EXPECTED_OUTPUT_AMOUNT: u64 = 1;                  // Expected tokens received
+    
+    // Pool Configuration Verification
+    const VERIFY_ONE_TO_MANY_FLAG: bool = true; // Set to true to verify one-to-many flag is set after pool creation
+    
+    // User Token Balances (in basis points)
+    const USER1_TOKEN_A_BALANCE: u64 = 2_000_000; // 200 tokens (with 4 decimals)
+    const USER1_TOKEN_B_BALANCE: u64 = 2_000;     // 2000 tokens (with 0 decimals)
+    const USER2_TOKEN_A_BALANCE: u64 = 1_000_000; // 100 tokens (with 4 decimals)
+    const USER2_TOKEN_B_BALANCE: u64 = 500_000;   // 500000 tokens (with 0 decimals)
+    
+    // ============================================================================
+    // 🧪 TEST SETUP AND EXECUTION
+    // ============================================================================
+    
+    println!("🧪 TEST: Mixed Decimal Token Swap Precision");
     println!("==================================================");
-    println!("This test reproduces the zero output bug with different token decimals");
-    println!("Scenario: 1000 tokens (0 decimals) should swap to 1 token (4 decimals)");
+    println!("🎯 PURPOSE: Test that swap calculations handle mixed decimal precision correctly");
+    println!("🔍 SCENARIO: Swapping between tokens with different decimal places (4 vs 0)");
+    println!("✅ EXPECTED: {} tokens should produce exactly {} tokens with {}:{} ratio", 
+             SWAP_INPUT_AMOUNT_BASIS_POINTS / 10_u64.pow(TOKEN_A_DECIMALS as u32), 
+             EXPECTED_OUTPUT_AMOUNT,
+             TOKEN_A_RATIO_DISPLAY as u64, 
+             TOKEN_B_RATIO_DISPLAY as u64);
     
-    // Use the liquidity foundation for proper setup, but modify the token decimals
-    println!("⏳ Setting up foundation with custom decimal configuration...");
+    println!("\n📋 TOKEN CONFIGURATION:");
+    println!("   • Token A: {} decimals", TOKEN_A_DECIMALS);
+    println!("   • Token B: {} decimals", TOKEN_B_DECIMALS);
+    println!("   • Pool Ratio: {}:{} ({} Token A = {} Token B)", 
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
+    println!("   • Create Token B First: {}", CREATE_TOKEN_B_FIRST);
     
-    // Create foundation with default setup first
-    let mut foundation = create_liquidity_test_foundation(Some(1000)).await?; // 1000:1 ratio
+    println!("\n💰 TEST AMOUNTS:");
+    println!("   • Swap Input: {} basis points ({} tokens)", 
+             SWAP_INPUT_AMOUNT_BASIS_POINTS, 
+             SWAP_INPUT_AMOUNT_BASIS_POINTS / 10_u64.pow(TOKEN_A_DECIMALS as u32));
+    println!("   • Expected Output: {} tokens", EXPECTED_OUTPUT_AMOUNT);
     
-    // The foundation creates tokens with default 6 decimals, but we need to test
-    // the specific case of 0 decimals vs 4 decimals. 
-    // For this test, we'll work with the existing tokens but document the intended scenario.
+    println!("\n🔧 POOL VERIFICATION:");
+    println!("   • Verify One-to-Many Flag: {}", VERIFY_ONE_TO_MANY_FLAG);
     
-    println!("✅ Foundation created (Note: Using default 6-decimal tokens for infrastructure)");
-    println!("📝 Test simulates: 1000 tokens (0 decimals) → 1 token (4 decimals)");
+    println!("\n👥 USER BALANCES:");
+    println!("   • User1 Token A: {} basis points ({} tokens)", 
+             USER1_TOKEN_A_BALANCE, USER1_TOKEN_A_BALANCE / 10_u64.pow(TOKEN_A_DECIMALS as u32));
+    println!("   • User1 Token B: {} basis points ({} tokens)", 
+             USER1_TOKEN_B_BALANCE, USER1_TOKEN_B_BALANCE / 10_u64.pow(TOKEN_B_DECIMALS as u32));
+    println!("   • User2 Token A: {} basis points ({} tokens)", 
+             USER2_TOKEN_A_BALANCE, USER2_TOKEN_A_BALANCE / 10_u64.pow(TOKEN_A_DECIMALS as u32));
+    println!("   • User2 Token B: {} basis points ({} tokens)", 
+             USER2_TOKEN_B_BALANCE, USER2_TOKEN_B_BALANCE / 10_u64.pow(TOKEN_B_DECIMALS as u32));
+    
+    // Force debug logging for program execution
+    std::env::set_var("RUST_LOG", "debug,solana_runtime::message_processor::stable_log=debug");
+    std::env::set_var("SOLANA_LOG", "debug");
+    env_logger::init();
+    
+    println!("\n🔍 PROGRAM VERIFICATION:");
+    println!("   • Our Program ID: {}", fixed_ratio_trading::id());
+    println!("   • About to create foundation with debug logging...");
+    
+    println!("\n⏳ Setting up foundation with custom decimal configuration...");
+    
+    // Create foundation with custom configuration
+    let mut foundation = create_liquidity_test_foundation_with_custom_pool_advanced(
+        TOKEN_A_RATIO_DISPLAY,
+        TOKEN_B_RATIO_DISPLAY,
+        TOKEN_A_DECIMALS,
+        TOKEN_B_DECIMALS,
+        CREATE_TOKEN_B_FIRST,
+    ).await?;
+    
+    println!("✅ Foundation created with custom token configuration");
+    println!("📝 Test setup: {} Token A ({} decimals) → {} Token B ({} decimals)", 
+             TOKEN_A_RATIO_DISPLAY as u64, TOKEN_A_DECIMALS, 
+             TOKEN_B_RATIO_DISPLAY as u64, TOKEN_B_DECIMALS);
+    
+    // Verify pool configuration if enabled
+    if VERIFY_ONE_TO_MANY_FLAG {
+        println!("\n🔍 VERIFYING POOL CONFIGURATION:");
+        println!("   • Checking one-to-many flag status...");
+        
+        // Read the pool state to check the one_to_many flag
+        use borsh::BorshDeserialize;
+        use fixed_ratio_trading::PoolState;
+        
+        let pool_state_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Pool state account not found"))?;
+        
+        let pool_state = PoolState::deserialize(&mut &pool_state_account.data[..])?;
+        
+        let one_to_many_flag = pool_state.one_to_many_ratio();
+        println!("   • Pool one_to_many flag: {}", one_to_many_flag);
+        println!("   • Pool flags value: {}", pool_state.flags);
+        
+        if one_to_many_flag {
+            println!("   ✅ SUCCESS: One-to-many flag is correctly set");
+        } else {
+            println!("   ❌ FAILURE: One-to-many flag is NOT set - pool configuration error!");
+            println!("   🔧 Expected: one_to_many_ratio() = true");
+            println!("   🔧 Actual: one_to_many_ratio() = {}", one_to_many_flag);
+            println!("   🔧 Raw flags value: {}", pool_state.flags);
+            return Err("Pool one-to-many flag verification failed".into());
+        }
+    }
     
     // **STEP 1: Add liquidity to enable swaps**
-    println!("⏳ Step 1: Adding liquidity to enable the swap test...");
+    println!("\n⏳ Step 1: Adding liquidity to enable the swap test...");
     
     let user1_pubkey = foundation.user1.pubkey();
     let user1_primary_account_pubkey = foundation.user1_primary_account.pubkey();
@@ -2655,24 +2761,25 @@ async fn test_decimal_precision_zero_output_issue() -> TestResult {
     let user1_lp_b_account_pubkey = foundation.user1_lp_b_account.pubkey();
     let token_b_mint = foundation.pool_config.token_b_mint;
     
-    // Add liquidity using amounts that are actually available to users
-    // User1 has: 5M primary tokens and 2.5M base tokens from foundation setup
+    // Add liquidity using configured amounts
+    println!("   • Adding {} Token A liquidity", USER1_TOKEN_A_BALANCE / 10_u64.pow(TOKEN_A_DECIMALS as u32));
     execute_deposit_operation(
         &mut foundation,
         &user1_pubkey,
         &user1_primary_account_pubkey,
         &user1_lp_a_account_pubkey,
         &token_a_mint,
-        2_000_000, // 2M tokens (within user1's 5M allocation)
+        USER1_TOKEN_A_BALANCE,
     ).await?;
     
+    println!("   • Adding {} Token B liquidity", USER1_TOKEN_B_BALANCE / 10_u64.pow(TOKEN_B_DECIMALS as u32));
     execute_deposit_operation(
         &mut foundation,
         &user1_pubkey,
         &user1_base_account_pubkey,
         &user1_lp_b_account_pubkey,
         &token_b_mint,
-        2_000, // 2K tokens (maintains 1000:1 ratio and within user1's 2.5M allocation)
+        USER1_TOKEN_B_BALANCE,
     ).await?;
     
     println!("✅ Liquidity added successfully");
@@ -2746,27 +2853,29 @@ async fn test_decimal_precision_zero_output_issue() -> TestResult {
     println!("   • Available for swap A→B: up to {} tokens", user2_token_a_balance);
     println!("   • Available for swap B→A: up to {} tokens", user2_token_b_balance);
     
-    // Test multiple swap amounts to find the decimal precision edge case
-    let swap_amounts_to_test = vec![1000u64]; // Focus on the main scenario
+    // Test the configured swap amount
+    let swap_amounts_to_test = vec![SWAP_INPUT_AMOUNT_BASIS_POINTS];
     
     for &swap_amount in &swap_amounts_to_test {
-        println!("🔥 Testing swap amount: {} tokens", swap_amount);
-        println!("Expected: With the 1000:1 ratio, {} tokens should produce {} tokens", swap_amount, (swap_amount * 1) / 1000);
+        println!("\n🔥 Testing swap amount: {} basis points ({} tokens)", 
+                 swap_amount, swap_amount / 10_u64.pow(TOKEN_A_DECIMALS as u32));
+        println!("Expected: With the {}:{} ratio, {} tokens should produce {} tokens", 
+                 TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
+                 swap_amount / 10_u64.pow(TOKEN_A_DECIMALS as u32), EXPECTED_OUTPUT_AMOUNT);
         
                 // Reset transaction for each test
         let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
         
         // Create swap instruction using the standardized helper
-        // Calculate expected output based on 1000:1 ratio (basis points)
-        // ratio_a_numerator:ratio_b_denominator = 1000:1
-        // This means 1000 Token A = 1 Token B
-        // So 1000 Token A = (1000 * 1) / 1000 = 1 Token B
-        let expected_amount_out = 1; // Back to correct expected value
+        // Calculate expected output based on configured ratio
+        let expected_amount_out = EXPECTED_OUTPUT_AMOUNT;
         
         println!("🔢 EXPECTED CALCULATION:");
-        println!("   • Input: {} tokens", swap_amount);
-        println!("   • Ratio: 1000:1 (1000 Token A = 1 Token B)");
-        println!("   • Expected output: ({} * 1) / 1000 = {} tokens", swap_amount, expected_amount_out);
+        println!("   • Input: {} tokens", swap_amount / 10_u64.pow(TOKEN_A_DECIMALS as u32));
+        println!("   • Ratio: {}:{} ({} Token A = {} Token B)", 
+                 TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
+                 TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
+        println!("   • Expected output: {} tokens", expected_amount_out);
         
         let swap_instruction = PoolInstruction::Swap {
             input_token_mint: token_a_mint, // Swap Token A for Token B
@@ -2782,37 +2891,84 @@ async fn test_decimal_precision_zero_output_issue() -> TestResult {
             &swap_instruction,
         )?;
         
-        let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user2_pubkey));
+        let mut swap_tx = Transaction::new_with_payer(&[swap_ix.clone()], Some(&user2_pubkey));
         swap_tx.sign(&[&foundation.user2], fresh_blockhash);
         
-                let swap_result = foundation.env.banks_client.process_transaction(swap_tx).await;
+        // 🔍 VERIFY TRANSACTION EXECUTION
+        println!("🚀 EXECUTING SWAP TRANSACTION:");
+        println!("   • Program ID: {}", fixed_ratio_trading::id());
+        println!("   • Instruction accounts: {}", swap_ix.accounts.len());
+        println!("   • Instruction data size: {} bytes", swap_ix.data.len());
+        println!("   • About to call process_transaction...");
+        
+        let swap_result = foundation.env.banks_client.process_transaction(swap_tx).await;
         
         // **STEP 3: Analyze the result for this swap amount**
         match swap_result {
             Ok(_) => {
                 println!("✅ SWAP SUCCEEDED for amount {}: Transaction completed!", swap_amount);
+                println!("🔍 CHECKING IF OUR PROGRAM WAS EXECUTED:");
+                println!("   • Look for 'Program invoke' messages above");
+                println!("   • Look for our debug messages above");
+                println!("   • If none found, program was not executed!");
                 
                 // Check the actual output amount to see what was received
-                let output_balance = get_token_balance(&mut foundation.env.banks_client, &user2_base_account).await;
-                println!("📊 User received: {} tokens in output account", output_balance);
+                let output_balance_after = get_token_balance(&mut foundation.env.banks_client, &user2_base_account).await;
+                let output_balance_before = user2_token_b_balance; // From earlier in the test
+                let actual_tokens_received = output_balance_after - output_balance_before;
+                println!("📊 User received: {} tokens in output account", actual_tokens_received);
+                println!("📊 Total balance after: {} tokens", output_balance_after);
+                println!("📊 Balance before: {} tokens", output_balance_before);
                 
-                                        // Calculate expected output for this amount with 1000:1 ratio
-                        let expected_output = (swap_amount * 1) / 1000; // For 1000 tokens, should be 1 token
-                        println!("📊 Expected output: {} tokens (calculated from 1000:1 ratio)", expected_output);
+                        // Calculate expected output for this amount with configured ratio
+                        let expected_output = EXPECTED_OUTPUT_AMOUNT;
+                        println!("📊 Expected output: {} tokens (calculated from {}:{} ratio)", 
+                                 expected_output, TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
                 
-                // For 1000 tokens, we expect exactly 1 token output - this tests the decimal precision fix
-                if swap_amount == 1000 {
-                    if expected_output == 1 {
-                        println!("🎉 SUCCESS: Your decimal precision algorithm is working!");
-                        println!("✅ 1000 tokens → 1 token conversion calculated correctly");
+                // For the configured amount, we expect exactly the configured output - this tests the decimal precision fix
+                if swap_amount == SWAP_INPUT_AMOUNT_BASIS_POINTS {
+                    println!("🔍 CRITICAL TEST VERIFICATION:");
+                    println!("   • Expected calculation: {} tokens", expected_output);
+                    println!("   • Actual received: {} tokens", actual_tokens_received);
+                    
+                    if actual_tokens_received == EXPECTED_OUTPUT_AMOUNT {
+                        println!("🎉 SUCCESS: Mixed decimal swap produced exactly {} tokens as expected!", EXPECTED_OUTPUT_AMOUNT);
+                        println!("✅ {} tokens ({} decimals) → {} tokens ({} decimals) conversion working correctly", 
+                                 SWAP_INPUT_AMOUNT_BASIS_POINTS / 10_u64.pow(TOKEN_A_DECIMALS as u32), 
+                                 TOKEN_A_DECIMALS,
+                                 EXPECTED_OUTPUT_AMOUNT,
+                                 TOKEN_B_DECIMALS);
                     } else {
-                        println!("❌ CALCULATION ERROR: 1000 tokens should produce 1 token, got {}", expected_output);
+                        println!("❌ CRITICAL FAILURE: Expected {} tokens, got {} tokens", EXPECTED_OUTPUT_AMOUNT, actual_tokens_received);
+                        println!("❌ This is a {} difference!", actual_tokens_received);
+                        println!("❌ TEST MUST FAIL - CALCULATION IS WRONG!");
+                        
+                        // Write detailed debug info to file
+                        use std::fs::OpenOptions;
+                        use std::io::Write;
+                        let mut debug_file = OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open("swap_debug_output.txt")
+                            .expect("Failed to create debug file");
+                        
+                        writeln!(debug_file, "=== SWAP CALCULATION DEBUG FAILURE ===").unwrap();
+                        writeln!(debug_file, "Timestamp: {:?}", std::time::SystemTime::now()).unwrap();
+                        writeln!(debug_file, "Input: {} tokens", swap_amount / 10_u64.pow(TOKEN_A_DECIMALS as u32)).unwrap();
+                        writeln!(debug_file, "Expected: {} tokens", EXPECTED_OUTPUT_AMOUNT).unwrap();
+                        writeln!(debug_file, "Actual: {} tokens", actual_tokens_received).unwrap();
+                        writeln!(debug_file, "Ratio: {}:{}", TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64).unwrap();
+                        writeln!(debug_file, "Error: {}x too much output", actual_tokens_received).unwrap();
+                        writeln!(debug_file, "").unwrap();
+                        
+                        // FORCE TEST TO FAIL
+                        panic!("❌ SWAP CALCULATION FAILED: Expected {} tokens, got {} tokens", EXPECTED_OUTPUT_AMOUNT, actual_tokens_received);
                     }
                 }
                 
-                if expected_output == 0 && output_balance > 0 {
+                if expected_output == 0 && actual_tokens_received > 0 {
                     println!("🎉 POTENTIAL BUG FIX: Swap succeeded where calculation predicted zero output!");
-                } else if expected_output > 0 && output_balance == 0 {
+                } else if expected_output > 0 && actual_tokens_received == 0 {
                     println!("❌ POTENTIAL BUG: Expected output but got zero!");
                 }
                 

@@ -130,10 +130,10 @@ fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Resul
 /// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
 /// - Atomic operations: Token transfers are atomic - either both succeed or both fail
 
-/// Calculate precise swap output for Token A → Token B
-/// 
-/// Uses u128 arithmetic to prevent overflow and ensure mathematical precision
-/// when handling different token decimal places and basis point ratios.
+/// Calculate precise swap output for Token A → Token B using the correct mathematical specification
+///
+/// Follows the exact formula: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+/// This ensures precise handling of different token decimal places and basis point ratios.
 fn swap_a_to_b(
     amount_a: u64,
     ratio_a_numerator: u64,     // Token A ratio in basis points
@@ -141,7 +141,8 @@ fn swap_a_to_b(
     token_a_decimals: u8,
     token_b_decimals: u8,
 ) -> Result<u64, ProgramError> {
-    msg!("🔍 SWAP_A_TO_B DEBUG:");
+    msg!("🚨🚨🚨 FUNCTION ENTRY: swap_a_to_b CALLED! 🚨🚨🚨");
+    msg!("🔍 SWAP_A_TO_B CORRECT SPECIFICATION:");
     msg!("   • Input amount_a: {}", amount_a);
     msg!("   • ratio_a_numerator: {}", ratio_a_numerator);
     msg!("   • ratio_b_denominator: {}", ratio_b_denominator);
@@ -149,55 +150,77 @@ fn swap_a_to_b(
     
     // Convert to u128 to prevent overflow during calculation
     let amount_a_base = amount_a as u128;
+    let ratio_a_num = ratio_a_numerator as u128;
+    let ratio_b_den = ratio_b_denominator as u128;
     
-    // Calculate: amount_b = (amount_a * ratio_b_denominator) / ratio_a_numerator
-    let numerator = amount_a_base * (ratio_b_denominator as u128);
-    let denominator = ratio_a_numerator as u128;
-    
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_a, ratio_b_denominator, ratio_a_numerator, numerator, denominator);
-    
-    if denominator == 0 {
+    if ratio_a_num == 0 {
         msg!("❌ CALCULATION ERROR: ratio_a_numerator is zero");
         return Err(ProgramError::InvalidAccountData);
     }
     
-    let amount_b_base = numerator / denominator;
-    msg!("   • Base result: {}", amount_b_base);
+    // Apply the correct mathematical specification:
+    // B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
     
-    // Handle decimal differences between tokens
-    let amount_b_adjusted = if token_b_decimals >= token_a_decimals {
-        // Output token has more or equal decimals, scale up
-        let scale_factor = 10_u128.pow((token_b_decimals - token_a_decimals) as u32);
-        let result = amount_b_base * scale_factor;
-        msg!("   • Scaling UP: {} * {} = {}", amount_b_base, scale_factor, result);
-        result
+    // Step 1: Calculate the decimal scaling factor
+    let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
+    msg!("   • Decimal difference (B - A): {} - {} = {}", token_b_decimals, token_a_decimals, decimal_diff);
+    
+    // Step 2: Apply the complete formula in one calculation
+    // CORRECT IMPLEMENTATION: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+    
+    let numerator = amount_a_base
+        .checked_mul(ratio_b_den)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    msg!("   • Base numerator: {} * {} = {}", amount_a, ratio_b_denominator, numerator);
+    
+    let result = if decimal_diff >= 0 {
+        // Token B has more or equal decimals: multiply by 10^(decimal_diff)
+        let scale_factor = 10_u128.pow(decimal_diff as u32);
+        msg!("   • Scaling UP: multiplying by 10^{} = {}", decimal_diff, scale_factor);
+        
+        let scaled_numerator = numerator
+            .checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Final calculation: {} / {} = {}", scaled_numerator, ratio_a_num, scaled_numerator / ratio_a_num);
+        
+        scaled_numerator / ratio_a_num
     } else {
-        // Output token has fewer decimals, scale down
-        let scale_factor = 10_u128.pow((token_a_decimals - token_b_decimals) as u32);
-        let result = amount_b_base / scale_factor;
-        msg!("   • Scaling DOWN: {} / {} = {}", amount_b_base, scale_factor, result);
-        result
+        // Token B has fewer decimals: divide by 10^(abs(decimal_diff))
+        let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
+        msg!("   • Scaling DOWN: dividing by 10^{} = {}", -decimal_diff, scale_divisor);
+        
+        // To avoid precision loss, we need to do the division last
+        // Formula: (numerator / ratio_a_num) / scale_divisor
+        // But that loses precision, so we do: numerator / (ratio_a_num * scale_divisor)
+        let scaled_denominator = ratio_a_num
+            .checked_mul(scale_divisor)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Final calculation: {} / {} = {}", numerator, scaled_denominator, numerator / scaled_denominator);
+        
+        numerator / scaled_denominator
     };
     
-    msg!("   • Final adjusted result: {}", amount_b_adjusted);
+    msg!("   • Final result (floor): {}", result);
     
     // Convert back to u64 and check for overflow
-    if amount_b_adjusted > u64::MAX as u128 {
+    if result > u64::MAX as u128 {
         msg!("❌ CALCULATION ERROR: Result exceeds u64::MAX");
         return Err(ProgramError::ArithmeticOverflow);
     }
     
-    let final_result = amount_b_adjusted as u64;
-    
+    let final_result = result as u64;
     msg!("   • Final result: {}", final_result);
     
     Ok(final_result)
 }
 
-/// Calculate precise swap output for Token B → Token A
-/// 
-/// Uses u128 arithmetic to prevent overflow and ensure mathematical precision
-/// when handling different token decimal places and basis point ratios.
+/// Calculate precise swap output for Token B → Token A using the correct mathematical specification
+///
+/// Follows the exact formula: A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
+/// This ensures precise handling of different token decimal places and basis point ratios.
 fn swap_b_to_a(
     amount_b: u64,
     ratio_a_numerator: u64,     // Token A ratio in basis points
@@ -205,36 +228,73 @@ fn swap_b_to_a(
     token_b_decimals: u8,
     token_a_decimals: u8,
 ) -> Result<u64, ProgramError> {
+    msg!("🔍 SWAP_B_TO_A CORRECT SPECIFICATION:");
+    msg!("   • Input amount_b: {}", amount_b);
+    msg!("   • ratio_a_numerator: {}", ratio_a_numerator);
+    msg!("   • ratio_b_denominator: {}", ratio_b_denominator);
+    msg!("   • token_b_decimals: {}, token_a_decimals: {}", token_b_decimals, token_a_decimals);
+    
     // Convert to u128 to prevent overflow during calculation
     let amount_b_base = amount_b as u128;
+    let ratio_a_num = ratio_a_numerator as u128;
+    let ratio_b_den = ratio_b_denominator as u128;
     
-    // Calculate: amount_a = (amount_b * ratio_a_numerator) / ratio_b_denominator
-    let numerator = amount_b_base * (ratio_a_numerator as u128);
-    let denominator = ratio_b_denominator as u128;
-    
-    if denominator == 0 {
+    if ratio_b_den == 0 {
         msg!("❌ CALCULATION ERROR: ratio_b_denominator is zero");
         return Err(ProgramError::InvalidAccountData);
     }
     
-    let amount_a_base = numerator / denominator;
+    // Apply the correct mathematical specification:
+    // A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
     
-    // Handle decimal differences between tokens
-    let amount_a_adjusted = if token_a_decimals >= token_b_decimals {
-        // Output token has more or equal decimals, scale up
-        amount_a_base * (10_u128.pow((token_a_decimals - token_b_decimals) as u32))
+    // Step 1: Calculate the decimal scaling factor
+    let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
+    msg!("   • Decimal difference (A - B): {} - {} = {}", token_a_decimals, token_b_decimals, decimal_diff);
+    
+    // Step 2: Apply the complete formula in one calculation
+    let result = if decimal_diff >= 0 {
+        // Token A has more decimals, scale up by 10^(token_a_decimals - token_b_decimals)
+        let scale_factor = 10_u128.pow(decimal_diff as u32);
+        msg!("   • Scale factor (10^{}): {}", decimal_diff, scale_factor);
+        
+        let numerator = amount_b_base
+            .checked_mul(ratio_a_num)
+            .and_then(|n| n.checked_mul(scale_factor))
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Numerator: {} * {} * {} = {}", amount_b, ratio_a_numerator, scale_factor, numerator);
+        
+        numerator / ratio_b_den
     } else {
-        // Output token has fewer decimals, scale down
-        amount_a_base / (10_u128.pow((token_b_decimals - token_a_decimals) as u32))
+        // Token A has fewer decimals, scale down by 10^(token_b_decimals - token_a_decimals)
+        let scale_factor = 10_u128.pow((-decimal_diff) as u32);
+        msg!("   • Scale factor (10^{}): {}", -decimal_diff, scale_factor);
+        
+        let numerator = amount_b_base
+            .checked_mul(ratio_a_num)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        let denominator = ratio_b_den
+            .checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Calculation: ({} * {}) / ({} * {}) = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, scale_factor, numerator, denominator);
+        
+        numerator / denominator
     };
     
+    msg!("   • Final result (floor): {}", result);
+    
     // Convert back to u64 and check for overflow
-    if amount_a_adjusted > u64::MAX as u128 {
+    if result > u64::MAX as u128 {
         msg!("❌ CALCULATION ERROR: Result exceeds u64::MAX");
         return Err(ProgramError::ArithmeticOverflow);
     }
     
-    Ok(amount_a_adjusted as u64)
+    let final_result = result as u64;
+    msg!("   • Final result: {}", final_result);
+    
+    Ok(final_result)
 }
 
 pub fn process_swap(
@@ -243,6 +303,7 @@ pub fn process_swap(
     expected_amount_out: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
+    msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
     msg!("🔄 SWAP TRANSACTION SUMMARY");
     msg!("=============================");
     msg!("📊 Input Amount: {} tokens", amount_in);
@@ -516,38 +577,130 @@ pub fn process_swap(
     msg!("   • Expected call: swap_a_to_b(1000, 1000, 1, 6, 6)");
     msg!("🔍 ========================================================");
 
+    // MASSIVE DEBUG: Write detailed calculation info to file
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    
+    let debug_info = format!(
+        "=== MASSIVE SWAP CALCULATION DEBUG ===\n\
+        Timestamp: {:?}\n\
+        Input Parameters:\n\
+        • amount_in: {}\n\
+        • input_is_token_a: {}\n\
+        • numerator (used for calculation): {}\n\
+        • denominator (used for calculation): {}\n\
+        • input_decimals: {}\n\
+        • output_decimals: {}\n\
+        Pool State:\n\
+        • ratio_a_numerator: {}\n\
+        • ratio_b_denominator: {}\n\
+        • token_a_mint: {}\n\
+        • token_b_mint: {}\n\
+        Expected Test Values:\n\
+        • Should be: swap_a_to_b(1000, 1000, 1, 0, 4) for Token A(0 dec) -> Token B(4 dec)\n\
+        • OR: swap_a_to_b(1000, 1000, 1, 6, 6) for infrastructure Token A(6 dec) -> Token B(6 dec)\n\
+        \n",
+        std::time::SystemTime::now(),
+        amount_in,
+        input_is_token_a,
+        numerator,
+        denominator,
+        input_decimals,
+        output_decimals,
+        pool_state_data.ratio_a_numerator,
+        pool_state_data.ratio_b_denominator,
+        pool_state_data.token_a_mint,
+        pool_state_data.token_b_mint
+    );
+    
+    if let Ok(mut debug_file) = OpenOptions::new().create(true).append(true).open("swap_debug_output.txt") {
+        let _ = debug_file.write_all(debug_info.as_bytes());
+    }
+
+    msg!("🚨 MASSIVE DEBUG: BEFORE CALCULATION CALL");
+    msg!("   • About to call calculation function");
+    msg!("   • Direction: {}", if input_is_token_a { "Token A -> Token B" } else { "Token B -> Token A" });
+    msg!("   • Parameters will be logged inside the calculation function");
+    msg!("🚨🚨🚨 CHECKPOINT 1: ABOUT TO ENTER IF STATEMENT");
+
     // 🔧 PRECISE DECIMAL CALCULATION using u128 for accuracy
     // Based on user's mathematically sound approach that properly handles basis points
     //
     // Key insight: ratio values are already stored in basis points (smallest token units)
     // We need to properly handle decimal scaling between different token decimal places
     
-
+    msg!("🚨🚨🚨 CHECKPOINT 2: ENTERING IF STATEMENT");
     
     let amount_out = if input_is_token_a {
+        msg!("🚨🚨🚨 CHECKPOINT 3: INSIDE TOKEN A BRANCH");
+        msg!("🔥 CALLING swap_a_to_b with parameters:");
+        msg!("   • amount_in: {}", amount_in);
+        msg!("   • numerator (ratio_a_numerator): {}", numerator);
+        msg!("   • denominator (ratio_b_denominator): {}", denominator);
+        msg!("   • input_decimals (token_a): {}", input_decimals);
+        msg!("   • output_decimals (token_b): {}", output_decimals);
+        
         // Swapping Token A → Token B
         // Formula: amount_b = (amount_a * ratio_b_denominator) / ratio_a_numerator
         // numerator = ratio_a_numerator, denominator = ratio_b_denominator
-        swap_a_to_b(
+        let result = swap_a_to_b(
             amount_in,
             numerator,      // ratio_a_numerator (basis points)
             denominator,    // ratio_b_denominator (basis points) 
             input_decimals as u8,  // token_a_decimals
             output_decimals as u8, // token_b_decimals
-        )?
+        )?;
+        
+        msg!("🔥 swap_a_to_b RETURNED: {}", result);
+        result
     } else {
+        msg!("🔥 CALLING swap_b_to_a with parameters:");
+        msg!("   • amount_in: {}", amount_in);
+        msg!("   • denominator as ratio_a_numerator: {}", denominator);
+        msg!("   • numerator as ratio_b_denominator: {}", numerator);
+        msg!("   • input_decimals (token_b): {}", input_decimals);
+        msg!("   • output_decimals (token_a): {}", output_decimals);
+        
         // Swapping Token B → Token A  
         // Formula: amount_a = (amount_b * ratio_a_numerator) / ratio_b_denominator
         // But ratio assignment gives us: numerator = ratio_b_denominator, denominator = ratio_a_numerator
         // So we need to swap the parameters to match our function's expected formula!
-        swap_b_to_a(
+        let result = swap_b_to_a(
             amount_in,
             denominator,    // ratio_a_numerator (basis points) - swapped!
             numerator,      // ratio_b_denominator (basis points) - swapped!
             input_decimals as u8,  // token_b_decimals
             output_decimals as u8, // token_a_decimals
-        )?
+        )?;
+        
+        msg!("🔥 swap_b_to_a RETURNED: {}", result);
+        result
     };
+
+    msg!("🚨 MASSIVE DEBUG: AFTER CALCULATION CALL");
+    msg!("   • Calculation function completed");
+    msg!("   • Final amount_out: {}", amount_out);
+
+    // Write calculation result to file
+    let result_info = format!(
+        "CALCULATION RESULT:\n\
+        • Final amount_out: {}\n\
+        • Direction: {}\n\
+        • Input was: {}\n\
+        • Expected for test: 1 token\n\
+        • Actual result: {} tokens\n\
+        • Error ratio: {}x\n\
+        \n",
+        amount_out,
+        if input_is_token_a { "Token A -> Token B" } else { "Token B -> Token A" },
+        amount_in,
+        amount_out,
+        if amount_out > 0 { amount_out } else { 0 }
+    );
+    
+    if let Ok(mut debug_file) = OpenOptions::new().create(true).append(true).open("swap_debug_output.txt") {
+        let _ = debug_file.write_all(result_info.as_bytes());
+    }
 
     msg!("📊 PRECISE FIXED RATIO CALCULATION:");
     msg!("   • Ratio (basis points): {}:{} (numerator:denominator)", numerator, denominator);

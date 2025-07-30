@@ -446,7 +446,7 @@ pub fn process_get_version(_accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Schema Version: v2"); // From POOL_STATE_SEED_PREFIX
     msg!("Solana Program: Yes");
     msg!("License: {}", env!("CARGO_PKG_LICENSE"));
-            msg!("Program ID: 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx");
+            msg!("Program ID: 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
     msg!("===============================");
     
     Ok(())

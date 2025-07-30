@@ -136,19 +136,29 @@ pub fn normalize_pool_config(
             panic!("Multiple and Base token mints cannot be the same");
         };
     
-    // Step 2: Use provided ratios directly (already in base units)
-    // The ratios are provided as base units, so we use them as-is
-    // Token ordering is handled by the lexicographic ordering above
+    // Step 2: Adjust ratios based on token reordering
+    // CRITICAL FIX: When tokens are reordered, ratios must also be swapped
     let token_a_is_the_multiple = multiple_mint.to_bytes() < base_mint.to_bytes();
+    
+    let (final_ratio_a_numerator, final_ratio_b_denominator) = if token_a_is_the_multiple {
+        // Multiple mint became Token A - ratios stay as provided
+        // meaning: ratio_a_numerator multiple tokens = ratio_b_denominator base tokens
+        (ratio_a_numerator, ratio_b_denominator)
+    } else {
+        // Multiple mint became Token B - ratios must be swapped!
+        // meaning: ratio_b_denominator base tokens = ratio_a_numerator multiple tokens
+        // becomes: ratio_b_denominator Token A = ratio_a_numerator Token B
+        (ratio_b_denominator, ratio_a_numerator)
+    };
 
-    // Derive pool state PDA using NORMALIZED values
+    // Derive pool state PDA using CORRECTED NORMALIZED values
     let (pool_state_pda, pool_authority_bump) = Pubkey::find_program_address(
         &[
             POOL_STATE_SEED_PREFIX,
             token_a_mint.as_ref(),
             token_b_mint.as_ref(),
-            &ratio_a_numerator.to_le_bytes(),
-            &ratio_b_denominator.to_le_bytes(),
+            &final_ratio_a_numerator.to_le_bytes(),
+            &final_ratio_b_denominator.to_le_bytes(),
         ],
         &id(),
     );
@@ -173,8 +183,8 @@ pub fn normalize_pool_config(
     PoolConfig {
         token_a_mint,
         token_b_mint,
-        ratio_a_numerator,
-        ratio_b_denominator,
+        ratio_a_numerator: final_ratio_a_numerator,
+        ratio_b_denominator: final_ratio_b_denominator,
         token_a_is_the_multiple,
         pool_state_pda,
         pool_authority_bump,

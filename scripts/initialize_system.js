@@ -17,9 +17,9 @@
  *   KEYPAIR_PATH  - Path to authority keypair (default: ~/.config/solana/id.json)
  * 
  * Examples:
- *   node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx
- *   node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx http://localhost:8899
- *   node scripts/initialize_system.js 2v1semv83194Uxq2ZmWnHP23LjKns9JTyhWWjaqKfNMx http://localhost:8899 ./keypair.json
+ *   node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn
+ *   node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn http://localhost:8899
+ *   node scripts/initialize_system.js 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn http://localhost:8899 ./keypair.json
  */
 
 const { PublicKey, Connection, Transaction, TransactionInstruction, Keypair } = require('@solana/web3.js');
