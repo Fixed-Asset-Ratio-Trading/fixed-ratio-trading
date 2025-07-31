@@ -144,6 +144,336 @@ pub async fn create_liquidity_test_foundation_with_custom_pool(
     ).await
 }
 
+/// **FINANCIAL PRECISION VERSION**: Creates a liquidity test foundation with exact integer basis points
+/// This eliminates floating-point precision loss for financial calculations
+#[allow(dead_code)]
+pub async fn create_liquidity_test_foundation_with_exact_basis_points(
+    multiple_basis_points: u64,
+    base_basis_points: u64,
+    multiple_decimals: u8,
+    base_decimals: u8,
+    create_token_b_first: bool,
+) -> Result<LiquidityTestFoundation, Box<dyn std::error::Error>> {
+    println!("🏗️ Creating liquidity test foundation with EXACT INTEGER BASIS POINTS...");
+    println!("   • Multiple token: {} basis points ({} decimals)", multiple_basis_points, multiple_decimals);
+    println!("   • Base token: {} basis points ({} decimals)", base_basis_points, base_decimals);
+    println!("   • Create Token B First: {}", create_token_b_first);
+    println!("   🎯 FINANCIAL PRECISION: Zero floating-point calculation - exact integer arithmetic only!");
+    
+    // Calculate display values for logging only (not used in calculations)
+    let multiple_display = multiple_basis_points as f64 / 10_f64.powi(multiple_decimals as i32);
+    let base_display = base_basis_points as f64 / 10_f64.powi(base_decimals as i32);
+    println!("   📊 Display equivalents: {} → {} display, {} → {} display", 
+             multiple_basis_points, multiple_display, base_basis_points, base_display);
+    
+    // 1. Create test environment (check for debug logging preference)
+    let mut env = if std::env::var("RUST_LOG")
+        .unwrap_or_default()
+        .contains("debug") 
+    {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH DEBUG LOGGING");
+        crate::common::setup::start_test_environment_with_debug().await
+    } else {
+        println!("🔧 CREATING TEST ENVIRONMENT WITH MINIMAL LOGGING");
+        crate::common::setup::start_test_environment().await
+    };
+    
+    // 2. Create token mints with optional creation order control
+    let keypair1 = Keypair::new();
+    let keypair2 = Keypair::new();
+    
+    let (primary_mint, base_mint) = if create_token_b_first {
+        // For normalization testing: create token B first, then token A
+        println!("   • Creating Token B first (for normalization testing)");
+        (keypair2, keypair1) // keypair2 becomes primary (Token A), keypair1 becomes base (Token B)
+    } else {
+        // Normal order: create token A first, then token B
+        println!("   • Creating Token A first (normal order)");
+        if keypair1.pubkey() < keypair2.pubkey() {
+            (keypair1, keypair2)
+        } else {
+            (keypair2, keypair1)
+        }
+    };
+    
+    // 3. Create user keypairs early
+    let user1 = Keypair::new();
+    let user2 = Keypair::new();
+    
+    // Create user account keypairs
+    let user1_primary_account = Keypair::new();
+    let user1_base_account = Keypair::new();
+    let user1_lp_a_account = Keypair::new();
+    let user1_lp_b_account = Keypair::new();
+    
+    let user2_primary_account = Keypair::new();
+    let user2_base_account = Keypair::new();
+    let user2_lp_a_account = Keypair::new();
+    let user2_lp_b_account = Keypair::new();
+    
+    // 4. Create token mints with custom decimals
+    println!("📦 Creating token mints with custom decimals...");
+    create_mint(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &primary_mint,
+        Some(multiple_decimals),
+    ).await?;
+    
+    create_mint(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &base_mint,
+        Some(base_decimals),
+    ).await?;
+    
+    // 5. Initialize treasury system
+    debug_println!("🏛️ Initializing treasury system...");
+    let system_authority = Keypair::new();
+    initialize_treasury_system(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &system_authority,
+    ).await?;
+    
+    // 6. Create pool with EXACT INTEGER BASIS POINTS (no floating-point conversion!)
+    println!("🏊 Creating pool with EXACT INTEGER BASIS POINTS...");
+    println!("🔧 BASIS POINTS (EXACT):");
+    println!("  Multiple: {} (basis points)", multiple_basis_points);
+    println!("  Base: {} (basis points)", base_basis_points);
+    
+    // Use the normalize_pool_config function directly with exact basis points
+    let pool_config = crate::common::pool_helpers::normalize_pool_config(
+        &primary_mint.pubkey(),
+        &base_mint.pubkey(),
+        multiple_basis_points,  // EXACT - no floating-point conversion!
+        base_basis_points,      // EXACT - no floating-point conversion!
+    );
+    
+    // Create the pool using exact integer values directly
+    use solana_sdk::transaction::Transaction;
+    use solana_sdk::instruction::{AccountMeta, Instruction};
+    use fixed_ratio_trading::types::instructions::PoolInstruction;
+    use borsh::BorshSerialize;
+    
+    // Check if pool already exists
+    if let Some(_existing_pool) = crate::common::pool_helpers::get_pool_state(&mut env.banks_client, &pool_config.pool_state_pda).await {
+        return Err("Pool already exists with this configuration".into());
+    }
+
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::LP_TOKEN_A_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::LP_TOKEN_B_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+
+    // Create InitializePool instruction
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(env.payer.pubkey(), true),                          // Index 0: User Authority Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // Index 1: System Program
+            AccountMeta::new_readonly(system_state_pda, false),              // Index 2: System State PDA
+            AccountMeta::new(pool_config.pool_state_pda, false),                  // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program
+            AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar
+            AccountMeta::new_readonly(primary_mint.pubkey(), false),        // Index 7: Token A Mint
+            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 8: Token B Mint
+            AccountMeta::new(pool_config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
+            AccountMeta::new(pool_config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                    // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: pool_config.ratio_a_numerator,
+            ratio_b_denominator: pool_config.ratio_b_denominator,
+        }.try_to_vec().unwrap(),
+    };
+
+    // Add compute budget and send transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&env.payer.pubkey())
+    );
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
+    transaction.sign(&[&env.payer], env.recent_blockhash);
+    env.banks_client.process_transaction(transaction).await?;
+    
+    // 7. Fund users with SOL
+    debug_println!("💰 Funding users with SOL...");
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user1.pubkey(), 10_000_000_000).await?;
+    crate::common::setup::transfer_sol(&mut env.banks_client, &env.payer, env.recent_blockhash, &env.payer, &user2.pubkey(), 10_000_000_000).await?;
+    
+    // 8. Create token accounts
+    debug_println!("🏦 Creating token accounts...");
+    
+    // ✅ PHASE 10 SECURITY: Derive LP token mint PDAs (controlled by smart contract)
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_A_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_B_MINT_SEED_PREFIX, pool_config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    
+    // Create token accounts for users
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user1_primary_account,
+        &primary_mint.pubkey(),
+        &user1.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user1_base_account,
+        &base_mint.pubkey(),
+        &user1.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user2_primary_account,
+        &primary_mint.pubkey(),
+        &user2.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user2_base_account,
+        &base_mint.pubkey(),
+        &user2.pubkey(),
+    ).await?;
+    
+    // Create LP token accounts
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user1_lp_a_account,
+        &lp_token_a_mint_pda,
+        &user1.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user1_lp_b_account,
+        &lp_token_b_mint_pda,
+        &user1.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user2_lp_a_account,
+        &lp_token_a_mint_pda,
+        &user2.pubkey(),
+    ).await?;
+    
+    create_token_account(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &user2_lp_b_account,
+        &lp_token_b_mint_pda,
+        &user2.pubkey(),
+    ).await?;
+    
+    // 9. Mint tokens to users
+    debug_println!("🪙 Minting tokens to users...");
+    mint_tokens(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &primary_mint.pubkey(),
+        &user1_primary_account.pubkey(),
+        &env.payer, // Use payer as mint authority
+        2_000_000, // 2M tokens
+    ).await?;
+    
+    mint_tokens(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &base_mint.pubkey(),
+        &user1_base_account.pubkey(),
+        &env.payer, // Use payer as mint authority
+        2_000, // 2K tokens
+    ).await?;
+    
+    mint_tokens(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &primary_mint.pubkey(),
+        &user2_primary_account.pubkey(),
+        &env.payer, // Use payer as mint authority
+        1_000_000, // 1M tokens
+    ).await?;
+    
+    mint_tokens(
+        &mut env.banks_client,
+        &env.payer,
+        env.recent_blockhash,
+        &base_mint.pubkey(),
+        &user2_base_account.pubkey(),
+        &env.payer, // Use payer as mint authority
+        500_000, // 500K tokens
+    ).await?;
+    
+    println!("✅ EXACT BASIS POINTS foundation created successfully - ZERO precision loss!");
+    
+    Ok(LiquidityTestFoundation {
+        env,
+        pool_config,
+        primary_mint,
+        base_mint,
+        lp_token_a_mint_pda,
+        lp_token_b_mint_pda,
+        user1,
+        user1_primary_account,
+        user1_base_account,
+        user1_lp_a_account,
+        user1_lp_b_account,
+        user2,
+        user2_primary_account,
+        user2_base_account,
+        user2_lp_a_account,
+        user2_lp_b_account,
+    })
+}
+
 /// Creates a liquidity test foundation with custom display unit ratios and token creation order
 /// This function uses create_simple_display_pool for proper decimal handling
 #[allow(dead_code)]

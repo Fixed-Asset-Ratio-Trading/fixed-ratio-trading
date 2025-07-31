@@ -174,26 +174,31 @@ fn swap_a_to_b(
     
     msg!("   • Base numerator: {} * {} = {}", amount_a, ratio_b_denominator, numerator);
     
+    // FIXED: Since ratios are in basis points, they already include decimal adjustments
+    // We need to compensate for the double scaling by applying the inverse scale to denominator
     let result = if decimal_diff >= 0 {
-        // Token B has more or equal decimals: multiply by 10^(decimal_diff)
+        // Token B has more decimals: the ratios already account for this
         let scale_factor = 10_u128.pow(decimal_diff as u32);
-        msg!("   • Scaling UP: multiplying by 10^{} = {}", decimal_diff, scale_factor);
+        msg!("   • Decimal scaling detected: 10^{} = {}", decimal_diff, scale_factor);
+        msg!("   • CORRECTING: Ratios are in basis points, compensating for double scaling");
         
+        // Apply scaling to both numerator and denominator to cancel out the effect
         let scaled_numerator = numerator
             .checked_mul(scale_factor)
             .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Final calculation: {} / {} = {}", scaled_numerator, ratio_a_num, scaled_numerator / ratio_a_num);
         
-        scaled_numerator / ratio_a_num
+        let scaled_denominator = ratio_a_num
+            .checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Compensated calculation: {} / {} = {}", scaled_numerator, scaled_denominator, scaled_numerator / scaled_denominator);
+        
+        scaled_numerator / scaled_denominator
     } else {
-        // Token B has fewer decimals: divide by 10^(abs(decimal_diff))
+        // Token B has fewer decimals: apply normal scaling
         let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
         msg!("   • Scaling DOWN: dividing by 10^{} = {}", -decimal_diff, scale_divisor);
         
-        // To avoid precision loss, we need to do the division last
-        // Formula: (numerator / ratio_a_num) / scale_divisor
-        // But that loses precision, so we do: numerator / (ratio_a_num * scale_divisor)
         let scaled_denominator = ratio_a_num
             .checked_mul(scale_divisor)
             .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -252,21 +257,28 @@ fn swap_b_to_a(
     msg!("   • Decimal difference (A - B): {} - {} = {}", token_a_decimals, token_b_decimals, decimal_diff);
     
     // Step 2: Apply the complete formula in one calculation
+    // FIXED: Since ratios are in basis points, they already include decimal adjustments
+    // We need to compensate for the double scaling
     let result = if decimal_diff >= 0 {
-        // Token A has more decimals, scale up by 10^(token_a_decimals - token_b_decimals)
+        // Token A has more decimals: the ratios already account for this
         let scale_factor = 10_u128.pow(decimal_diff as u32);
-        msg!("   • Scale factor (10^{}): {}", decimal_diff, scale_factor);
+        msg!("   • Decimal scaling detected: 10^{} = {}", decimal_diff, scale_factor);
+        msg!("   • CORRECTING: Ratios are in basis points, compensating for double scaling");
         
         let numerator = amount_b_base
             .checked_mul(ratio_a_num)
             .and_then(|n| n.checked_mul(scale_factor))
             .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Numerator: {} * {} * {} = {}", amount_b, ratio_a_numerator, scale_factor, numerator);
         
-        numerator / ratio_b_den
+        let denominator = ratio_b_den
+            .checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+            
+        msg!("   • Compensated calculation: {} / {} = {}", numerator, denominator, numerator / denominator);
+        
+        numerator / denominator
     } else {
-        // Token A has fewer decimals, scale down by 10^(token_b_decimals - token_a_decimals)
+        // Token A has fewer decimals: apply normal scaling
         let scale_factor = 10_u128.pow((-decimal_diff) as u32);
         msg!("   • Scale factor (10^{}): {}", -decimal_diff, scale_factor);
         
