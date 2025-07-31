@@ -484,8 +484,8 @@ function updatePoolDisplay() {
         displayPair: displayInfo.pairName,
         rateText: displayInfo.ratioText,
         exchangeRate: displayInfo.exchangeRate,
-        baseLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0),
-        quoteLiquidity: window.TokenDisplayUtils.formatLargeNumber(poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0),
+        baseLiquidity: window.TokenDisplayUtils.getTokenLiquidityFormatted(poolData, 'A'),
+        quoteLiquidity: window.TokenDisplayUtils.getTokenLiquidityFormatted(poolData, 'B'),
         isReversed: false, // Always show TokenA/TokenB order
         isOneToManyRatio: flags.oneToManyRatio
     };

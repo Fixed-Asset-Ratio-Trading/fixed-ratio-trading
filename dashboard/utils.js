@@ -481,6 +481,78 @@ function basisPointsToDisplay(basisPoints, decimals) {
 }
 
 /**
+ * 🎯 CENTRALIZED BASIS POINTS UTILITIES
+ * Standardized functions for consistent basis points ↔ display conversion
+ */
+
+/**
+ * Convert basis points to display amount with proper decimal handling
+ * @param {number} basisPoints - Raw basis points amount
+ * @param {number} decimals - Token decimal places
+ * @returns {number} Display amount
+ */
+function basisPointsToDisplay(basisPoints, decimals) {
+    if (basisPoints === 0) return 0;
+    if (basisPoints === null || basisPoints === undefined) return 0;
+    
+    const displayAmount = basisPoints / Math.pow(10, decimals);
+    console.log(`🔧 BASIS POINTS TO DISPLAY: ${basisPoints} basis points ÷ 10^${decimals} = ${displayAmount} display units`);
+    return displayAmount;
+}
+
+/**
+ * Convert display amount to basis points
+ * @param {number} displayAmount - Display amount 
+ * @param {number} decimals - Token decimal places
+ * @returns {number} Basis points amount
+ */
+function displayToBasisPoints(displayAmount, decimals) {
+    if (displayAmount === 0) return 0;
+    if (displayAmount === null || displayAmount === undefined) return 0;
+    
+    const basisPoints = Math.round(displayAmount * Math.pow(10, decimals));
+    console.log(`🔧 DISPLAY TO BASIS POINTS: ${displayAmount} display units × 10^${decimals} = ${basisPoints} basis points`);
+    return basisPoints;
+}
+
+/**
+ * Format liquidity amount with proper decimal conversion and display formatting
+ * @param {number} basisPoints - Raw basis points amount
+ * @param {number} decimals - Token decimal places  
+ * @returns {string} Formatted display string
+ */
+function formatLiquidityWithDecimals(basisPoints, decimals) {
+    const displayAmount = basisPointsToDisplay(basisPoints, decimals);
+    return formatLargeNumber(displayAmount);
+}
+
+/**
+ * Get correctly formatted liquidity for a specific token in a pool
+ * @param {Object} pool - Pool data
+ * @param {string} tokenType - 'A' or 'B' 
+ * @returns {string} Formatted liquidity amount
+ */
+function getTokenLiquidityFormatted(pool, tokenType) {
+    if (tokenType === 'A') {
+        const rawAmount = pool.tokenALiquidity || pool.total_token_a_liquidity || 0;
+        const decimals = pool.ratioADecimal;
+        if (decimals === undefined) {
+            console.warn('⚠️ Missing Token A decimal info, using raw amount');
+            return formatLargeNumber(rawAmount);
+        }
+        return formatLiquidityWithDecimals(rawAmount, decimals);
+    } else {
+        const rawAmount = pool.tokenBLiquidity || pool.total_token_b_liquidity || 0;
+        const decimals = pool.ratioBDecimal;
+        if (decimals === undefined) {
+            console.warn('⚠️ Missing Token B decimal info, using raw amount');
+            return formatLargeNumber(rawAmount);
+        }
+        return formatLiquidityWithDecimals(rawAmount, decimals);
+    }
+}
+
+/**
  * **BASIS POINTS REFACTOR: Validate one-to-many ratio pattern**
  * 
  * Validates whether a ratio qualifies for the one-to-many flag by checking if:
@@ -874,6 +946,8 @@ if (typeof window !== 'undefined') {
         // BASIS POINTS REFACTOR: New conversion functions
         displayToBasisPoints,
         basisPointsToDisplay,
+        formatLiquidityWithDecimals,
+        getTokenLiquidityFormatted,
         validateOneToManyRatio,
         calculateSwapOutput,
         // CENTRALIZED DISPLAY: New unified function
@@ -907,6 +981,8 @@ if (typeof module !== 'undefined' && module.exports) {
         // BASIS POINTS REFACTOR: New conversion functions
         displayToBasisPoints,
         basisPointsToDisplay,
+        formatLiquidityWithDecimals,
+        getTokenLiquidityFormatted,
         validateOneToManyRatio,
         calculateSwapOutput,
         // CENTRALIZED DISPLAY: New unified function
