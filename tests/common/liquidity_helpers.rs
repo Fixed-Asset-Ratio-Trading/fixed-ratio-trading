@@ -2588,49 +2588,23 @@ pub fn calculate_expected_swap_output(
     let result = match direction {
         SwapDirection::AToB => {
             // Swapping from Token A to Token B
-            // Formula: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+            // Formula: B_out = floor( A_in * ratioB_den / ratioA_num )
+            // Since ratios are already in basis points, no additional decimal scaling is needed
             
-            // Calculate decimal scaling factor
-            let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
-            
-            if decimal_diff >= 0 {
-                // Token B has more decimals, scale up
-                let scale_factor = 10_u128.pow(decimal_diff as u32);
-                let numerator = amount_in_base
-                    .checked_mul(ratio_b_den)
-                    .and_then(|n| n.checked_mul(scale_factor))
-                    .unwrap_or(0);
-                numerator / ratio_a_num
-            } else {
-                // Token B has fewer decimals, scale down
-                let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
-                let numerator = amount_in_base.checked_mul(ratio_b_den).unwrap_or(0);
-                let denominator = ratio_a_num.checked_mul(scale_divisor).unwrap_or(1);
-                numerator / denominator
-            }
+            let numerator = amount_in_base
+                .checked_mul(ratio_b_den)
+                .unwrap_or(0);
+            numerator / ratio_a_num
         }
         SwapDirection::BToA => {
             // Swapping from Token B to Token A
-            // Formula: A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
+            // Formula: A_out = floor( B_in * ratioA_num / ratioB_den )
+            // Since ratios are already in basis points, no additional decimal scaling is needed
             
-            // Calculate decimal scaling factor
-            let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
-            
-            if decimal_diff >= 0 {
-                // Token A has more decimals, scale up
-                let scale_factor = 10_u128.pow(decimal_diff as u32);
-                let numerator = amount_in_base
-                    .checked_mul(ratio_a_num)
-                    .and_then(|n| n.checked_mul(scale_factor))
-                    .unwrap_or(0);
-                numerator / ratio_b_den
-            } else {
-                // Token A has fewer decimals, scale down
-                let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
-                let numerator = amount_in_base.checked_mul(ratio_a_num).unwrap_or(0);
-                let denominator = ratio_b_den.checked_mul(scale_divisor).unwrap_or(1);
-                numerator / denominator
-            }
+            let numerator = amount_in_base
+                .checked_mul(ratio_a_num)
+                .unwrap_or(0);
+            numerator / ratio_b_den
         }
     };
     

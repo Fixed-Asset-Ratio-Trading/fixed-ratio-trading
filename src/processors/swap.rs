@@ -165,48 +165,17 @@ fn swap_a_to_b(
     let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
     msg!("   • Decimal difference (B - A): {} - {} = {}", token_b_decimals, token_a_decimals, decimal_diff);
     
-    // Step 2: Apply the complete formula in one calculation
-    // CORRECT IMPLEMENTATION: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+    // Step 2: Apply the correct mathematical specification:
+    // B_out = floor( A_in * ratioB_den / ratioA_num )
+    // Since ratios are already in basis points, no additional decimal scaling is needed
     
     let numerator = amount_a_base
         .checked_mul(ratio_b_den)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    msg!("   • Base numerator: {} * {} = {}", amount_a, ratio_b_denominator, numerator);
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_a, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
     
-    // FIXED: Since ratios are in basis points, they already include decimal adjustments
-    // We need to compensate for the double scaling by applying the inverse scale to denominator
-    let result = if decimal_diff >= 0 {
-        // Token B has more decimals: the ratios already account for this
-        let scale_factor = 10_u128.pow(decimal_diff as u32);
-        msg!("   • Decimal scaling detected: 10^{} = {}", decimal_diff, scale_factor);
-        msg!("   • CORRECTING: Ratios are in basis points, compensating for double scaling");
-        
-        // Apply scaling to both numerator and denominator to cancel out the effect
-        let scaled_numerator = numerator
-            .checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-        
-        let scaled_denominator = ratio_a_num
-            .checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Compensated calculation: {} / {} = {}", scaled_numerator, scaled_denominator, scaled_numerator / scaled_denominator);
-        
-        scaled_numerator / scaled_denominator
-    } else {
-        // Token B has fewer decimals: apply normal scaling
-        let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
-        msg!("   • Scaling DOWN: dividing by 10^{} = {}", -decimal_diff, scale_divisor);
-        
-        let scaled_denominator = ratio_a_num
-            .checked_mul(scale_divisor)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Final calculation: {} / {} = {}", numerator, scaled_denominator, numerator / scaled_denominator);
-        
-        numerator / scaled_denominator
-    };
+    let result = numerator / ratio_a_num;
     
     msg!("   • Final result (floor): {}", result);
     
@@ -256,44 +225,17 @@ fn swap_b_to_a(
     let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
     msg!("   • Decimal difference (A - B): {} - {} = {}", token_a_decimals, token_b_decimals, decimal_diff);
     
-    // Step 2: Apply the complete formula in one calculation
-    // FIXED: Since ratios are in basis points, they already include decimal adjustments
-    // We need to compensate for the double scaling
-    let result = if decimal_diff >= 0 {
-        // Token A has more decimals: the ratios already account for this
-        let scale_factor = 10_u128.pow(decimal_diff as u32);
-        msg!("   • Decimal scaling detected: 10^{} = {}", decimal_diff, scale_factor);
-        msg!("   • CORRECTING: Ratios are in basis points, compensating for double scaling");
+    // Step 2: Apply the correct mathematical specification:
+    // A_out = floor( B_in * ratioA_num / ratioB_den )
+    // Since ratios are already in basis points, no additional decimal scaling is needed
+    
+    let numerator = amount_b_base
+        .checked_mul(ratio_a_num)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
         
-        let numerator = amount_b_base
-            .checked_mul(ratio_a_num)
-            .and_then(|n| n.checked_mul(scale_factor))
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-        
-        let denominator = ratio_b_den
-            .checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Compensated calculation: {} / {} = {}", numerator, denominator, numerator / denominator);
-        
-        numerator / denominator
-    } else {
-        // Token A has fewer decimals: apply normal scaling
-        let scale_factor = 10_u128.pow((-decimal_diff) as u32);
-        msg!("   • Scale factor (10^{}): {}", -decimal_diff, scale_factor);
-        
-        let numerator = amount_b_base
-            .checked_mul(ratio_a_num)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        let denominator = ratio_b_den
-            .checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-            
-        msg!("   • Calculation: ({} * {}) / ({} * {}) = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, scale_factor, numerator, denominator);
-        
-        numerator / denominator
-    };
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
+    
+    let result = numerator / ratio_b_den;
     
     msg!("   • Final result (floor): {} basis points", result);
     
