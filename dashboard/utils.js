@@ -16,101 +16,20 @@
  * @returns {Object} Simple display configuration
  */
 /**
- * ONE-TO-MANY POOL DISPLAY RULES:
+ * LOGICAL TOKEN DISPLAY - Simplified and Universal
  * 
- * For pools with the one-to-many flag set:
- * 1. The token representing "1" should always be displayed first (base token)
- * 2. Display should use whole numbers only (no fractions)
- * 3. Calculate the ratio based on actual basis points, not display units
- * 4. Format: "1 [base] = [whole_number] [quote]"
- * 
- * Example: MST(1000):TS(10000) with decimals MST(0):TS(4)
- * - TS has higher ratio → TS represents "many"
- * - MST has lower ratio → MST represents "1" 
- * - Display: "1 MST = 10 TS" (10000/1000 = 10, whole number)
+ * Based on SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles:
+ * 1. Always show more valuable asset first (rates >= 1)
+ * 2. Avoid confusing fractions like 0.001
+ * 3. Convert basis points to display units properly
+ * 4. Works for ALL pools, not just one-to-many
  */
 function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision = 6, tokenBPrecision = 6, isOneToMany = false) {
-    console.log('🔧 SHOWING ACTUAL POOL RATIO:', {
-        tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision, isOneToMany
+    console.log('🔧 LOGICAL DISPLAY:', {
+        tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision
     });
     
-    if (isOneToMany) {
-        console.log('🎯 ONE-TO-MANY POOL: Using special display logic for whole numbers');
-        
-        // For one-to-many pools, test both directions to find which gives a whole number
-        // The direction that produces a whole number >= 1 is the correct display
-        
-        // Test A → B: 1 TokenA display unit → ? TokenB display units
-        const oneTokenABasisPoints = 1 * Math.pow(10, tokenAPrecision);
-        const outputBBasisPoints = oneTokenABasisPoints * tokenBRatio / tokenARatio;
-        const outputBDisplayUnits = outputBBasisPoints / Math.pow(10, tokenBPrecision);
-        
-        // Test B → A: 1 TokenB display unit → ? TokenA display units  
-        const oneTokenBBasisPoints = 1 * Math.pow(10, tokenBPrecision);
-        const outputABasisPoints = oneTokenBBasisPoints * tokenARatio / tokenBRatio;
-        const outputADisplayUnits = outputABasisPoints / Math.pow(10, tokenAPrecision);
-        
-        console.log(`🎯 ONE-TO-MANY TESTING:`, {
-            oneTokenABasisPoints, outputBBasisPoints, outputBDisplayUnits,
-            oneTokenBBasisPoints, outputABasisPoints, outputADisplayUnits
-        });
-        
-        // Choose the direction that gives a whole number >= 1
-        const isWholeNumberAtoB = Number.isInteger(outputBDisplayUnits) && outputBDisplayUnits >= 1;
-        const isWholeNumberBtoA = Number.isInteger(outputADisplayUnits) && outputADisplayUnits >= 1;
-        
-        if (isWholeNumberAtoB && outputBDisplayUnits >= 1) {
-            // A → B gives whole number: "1 TokenA = X TokenB"
-            console.log(`🎯 ONE-TO-MANY: 1 ${tokenAName} = ${outputBDisplayUnits} ${tokenBName}`);
-            return {
-                baseToken: tokenAName,
-                quoteToken: tokenBName,
-                displayPair: `${tokenAName}/${tokenBName}`,
-                rateText: `1 ${tokenAName} = ${outputBDisplayUnits} ${tokenBName}`,
-                exchangeRate: outputBDisplayUnits,
-                isReversed: false
-            };
-        } else if (isWholeNumberBtoA && outputADisplayUnits >= 1) {
-            // B → A gives whole number: "1 TokenB = X TokenA"
-            console.log(`🎯 ONE-TO-MANY: 1 ${tokenBName} = ${outputADisplayUnits} ${tokenAName}`);
-            return {
-                baseToken: tokenBName,
-                quoteToken: tokenAName,
-                displayPair: `${tokenBName}/${tokenAName}`,
-                rateText: `1 ${tokenBName} = ${outputADisplayUnits} ${tokenAName}`,
-                exchangeRate: outputADisplayUnits,
-                isReversed: true
-            };
-        } else {
-            // If neither direction gives a clean whole number, use the larger rate
-            if (outputBDisplayUnits > outputADisplayUnits) {
-                const wholeRate = Math.floor(outputBDisplayUnits);
-                console.log(`🎯 ONE-TO-MANY (fallback): 1 ${tokenAName} = ${wholeRate} ${tokenBName}`);
-                return {
-                    baseToken: tokenAName,
-                    quoteToken: tokenBName,
-                    displayPair: `${tokenAName}/${tokenBName}`,
-                    rateText: `1 ${tokenAName} = ${wholeRate} ${tokenBName}`,
-                    exchangeRate: wholeRate,
-                    isReversed: false
-                };
-            } else {
-                const wholeRate = Math.floor(outputADisplayUnits);
-                console.log(`🎯 ONE-TO-MANY (fallback): 1 ${tokenBName} = ${wholeRate} ${tokenAName}`);
-                return {
-                    baseToken: tokenBName,
-                    quoteToken: tokenAName,
-                    displayPair: `${tokenBName}/${tokenAName}`,
-                    rateText: `1 ${tokenBName} = ${wholeRate} ${tokenAName}`,
-                    exchangeRate: wholeRate,
-                    isReversed: true
-                };
-            }
-        }
-    }
-    
-    // STANDARD POOL LOGIC (non one-to-many)
-    // BASIS POINTS REFACTOR: Convert basis points to display units using token decimals
+    // Convert basis points to display units using token decimals
     const tokenADisplayUnits = tokenARatio / Math.pow(10, tokenAPrecision);
     const tokenBDisplayUnits = tokenBRatio / Math.pow(10, tokenBPrecision);
     
@@ -123,32 +42,32 @@ function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio
         tokenBDisplay: tokenBDisplayUnits
     });
     
-    // CORRECT CALCULATION: Show what the pool actually represents
-    // Based on swap formula: amount_out_B = amount_in_A * ratio_B_denominator / ratio_A_numerator
-    // So: 1 TokenA gets you (ratio_B_denominator / ratio_A_numerator) TokenB
-    // But now using display units instead of basis points
+    // LOGICAL DISPLAY: Show more valuable asset first to avoid confusing fractions
+    // Per SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles
     
-    const actualExchangeRate = tokenBDisplayUnits / tokenADisplayUnits;
+    // Calculate both direction exchange rates
+    const rate_A_to_B = tokenBDisplayUnits / tokenADisplayUnits;  // How much B for 1 A
+    const rate_B_to_A = tokenADisplayUnits / tokenBDisplayUnits;  // How much A for 1 B
     
-    if (actualExchangeRate >= 1) {
-        // TokenA is more valuable, show as "1 TokenA = X TokenB"
+    // Show the direction that produces rates >= 1 (more valuable asset first)
+    if (rate_A_to_B >= 1) {
+        // A is more valuable: "1 A = X B"
         return {
             baseToken: tokenAName,
             quoteToken: tokenBName,
             displayPair: `${tokenAName}/${tokenBName}`,
-            rateText: `1 ${tokenAName} = ${formatNumberWithCommas(actualExchangeRate)} ${tokenBName}`,
-            exchangeRate: actualExchangeRate,
+            rateText: `1 ${tokenAName} = ${formatNumberWithCommas(rate_A_to_B)} ${tokenBName}`,
+            exchangeRate: rate_A_to_B,
             isReversed: false
         };
     } else {
-        // TokenB is more valuable, show as "1 TokenB = X TokenA"
-        const inverseRate = tokenADisplayUnits / tokenBDisplayUnits;
+        // B is more valuable: "1 B = X A"
         return {
             baseToken: tokenBName,
             quoteToken: tokenAName,
             displayPair: `${tokenBName}/${tokenAName}`,
-            rateText: `1 ${tokenBName} = ${formatNumberWithCommas(inverseRate)} ${tokenAName}`,
-            exchangeRate: inverseRate,
+            rateText: `1 ${tokenBName} = ${formatNumberWithCommas(rate_B_to_A)} ${tokenAName}`,
+            exchangeRate: rate_B_to_A,
             isReversed: true
         };
     }
@@ -763,10 +682,41 @@ async function enrichPoolWithCorrectDisplay(poolData, connection) {
  * @param {Object} pool - Pool data
  * @returns {string} Consistent pair name (e.g., "TS/MST")
  */
+/**
+ * 🎯 UPDATED: Show more valuable asset first in pair name
+ * Per SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles
+ */
 function getCentralizedPairName(pool) {
     const tokenASymbol = pool.tokenASymbol || 'Token A';
     const tokenBSymbol = pool.tokenBSymbol || 'Token B';
-    return `${tokenASymbol}/${tokenBSymbol}`;
+    
+    // Get basis points values
+    const ratioABasisPoints = pool.ratioANumerator || pool.ratio_a_numerator || 1;
+    const ratioBBasisPoints = pool.ratioBDenominator || pool.ratio_b_denominator || 1;
+    
+    // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss
+    if (pool.ratioADecimal === undefined || pool.ratioBDecimal === undefined) {
+        throw new Error('CRITICAL ERROR: Token decimal information missing from pool data. Cannot calculate pair name safely.');
+    }
+    const tokenADecimals = pool.ratioADecimal;
+    const tokenBDecimals = pool.ratioBDecimal;
+    
+    // Convert to display units
+    const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
+    const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
+    
+    // Calculate exchange rates to determine more valuable asset
+    const rate_A_to_B = ratioBDisplay / ratioADisplay;  // How much B for 1 A
+    const rate_B_to_A = ratioADisplay / ratioBDisplay;  // How much A for 1 B
+    
+    // Show more valuable asset first (the one that produces rates >= 1)
+    if (rate_A_to_B >= 1) {
+        // A is more valuable: "A/B"
+        return `${tokenASymbol}/${tokenBSymbol}`;
+    } else {
+        // B is more valuable: "B/A"
+        return `${tokenBSymbol}/${tokenASymbol}`;
+    }
 }
 
 /**
@@ -835,12 +785,21 @@ function getCentralizedRatioDisplay(pool) {
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
     
-    // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
-    // So: exchangeRate = ratioBDisplay / ratioADisplay
-    const exchangeRate = ratioBDisplay / ratioADisplay;
+    // LOGICAL DISPLAY: Show more valuable asset first to avoid confusing fractions
+    // Per SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles
     
-    return `1:${formatNumberWithCommas(exchangeRate)}`;
+    // Calculate both direction exchange rates
+    const rate_A_to_B = ratioBDisplay / ratioADisplay;  // How much B for 1 A
+    const rate_B_to_A = ratioADisplay / ratioBDisplay;  // How much A for 1 B
+    
+    // Show the direction that produces rates >= 1 (more valuable asset first)
+    if (rate_A_to_B >= 1) {
+        // A is more valuable: "1:X" 
+        return `1:${formatNumberWithCommas(rate_A_to_B)}`;
+    } else {
+        // B is more valuable: "1:X" (but we need to flip the perspective)
+        return `1:${formatNumberWithCommas(rate_B_to_A)}`;
+    }
 }
 
 /**
@@ -869,10 +828,14 @@ function getCentralizedDisplayInfo(pool) {
     // Convert to display units
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
-    // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
-    // So: exchangeRate = ratioBDisplay / ratioADisplay
-    const exchangeRate = ratioBDisplay / ratioADisplay;
+    
+    // LOGICAL DISPLAY: Calculate exchange rate based on more valuable asset first
+    // Per SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles
+    const rate_A_to_B = ratioBDisplay / ratioADisplay;  // How much B for 1 A
+    const rate_B_to_A = ratioADisplay / ratioBDisplay;  // How much A for 1 B
+    
+    // Use the rate that is >= 1 (more valuable asset direction)
+    const exchangeRate = rate_A_to_B >= 1 ? rate_A_to_B : rate_B_to_A;
     
     return {
         pairName: pairName,

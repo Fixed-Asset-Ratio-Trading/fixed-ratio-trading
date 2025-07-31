@@ -35,6 +35,7 @@ Actual Display Values:
 Raw Math Result: 1000:1 (TS is more valuable)
 Logical Display: "1 TS = 1000 MST" ✅
 Bad Display: "1 MST = 0.001 TS" ❌
+Bad Display: "1000 MST = 1 TS" ❌
 ```
 
 ### Why This Happens
