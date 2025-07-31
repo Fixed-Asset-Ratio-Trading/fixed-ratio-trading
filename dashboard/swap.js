@@ -1025,6 +1025,16 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
         throw new Error(`Failed to calculate expected output: ${error.message}`);
     }
     
+    // 🚨 CRITICAL DEBUG: Log the exact value being sent to contract
+    console.log('🚨🚨🚨 CRITICAL DEBUG: FINAL EXPECTED OUTPUT VALUE BEING SENT TO CONTRACT 🚨🚨🚨');
+    console.log('  📊 expectedOutputAmount variable:', expectedOutputAmount);
+    console.log('  📊 Type:', typeof expectedOutputAmount);
+    console.log('  📊 As BigInt:', BigInt(expectedOutputAmount));
+    console.log('  📊 As Uint8Array:', new Uint8Array(new BigUint64Array([BigInt(expectedOutputAmount)]).buffer));
+    console.log('  📊 Buffer bytes:', Array.from(new Uint8Array(new BigUint64Array([BigInt(expectedOutputAmount)]).buffer)));
+    console.log('  🚨 This is the EXACT value the contract will receive as expected_amount_out!');
+    console.log('  🚨 If this shows 100000000 instead of 10000, we found the bug location!');
+    
     const instructionData = new Uint8Array([
         4, // Swap discriminator (single byte, like other instructions)
         ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
@@ -1040,6 +1050,13 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     console.log('  🚨 DEBUG: This expected output will be sent to the contract!');
     console.log('  🚨 DEBUG: If this is 10000, you will receive 10000 TS tokens!');
     console.log('  Total data length:', instructionData.length, 'bytes');
+    
+    // 🚨 VERIFY: Check the actual bytes in the instruction data
+    console.log('🚨🚨🚨 FINAL VERIFICATION: ACTUAL BYTES BEING SENT 🚨🚨🚨');
+    console.log('  📊 Full instruction data bytes:', Array.from(instructionData));
+    console.log('  📊 Last 8 bytes (expected_amount_out):', Array.from(instructionData.slice(-8)));
+    console.log('  📊 Last 8 bytes as little-endian u64:', new DataView(instructionData.buffer).getBigUint64(instructionData.length - 8, true));
+    console.log('  🚨 The contract will receive this exact value as expected_amount_out!');
     
     // Build account keys array (11 accounts for decimal-aware swap)
     const outputTokenMint = swapDirection === 'AtoB'
