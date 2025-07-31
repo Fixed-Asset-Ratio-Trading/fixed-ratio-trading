@@ -495,9 +495,28 @@ function basisPointsToDisplay(basisPoints, decimals) {
     if (basisPoints === 0) return 0;
     if (basisPoints === null || basisPoints === undefined) return 0;
     
-    const displayAmount = basisPoints / Math.pow(10, decimals);
-    console.log(`🔧 BASIS POINTS TO DISPLAY: ${basisPoints} basis points ÷ 10^${decimals} = ${displayAmount} display units`);
-    return displayAmount;
+    // ✅ INTEGER MATH: Use string manipulation to avoid floating-point precision issues
+    const basisPointsStr = basisPoints.toString();
+    
+    if (decimals === 0) {
+        // No conversion needed for 0 decimals
+        const displayAmount = basisPoints;
+        console.log(`🔧 BASIS POINTS TO DISPLAY: ${basisPoints} basis points ÷ 10^${decimals} = ${displayAmount} display units (0 decimals)`);
+        return displayAmount;
+    } else if (basisPointsStr.length <= decimals) {
+        // Number is smaller than decimal places, pad with zeros
+        const padded = '0.' + '0'.repeat(decimals - basisPointsStr.length) + basisPointsStr;
+        const displayAmount = parseFloat(padded);
+        console.log(`🔧 BASIS POINTS TO DISPLAY: ${basisPoints} basis points ÷ 10^${decimals} = ${displayAmount} display units (padded)`);
+        return displayAmount;
+    } else {
+        // Insert decimal point at the correct position
+        const insertPos = basisPointsStr.length - decimals;
+        const displayStr = basisPointsStr.slice(0, insertPos) + '.' + basisPointsStr.slice(insertPos);
+        const displayAmount = parseFloat(displayStr);
+        console.log(`🔧 BASIS POINTS TO DISPLAY: ${basisPoints} basis points ÷ 10^${decimals} = ${displayAmount} display units (string math)`);
+        return displayAmount;
+    }
 }
 
 /**
