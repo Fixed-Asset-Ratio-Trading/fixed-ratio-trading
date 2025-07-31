@@ -648,12 +648,16 @@ function setMaxAmount() {
         : userTokens.find(t => !t.isTokenA);
     
     if (fromToken && fromToken.balance > 0) {
-        // Convert balance from basis points to display units
-        const displayBalance = window.TokenDisplayUtils.basisPointsToDisplay(fromToken.balance, fromToken.decimals);
+        // ✅ INTEGER MATH: Use basis points for precise calculation, then convert to display
+        const balanceBasisPoints = fromToken.balance;
         
-        // Leave a small buffer for potential rounding issues (but much smaller for 0-decimal tokens)
-        const bufferAmount = fromToken.decimals === 0 ? 0 : 0.000001;
-        const maxAmount = Math.max(0, displayBalance - bufferAmount);
+        // For tokens with decimals, subtract 1 basis point to avoid rounding issues
+        // For 0-decimal tokens, use the full balance
+        const bufferBasisPoints = fromToken.decimals === 0 ? 0 : 1;
+        const maxBasisPoints = Math.max(0, balanceBasisPoints - bufferBasisPoints);
+        
+        // Convert back to display units using integer math
+        const maxAmount = window.TokenDisplayUtils.basisPointsToDisplay(maxBasisPoints, fromToken.decimals);
         
         document.getElementById('from-amount').value = maxAmount.toFixed(fromToken.decimals);
         calculateSwapOutputEnhanced();
