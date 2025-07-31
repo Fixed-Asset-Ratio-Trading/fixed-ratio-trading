@@ -15,11 +15,101 @@
  * @param {number} tokenBPrecision - Token B decimal precision (optional)
  * @returns {Object} Simple display configuration
  */
-function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision = 6, tokenBPrecision = 6) {
+/**
+ * ONE-TO-MANY POOL DISPLAY RULES:
+ * 
+ * For pools with the one-to-many flag set:
+ * 1. The token representing "1" should always be displayed first (base token)
+ * 2. Display should use whole numbers only (no fractions)
+ * 3. Calculate the ratio based on actual basis points, not display units
+ * 4. Format: "1 [base] = [whole_number] [quote]"
+ * 
+ * Example: MST(1000):TS(10000) with decimals MST(0):TS(4)
+ * - TS has higher ratio → TS represents "many"
+ * - MST has lower ratio → MST represents "1" 
+ * - Display: "1 MST = 10 TS" (10000/1000 = 10, whole number)
+ */
+function getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision = 6, tokenBPrecision = 6, isOneToMany = false) {
     console.log('🔧 SHOWING ACTUAL POOL RATIO:', {
-        tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision
+        tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision, isOneToMany
     });
     
+    if (isOneToMany) {
+        console.log('🎯 ONE-TO-MANY POOL: Using special display logic for whole numbers');
+        
+        // For one-to-many pools, test both directions to find which gives a whole number
+        // The direction that produces a whole number >= 1 is the correct display
+        
+        // Test A → B: 1 TokenA display unit → ? TokenB display units
+        const oneTokenABasisPoints = 1 * Math.pow(10, tokenAPrecision);
+        const outputBBasisPoints = oneTokenABasisPoints * tokenBRatio / tokenARatio;
+        const outputBDisplayUnits = outputBBasisPoints / Math.pow(10, tokenBPrecision);
+        
+        // Test B → A: 1 TokenB display unit → ? TokenA display units  
+        const oneTokenBBasisPoints = 1 * Math.pow(10, tokenBPrecision);
+        const outputABasisPoints = oneTokenBBasisPoints * tokenARatio / tokenBRatio;
+        const outputADisplayUnits = outputABasisPoints / Math.pow(10, tokenAPrecision);
+        
+        console.log(`🎯 ONE-TO-MANY TESTING:`, {
+            oneTokenABasisPoints, outputBBasisPoints, outputBDisplayUnits,
+            oneTokenBBasisPoints, outputABasisPoints, outputADisplayUnits
+        });
+        
+        // Choose the direction that gives a whole number >= 1
+        const isWholeNumberAtoB = Number.isInteger(outputBDisplayUnits) && outputBDisplayUnits >= 1;
+        const isWholeNumberBtoA = Number.isInteger(outputADisplayUnits) && outputADisplayUnits >= 1;
+        
+        if (isWholeNumberAtoB && outputBDisplayUnits >= 1) {
+            // A → B gives whole number: "1 TokenA = X TokenB"
+            console.log(`🎯 ONE-TO-MANY: 1 ${tokenAName} = ${outputBDisplayUnits} ${tokenBName}`);
+            return {
+                baseToken: tokenAName,
+                quoteToken: tokenBName,
+                displayPair: `${tokenAName}/${tokenBName}`,
+                rateText: `1 ${tokenAName} = ${outputBDisplayUnits} ${tokenBName}`,
+                exchangeRate: outputBDisplayUnits,
+                isReversed: false
+            };
+        } else if (isWholeNumberBtoA && outputADisplayUnits >= 1) {
+            // B → A gives whole number: "1 TokenB = X TokenA"
+            console.log(`🎯 ONE-TO-MANY: 1 ${tokenBName} = ${outputADisplayUnits} ${tokenAName}`);
+            return {
+                baseToken: tokenBName,
+                quoteToken: tokenAName,
+                displayPair: `${tokenBName}/${tokenAName}`,
+                rateText: `1 ${tokenBName} = ${outputADisplayUnits} ${tokenAName}`,
+                exchangeRate: outputADisplayUnits,
+                isReversed: true
+            };
+        } else {
+            // If neither direction gives a clean whole number, use the larger rate
+            if (outputBDisplayUnits > outputADisplayUnits) {
+                const wholeRate = Math.floor(outputBDisplayUnits);
+                console.log(`🎯 ONE-TO-MANY (fallback): 1 ${tokenAName} = ${wholeRate} ${tokenBName}`);
+                return {
+                    baseToken: tokenAName,
+                    quoteToken: tokenBName,
+                    displayPair: `${tokenAName}/${tokenBName}`,
+                    rateText: `1 ${tokenAName} = ${wholeRate} ${tokenBName}`,
+                    exchangeRate: wholeRate,
+                    isReversed: false
+                };
+            } else {
+                const wholeRate = Math.floor(outputADisplayUnits);
+                console.log(`🎯 ONE-TO-MANY (fallback): 1 ${tokenBName} = ${wholeRate} ${tokenAName}`);
+                return {
+                    baseToken: tokenBName,
+                    quoteToken: tokenAName,
+                    displayPair: `${tokenBName}/${tokenAName}`,
+                    rateText: `1 ${tokenBName} = ${wholeRate} ${tokenAName}`,
+                    exchangeRate: wholeRate,
+                    isReversed: true
+                };
+            }
+        }
+    }
+    
+    // STANDARD POOL LOGIC (non one-to-many)
     // BASIS POINTS REFACTOR: Convert basis points to display units using token decimals
     const tokenADisplayUnits = tokenARatio / Math.pow(10, tokenAPrecision);
     const tokenBDisplayUnits = tokenBRatio / Math.pow(10, tokenBPrecision);
@@ -82,7 +172,8 @@ function getDisplayTokenOrderCorrected(pool, tokenDecimals = null) {
     
     console.log('🔧 USING CORRECTED DISPLAY LOGIC');
     
-    const result = getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision);
+    const flags = interpretPoolFlags(pool);
+    const result = getCorrectTokenDisplay(tokenAName, tokenBName, tokenARatio, tokenBRatio, tokenAPrecision, tokenBPrecision, flags.oneToManyRatio);
     
     // Add additional fields that the UI expects
     const getFormattedLiquidity = (rawAmount, isTokenA) => {
@@ -92,8 +183,6 @@ function getDisplayTokenOrderCorrected(pool, tokenDecimals = null) {
         }
         return formatLargeNumber(rawAmount);
     };
-    
-    const flags = interpretPoolFlags(pool);
     
     return {
         baseToken: result.baseToken,
