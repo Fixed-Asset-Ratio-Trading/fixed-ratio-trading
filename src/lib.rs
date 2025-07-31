@@ -68,9 +68,11 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     pubkey::Pubkey,
-    msg,
     declare_id,
 };
+
+#[cfg(not(test))]
+use solana_program::msg;
 
 // Conditional logging macro - disable verbose logging during tests
 #[cfg(not(test))]

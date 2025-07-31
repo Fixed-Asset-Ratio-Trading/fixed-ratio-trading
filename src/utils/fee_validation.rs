@@ -182,7 +182,7 @@ pub fn collect_liquidity_fee_distributed<'a>(
         fee_amount,
         FeeType::Liquidity,
     );
-    if let Err(ref e) = result {
+    if let Err(ref _e) = result {
 
     } else {
 
