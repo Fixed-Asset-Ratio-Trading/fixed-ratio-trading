@@ -1451,8 +1451,8 @@ async function removeLiquidity() {
     // ✅ CRITICAL VALIDATION: Check if pool has sufficient underlying liquidity
     const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
     const poolLiquidity = underlyingToken === 'TS' 
-        ? (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0)
-        : (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0);
+        ? (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0)  // ✅ FIXED: TS liquidity is in token B
+        : (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0); // MST liquidity is in token A
     
     console.log(`🔍 LIQUIDITY VALIDATION: ${underlyingToken} pool liquidity = ${poolLiquidity}, withdrawal amount = ${amount}`);
     
