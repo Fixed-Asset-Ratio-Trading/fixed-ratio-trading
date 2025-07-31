@@ -953,16 +953,92 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
     // Borsh enum discriminator: Swap = 4 (single byte, based on instruction ordering)
     const inputTokenMint = new solanaWeb3.PublicKey(fromToken.mint);
     
+    // Calculate expected output amount for the new contract requirement
+    let expectedOutputAmount;
+    try {
+        // Get pool ratios in basis points
+        const ratioABasisPoints = poolData.ratioANumerator || poolData.ratio_a_numerator;
+        const ratioBBasisPoints = poolData.ratioBDenominator || poolData.ratio_b_denominator;
+        
+        // Get token decimals
+        let inputDecimals, outputDecimals, numerator, denominator;
+        let tokenADecimals, tokenBDecimals;
+        
+        if (poolData.ratioADecimal !== undefined && poolData.ratioBDecimal !== undefined) {
+            tokenADecimals = poolData.ratioADecimal;
+            tokenBDecimals = poolData.ratioBDecimal;
+        } else if (poolData.tokenDecimals && 
+                   poolData.tokenDecimals.tokenADecimals !== undefined && 
+                   poolData.tokenDecimals.tokenBDecimals !== undefined) {
+            tokenADecimals = poolData.tokenDecimals.tokenADecimals;
+            tokenBDecimals = poolData.tokenDecimals.tokenBDecimals;
+        } else {
+            throw new Error('Token decimal information missing');
+        }
+        
+        if (swapDirection === 'AtoB') {
+            // Swapping from Token A to Token B
+            inputDecimals = tokenADecimals;
+            outputDecimals = tokenBDecimals;
+            numerator = ratioBBasisPoints;
+            denominator = ratioABasisPoints;
+        } else {
+            // Swapping from Token B to Token A
+            inputDecimals = tokenBDecimals;
+            outputDecimals = tokenADecimals;
+            numerator = ratioABasisPoints;
+            denominator = ratioBBasisPoints;
+        }
+        
+        console.log('🔍 RATIO ASSIGNMENT DEBUG:');
+        console.log(`  Swap direction: ${swapDirection}`);
+        console.log(`  Token A decimals: ${tokenADecimals}, Token B decimals: ${tokenBDecimals}`);
+        console.log(`  Ratio A (basis points): ${ratioABasisPoints}`);
+        console.log(`  Ratio B (basis points): ${ratioBBasisPoints}`);
+        console.log(`  Numerator: ${numerator}, Denominator: ${denominator}`);
+        
+        // Calculate expected output using the same logic as the UI
+        const fromAmountDisplay = window.TokenDisplayUtils.basisPointsToDisplay(amountInBaseUnits, inputDecimals);
+        const expectedOutputDisplay = window.TokenDisplayUtils.calculateSwapOutput(
+            fromAmountDisplay,
+            inputDecimals,
+            outputDecimals,
+            numerator,
+            denominator
+        );
+        
+        // Convert expected output to basis points
+        expectedOutputAmount = window.TokenDisplayUtils.displayToBasisPoints(expectedOutputDisplay, outputDecimals);
+        
+        console.log('🔍 Expected output calculation:');
+        console.log(`  Input: ${fromAmountDisplay} (${amountInBaseUnits} basis points)`);
+        console.log(`  Expected output: ${expectedOutputDisplay} (${expectedOutputAmount} basis points)`);
+        console.log(`  Ratio: ${numerator} : ${denominator}`);
+        console.log(`  🚨 DEBUG: Expected output in display units: ${expectedOutputDisplay}`);
+        console.log(`  🚨 DEBUG: Expected output in basis points: ${expectedOutputAmount}`);
+        console.log(`  🚨 DEBUG: If this is wrong, you'll get the wrong amount!`);
+        console.log(`  🚨 DEBUG: Pool ratio interpretation: ${ratioABasisPoints} : ${ratioBBasisPoints}`);
+        console.log(`  🚨 DEBUG: This means ${ratioABasisPoints/1000} Token A = ${ratioBBasisPoints/1000} Token B`);
+        
+    } catch (error) {
+        console.error('❌ Error calculating expected output:', error);
+        throw new Error(`Failed to calculate expected output: ${error.message}`);
+    }
+    
     const instructionData = new Uint8Array([
         4, // Swap discriminator (single byte, like other instructions)
         ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
-        ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer) // amount_in (u64 little-endian)
+        ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer), // amount_in (u64 little-endian)
+        ...new Uint8Array(new BigUint64Array([BigInt(expectedOutputAmount)]).buffer) // expected_amount_out (u64 little-endian)
     ]);
     
     console.log('🔍 Swap instruction data:');
     console.log('  Discriminator: [4] (single byte)');
     console.log('  Input token mint:', inputTokenMint.toString());
     console.log('  Amount in base units:', amountInBaseUnits);
+    console.log('  Expected output in base units:', expectedOutputAmount);
+    console.log('  🚨 DEBUG: This expected output will be sent to the contract!');
+    console.log('  🚨 DEBUG: If this is 10000, you will receive 10000 TS tokens!');
     console.log('  Total data length:', instructionData.length, 'bytes');
     
     // Build account keys array (11 accounts for decimal-aware swap)

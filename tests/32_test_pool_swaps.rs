@@ -302,10 +302,20 @@ pub fn create_swap_instruction(
     input_token_mint: &Pubkey,
     amount_in: u64,
 ) -> Result<Instruction, Box<dyn std::error::Error>> {
+    // Calculate expected output amount based on pool ratio and direction
+    let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
+        amount_in,
+        crate::common::liquidity_helpers::SwapDirection::AToB, // We'll determine the actual direction based on input token
+        pool_config.ratio_a_numerator,
+        pool_config.ratio_b_denominator,
+        6, // Token A decimals (assuming 6 for test tokens)
+        6, // Token B decimals (assuming 6 for test tokens)
+    );
+    
     let instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_token_mint,
         amount_in,
-        expected_amount_out: 0, // Placeholder for test utility
+        expected_amount_out,
     };
 
     // Use the standardized function from liquidity_helpers
@@ -2423,11 +2433,33 @@ async fn execute_swap_operation(
     use fixed_ratio_trading::PoolInstruction;
     use solana_sdk::instruction::{AccountMeta, Instruction};
     
+    // Calculate expected output amount based on pool ratio and direction
+    let swap_direction = if *input_mint == foundation.pool_config.token_a_mint {
+        crate::common::liquidity_helpers::SwapDirection::AToB
+    } else {
+        crate::common::liquidity_helpers::SwapDirection::BToA
+    };
+    
+    let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
+        amount,
+        swap_direction,
+        foundation.pool_config.ratio_a_numerator,
+        foundation.pool_config.ratio_b_denominator,
+        4, // Token A decimals (actual value from foundation creation)
+        0, // Token B decimals (actual value from foundation creation)
+    );
+    
+    println!("🔍 DEBUG: Swap calculation:");
+    println!("   • Input amount: {} tokens", amount);
+    println!("   • Swap direction: {:?}", swap_direction);
+    println!("   • Pool ratio: {}:{}", foundation.pool_config.ratio_a_numerator, foundation.pool_config.ratio_b_denominator);
+    println!("   • Calculated expected output: {} tokens", expected_amount_out);
+    
     // Create swap instruction
     let swap_instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_mint,
         amount_in: amount,
-        expected_amount_out: 0, // Placeholder for test utility  
+        expected_amount_out,
     };
     
     let serialized = swap_instruction_data.try_to_vec()?;

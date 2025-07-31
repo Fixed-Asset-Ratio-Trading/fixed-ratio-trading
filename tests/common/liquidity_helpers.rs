@@ -1135,11 +1135,21 @@ pub async fn execute_swap_operation(
 ) -> TestResult {
     println!("🔄 Executing swap: {} tokens", amount_in);
     
+    // Calculate expected output amount based on pool ratio and direction
+    let expected_amount_out = calculate_expected_swap_output(
+        amount_in,
+        SwapDirection::AToB, // We'll determine the actual direction based on input token
+        foundation.pool_config.ratio_a_numerator,
+        foundation.pool_config.ratio_b_denominator,
+        4, // Token A decimals (actual value from foundation creation)
+        0, // Token B decimals (actual value from foundation creation)
+    );
+    
     // Create the swap instruction
     let swap_instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_token_mint,
         amount_in,
-        expected_amount_out: 0, // Placeholder for utility function
+        expected_amount_out,
     };
     
     let swap_ix = create_swap_instruction_standardized(
@@ -2227,6 +2237,77 @@ pub async fn perform_swap_with_fee_tracking(
 /// * `foundation` - The test foundation with pool setup
 /// * `pool_pda` - Pool state PDA address
 /// 
+/// Calculate expected output amount for swap operations (in basis points)
+/// 
+/// This function calculates the expected output amount based on the pool ratio
+/// and swap direction, using the same logic as the smart contract.
+#[allow(dead_code)]
+pub fn calculate_expected_swap_output(
+    amount_in: u64,
+    direction: SwapDirection,
+    ratio_a_numerator: u64,
+    ratio_b_denominator: u64,
+    token_a_decimals: u8,
+    token_b_decimals: u8,
+) -> u64 {
+    // Convert to u128 to prevent overflow during calculation
+    let amount_in_base = amount_in as u128;
+    let ratio_a_num = ratio_a_numerator as u128;
+    let ratio_b_den = ratio_b_denominator as u128;
+    
+    let result = match direction {
+        SwapDirection::AToB => {
+            // Swapping from Token A to Token B
+            // Formula: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+            
+            // Calculate decimal scaling factor
+            let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
+            
+            if decimal_diff >= 0 {
+                // Token B has more decimals, scale up
+                let scale_factor = 10_u128.pow(decimal_diff as u32);
+                let numerator = amount_in_base
+                    .checked_mul(ratio_b_den)
+                    .and_then(|n| n.checked_mul(scale_factor))
+                    .unwrap_or(0);
+                numerator / ratio_a_num
+            } else {
+                // Token B has fewer decimals, scale down
+                let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
+                let numerator = amount_in_base.checked_mul(ratio_b_den).unwrap_or(0);
+                let denominator = ratio_a_num.checked_mul(scale_divisor).unwrap_or(1);
+                numerator / denominator
+            }
+        }
+        SwapDirection::BToA => {
+            // Swapping from Token B to Token A
+            // Formula: A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
+            
+            // Calculate decimal scaling factor
+            let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
+            
+            if decimal_diff >= 0 {
+                // Token A has more decimals, scale up
+                let scale_factor = 10_u128.pow(decimal_diff as u32);
+                let numerator = amount_in_base
+                    .checked_mul(ratio_a_num)
+                    .and_then(|n| n.checked_mul(scale_factor))
+                    .unwrap_or(0);
+                numerator / ratio_b_den
+            } else {
+                // Token A has fewer decimals, scale down
+                let scale_divisor = 10_u128.pow((-decimal_diff) as u32);
+                let numerator = amount_in_base.checked_mul(ratio_a_num).unwrap_or(0);
+                let denominator = ratio_b_den.checked_mul(scale_divisor).unwrap_or(1);
+                numerator / denominator
+            }
+        }
+    };
+    
+    // Convert back to u64 (result should fit in u64 for reasonable amounts)
+    result as u64
+}
+
 /// # Returns
 /// * `PoolFeeState` - Current pool fee state with swap-specific analysis
 /// 

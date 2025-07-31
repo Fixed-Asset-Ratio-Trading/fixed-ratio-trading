@@ -283,7 +283,7 @@ fn swap_b_to_a(
         numerator / denominator
     };
     
-    msg!("   • Final result (floor): {}", result);
+    msg!("   • Final result (floor): {} basis points", result);
     
     // Convert back to u64 and check for overflow
     if result > u64::MAX as u128 {
@@ -292,19 +292,58 @@ fn swap_b_to_a(
     }
     
     let final_result = result as u64;
-    msg!("   • Final result: {}", final_result);
+    msg!("   • Final result: {} basis points", final_result);
     
     Ok(final_result)
 }
 
+/// **Fixed-Ratio Token Swap with Basis Points Architecture**
+///
+/// Performs deterministic token swaps using pre-configured fixed exchange ratios stored
+/// in basis points. This function implements exact input swapping where users specify
+/// the input amount and receive a deterministic output amount based on the pool's ratio.
+/// 
+/// **BASIS POINTS REFACTOR: All Values in Basis Points**
+/// 
+/// This function operates entirely in basis points (smallest token units) with no
+/// decimal conversion performed by the contract. All calculations preserve precision
+/// and handle large numbers efficiently.
+/// 
+/// **Input/Output Flow:**
+/// - Input: `amount_in` in basis points (from SPL token transfer)
+/// - Pool ratios: Already stored in basis points (set during pool creation)
+/// - Calculation: Pure basis point arithmetic
+/// - Output: Result in basis points (for SPL token transfer)
+/// 
+/// **Example Calculation:**
+/// ```
+/// // Pool: 1.0 SOL = 160.0 USDT (1,000,000,000 : 160,000,000 basis points)
+/// // Input: 0.5 SOL = 500,000,000 basis points
+/// // Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
+/// ```
+///
+/// # Key Features
+///
+/// # Fixed Ratio Exchange
+/// - Exchange rates are predetermined and constant (e.g., 2:1, 3:1, etc.)
+/// - No slippage - you get exactly the calculated amount or transaction fails
+/// - Deterministic pricing eliminates front-running and MEV extraction
+/// - Pool maintains its configured ratio regardless of trade size
+///
+/// # Security Features
+/// - Pause enforcement: Respects both system-wide and pool-specific pause states
+/// - PDA validation: All pool accounts validated against expected PDA addresses
+/// - Authority checks: Only token owners can initiate swaps for their tokens
+/// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
+/// - Atomic operations: Token transfers are atomic - either both succeed or both fail
 pub fn process_swap(
     program_id: &Pubkey,
-    amount_in: u64,
-    expected_amount_out: u64,
+    amount_in: u64,              // Input amount in basis points
+    expected_amount_out: u64,    // Expected output amount in basis points
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     debug_msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
-    // Process swap: {} tokens in, {} tokens expected out
+    msg!("📊 SWAP PARAMETERS: {} basis points in, {} basis points expected out", amount_in, expected_amount_out);
     debug_msg!("🎯 STEP-BY-STEP DEBUG: Starting swap process...");
     
     // Extract required accounts from the accounts array
@@ -576,11 +615,11 @@ pub fn process_swap(
             output_decimals as u8, // token_a_decimals
         )?;
         
-        msg!("🔥 swap_b_to_a RETURNED: {}", result);
-        result
-    };
+            msg!("🔥 swap_b_to_a RETURNED: {} basis points", result);
+    result
+};
 
-    // Calculation completed: {} -> {} tokens
+msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amount_in, amount_out);
     
     // Validate output amount is non-zero
     if amount_out == 0 {
@@ -589,20 +628,22 @@ pub fn process_swap(
         // return Err(ProgramError::InvalidArgument);
     }
 
-    // Validate calculated amount matches expected amount
+    // Validate calculated amount matches expected amount (both in basis points)
     if amount_out != expected_amount_out {
         let difference = amount_out.abs_diff(expected_amount_out);
-        msg!("AMOUNT MISMATCH: Expected {}, calculated {}, diff {}", expected_amount_out, amount_out, difference);
+        msg!("❌ AMOUNT MISMATCH: Expected {} basis points, calculated {} basis points, diff {}", 
+             expected_amount_out, amount_out, difference);
         
-        // Temporarily allow mismatch for debugging
-        // return Err(crate::error::PoolError::AmountMismatch {
-        //     expected: expected_amount_out,
-        //     calculated: amount_out,
-        //     difference,
-        // }.into());
+        // CRITICAL: Re-enable validation to prevent incorrect swaps
+        return Err(crate::error::PoolError::AmountMismatch {
+            expected: expected_amount_out,
+            calculated: amount_out,
+            difference,
+        }.into());
     }
     
-    // Amount validation passed
+    msg!("✅ Amount validation passed: Expected {} basis points matches calculated {} basis points", 
+         expected_amount_out, amount_out);
 
     // Step 5: Checking liquidity
     
@@ -616,11 +657,11 @@ pub fn process_swap(
     // Liquidity check: available={}, required={}
     
     if available_liquidity < amount_out {
-        msg!("INSUFFICIENT LIQUIDITY: Need {} tokens, have {}", amount_out, available_liquidity);
+        msg!("❌ INSUFFICIENT LIQUIDITY: Need {} basis points, have {} basis points", amount_out, available_liquidity);
         return Err(ProgramError::InsufficientFunds);
     }
     
-    // Liquidity check passed
+    msg!("✅ Liquidity check passed: {} basis points available, {} basis points needed", available_liquidity, amount_out);
 
     // Step 6: Executing transfers
     
@@ -671,6 +712,7 @@ pub fn process_swap(
     )?;
 
     msg!("✅ Token transfers completed successfully");
+    msg!("📊 TRANSFER SUMMARY: {} basis points transferred in, {} basis points transferred out", amount_in, amount_out);
 
     // Update pool liquidity balances based on swap direction
     if input_is_token_a {

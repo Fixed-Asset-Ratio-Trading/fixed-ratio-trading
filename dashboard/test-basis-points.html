@@ -60,6 +60,11 @@
         <div id="test4-results"></div>
     </div>
 
+    <div class="test-section">
+        <h2>Test 5: Expected Amount Out Calculation (New Contract Requirement)</h2>
+        <div id="test5-results"></div>
+    </div>
+
     <script src="utils.js"></script>
     <script>
         function runTest(testName, testFn) {
@@ -156,6 +161,77 @@
             const expected = 0.5; // Should get 0.5 SOL
             if (Math.abs(result - expected) > 0.000000001) throw new Error(`Expected ${expected}, got ${result}`);
             return `80 USDT → ${result} SOL (Pool: 1 SOL = 160 USDT) ✓`;
+        });
+
+        // Test 5: Expected Amount Out Calculation (New Contract Requirement)
+        runTest('test5-results', () => {
+            // Test the complete flow: input amount → expected output in basis points
+            // Pool: 1 SOL = 160 USDT (1×10^9 : 160×10^6 basis points)
+            // Input: 0.5 SOL = 500,000,000 basis points
+            const inputAmountDisplay = 0.5;
+            const inputDecimals = 9; // SOL decimals
+            const outputDecimals = 6; // USDT decimals
+            const ratioBNumerator = 160000000; // Token B (USDT) amount in basis points
+            const ratioADenominator = 1000000000; // Token A (SOL) amount in basis points
+            
+            // Calculate expected output display amount
+            const expectedOutputDisplay = calculateSwapOutput(
+                inputAmountDisplay,
+                inputDecimals,
+                outputDecimals,
+                ratioBNumerator,
+                ratioADenominator
+            );
+            
+            // Convert to basis points for contract
+            const expectedOutputBasisPoints = displayToBasisPoints(expectedOutputDisplay, outputDecimals);
+            
+            const expectedDisplay = 80.0;
+            const expectedBasisPoints = 80000000; // 80 USDT in basis points
+            
+            if (Math.abs(expectedOutputDisplay - expectedDisplay) > 0.000001) {
+                throw new Error(`Expected display ${expectedDisplay}, got ${expectedOutputDisplay}`);
+            }
+            if (expectedOutputBasisPoints !== expectedBasisPoints) {
+                throw new Error(`Expected basis points ${expectedBasisPoints}, got ${expectedOutputBasisPoints}`);
+            }
+            
+            return `0.5 SOL → ${expectedOutputDisplay} USDT (${expectedOutputBasisPoints} basis points) ✓`;
+        });
+
+        runTest('test5-results', () => {
+            // Test reverse direction: USDT → SOL
+            // Pool: 1 SOL = 160 USDT (1×10^9 : 160×10^6 basis points)
+            // Input: 80 USDT = 80,000,000 basis points
+            const inputAmountDisplay = 80.0;
+            const inputDecimals = 6; // USDT decimals
+            const outputDecimals = 9; // SOL decimals
+            const ratioANumerator = 1000000000; // Token A (SOL) amount in basis points
+            const ratioBDenominator = 160000000; // Token B (USDT) amount in basis points
+            
+            // Calculate expected output display amount
+            const expectedOutputDisplay = calculateSwapOutput(
+                inputAmountDisplay,
+                inputDecimals,
+                outputDecimals,
+                ratioANumerator,
+                ratioBDenominator
+            );
+            
+            // Convert to basis points for contract
+            const expectedOutputBasisPoints = displayToBasisPoints(expectedOutputDisplay, outputDecimals);
+            
+            const expectedDisplay = 0.5;
+            const expectedBasisPoints = 500000000; // 0.5 SOL in basis points
+            
+            if (Math.abs(expectedOutputDisplay - expectedDisplay) > 0.000000001) {
+                throw new Error(`Expected display ${expectedDisplay}, got ${expectedOutputDisplay}`);
+            }
+            if (expectedOutputBasisPoints !== expectedBasisPoints) {
+                throw new Error(`Expected basis points ${expectedBasisPoints}, got ${expectedOutputBasisPoints}`);
+            }
+            
+            return `80 USDT → ${expectedOutputDisplay} SOL (${expectedOutputBasisPoints} basis points) ✓`;
         });
 
         console.log('🧪 All basis points conversion tests completed!');

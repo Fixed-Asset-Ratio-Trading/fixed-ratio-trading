@@ -637,11 +637,24 @@ pub async fn execute_basic_trading_flow(
             return Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Pool has no liquidity for swaps")));
         }
         
+        // Calculate expected output amount based on pool ratio and direction
+        let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
+            swap_op.amount,
+            match swap_op.direction {
+                crate::common::flow_helpers::SwapDirection::TokenAToB => crate::common::liquidity_helpers::SwapDirection::AToB,
+                crate::common::flow_helpers::SwapDirection::TokenBToA => crate::common::liquidity_helpers::SwapDirection::BToA,
+            },
+            pool_config.ratio_a_numerator,
+            pool_config.ratio_b_denominator,
+            6, // Token A decimals (assuming 6 for test tokens)
+            6, // Token B decimals (assuming 6 for test tokens)
+        );
+        
         // Create swap instruction
         let swap_instruction_data = fixed_ratio_trading::types::instructions::PoolInstruction::Swap {
             input_token_mint: *input_mint,
             amount_in: swap_op.amount,
-            expected_amount_out: 0, // Placeholder for utility function
+            expected_amount_out,
         };
         
         let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(

@@ -158,6 +158,8 @@ pub fn create_withdraw_instruction(
 /// Creates a Swap instruction
 /// 
 /// # Arguments
+/// * `pool_client` - Pool client for program ID
+/// * `config` - Pool configuration for ratio calculations
 /// * `user_signer` - User account performing the swap
 /// * `user_input_token_account` - User's input token account
 /// * `user_output_token_account` - User's output token account  
@@ -174,6 +176,7 @@ pub fn create_withdraw_instruction(
 #[allow(dead_code)]
 pub fn create_swap_instruction(
     pool_client: &PoolClient,
+    config: &PoolConfig,
     user_signer: &Pubkey,
     user_input_token_account: &Pubkey,
     user_output_token_account: &Pubkey,
@@ -185,10 +188,24 @@ pub fn create_swap_instruction(
     input_token_mint: Pubkey,
     amount_in: u64,
 ) -> Result<Instruction, ProgramError> {
+    // Calculate expected output amount based on pool ratio and direction
+    let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
+        amount_in,
+        if input_token_mint == *token_a_mint {
+            crate::common::liquidity_helpers::SwapDirection::AToB
+        } else {
+            crate::common::liquidity_helpers::SwapDirection::BToA
+        },
+        config.ratio_a_numerator,
+        config.ratio_b_denominator,
+        6, // Token A decimals (assuming 6 for test tokens)
+        6, // Token B decimals (assuming 6 for test tokens)
+    );
+    
     let instruction_data = PoolInstruction::Swap {
         input_token_mint,
         amount_in,
-        expected_amount_out: 0, // Placeholder for utility function
+        expected_amount_out,
     };
 
     let accounts = vec![
