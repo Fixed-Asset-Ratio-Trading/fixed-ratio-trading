@@ -726,7 +726,8 @@ async function verifyContractVersion() {
         console.log('📋 Expected version from deployment_info.json:', deploymentInfo.version);
         
         const connection = new Connection(config.solana.rpcUrl, 'confirmed');
-        const programId = new PublicKey(config.program.programId);
+        // Use the actual deployed program ID from deployment_info.json, not shared-config
+        const programId = new PublicKey(deploymentInfo.program_id);
         
         // Load the same keypair used for deployment (program upgrade authority)
         const keypairPath = '$KEYPAIR_PATH';
@@ -762,7 +763,7 @@ async function verifyContractVersion() {
         
         console.log('📡 Calling GetVersion instruction on smart contract...');
         console.log('🔍 Debug info:');
-        console.log('  Program ID:', config.program.programId);
+        console.log('  Program ID:', deploymentInfo.program_id);
         console.log('  Instruction data:', Array.from(instructionData));
         console.log('  Recent blockhash:', blockhash);
         console.log('  Fee payer:', keypair.publicKey.toString());
