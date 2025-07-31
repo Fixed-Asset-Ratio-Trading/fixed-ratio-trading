@@ -792,15 +792,24 @@ function getCentralizedRatioText(pool) {
     const ratioADisplay = ratioABasisPoints / Math.pow(10, tokenADecimals);
     const ratioBDisplay = ratioBBasisPoints / Math.pow(10, tokenBDecimals);
     
-    // Calculate exchange rate: 1 TokenA = X TokenB
-    // For "1 TS = 1000 MST", we need: exchangeRate = 1000
-    // So: exchangeRate = ratioBDisplay / ratioADisplay
-    const exchangeRate = ratioBDisplay / ratioADisplay;
+    // LOGICAL DISPLAY: Show more valuable asset first to avoid confusing fractions
+    // Per SOLANA_BASIS_POINTS_AND_LOGICAL_RATIO_DISPLAY.md principles
     
     const tokenASymbol = pool.tokenASymbol || 'Token A';
     const tokenBSymbol = pool.tokenBSymbol || 'Token B';
     
-    return `1 ${tokenASymbol} = ${formatNumberWithCommas(exchangeRate)} ${tokenBSymbol}`;
+    // Calculate both direction exchange rates
+    const rate_A_to_B = ratioBDisplay / ratioADisplay;  // How much B for 1 A
+    const rate_B_to_A = ratioADisplay / ratioBDisplay;  // How much A for 1 B
+    
+    // Show the direction that produces rates >= 1 (more valuable asset first)
+    if (rate_A_to_B >= 1) {
+        // A is more valuable: "1 A = X B"
+        return `1 ${tokenASymbol} = ${formatNumberWithCommas(rate_A_to_B)} ${tokenBSymbol}`;
+    } else {
+        // B is more valuable: "1 B = X A" 
+        return `1 ${tokenBSymbol} = ${formatNumberWithCommas(rate_B_to_A)} ${tokenASymbol}`;
+    }
 }
 
 /**
