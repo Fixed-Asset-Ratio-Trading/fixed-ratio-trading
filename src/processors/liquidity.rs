@@ -374,6 +374,15 @@ pub fn process_deposit<'a>(
         (token_b_vault_pda, target_lp_mint_account)
     };
 
+    // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
+    msg!("🔒 VALIDATING VAULT AND LP MINT AUTHORITIES...");
+    let target_vault_data = safe_unpack_token_account(target_vault, "Target Vault")?;
+    
+    use crate::utils::validation::{validate_vault_owner, validate_lp_mint_authority};
+    validate_vault_owner(&target_vault_data, pool_state_pda.key, "Target Vault")?;
+    validate_lp_mint_authority(target_lp_mint, pool_state_pda.key, "Target LP Mint")?;
+    msg!("✅ Vault and LP mint authorities validated successfully");
+
     // Validate user accounts (user's LP token account must exist)
     let user_output_data = if let Some(output_data) = user_output_data {
         msg!("✅ ACCOUNT STATUS:");
@@ -873,6 +882,15 @@ fn execute_withdrawal_logic<'a>(
     use solana_program::program::{invoke, invoke_signed};
     use spl_token::instruction as token_instruction;
     use crate::constants::POOL_STATE_SEED_PREFIX;
+
+    // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
+    msg!("🔒 VALIDATING WITHDRAWAL AUTHORITIES...");
+    let source_vault_data = safe_unpack_token_account(source_pool_vault_acc, "Source Pool Vault")?;
+    
+    use crate::utils::validation::{validate_vault_owner, validate_lp_mint_authority};
+    validate_vault_owner(&source_vault_data, pool_state_account.key, "Source Pool Vault")?;
+    validate_lp_mint_authority(source_lp_mint_account, pool_state_account.key, "Source LP Mint")?;
+    msg!("✅ Withdrawal authorities validated successfully");
 
     // Burn LP tokens from user (with reentrancy protection)
     msg!("🛡️ REENTRANCY PROTECTION: Starting withdrawal LP token burn");

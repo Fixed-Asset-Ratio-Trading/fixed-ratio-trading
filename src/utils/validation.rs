@@ -9,6 +9,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     msg,
     program_error::ProgramError,
+    program_pack::Pack,
     pubkey::Pubkey,
 };
 
@@ -19,6 +20,8 @@ use crate::{
 };
 
 use crate::constants::*;
+use spl_token::state::{Mint, Account as TokenAccount};
+use solana_program::program_option::COption;
 
 
 
@@ -70,6 +73,88 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
         return Err(ProgramError::InvalidArgument);
     }
     Ok(())
+}
+
+/// 🔒 CRITICAL SECURITY: Validates that a vault token account has the expected owner
+///
+/// This prevents attackers from providing fake vault accounts with unauthorized owners
+/// that could be used to steal pool tokens or bypass economic protections.
+/// 
+/// Vault token accounts are created with the pool PDA as the owner, which gives the pool
+/// PDA the authority to sign for transfers from the vault.
+///
+/// # Arguments
+/// * `token_account` - The unpacked token account data to validate
+/// * `expected_owner` - The expected owner (should be pool PDA)
+/// * `account_name` - Context string for error messages
+///
+/// # Returns
+/// * `ProgramResult` - Success if owner is valid, error otherwise
+pub fn validate_vault_owner(
+    token_account: &TokenAccount,
+    expected_owner: &Pubkey,
+    account_name: &str
+) -> ProgramResult {
+    if token_account.owner != *expected_owner {
+        msg!("❌ {}: Invalid vault owner - SECURITY VIOLATION", account_name);
+        msg!("   Expected owner: {}", expected_owner);
+        msg!("   Actual owner: {}", token_account.owner);
+        msg!("   This indicates a potential attack using unauthorized vault");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    msg!("✅ {}: Vault owner validated successfully", account_name);
+    Ok(())
+}
+
+/// 🔒 CRITICAL SECURITY: Validates that an LP token mint has the expected mint authority
+///
+/// This prevents attackers from providing fake LP mints with unauthorized authorities
+/// that could be used to mint unlimited LP tokens and drain pool liquidity.
+///
+/// # Arguments
+/// * `mint_account` - The mint account to validate
+/// * `expected_authority` - The expected mint authority (should be pool PDA)
+/// * `account_name` - Context string for error messages
+///
+/// # Returns
+/// * `ProgramResult` - Success if mint authority is valid, error otherwise
+pub fn validate_lp_mint_authority(
+    mint_account: &AccountInfo,
+    expected_authority: &Pubkey,
+    account_name: &str
+) -> ProgramResult {
+    // Validate account is owned by token program
+    if mint_account.owner != &spl_token::id() {
+        msg!("❌ {}: Mint account not owned by SPL Token program", account_name);
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    
+    // Unpack mint data
+    let mint_data = Mint::unpack_from_slice(&mint_account.data.borrow())
+        .map_err(|_| {
+            msg!("❌ {}: Failed to unpack mint data", account_name);
+            ProgramError::InvalidAccountData
+        })?;
+    
+    // Validate mint authority
+    match mint_data.mint_authority {
+        COption::Some(authority) if authority == *expected_authority => {
+            msg!("✅ {}: LP mint authority validated successfully", account_name);
+            Ok(())
+        },
+        COption::Some(authority) => {
+            msg!("❌ {}: Invalid LP mint authority - SECURITY VIOLATION", account_name);
+            msg!("   Expected authority: {}", expected_authority);
+            msg!("   Actual authority: {}", authority);
+            msg!("   This indicates a potential attack using unauthorized LP mint");
+            Err(ProgramError::InvalidAccountData)
+        },
+        COption::None => {
+            msg!("❌ {}: LP mint has no authority (mint is frozen)", account_name);
+            msg!("   LP mints must have pool PDA as authority for minting/burning");
+            Err(ProgramError::InvalidAccountData)
+        }
+    }
 }
 
 

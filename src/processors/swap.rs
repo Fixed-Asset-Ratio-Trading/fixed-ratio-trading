@@ -412,6 +412,16 @@ pub fn process_swap<'a>(
             return Err(ProgramError::InvalidArgument);
         };
 
+    // 🔒 CRITICAL SECURITY FIX: Validate vault authorities
+    msg!("🔒 VALIDATING VAULT AUTHORITIES...");
+    let input_vault_data = safe_unpack_token_account(input_pool_vault_acc, "Input Pool Vault")?;
+    let output_vault_data = safe_unpack_token_account(output_pool_vault_acc, "Output Pool Vault")?;
+    
+    use crate::utils::validation::validate_vault_owner;
+    validate_vault_owner(&input_vault_data, pool_state_pda.key, "Input Pool Vault")?;
+    validate_vault_owner(&output_vault_data, pool_state_pda.key, "Output Pool Vault")?;
+    msg!("✅ Vault authorities validated successfully");
+
     // Validate user account ownership and sufficient balance
     if user_input_token_data.mint != input_token_mint_key ||
        user_input_token_data.owner != *user_authority_signer.key ||
