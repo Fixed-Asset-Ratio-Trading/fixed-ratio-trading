@@ -817,30 +817,7 @@ async function createSPLToken(tokenData) {
             )
         );
         
-        // 6. Create token metadata (for wallet display and images)
-        // Try to add metadata instruction, but continue if it fails
-        let metadataAdded = false;
-        try {
-            console.log('📄 Attempting to add metadata instruction...');
-            const metadataInstruction = createMetadataInstruction(
-                metadataAccount,
-                mintKeypair.publicKey,
-                wallet.publicKey,     // mint authority
-                wallet.publicKey,     // payer
-                wallet.publicKey,     // update authority
-                tokenData.name,
-                tokenData.symbol,
-                imageURI || ''
-            );
-            instructions.push(metadataInstruction);
-            metadataAdded = true;
-            console.log('✅ Metadata instruction added successfully');
-        } catch (metadataError) {
-            console.warn('⚠️ Metadata instruction creation failed, continuing with basic token creation:', metadataError);
-            console.log('📄 Basic token creation only (metadata will be added later)');
-        }
-        
-        // Create and send transaction
+        // 6. Create and send basic token transaction first (without metadata)
         const transaction = new solanaWeb3.Transaction().add(...instructions);
         
         // Set recent blockhash and fee payer
@@ -872,10 +849,45 @@ async function createSPLToken(tokenData) {
         // Set mint for return value
         mint = { publicKey: mintKeypair.publicKey };
         
-        if (metadataAdded) {
-            console.log('✅ Token with metadata created and minted successfully to your wallet!');
-        } else {
-            console.log('✅ Token created successfully! (Metadata will be added later)');
+        console.log('✅ Token created and minted successfully to your wallet!');
+        
+        // 7. Now try to add metadata in a separate transaction
+        let metadataAdded = false;
+        try {
+            console.log('📄 Now attempting to add metadata in separate transaction...');
+            const metadataInstruction = createMetadataInstruction(
+                metadataAccount,
+                mintKeypair.publicKey,
+                wallet.publicKey,     // mint authority
+                wallet.publicKey,     // payer
+                wallet.publicKey,     // update authority
+                tokenData.name,
+                tokenData.symbol,
+                imageURI || ''
+            );
+            
+            // Create metadata transaction
+            const metadataTransaction = new solanaWeb3.Transaction().add(metadataInstruction);
+            const { blockhash: metadataBlockhash } = await connection.getLatestBlockhash();
+            metadataTransaction.recentBlockhash = metadataBlockhash;
+            metadataTransaction.feePayer = wallet.publicKey;
+            
+            console.log('📝 Requesting wallet signature for metadata...');
+            const signedMetadataTransaction = await wallet.signTransaction(metadataTransaction);
+            const metadataSignature = await connection.sendRawTransaction(signedMetadataTransaction.serialize());
+            
+            console.log('📡 Metadata transaction sent:', metadataSignature);
+            const metadataConfirmation = await confirmTransactionWithProgress(metadataSignature, CONFIG.commitment);
+            
+            if (metadataConfirmation.value.err) {
+                throw new Error('Metadata transaction failed: ' + JSON.stringify(metadataConfirmation.value.err));
+            }
+            
+            metadataAdded = true;
+            console.log('✅ Metadata added successfully!');
+        } catch (metadataError) {
+            console.warn('⚠️ Metadata creation failed, but token was created successfully:', metadataError);
+            console.log('📄 Token created without metadata (you can add metadata later)');
         }
         
         // Return token info
