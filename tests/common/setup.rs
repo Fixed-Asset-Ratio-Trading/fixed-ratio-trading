@@ -37,6 +37,10 @@ use solana_sdk::{
     pubkey::Pubkey,
     system_instruction,
 };
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+};
 use crate::common::constants;
 use fixed_ratio_trading::{
     constants::{
@@ -234,10 +238,26 @@ pub fn create_program_test() -> ProgramTest {
     debug_println!("   • Program ID: {}", fixed_ratio_trading::id());
     debug_println!("   • Processor: fixed_ratio_trading::process_instruction");
     
+    // Simple adapter function to bridge lifetime signature differences
+    // The test framework expects independent lifetimes, but our secure function requires linked lifetimes
+    // This is safe in tests because accounts remain valid for the duration of the function call
+    fn test_adapter(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        // SAFETY: In test environments, account references remain valid for the function duration
+        // The lifetime cast is safe because we're not storing references beyond this call
+        unsafe {
+            let accounts_with_lifetime: &[AccountInfo] = std::mem::transmute(accounts);
+            fixed_ratio_trading::process_instruction(program_id, accounts_with_lifetime, instruction_data)
+        }
+    }
+    
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         fixed_ratio_trading::id(),
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Set debug logging and compute units

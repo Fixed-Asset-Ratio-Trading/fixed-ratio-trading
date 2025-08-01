@@ -11,7 +11,11 @@ use {
             system_state::SystemState,
         },
     },
-    solana_program::pubkey::Pubkey,
+    solana_program::{
+        pubkey::Pubkey,
+        account_info::AccountInfo,
+        entrypoint::ProgramResult,
+    },
     solana_program_test::*,
     solana_sdk::{
         instruction::{AccountMeta, Instruction, InstructionError},
@@ -22,6 +26,22 @@ use {
     },
     borsh::{BorshSerialize, BorshDeserialize},
 };
+
+// Simple adapter function to bridge lifetime signature differences for tests
+// The test framework expects independent lifetimes, but our secure function requires linked lifetimes
+// This is safe in tests because accounts remain valid for the duration of the function call
+fn test_adapter(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    // SAFETY: In test environments, account references remain valid for the function duration
+    // The lifetime cast is safe because we're not storing references beyond this call
+    unsafe {
+        let accounts_with_lifetime: &[AccountInfo] = std::mem::transmute(accounts);
+        fixed_ratio_trading::process_instruction(program_id, accounts_with_lifetime, instruction_data)
+    }
+}
 
 mod common;
 
@@ -88,7 +108,7 @@ async fn test_update_liquidity_fee_only() -> TestResult {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -243,7 +263,7 @@ async fn test_update_swap_fee_only() -> TestResult {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -398,7 +418,7 @@ async fn test_update_both_fees() -> TestResult {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -555,7 +575,7 @@ async fn test_unauthorized_fee_update() -> TestResult {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -713,7 +733,7 @@ async fn test_invalid_fee_update_flags() -> TestResult {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -852,7 +872,7 @@ async fn test_update_fees_minimal() {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -1013,7 +1033,7 @@ async fn test_unauthorized_fee_update_minimal() {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -1192,7 +1212,7 @@ async fn test_invalid_fee_update_flags_minimal() {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -1362,7 +1382,7 @@ async fn test_update_both_fees_minimal() {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing
@@ -1532,7 +1552,7 @@ async fn test_update_liquidity_fee_only_minimal() {
     let mut program_test = ProgramTest::new(
         "fixed-ratio-trading",
         program_id,
-        processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     // Create the upgrade authority keypair for testing

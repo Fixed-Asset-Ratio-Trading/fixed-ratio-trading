@@ -18,7 +18,27 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     transaction::Transaction,
 };
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+};
 use serial_test::serial;
+
+// Simple adapter function to bridge lifetime signature differences for tests
+// The test framework expects independent lifetimes, but our secure function requires linked lifetimes
+// This is safe in tests because accounts remain valid for the duration of the function call
+fn test_adapter(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    // SAFETY: In test environments, account references remain valid for the function duration
+    // The lifetime cast is safe because we're not storing references beyond this call
+    unsafe {
+        let accounts_with_lifetime: &[AccountInfo] = std::mem::transmute(accounts);
+        fixed_ratio_trading::process_instruction(program_id, accounts_with_lifetime, instruction_data)
+    }
+}
 
 mod common;
 use common::{
@@ -830,7 +850,7 @@ async fn test_treasury_withdrawal_integration() -> Result<(), Box<dyn std::error
     let mut program_test = ProgramTest::new(
         "fixed_ratio_trading",
         fixed_ratio_trading::id(),
-        solana_program_test::processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -998,7 +1018,7 @@ async fn test_get_treasury_info_specific() -> Result<(), Box<dyn std::error::Err
     let mut program_test = ProgramTest::new(
         "fixed_ratio_trading",
         fixed_ratio_trading::id(),
-        solana_program_test::processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
@@ -1118,7 +1138,7 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
     let program_test = ProgramTest::new(
         "fixed_ratio_trading",
         fixed_ratio_trading::ID,
-        solana_program_test::processor!(fixed_ratio_trading::process_instruction),
+        processor!(test_adapter),
     );
     
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
