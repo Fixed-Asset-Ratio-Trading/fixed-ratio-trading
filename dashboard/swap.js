@@ -492,8 +492,7 @@ function updatePoolDisplay() {
     
     console.log('🔧 SWAP CORRECTED:', display);
     
-    // Generate pool flags section
-    const flagsSection = generatePoolFlagsDisplay(flags, poolData);
+
     
     poolDetails.innerHTML = `
         <div class="pool-metric">
@@ -525,8 +524,6 @@ function updatePoolDisplay() {
             <div class="metric-label">Pool Address</div>
             <div class="metric-value" style="font-size: 12px; font-family: monospace;">${poolAddress.slice(0, 20)}...</div>
         </div>
-        
-        ${flagsSection}
     `;
     
     // Add expandable Pool State display section
@@ -1344,45 +1341,7 @@ function clearStatus() {
 /**
  * Generate pool flags display section
  */
-function generatePoolFlagsDisplay(flags, pool) {
-    const hasFlags = flags.oneToManyRatio || flags.liquidityPaused || flags.swapsPaused || 
-                     flags.withdrawalProtection || flags.singleLpTokenMode;
-    
-    if (!hasFlags && (typeof pool.flags === 'undefined' || pool.flags === 0)) {
-        return '';
-    }
-    
-    const flagItems = [];
-    
-    if (flags.oneToManyRatio) {
-        flagItems.push('<span style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🎯 One-to-Many Ratio</span>');
-    }
-    if (flags.liquidityPaused) {
-        flagItems.push('<span style="background: #ef4444; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">⏸️ Liquidity Paused</span>');
-    }
-    if (flags.swapsPaused) {
-        flagItems.push('<span style="background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🚫 Swaps Paused</span>');
-    }
-    if (flags.withdrawalProtection) {
-        flagItems.push('<span style="background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🛡️ Withdrawal Protection</span>');
-    }
-    if (flags.singleLpTokenMode) {
-        flagItems.push('<span style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">🔗 Single LP Mode</span>');
-    }
-    
-    if (flagItems.length > 0) {
-        return `
-            <div class="pool-metric" style="grid-column: 1 / -1;">
-                <div class="metric-label">Active Pool Flags</div>
-                <div class="metric-value" style="display: flex; flex-wrap: wrap; gap: 4px; justify-content: center;">
-                    ${flagItems.join(' ')}
-                </div>
-            </div>
-        `;
-    }
-    
-    return '';
-}
+
 
 /**
  * Add expandable Pool State display section
