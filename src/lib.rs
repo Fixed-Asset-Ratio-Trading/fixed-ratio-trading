@@ -188,6 +188,10 @@ use crate::processors::{
 /// - Pause enforcement: User operations blocked when pool is paused
 /// - Owner operations (fees, security, pool creation) remain accessible during pause
 /// - All instructions validated before dispatch to handlers
+/// 
+/// ⚠️  SECURITY NOTE: Lifetime annotations <'a> are CRITICAL for reentrancy protection
+/// These annotations ensure AccountInfo references in reentrancy protection structs
+/// live long enough to prevent memory safety issues. DO NOT remove them to fix tests.
 pub fn process_instruction<'a>(
     program_id: &Pubkey,
     accounts: &'a [AccountInfo<'a>],
