@@ -315,10 +315,17 @@ impl PoolState {
     /// 
     /// **ATOMIC UPDATE**: Updates both specific fee counter and total in single operation
     /// to prevent race conditions and ensure consistency.
-    pub fn add_liquidity_fee(&mut self, fee_amount: u64, _timestamp: i64) {
-        // Atomic update: both counters updated together
-        self.collected_liquidity_fees += fee_amount;
-        self.total_sol_fees_collected += fee_amount;
+    /// 
+    /// **OVERFLOW PROTECTION**: Uses checked arithmetic to prevent counter overflow.
+    pub fn add_liquidity_fee(&mut self, fee_amount: u64, _timestamp: i64) -> Result<(), crate::error::PoolError> {
+        // 🔒 SECURITY FIX: Use checked arithmetic to prevent overflow
+        self.collected_liquidity_fees = self.collected_liquidity_fees
+            .checked_add(fee_amount)
+            .ok_or(crate::error::PoolError::ArithmeticOverflow)?;
+            
+        self.total_sol_fees_collected = self.total_sol_fees_collected
+            .checked_add(fee_amount)
+            .ok_or(crate::error::PoolError::ArithmeticOverflow)?;
         
         // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
         debug_assert_eq!(
@@ -326,6 +333,8 @@ impl PoolState {
             self.collected_liquidity_fees + self.collected_swap_contract_fees,
             "Pending fees calculation should match sum of individual pending fee types"
         );
+        
+        Ok(())
     }
     
     /// Adds a swap contract fee to the accumulated fees
@@ -333,13 +342,20 @@ impl PoolState {
     /// This function records a swap contract fee (fixed SOL amount) collected during
     /// swap operations. These fees cover computational costs.
     /// 
+    /// **OVERFLOW PROTECTION**: Uses checked arithmetic to prevent counter overflow.
+    /// 
     /// # Arguments
     /// * `fee_amount` - The swap contract fee amount in lamports
     /// * `_timestamp` - Timestamp of the fee collection (currently unused)
-    pub fn add_swap_contract_fee(&mut self, fee_amount: u64, _timestamp: i64) {
-        // Atomic update: both counters updated together
-        self.collected_swap_contract_fees += fee_amount;
-        self.total_sol_fees_collected += fee_amount;
+    pub fn add_swap_contract_fee(&mut self, fee_amount: u64, _timestamp: i64) -> Result<(), crate::error::PoolError> {
+        // 🔒 SECURITY FIX: Use checked arithmetic to prevent overflow
+        self.collected_swap_contract_fees = self.collected_swap_contract_fees
+            .checked_add(fee_amount)
+            .ok_or(crate::error::PoolError::ArithmeticOverflow)?;
+            
+        self.total_sol_fees_collected = self.total_sol_fees_collected
+            .checked_add(fee_amount)
+            .ok_or(crate::error::PoolError::ArithmeticOverflow)?;
         
         // Invariant check (debug mode only) - simplified since pending_sol_fees() uses the mathematical relationship
         debug_assert_eq!(
@@ -347,6 +363,8 @@ impl PoolState {
             self.collected_liquidity_fees + self.collected_swap_contract_fees,
             "Pending fees calculation should match sum of individual pending fee types"
         );
+        
+        Ok(())
     }
     
 

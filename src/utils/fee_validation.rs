@@ -271,18 +271,30 @@ pub fn collect_fee_to_pool_state<'a>(
 
     match fee_type {
         FeeType::Liquidity => {
-
             msg!("🔍 Updating liquidity fees...");
-
-            pool_state.add_liquidity_fee(fee_amount, current_timestamp);
-
+            
+            // 🔒 SECURITY FIX: Handle overflow protection from checked arithmetic
+            pool_state.add_liquidity_fee(fee_amount, current_timestamp)
+                .map_err(|e| {
+                    msg!("❌ OVERFLOW ERROR: Failed to add liquidity fee: {:?}", e);
+                    PoolError::FeeValidationFailed {
+                        reason: format!("Liquidity fee counter overflow: {:?}", e),
+                    }
+                })?;
 
             msg!("   After update - collected_liquidity_fees: {}", pool_state.collected_liquidity_fees);
         },
         FeeType::RegularSwap => {
-
             msg!("🔍 Updating swap contract fees...");
-            pool_state.add_swap_contract_fee(fee_amount, current_timestamp);
+            
+            // 🔒 SECURITY FIX: Handle overflow protection from checked arithmetic
+            pool_state.add_swap_contract_fee(fee_amount, current_timestamp)
+                .map_err(|e| {
+                    msg!("❌ OVERFLOW ERROR: Failed to add swap contract fee: {:?}", e);
+                    PoolError::FeeValidationFailed {
+                        reason: format!("Swap contract fee counter overflow: {:?}", e),
+                    }
+                })?;
 
             msg!("   After update - collected_swap_contract_fees: {}", pool_state.collected_swap_contract_fees);
         },
