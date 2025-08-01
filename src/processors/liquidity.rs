@@ -234,14 +234,6 @@ pub fn process_deposit<'a>(
     // Read and validate pool state (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
-    // 🔒 CRITICAL SECURITY FIX: Check if pool liquidity operations are paused
-    if pool_state_data.liquidity_paused() {
-        msg!("❌ LIQUIDITY DEPOSIT BLOCKED: Pool liquidity operations are currently paused");
-        msg!("   • Pool owner has paused liquidity deposits and withdrawals");
-        msg!("   • Contact pool administrator for more information");
-        return Err(crate::error::PoolError::PoolLiquidityPaused.into());
-    }
-    
     // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
     msg!("💰 ACTUAL FEE BREAKDOWN:");
     msg!("   • Protocol Fee: {} lamports ({} SOL)", pool_state_data.contract_liquidity_fee, pool_state_data.contract_liquidity_fee as f64 / 1_000_000_000.0);

@@ -187,6 +187,16 @@ pub fn validate_and_deserialize_pool_state_secure(
     pool_state_account: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<PoolState, ProgramError> {
+    // 🔒 CRITICAL SECURITY FIX: Validate account ownership
+    if pool_state_account.owner != program_id {
+        msg!("❌ SECURITY VIOLATION: Pool state account not owned by program");
+        msg!("   Expected owner: {}", program_id);
+        msg!("   Actual owner: {}", pool_state_account.owner);
+        msg!("   Account: {}", pool_state_account.key);
+        msg!("   This indicates a potential attack using unauthorized account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    
     // First, deserialize to get the token mints and ratio for PDA derivation
     let pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])?;
     
@@ -416,6 +426,16 @@ pub fn validate_and_deserialize_system_state_secure(
     system_state_account: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<SystemState, ProgramError> {
+    // 🔒 CRITICAL SECURITY FIX: Validate account ownership
+    if system_state_account.owner != program_id {
+        msg!("❌ SECURITY VIOLATION: System state account not owned by program");
+        msg!("   Expected owner: {}", program_id);
+        msg!("   Actual owner: {}", system_state_account.owner);
+        msg!("   Account: {}", system_state_account.key);
+        msg!("   This indicates a potential attack using unauthorized account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    
     // Validate this is the correct SystemState PDA
     let (expected_system_state_pda, _) = Pubkey::find_program_address(
         &[SYSTEM_STATE_SEED_PREFIX],
