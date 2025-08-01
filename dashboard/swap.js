@@ -651,13 +651,36 @@ function setMaxAmount() {
         // ✅ INTEGER MATH: Use basis points for precise calculation, then convert to display
         const balanceBasisPoints = fromToken.balance;
         
-        // For tokens with decimals, subtract 1 basis point to avoid rounding issues
-        // For 0-decimal tokens, use the full balance
-        const bufferBasisPoints = fromToken.decimals === 0 ? 0 : 1;
-        const maxBasisPoints = Math.max(0, balanceBasisPoints - bufferBasisPoints);
+        // ✅ SMART BUFFER: Only subtract buffer if it would result in a cleaner display
+        // For example: 1000000000 basis points (1.0) should stay 1.0, not become 0.999999999
+        let maxBasisPoints = balanceBasisPoints;
+        
+        if (fromToken.decimals > 0) {
+            // Check if subtracting 1 basis point would result in a "messy" display
+            const displayWithBuffer = window.TokenDisplayUtils.basisPointsToDisplay(balanceBasisPoints - 1, fromToken.decimals);
+            const displayWithoutBuffer = window.TokenDisplayUtils.basisPointsToDisplay(balanceBasisPoints, fromToken.decimals);
+            
+            // If the difference is significant (more than 0.1%), use the buffer
+            // If it's a clean number like 1.0, keep it as is
+            const difference = Math.abs(displayWithoutBuffer - displayWithBuffer);
+            const threshold = displayWithoutBuffer * 0.001; // 0.1% threshold
+            
+            if (difference > threshold) {
+                maxBasisPoints = balanceBasisPoints - 1;
+                console.log(`🔧 MAX AMOUNT: Applied buffer (${difference.toFixed(9)} > ${threshold.toFixed(9)})`);
+            } else {
+                console.log(`🔧 MAX AMOUNT: Kept exact amount (${difference.toFixed(9)} <= ${threshold.toFixed(9)})`);
+            }
+        }
         
         // Convert back to display units using integer math
         const maxAmount = window.TokenDisplayUtils.basisPointsToDisplay(maxBasisPoints, fromToken.decimals);
+        
+        console.log(`🔧 MAX AMOUNT CALCULATION:`);
+        console.log(`  Original balance: ${balanceBasisPoints} basis points`);
+        console.log(`  Final amount: ${maxBasisPoints} basis points`);
+        console.log(`  Display amount: ${maxAmount}`);
+        console.log(`  Fixed display: ${maxAmount.toFixed(fromToken.decimals)}`);
         
         document.getElementById('from-amount').value = maxAmount.toFixed(fromToken.decimals);
         calculateSwapOutputEnhanced();
