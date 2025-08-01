@@ -54,6 +54,7 @@
 
 use crate::constants::*;
 use crate::PoolState;
+use crate::utils::reentrancy_protection::{SafeTokenTransfer, SafeTokenMint, SafeTokenBurn};
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
@@ -168,11 +169,11 @@ fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Resul
 /// - **CLIENT INTEGRATION**: Optimized account structure ready for dynamic implementation
 /// - **RATIO VALIDATION**: Strict 1:1 ratio violation (Custom error 3001)
 /// - **MINT INTEGRITY**: LP token mint operation integrity violation (Custom error 3002)
-pub fn process_deposit(
+pub fn process_deposit<'a>(
     program_id: &Pubkey,
     amount: u64,
     deposit_token_mint_key: Pubkey,
-    accounts: &[AccountInfo],
+    accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🏦 DEPOSIT TRANSACTION SUMMARY");
     msg!("📊 Amount: {} tokens", amount);
@@ -418,24 +419,33 @@ pub fn process_deposit(
     
     msg!("Initial LP balance: {}, expecting to mint: {}", initial_lp_balance, amount);
 
-    // Transfer tokens from user to pool vault
-    msg!("💸 Transferring {} tokens from user to pool vault", amount);
-    invoke(
-        &token_instruction::transfer(
-            spl_token_program_account.key,
-            user_input_account.key,
-            target_vault.key,
-            user_authority_signer.key,
-            &[],
-            amount,
-        )?,
-        &[
-            user_input_account.clone(),
-            target_vault.clone(),
-            user_authority_signer.clone(),
-            spl_token_program_account.clone(),
-        ],
-    )?;
+    // Transfer tokens from user to pool vault (with reentrancy protection)
+    msg!("🛡️ REENTRANCY PROTECTION: Starting deposit token transfer");
+    let deposit_transfer = SafeTokenTransfer::new(
+        user_input_account,
+        target_vault,
+        amount,
+        "Liquidity Deposit Transfer"
+    );
+    
+    deposit_transfer.execute_with_protection(|| {
+        invoke(
+            &token_instruction::transfer(
+                spl_token_program_account.key,
+                user_input_account.key,
+                target_vault.key,
+                user_authority_signer.key,
+                &[],
+                amount,
+            )?,
+            &[
+                user_input_account.clone(),
+                target_vault.clone(),
+                user_authority_signer.clone(),
+                spl_token_program_account.clone(),
+            ],
+        )
+    })?;
 
     // Update pool liquidity
     if is_depositing_token_a {
@@ -464,24 +474,32 @@ pub fn process_deposit(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    msg!("🪙 Minting {} LP tokens to user", amount);
-    invoke_signed(
-        &token_instruction::mint_to(
-            spl_token_program_account.key,
-            target_lp_mint.key,
-            user_output_account.key,
-            pool_state_pda.key,
-            &[],
-            amount,
-        )?,
-        &[
-            target_lp_mint.clone(),
-            user_output_account.clone(),
-            pool_state_pda.clone(),
-            spl_token_program_account.clone(),
-        ],
-        &[pool_pda_seeds],
-    )?;
+    // Mint LP tokens (1:1 ratio) with reentrancy protection
+    let lp_mint = SafeTokenMint::new(
+        user_output_account,
+        amount,
+        "Liquidity Deposit LP Mint"
+    );
+    
+    lp_mint.execute_with_protection(|| {
+        invoke_signed(
+            &token_instruction::mint_to(
+                spl_token_program_account.key,
+                target_lp_mint.key,
+                user_output_account.key,
+                pool_state_pda.key,
+                &[],
+                amount,
+            )?,
+            &[
+                target_lp_mint.clone(),
+                user_output_account.clone(),
+                pool_state_pda.clone(),
+                spl_token_program_account.clone(),
+            ],
+            &[pool_pda_seeds],
+        )
+    })?;
 
     // ✅ OPTIMIZATION: OPTIMIZED 1:1 RATIO VERIFICATION
     // Use fresh deserialization only for final verification (post-mint operation)
@@ -586,11 +604,11 @@ pub fn process_deposit(
 /// - **COMPUTE SAVINGS**: Current compute unit savings: 50-80 CUs per transaction
 /// - **MEMORY EFFICIENCY**: Eliminated unnecessary account references and validations
 /// - **ERROR HANDLING**: Enhanced error handling and debugging capabilities
-pub fn process_withdraw(
+pub fn process_withdraw<'a>(
     program_id: &Pubkey,
     lp_amount_to_burn: u64,
     withdraw_token_mint_key: Pubkey,
-    accounts: &[AccountInfo],
+    accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🏦 WITHDRAWAL TRANSACTION SUMMARY");
     msg!("📊 LP Tokens to Burn: {}", lp_amount_to_burn);
@@ -832,38 +850,46 @@ fn execute_withdrawal_logic<'a>(
     lp_amount_to_burn: u64,
     withdraw_token_mint_key: Pubkey,
     is_withdrawing_token_a: bool,
-    user_signer: &AccountInfo<'a>,
-    user_source_lp_token_account: &AccountInfo<'a>,
-    user_destination_token_account: &AccountInfo<'a>,
-    source_pool_vault_acc: &AccountInfo<'a>,
-    source_lp_mint_account: &AccountInfo<'a>,
-    pool_state_account: &AccountInfo<'a>,
-    token_program_account: &AccountInfo<'a>,
-    _system_program_account: &AccountInfo<'a>,
+    user_signer: &'a AccountInfo<'a>,
+    user_source_lp_token_account: &'a AccountInfo<'a>,
+    user_destination_token_account: &'a AccountInfo<'a>,
+    source_pool_vault_acc: &'a AccountInfo<'a>,
+    source_lp_mint_account: &'a AccountInfo<'a>,
+    pool_state_account: &'a AccountInfo<'a>,
+    token_program_account: &'a AccountInfo<'a>,
+    _system_program_account: &'a AccountInfo<'a>,
     _program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};
     use spl_token::instruction as token_instruction;
     use crate::constants::POOL_STATE_SEED_PREFIX;
 
-    // Burn LP tokens from user
-    msg!("🔥 Burning {} LP tokens from account {}", lp_amount_to_burn, user_source_lp_token_account.key);
-    invoke(
-        &token_instruction::burn(
-            token_program_account.key,
-            user_source_lp_token_account.key, // Account to burn from
-            source_lp_mint_account.key,       // Mint of the LP tokens being burned
-            user_signer.key,                  // Authority (owner of the LP token account)
-            &[],
-            lp_amount_to_burn,
-        )?,
-        &[
-            user_source_lp_token_account.clone(),
-            source_lp_mint_account.clone(),
-            user_signer.clone(),
-            token_program_account.clone(),
-        ],
-    )?;
+    // Burn LP tokens from user (with reentrancy protection)
+    msg!("🛡️ REENTRANCY PROTECTION: Starting withdrawal LP token burn");
+    let lp_burn = SafeTokenBurn::new(
+        user_source_lp_token_account,
+        lp_amount_to_burn,
+        "Liquidity Withdrawal LP Burn"
+    );
+    
+    lp_burn.execute_with_protection(|| {
+        invoke(
+            &token_instruction::burn(
+                token_program_account.key,
+                user_source_lp_token_account.key, // Account to burn from
+                source_lp_mint_account.key,       // Mint of the LP tokens being burned
+                user_signer.key,                  // Authority (owner of the LP token account)
+                &[],
+                lp_amount_to_burn,
+            )?,
+            &[
+                user_source_lp_token_account.clone(),
+                source_lp_mint_account.clone(),
+                user_signer.clone(),
+                token_program_account.clone(),
+            ],
+        )
+    })?;
 
     // Transfer underlying tokens from pool vault to user
     let pool_state_pda_seeds = &[
@@ -875,25 +901,33 @@ fn execute_withdrawal_logic<'a>(
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    msg!("💸 Transferring {} of token {} from pool vault {} to user account {}", 
-           lp_amount_to_burn, withdraw_token_mint_key, source_pool_vault_acc.key, user_destination_token_account.key);
-    invoke_signed(
-        &token_instruction::transfer(
-            token_program_account.key,
-            source_pool_vault_acc.key,          // Pool's vault (source)
-            user_destination_token_account.key,      // User's output account (destination)
-            pool_state_account.key,             // Pool PDA is the authority over its vault
-            &[],
-            lp_amount_to_burn,                        // Amount of underlying token to transfer (equals LP burned)
-        )?,
-        &[
-            source_pool_vault_acc.clone(),
-            user_destination_token_account.clone(),
-            pool_state_account.clone(),
-            token_program_account.clone(),
-        ],
-        &[pool_state_pda_seeds],
-    )?;
+    // Transfer underlying tokens from pool vault to user (with reentrancy protection)
+    let withdrawal_transfer = SafeTokenTransfer::new(
+        source_pool_vault_acc,
+        user_destination_token_account,
+        lp_amount_to_burn,
+        "Liquidity Withdrawal Token Transfer"
+    );
+    
+    withdrawal_transfer.execute_with_protection(|| {
+        invoke_signed(
+            &token_instruction::transfer(
+                token_program_account.key,
+                source_pool_vault_acc.key,          // Pool's vault (source)
+                user_destination_token_account.key,      // User's output account (destination)
+                pool_state_account.key,             // Pool PDA is the authority over its vault
+                &[],
+                lp_amount_to_burn,                        // Amount of underlying token to transfer (equals LP burned)
+            )?,
+            &[
+                source_pool_vault_acc.clone(),
+                user_destination_token_account.clone(),
+                pool_state_account.clone(),
+                token_program_account.clone(),
+            ],
+            &[pool_state_pda_seeds],
+        )
+    })?;
 
     // Update pool state liquidity
     if is_withdrawing_token_a {

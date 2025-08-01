@@ -17,6 +17,7 @@ use spl_token::{
 use crate::{
     constants::*,
     error::PoolError,
+    utils::reentrancy_protection::SafeTokenTransfer,
 };
 
 /// Safely unpacks a token account with comprehensive error handling
@@ -290,11 +291,11 @@ fn swap_b_to_a(
 /// - Authority checks: Only token owners can initiate swaps for their tokens
 /// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
 /// - Atomic operations: Token transfers are atomic - either both succeed or both fail
-pub fn process_swap(
+pub fn process_swap<'a>(
     program_id: &Pubkey,
     amount_in: u64,              // Input amount in basis points
     expected_amount_out: u64,    // Expected output amount in basis points
-    accounts: &[AccountInfo],
+    accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     debug_msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
     msg!("📊 SWAP PARAMETERS: {} basis points in, {} basis points expected out", amount_in, expected_amount_out);
@@ -629,41 +630,63 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
-    // Execute atomic token transfers
-    invoke(
-        &token_instruction::transfer(
-            token_program_account.key,
-            user_input_token_account.key,
-            input_pool_vault_acc.key,
-            user_authority_signer.key,
-            &[],
-            amount_in,
-        )?,
-        &[
-            user_input_token_account.clone(),
-            input_pool_vault_acc.clone(),
-            user_authority_signer.clone(),
-            token_program_account.clone(),
-        ],
-    )?;
+    // Execute atomic token transfers with reentrancy protection
+    msg!("🛡️ REENTRANCY PROTECTION: Starting swap token transfers");
+    
+    // Step 6a: User Input → Pool Vault (with reentrancy protection)
+    let input_transfer = SafeTokenTransfer::new(
+        user_input_token_account,
+        input_pool_vault_acc,
+        amount_in,
+        "Swap Input Transfer"
+    );
+    
+    input_transfer.execute_with_protection(|| {
+        invoke(
+            &token_instruction::transfer(
+                token_program_account.key,
+                user_input_token_account.key,
+                input_pool_vault_acc.key,
+                user_authority_signer.key,
+                &[],
+                amount_in,
+            )?,
+            &[
+                user_input_token_account.clone(),
+                input_pool_vault_acc.clone(),
+                user_authority_signer.clone(),
+                token_program_account.clone(),
+            ],
+        )
+    })?;
 
-    invoke_signed(
-        &token_instruction::transfer(
-            token_program_account.key,
-            output_pool_vault_acc.key,
-            user_output_token_account.key,
-            pool_state_pda.key,
-            &[],
-            amount_out,
-        )?,
-        &[
-            output_pool_vault_acc.clone(),
-            user_output_token_account.clone(),
-            pool_state_pda.clone(),
-            token_program_account.clone(),
-        ],
-        &[pool_state_pda_seeds],
-    )?;
+    // Step 6b: Pool Vault → User Output (with reentrancy protection)
+    let output_transfer = SafeTokenTransfer::new(
+        output_pool_vault_acc,
+        user_output_token_account,
+        amount_out,
+        "Swap Output Transfer"
+    );
+    
+    output_transfer.execute_with_protection(|| {
+        invoke_signed(
+            &token_instruction::transfer(
+                token_program_account.key,
+                output_pool_vault_acc.key,
+                user_output_token_account.key,
+                pool_state_pda.key,
+                &[],
+                amount_out,
+            )?,
+            &[
+                output_pool_vault_acc.clone(),
+                user_output_token_account.clone(),
+                pool_state_pda.clone(),
+                token_program_account.clone(),
+            ],
+            &[pool_state_pda_seeds],
+        )
+    })?;
 
     msg!("✅ Token transfers completed successfully");
     msg!("📊 TRANSFER SUMMARY: {} basis points transferred in, {} basis points transferred out", amount_in, amount_out);
@@ -818,11 +841,11 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
 ///
 /// This creates a secure foundation for custom fee structures while maintaining
 /// the protocol's core swap functionality and security model.
-pub fn process_set_swap_owner_only(
+pub fn process_set_swap_owner_only<'a>(
     program_id: &Pubkey,
     enable_restriction: bool,
     designated_owner: Pubkey,
-    accounts: &[AccountInfo],
+    accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🔒 SWAP OWNER-ONLY CONFIGURATION");
     msg!("===============================");
