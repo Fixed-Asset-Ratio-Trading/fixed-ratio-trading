@@ -1,8 +1,8 @@
 //! Pool Management Operations
 //! 
 //! This module handles pool-specific pause/unpause operations using bitwise flags
-//! that allow pool owners to control their individual pools without affecting
-//! other pools or requiring system-wide authority.
+//! that allow the Program Upgrade Authority to control individual pools without affecting
+//! other pools or requiring system-wide pause.
 
 use borsh::BorshSerialize;
 use solana_program::{
@@ -14,26 +14,27 @@ use solana_program::{
 
 use crate::{
     constants::*,
-    error::PoolError,
-    utils::validation::{validate_signer, validate_and_deserialize_pool_state_secure},
+    utils::validation::validate_and_deserialize_pool_state_secure,
 };
 
-/// Pauses pool operations using bitwise flags (pool owner only)
+/// Pauses pool operations using bitwise flags (Program Upgrade Authority only)
 /// 
 /// Uses bitwise flags to control which operations to pause:
-    /// - PAUSE_FLAG_LIQUIDITY (1): Pause deposits/withdrawals
+/// - PAUSE_FLAG_LIQUIDITY (1): Pause deposits/withdrawals
 /// - PAUSE_FLAG_SWAPS (2): Pause swaps
 /// - PAUSE_FLAG_ALL (3): Pause both (required for consolidation eligibility)
 /// 
+/// **Security**: Only the Program Upgrade Authority can pause individual pools.
 /// **Idempotent**: Pausing already paused operations does not cause an error.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `pause_flags` - Bitwise flags indicating which operations to pause
 /// * `accounts` - Array of accounts in the following order:
-///   - [0] Pool Owner Signer (must match pool.owner)
+///   - [0] Program Upgrade Authority Signer (must be program upgrade authority)
 ///   - [1] System State PDA (for system pause validation)  
 ///   - [2] Pool State PDA (writable, to update pause state)
+///   - [3] Program Data Account (for authority validation)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -45,26 +46,20 @@ pub fn process_pause_pool(
     msg!("Processing PausePool instruction with flags: 0b{:08b} ({})", pause_flags, pause_flags);
     
     // Extract accounts
-    let pool_owner_signer = &accounts[0];
+    let program_authority_signer = &accounts[0];
     let system_state_pda = &accounts[1];
     let pool_state_pda = &accounts[2];
+    let program_data_account = &accounts[3];
     
-    // Validate system is not paused (allow pool owner operations during system pause)
+    // Validate system is not paused (allow authority operations during system pause)
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    // Validate signer
-    validate_signer(pool_owner_signer, "pool pause")?;
+    // Validate Program Upgrade Authority
+    use crate::utils::program_authority::validate_program_upgrade_authority;
+    validate_program_upgrade_authority(program_id, program_data_account, program_authority_signer)?;
     
     // Load and validate pool state
     let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
-    
-    // Validate pool owner authority
-    if pool_state.owner != *pool_owner_signer.key {
-        msg!("❌ Unauthorized: Only pool owner can pause pool operations");
-        msg!("   Pool owner: {}", pool_state.owner);
-        msg!("   Attempted by: {}", pool_owner_signer.key);
-        return Err(PoolError::Unauthorized.into());
-    }
     
     // Apply pause flags (idempotent - no error if already paused)
     let mut operations_changed = Vec::new();
@@ -99,22 +94,24 @@ pub fn process_pause_pool(
     Ok(())
 }
 
-/// Unpauses pool operations using bitwise flags (pool owner only)
+/// Unpauses pool operations using bitwise flags (Program Upgrade Authority only)
 /// 
 /// Uses bitwise flags to control which operations to unpause:
-    /// - PAUSE_FLAG_LIQUIDITY (1): Unpause deposits/withdrawals
+/// - PAUSE_FLAG_LIQUIDITY (1): Unpause deposits/withdrawals
 /// - PAUSE_FLAG_SWAPS (2): Unpause swaps
 /// - PAUSE_FLAG_ALL (3): Unpause both operations
 /// 
+/// **Security**: Only the Program Upgrade Authority can unpause individual pools.
 /// **Idempotent**: Unpausing already unpaused operations does not cause an error.
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `unpause_flags` - Bitwise flags indicating which operations to unpause
 /// * `accounts` - Array of accounts in the following order:
-///   - [0] Pool Owner Signer (must match pool.owner)
+///   - [0] Program Upgrade Authority Signer (must be program upgrade authority)
 ///   - [1] System State PDA (for system pause validation)  
 ///   - [2] Pool State PDA (writable, to update pause state)
+///   - [3] Program Data Account (for authority validation)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -126,26 +123,20 @@ pub fn process_unpause_pool(
     msg!("Processing UnpausePool instruction with flags: 0b{:08b} ({})", unpause_flags, unpause_flags);
     
     // Extract accounts
-    let pool_owner_signer = &accounts[0];
+    let program_authority_signer = &accounts[0];
     let system_state_pda = &accounts[1];
     let pool_state_pda = &accounts[2];
+    let program_data_account = &accounts[3];
     
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    // Validate signer
-    validate_signer(pool_owner_signer, "pool unpause")?;
+    // Validate Program Upgrade Authority
+    use crate::utils::program_authority::validate_program_upgrade_authority;
+    validate_program_upgrade_authority(program_id, program_data_account, program_authority_signer)?;
     
     // Load and validate pool state
     let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
-    
-    // Validate pool owner authority
-    if pool_state.owner != *pool_owner_signer.key {
-        msg!("❌ Unauthorized: Only pool owner can unpause pool operations");
-        msg!("   Pool owner: {}", pool_state.owner);
-        msg!("   Attempted by: {}", pool_owner_signer.key);
-        return Err(PoolError::Unauthorized.into());
-    }
     
     // Apply unpause flags (idempotent - no error if already unpaused)
     let mut operations_changed = Vec::new();
