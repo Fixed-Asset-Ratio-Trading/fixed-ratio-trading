@@ -205,6 +205,10 @@ pub fn process_deposit<'a>(
     let system_state_pda = &accounts[2];                         // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                            // Index 3: Pool State PDA
     
+    // 🚨 CRITICAL SECURITY FIX: Validate user authority is a signer
+    use crate::utils::validation::validate_signer;
+    validate_signer(user_authority_signer, "User authority")?;
+    
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let spl_token_program_account = &accounts[4];                 // Index 4: SPL Token Program Account
@@ -223,10 +227,9 @@ pub fn process_deposit<'a>(
     // Core validation
     validate_non_zero_amount(amount, "Deposit")?;
     
-    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
-    // Solana runtime automatically fails with MissingRequiredSignature when
-    // invoke() operations require signatures. Manual signer checks are
-    // redundant and waste compute units on every function call.
+    // ✅ SECURITY: User signer validation now properly implemented above
+    // Critical security fix: Explicit signer checks are required for user operations
+    // to prevent unauthorized access to user token accounts.
 
     // Read and validate pool state (SECURITY: Now validates PDA)
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
@@ -640,6 +643,10 @@ pub fn process_withdraw<'a>(
     let system_state_pda = &accounts[2];                          // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
     
+    // 🚨 CRITICAL SECURITY FIX: Validate user authority is a signer
+    use crate::utils::validation::validate_signer;
+    validate_signer(user_authority_signer, "User authority")?;
+    
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let spl_token_program_account = &accounts[4];                  // Index 4: SPL Token Program Account
@@ -655,10 +662,9 @@ pub fn process_withdraw<'a>(
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
 
-    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
-    // Solana runtime automatically fails with MissingRequiredSignature when
-    // invoke() operations require signatures. Manual signer checks are
-    // redundant and waste compute units on every function call.
+    // ✅ SECURITY: User signer validation now properly implemented above
+    // Critical security fix: Explicit signer checks are required for user operations
+    // to prevent unauthorized access to user token accounts.
     
     if lp_amount_to_burn == 0 {
         msg!("Cannot withdraw zero LP tokens");

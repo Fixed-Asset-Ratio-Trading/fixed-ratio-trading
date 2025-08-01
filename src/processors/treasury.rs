@@ -74,10 +74,9 @@ pub fn process_withdraw_treasury_fees(
     let system_state_pda = &accounts[4];             // Index 4: System State PDA
     let program_data_account = &accounts[5];         // Index 5: Program Data Account
     
-    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
-    // Solana runtime automatically fails with MissingRequiredSignature when
-    // treasury withdrawal operations require signatures. Manual signer checks are
-    // redundant and waste compute units on every function call.
+    // ✅ SECURITY: Signer validation handled by validate_program_upgrade_authority()
+    // The validate_program_upgrade_authority() function includes comprehensive
+    // signer checks as part of its authority validation process.
     validate_writable(main_treasury_pda, "Main treasury PDA")?;
     validate_writable(destination_account, "Destination account")?;
     

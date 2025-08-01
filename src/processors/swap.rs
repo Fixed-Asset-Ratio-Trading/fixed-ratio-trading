@@ -312,6 +312,10 @@ pub fn process_swap<'a>(
     let user_input_token_account = &accounts[7];   // Index 7: User Input Token Account
     let user_output_token_account = &accounts[8];  // Index 8: User Output Token Account
 
+    // 🚨 CRITICAL SECURITY FIX: Validate user authority is a signer
+    use crate::utils::validation::validate_signer;
+    validate_signer(user_authority_signer, "User authority")?;
+    
     // Fee breakdown available after pool validation
     
     // Security: MEV protection, pause protection, fixed-ratio

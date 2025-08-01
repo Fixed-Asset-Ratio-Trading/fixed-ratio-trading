@@ -114,6 +114,10 @@ pub fn process_initialize_pool(
     let system_state_pda = &accounts[2];                           // Index 2: System State PDA
     let pool_state_pda = &accounts[3];                             // Index 3: Pool State PDA
     
+    // 🚨 CRITICAL SECURITY FIX: Validate user authority is a signer
+    use crate::utils::validation::validate_signer;
+    validate_signer(user_authority_signer, "User authority")?;
+    
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     let token_program_account = &accounts[4];                      // Index 4: SPL Token Program Account
@@ -143,10 +147,9 @@ pub fn process_initialize_pool(
     // accounts[N] if insufficient accounts are provided. Manual length checks are
     // redundant and waste compute units on every function call.
     
-    // ✅ COMPUTE OPTIMIZATION: No redundant signer verification
-    // Solana runtime automatically fails with MissingRequiredSignature when
-    // invoke() operations require signatures. Manual signer checks are
-    // redundant and waste compute units on every function call.
+    // ✅ SECURITY: User signer validation now properly implemented above
+    // Critical security fix: Explicit signer checks are required for user operations
+    // to prevent unauthorized pool creation and fee charges.
 
     // Validate ratio values
     crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
