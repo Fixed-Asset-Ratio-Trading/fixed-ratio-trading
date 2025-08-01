@@ -637,6 +637,10 @@ pub fn process_withdraw<'a>(
     
     msg!("⏳ Processing withdrawal with comprehensive validation...");
     
+    // 🔒 CRITICAL SECURITY FIX: Validate withdrawal amount is non-zero
+    use crate::utils::validation::validate_non_zero_amount;
+    validate_non_zero_amount(lp_amount_to_burn, "Withdrawal")?;
+    
     // ✅ OPTIMIZATION: Extract accounts using optimized indexing (Removed unused sysvar accounts)
     let user_authority_signer = &accounts[0];                     // Index 0: User Authority Signer
     let system_program_account = &accounts[1];                     // Index 1: System Program Account

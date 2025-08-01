@@ -301,6 +301,12 @@ pub fn process_swap<'a>(
     msg!("📊 SWAP PARAMETERS: {} basis points in, {} basis points expected out", amount_in, expected_amount_out);
     debug_msg!("🎯 STEP-BY-STEP DEBUG: Starting swap process...");
     
+    // 🔒 CRITICAL SECURITY FIX: Validate input amount is non-zero
+    if amount_in == 0 {
+        msg!("❌ INVALID SWAP: Input amount cannot be zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
     // Extract required accounts from the accounts array
     let user_authority_signer = &accounts[0];      // Index 0: Authority/User Signer
     let system_program_account = &accounts[1];     // Index 1: System Program Account
@@ -580,11 +586,10 @@ pub fn process_swap<'a>(
 
 msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amount_in, amount_out);
     
-    // Validate output amount is non-zero
+    // 🔒 CRITICAL SECURITY FIX: Validate output amount is non-zero
     if amount_out == 0 {
-        msg!("ZERO OUTPUT: Invalid swap configuration");
-        // Temporarily allow zero output for debugging
-        // return Err(ProgramError::InvalidArgument);
+        msg!("❌ ZERO OUTPUT: Invalid swap configuration - refusing zero-output swap");
+        return Err(ProgramError::InvalidArgument);
     }
 
     // Validate calculated amount matches expected amount (both in basis points)
