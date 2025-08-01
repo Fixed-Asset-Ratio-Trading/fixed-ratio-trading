@@ -417,10 +417,11 @@ pub fn validate_non_zero_amount(amount: u64, context: &str) -> ProgramResult {
 /// Validates that liquidity operations are not paused.
 pub fn validate_liquidity_not_paused(pool_state: &PoolState) -> ProgramResult {
     if pool_state.liquidity_paused() {
-        msg!("Liquidity operations (deposits/withdrawals) are currently paused by owner");
-        msg!("Note: Swaps may still be available");
-        msg!("Note: Owner can manage pause governance and reasons");
-        return Err(PoolError::PoolPaused.into());
+        msg!("❌ LIQUIDITY BLOCKED: Pool liquidity operations are currently paused");
+        msg!("   • Pool owner has paused liquidity deposits and withdrawals");
+        msg!("   • Swaps may still be available if not separately paused");
+        msg!("   • Contact pool administrator for more information");
+        return Err(PoolError::PoolLiquidityPaused.into());
     }
     Ok(())
 }

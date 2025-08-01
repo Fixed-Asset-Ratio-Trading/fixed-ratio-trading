@@ -98,6 +98,10 @@ pub enum PoolError {
     #[error("Pool swaps are currently paused by owner")]
     PoolSwapsPaused,
     
+    /// Pool liquidity operations are currently paused
+    #[error("Pool liquidity operations (deposits/withdrawals) are currently paused")]
+    PoolLiquidityPaused,
+    
     /// Swap access is restricted to owners only
     #[error("Swap access is restricted to owners only")]
     SwapAccessRestricted,
@@ -202,6 +206,7 @@ impl PoolError {
             PoolError::SystemNotPaused => 1025,
             PoolError::UnauthorizedAccess => 1026,
             PoolError::PoolSwapsPaused => 1027,
+            PoolError::PoolLiquidityPaused => 1035,
             PoolError::SwapAccessRestricted => 1028,
             PoolError::PoolSwapsAlreadyPaused => 1029,
             PoolError::PoolSwapsNotPaused => 1030,
