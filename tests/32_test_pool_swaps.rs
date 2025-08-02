@@ -519,10 +519,10 @@ async fn test_exchange_token_b_for_token_a() -> TestResult {
     Ok(())
 }
 
-/// Test swap with zero amount fails
-/// ✅ MIGRATED: test_swap_zero_amount_fails  
+/// Test swap with zero amount is rejected (security enhancement)
+/// ✅ MIGRATED: test_swap_zero_amount_fails -> test_swap_zero_amount_rejected
 #[tokio::test]
-async fn test_swap_zero_amount_fails() -> TestResult {
+async fn test_swap_zero_amount_rejected() -> TestResult {
     let (mut ctx, config, user, user_primary_account, user_base_account) = setup_swap_test_environment(None).await?;
 
     // Try to swap zero tokens
@@ -540,10 +540,10 @@ async fn test_swap_zero_amount_fails() -> TestResult {
     
     let swap_result = ctx.env.banks_client.process_transaction(swap_tx).await;
     
-    // Should succeed with zero amount and zero expected output
-    assert!(swap_result.is_ok(), "Swap with zero amount and zero expected output should succeed");
+    // Should now FAIL with zero amount due to security enhancement
+    assert!(swap_result.is_err(), "Swap with zero amount should be REJECTED for security");
     
-    println!("✅ Zero amount swap with zero expected output correctly handled");
+    println!("✅ Zero amount swap correctly rejected - security enhancement working");
     
     Ok(())
 }
@@ -1600,7 +1600,7 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
 
     println!("✅ Test setup complete - pool created, user setup with {} tokens", user_token_amount);
 
-    // Test 1: Zero Amount Input Validation (Updated Logic)
+    // Test 1: Zero Amount Input Validation (Security Enhancement)
     println!("\n--- Test 1: Zero Amount Input Validation ---");
     
     let zero_amount_swap_ix = create_swap_instruction(
@@ -1609,15 +1609,15 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
         &user_base_account,
         &config,
         &ctx.primary_mint.pubkey(),
-        0u64, // Zero amount - should succeed with zero expected output
+        0u64, // Zero amount - should now be REJECTED for security
     ).expect("Failed to create swap instruction");
 
     let mut zero_swap_tx = Transaction::new_with_payer(&[zero_amount_swap_ix], Some(&user.pubkey()));
     zero_swap_tx.sign(&[&user], ctx.env.recent_blockhash);
     let zero_result = ctx.env.banks_client.process_transaction(zero_swap_tx).await;
     
-    assert!(zero_result.is_ok(), "Zero amount swap with zero expected output should succeed");
-    println!("✅ Zero amount input with zero expected output properly handled");
+    assert!(zero_result.is_err(), "Zero amount swap should be REJECTED for security (prevents exploits)");
+    println!("✅ Zero amount input correctly rejected - security enhancement working");
 
     // Test 2: Maximum Amount Input Testing (Overflow Protection)
     println!("\n--- Test 2: Maximum Amount Input Testing (Overflow Protection) ---");
