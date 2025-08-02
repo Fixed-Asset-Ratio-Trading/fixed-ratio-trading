@@ -72,10 +72,17 @@ async fn test_process_unpause_pool_liquidity() -> TestResult {
         pause_flags: PAUSE_FLAG_LIQUIDITY,
     };
     
+    // Derive the Program Data Account PDA required for authority validation
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::id().as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
     let accounts = vec![
         AccountMeta::new(foundation.env.payer.pubkey(), true), // Pool owner (payer is the owner)
         AccountMeta::new(system_state_pda, false),
         AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false), // Program Data Account
     ];
     
     let instruction = Instruction {
@@ -109,10 +116,17 @@ async fn test_process_unpause_pool_liquidity() -> TestResult {
         unpause_flags: PAUSE_FLAG_LIQUIDITY,
     };
     
+    // Derive the Program Data Account PDA required for authority validation
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::id().as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
     let accounts = vec![
         AccountMeta::new(foundation.env.payer.pubkey(), true), // Pool owner (payer is the owner)
         AccountMeta::new(system_state_pda, false),
         AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false), // Program Data Account
     ];
     
     let instruction = Instruction {
@@ -169,10 +183,17 @@ async fn test_process_unpause_pool_all_operations() -> TestResult {
         pause_flags: PAUSE_FLAG_ALL,
     };
     
+    // Derive the Program Data Account PDA required for authority validation
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::id().as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
     let accounts = vec![
         AccountMeta::new(foundation.env.payer.pubkey(), true),
         AccountMeta::new(system_state_pda, false),
         AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false), // Program Data Account
     ];
     
     let instruction = Instruction {
@@ -206,10 +227,17 @@ async fn test_process_unpause_pool_all_operations() -> TestResult {
         unpause_flags: PAUSE_FLAG_ALL,
     };
     
+    // Derive the Program Data Account PDA required for authority validation
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::id().as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
     let accounts = vec![
         AccountMeta::new(foundation.env.payer.pubkey(), true),
         AccountMeta::new(system_state_pda, false),
         AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false), // Program Data Account
     ];
     
     let instruction = Instruction {
