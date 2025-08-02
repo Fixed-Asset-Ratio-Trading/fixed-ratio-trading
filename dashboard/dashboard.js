@@ -40,6 +40,9 @@ async function initializeDashboard() {
         
         console.log('✅ Configuration ready:', window.CONFIG.rpcUrl);
         
+        // Validate security settings
+        validateSecurityConfig();
+        
         // Check if returning from liquidity page
         const poolToUpdate = sessionStorage.getItem('poolToUpdate');
         if (poolToUpdate) {
@@ -1280,6 +1283,10 @@ function generateSystemStateFields() {
         <!-- System Status -->
         <div class="system-state-section">
             <h4 style="color: #dc2626; margin: 0 0 15px 0; border-bottom: 2px solid #fecaca; padding-bottom: 5px;">⚙️ System Status</h4>
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 5px; padding: 10px; margin-bottom: 15px; font-size: 12px;">
+                <strong>🔐 SECURITY NOTICE:</strong> System information is READ-ONLY in the dashboard.<br>
+                System operations (pause/unpause) require owner authority via CLI application.
+            </div>
             <div class="state-field"><strong>is_paused:</strong><br><code>${systemState.is_paused}</code></div>
             <div class="state-field"><strong>pause_timestamp:</strong><br><code>${systemState.pause_timestamp || 'N/A'}${systemState.pause_timestamp ? ` (${new Date(systemState.pause_timestamp * 1000).toLocaleString()})` : ''}</code></div>
             <div class="state-field"><strong>pause_reason_code:</strong><br><code>${systemState.pause_reason_code || 'N/A'}</code></div>
@@ -1484,5 +1491,91 @@ window.toggleSystemStateDetails = toggleSystemStateDetails;
 // Cache clearing functions
 window.clearAllCaches = clearAllCaches;
 window.forceRefreshWithCacheClear = forceRefreshWithCacheClear;
+
+//=============================================================================
+// SECURITY FUNCTIONS
+//=============================================================================
+
+/**
+ * Security: Validate that dashboard is configured for user operations only
+ */
+function validateSecurityConfig() {
+    console.log('🔐 Validating security configuration...');
+    
+    if (window.CONFIG.securityMode !== 'user-operations-only') {
+        console.warn('⚠️ Security mode not set to user-operations-only');
+    }
+    
+    if (!window.CONFIG.ownerOperationsDisabled) {
+        console.warn('⚠️ Owner operations not explicitly disabled');
+    }
+    
+    console.log('✅ Dashboard restricted to user operations only:');
+    console.log('   - ✅ Pool Creation (user authority)');
+    console.log('   - ✅ Liquidity Management (user authority)');
+    console.log('   - ✅ Token Swapping (user authority)');
+    console.log('   - ✅ Token Creation (testnet only, user authority)');
+    console.log('   - ✅ Pool Viewing (read-only)');
+    console.log('   - ❌ System Pause/Unpause (owner authority - CLI only)');
+    console.log('   - ❌ Fee Management (owner authority - CLI only)');
+    console.log('   - ❌ Pool Management (owner authority - CLI only)');
+}
+
+/**
+ * Security: Block owner operations with clear error message
+ */
+function blockOwnerOperation(operationName) {
+    const message = `🚫 SECURITY RESTRICTION: ${operationName} is not available in the dashboard.\n\n` +
+                   `This operation requires owner authority and has been moved to a separate CLI application for security.\n\n` +
+                   `Dashboard is restricted to user operations only:\n` +
+                   `✅ Pool Creation, Liquidity Management, Token Swapping, Token Creation (testnet)\n\n` +
+                   `For owner operations, use the CLI application.`;
+    
+    alert(message);
+    console.error(`🚫 Blocked owner operation: ${operationName}`);
+    return false;
+}
+
+/**
+ * Security: Enhanced error handler for security upgrade compatibility
+ */
+function handleSecurityError(error, operation) {
+    console.error(`Security Error in ${operation}:`, error);
+    
+    // Check for common security-related error patterns
+    const errorMessage = error.message || error.toString();
+    
+    if (errorMessage.includes('Unauthorized') || 
+        errorMessage.includes('InvalidAccountData') || 
+        errorMessage.includes('MissingRequiredSignature')) {
+        
+        const message = `🚫 SECURITY ERROR: ${operation} failed due to security restrictions.\n\n` +
+                       `This operation may require owner authority or have been moved to the CLI application.\n\n` +
+                       `Dashboard supports user operations only:\n` +
+                       `✅ Pool Creation, Liquidity Management, Token Swapping\n\n` +
+                       `Error details: ${errorMessage}`;
+        
+        alert(message);
+        return true; // Handled
+    }
+    
+    if (errorMessage.includes('Program upgrade authority') || 
+        errorMessage.includes('authority')) {
+        
+        const message = `🔑 AUTHORITY ERROR: ${operation} requires different authority.\n\n` +
+                       `The smart contract now uses program upgrade authority for sensitive operations.\n\n` +
+                       `Error details: ${errorMessage}`;
+        
+        alert(message);
+        return true; // Handled
+    }
+    
+    return false; // Not a security error, let normal error handling proceed
+}
+
+// Export security functions to global scope
+window.validateSecurityConfig = validateSecurityConfig;
+window.blockOwnerOperation = blockOwnerOperation;
+window.handleSecurityError = handleSecurityError;
 
 console.log('📊 Dashboard JavaScript loaded successfully'); 

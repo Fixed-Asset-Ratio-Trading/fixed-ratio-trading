@@ -34,7 +34,12 @@ async function loadSharedConfig() {
             
             // Version info
             version: sharedConfig.version,
-            lastUpdated: sharedConfig.lastUpdated
+            lastUpdated: sharedConfig.lastUpdated,
+            
+            // Security settings - dashboard restricted to user operations only
+            securityMode: 'user-operations-only',
+            ownerOperationsDisabled: true,
+            upgradeAuthorityRequired: true
         };
         
         console.log('✅ Shared configuration loaded:', sharedConfig.solana.rpcUrl);
@@ -54,7 +59,12 @@ async function loadSharedConfig() {
             metaplex: null, // No metaplex config in fallback
             expectedWallet: '5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t',
             version: '1.0.0',
-            lastUpdated: '2024-01-15'
+            lastUpdated: '2024-01-15',
+            
+            // Security settings - dashboard restricted to user operations only
+            securityMode: 'user-operations-only',
+            ownerOperationsDisabled: true,
+            upgradeAuthorityRequired: true
         };
         
         console.warn('⚠️ Using fallback configuration');

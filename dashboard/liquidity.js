@@ -808,12 +808,12 @@ async function addLiquidity() {
         // Create the transaction with compute budget
         const transaction = new solanaWeb3.Transaction();
         
-        // Add compute budget instruction to increase CU limit (deposit needs ~200k CUs)
+        // Add compute budget instruction to increase CU limit (security upgrades need ~400k CUs)
         const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-            units: 300000 // Increase from default 200k to 300k CUs
+            units: 500000 // Increased for security upgrade compatibility (was 300k)
         });
         transaction.add(computeBudgetInstruction);
-        console.log('✅ Added compute budget instruction: 300,000 CUs');
+        console.log('✅ Added compute budget instruction: 500,000 CUs');
         
         // Add create associated token account instruction if needed
         if (!lpAccountInfo) {
@@ -1556,12 +1556,12 @@ async function removeLiquidity() {
         // Create transaction with compute budget
         const transaction = new solanaWeb3.Transaction();
         
-        // Add compute budget instruction to increase CU limit (withdrawal needs ~200k CUs)
+        // Add compute budget instruction to increase CU limit (security upgrades need ~400k CUs)
         const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-            units: 300000 // Increase from default 200k to 300k CUs
+            units: 500000 // Increased for security upgrade compatibility (was 300k)
         });
         transaction.add(computeBudgetInstruction);
-        console.log('✅ Added compute budget instruction: 300,000 CUs');
+        console.log('✅ Added compute budget instruction: 500,000 CUs');
         
         // Add create associated token account instruction if needed
         if (!outputAccountInfo) {

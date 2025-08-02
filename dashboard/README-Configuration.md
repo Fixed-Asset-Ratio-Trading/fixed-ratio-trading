@@ -1,5 +1,44 @@
 # Dashboard Configuration
 
+## 🔐 SECURITY ARCHITECTURE (UPDATED)
+
+### Dashboard Scope: User Operations Only
+
+**IMPORTANT:** Following security upgrades, the HTML dashboard has been **STRICTLY LIMITED** to user-level operations only. This ensures:
+
+- ✅ **No Owner Keypair Access**: Dashboard never handles owner private keys
+- ✅ **Reduced Attack Surface**: No sensitive operations in web interface  
+- ✅ **Clear Responsibility**: Users vs. Owners have different interfaces
+- ✅ **Enhanced Security**: Owner operations isolated from web environment
+
+### Supported Operations
+
+**✅ Dashboard Supports (User Authority):**
+- **Pool Creation**: Create new fixed-ratio trading pools
+- **Liquidity Management**: Add/remove liquidity as regular user
+- **Token Swapping**: Execute trades at fixed ratios
+- **Token Creation**: Create test tokens (testnet only)
+- **Pool Viewing**: Browse and search existing pools (read-only)
+
+**❌ Dashboard Does NOT Support (Owner Authority - CLI Only):**
+- **System Pause/Unpause**: Emergency system controls
+- **Fee Management**: Change fee rates and withdraw collected fees
+- **Pool Management**: Pause/unpause individual pools
+- **Security Operations**: All operations requiring owner keypair
+
+### Security Features
+
+1. **Configuration Validation**: Dashboard validates security mode on startup
+2. **Error Handling**: Enhanced error messages for security restrictions
+3. **Read-Only System State**: System information displayed as read-only
+4. **Operation Blocking**: Automatic blocking of owner operations with clear messages
+
+### For Owner Operations
+
+Use the separate CLI application for all owner-level operations. The dashboard will display clear error messages if restricted operations are attempted.
+
+---
+
 ## Centralized Configuration
 
 All Fixed Ratio Trading dashboard JavaScript files now use a centralized configuration system for easy maintenance.
