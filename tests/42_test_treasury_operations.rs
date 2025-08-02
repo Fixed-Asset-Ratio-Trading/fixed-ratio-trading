@@ -456,10 +456,17 @@ async fn test_comprehensive_treasury_operations_workflow() -> TestResult {
         pause_flags: PAUSE_FLAG_ALL,
     };
     
+    // Derive the Program Data Account PDA required for authority validation
+    let (program_data_account, _bump) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::id().as_ref()],
+        &solana_program::bpf_loader_upgradeable::id()
+    );
+    
     let pause_accounts = vec![
         AccountMeta::new(foundation.env.payer.pubkey(), true), // Pool owner
         AccountMeta::new(system_state_pda, false),
         AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false), // Program Data Account
     ];
     
     let pause_ix = Instruction {
