@@ -1796,9 +1796,12 @@ function setMaxAmount(operation) {
             
             // Check pool liquidity for the underlying token
             const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
+            
+            // Fix: Map underlying token to correct pool vault
+            // TS = Token B, MST = Token A (based on mint addresses)
             const poolLiquidity = underlyingToken === 'TS' 
-                ? (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0)
-                : (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0);
+                ? (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0)
+                : (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0);
             
             console.log(`🔍 MAX CALCULATION: User LP balance = ${window.selectedLPToken.balance}, Pool ${underlyingToken} liquidity = ${poolLiquidity}`);
             
