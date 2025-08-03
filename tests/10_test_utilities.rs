@@ -133,14 +133,14 @@ fn test_pool_error_error_code() {
     assert_eq!(error.error_code(), 1006);
 
     assert_eq!(PoolError::PoolPaused.error_code(), 1007);
-    assert_eq!(PoolError::PoolSwapsPaused.error_code(), 1008);
-    assert_eq!(PoolError::PoolSwapsAlreadyPaused.error_code(), 1009);
-    assert_eq!(PoolError::PoolSwapsNotPaused.error_code(), 1010);
-    assert_eq!(PoolError::SystemPaused.error_code(), 1011);
-    assert_eq!(PoolError::SystemAlreadyPaused.error_code(), 1012);
-    assert_eq!(PoolError::SystemNotPaused.error_code(), 1013);
-    assert_eq!(PoolError::UnauthorizedAccess.error_code(), 1014);
-    assert_eq!(PoolError::Unauthorized.error_code(), 1016);
+    assert_eq!(PoolError::PoolSwapsPaused.error_code(), 1027);
+    assert_eq!(PoolError::PoolSwapsAlreadyPaused.error_code(), 1029);
+    assert_eq!(PoolError::PoolSwapsNotPaused.error_code(), 1030);
+    assert_eq!(PoolError::SystemPaused.error_code(), 1023);
+    assert_eq!(PoolError::SystemAlreadyPaused.error_code(), 1024);
+    assert_eq!(PoolError::SystemNotPaused.error_code(), 1025);
+    assert_eq!(PoolError::UnauthorizedAccess.error_code(), 1026);
+    assert_eq!(PoolError::Unauthorized.error_code(), 1012);
 }
 
 #[test]
