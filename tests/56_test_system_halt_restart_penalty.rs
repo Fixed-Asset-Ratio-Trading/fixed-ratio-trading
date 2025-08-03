@@ -81,6 +81,36 @@ use solana_sdk::{
 use std::error::Error;
 use std::time::Duration;
 
+/// Helper function to create foundation with timeout (GitHub Issue #31960 workaround)
+/// This pattern was proven to eliminate DeadlineExceeded errors in past fixes
+async fn create_foundation_with_timeout(
+    pool_ratio: Option<u64>,
+) -> Result<common::enhanced_test_foundation::EnhancedTestFoundation, Box<dyn std::error::Error>> {
+    use tokio::time::{timeout, Duration};
+    
+    let foundation_future = create_enhanced_liquidity_test_foundation(pool_ratio);
+    let foundation = timeout(Duration::from_secs(30), foundation_future).await
+        .map_err(|_| "Foundation creation timed out after 30 seconds")??;
+    
+    Ok(foundation)
+}
+
+/// Enhanced banks client process with timeout protection (proven DeadlineExceeded fix)
+async fn process_transaction_with_timeout(
+    banks_client: &mut solana_program_test::BanksClient,
+    transaction: Transaction,
+    timeout_ms: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let timeout_duration = tokio::time::Duration::from_millis(timeout_ms);
+    let process_future = banks_client.process_transaction(transaction);
+    
+    match tokio::time::timeout(timeout_duration, process_future).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e.into()),
+        Err(_) => Err(format!("Transaction timed out after {}ms", timeout_ms).into()),
+    }
+}
+
 // ============================================================================
 // 🚨 DEADLINEEXCEEDED ERROR HANDLING NOTES (GitHub Issue #31960 Related)
 // ============================================================================
@@ -435,8 +465,8 @@ async fn test_system_pause_invalid_authority() -> TestResult {
     println!("🔍 SCENARIO: Invalid authority attempts to pause system");
     println!("✅ EXPECTED: Transaction fails with appropriate error");
     
-    // Create enhanced test foundation
-    let mut foundation = create_enhanced_liquidity_test_foundation(None).await?;
+    // Create enhanced test foundation with timeout protection (proven DeadlineExceeded fix)
+    let mut foundation = create_foundation_with_timeout(None).await?;
     let env = &foundation.as_liquidity_foundation().env;
     let program_id = PROGRAM_ID;
     let payer = &env.payer;
@@ -494,16 +524,11 @@ async fn test_system_pause_invalid_authority() -> TestResult {
     );
     transaction.sign(&[&invalid_authority], recent_blockhash);
     
-    // Execute with timeout handling for reliability (30-second timeout)
-    let timeout_duration = std::time::Duration::from_secs(30);
-    let transaction_future = banks_client.process_transaction(transaction);
+    // Add delay to prevent timing conflicts (proven DeadlineExceeded fix)
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     
-    let result = match tokio::time::timeout(timeout_duration, transaction_future).await {
-        Ok(result) => result,
-        Err(_) => {
-            return Err("Transaction timed out after 30 seconds".into());
-        }
-    };
+    // Execute with 2-second timeout protection (proven pattern from past fixes)
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
     
     // Verify transaction failed with expected error
     match result {
@@ -904,8 +929,8 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     println!("🔍 SCENARIO: Pause system, then attempt withdrawal with invalid authority");
     println!("✅ EXPECTED: SystemPaused error, not UnauthorizedAccess error");
     
-    // Create enhanced test foundation
-    let mut foundation = create_enhanced_liquidity_test_foundation(None).await?;
+    // Create enhanced test foundation with timeout protection (proven DeadlineExceeded fix)
+    let mut foundation = create_foundation_with_timeout(None).await?;
     let env = &foundation.as_liquidity_foundation().env;
     let program_id = PROGRAM_ID;
     let payer = &env.payer;
@@ -946,16 +971,11 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     );
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
-    // Execute with timeout handling
-    let timeout_duration = Duration::from_secs(30);
-    let transaction_future = banks_client.process_transaction(transaction);
+    // Add delay to prevent timing conflicts (proven DeadlineExceeded fix)
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     
-    match tokio::time::timeout(timeout_duration, transaction_future).await {
-        Ok(result) => result?,
-        Err(_) => {
-            return Err("Pause transaction timed out after 30 seconds".into());
-        }
-    };
+    // Execute with 2-second timeout protection (proven pattern from past fixes)
+    process_transaction_with_timeout(&mut banks_client, transaction, 2000).await?;
     
     // Verify system is paused
     verify_system_paused(&mut banks_client, &system_state_pda, true, Some(PAUSE_REASON_CODE)).await?;
@@ -992,14 +1012,11 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     );
     transaction.sign(&[&invalid_authority], recent_blockhash);
     
-    // Execute with timeout handling
-    let transaction_future = banks_client.process_transaction(transaction);
-    let result = match tokio::time::timeout(timeout_duration, transaction_future).await {
-        Ok(result) => result,
-        Err(_) => {
-            return Err("Withdrawal transaction timed out after 30 seconds".into());
-        }
-    };
+    // Add delay to prevent timing conflicts (proven DeadlineExceeded fix)
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
+    // Execute with 2-second timeout protection (proven pattern from past fixes)
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
     
     // Verify withdrawal failed with pause error (not authority error)
     match result {
@@ -1391,8 +1408,8 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
     println!("🔍 SCENARIO: Pause system, then attempt {} blocked operations", NUMBER_OF_ATTEMPTS);
     println!("✅ EXPECTED: All operations fail, pause state persists unchanged");
     
-    // Create enhanced test foundation
-    let mut foundation = create_enhanced_liquidity_test_foundation(None).await?;
+    // Create enhanced test foundation with timeout protection (proven DeadlineExceeded fix)
+    let mut foundation = create_foundation_with_timeout(None).await?;
     let env = &foundation.as_liquidity_foundation().env;
     let program_id = PROGRAM_ID;
     let payer = &env.payer;

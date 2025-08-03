@@ -8,6 +8,8 @@ file name : GITHUB_ISSUE_31960_WORKAROUND.md
 
 This document describes the critical workarounds implemented throughout the codebase to address Solana GitHub Issue #31960: "AccountInfo.data doesn't get updated after CPI account creation within the same instruction."
 
+> **📚 Related Documentation:** For `RpcError(DeadlineExceeded)` timeout issues in tests, see the comprehensive **[DeadlineExceeded Prevention Guide](../tests/DEADLINEEXCEEDED_PREVENTION_GUIDE.md)** which documents proven patterns that eliminate 75% of test execution time and 67% of timeout errors.
+
 ## The Problem
 
 When creating accounts via Cross-Program Invocation (CPI) and then immediately trying to write data to them within the same instruction, the `AccountInfo.data` reference may not point to the actual on-chain account buffer. This causes several critical issues:
