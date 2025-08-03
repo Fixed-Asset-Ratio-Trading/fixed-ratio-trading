@@ -55,6 +55,7 @@
 use crate::constants::*;
 use crate::PoolState;
 use crate::utils::reentrancy_protection::{SafeTokenTransfer, SafeTokenMint, SafeTokenBurn};
+use crate::utils::token_validation::safe_unpack_and_validate_token_account;
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
@@ -63,8 +64,6 @@ use solana_program::{
     program::{invoke, invoke_signed},
     program_error::ProgramError,
     pubkey::Pubkey,
-
-    program_pack::Pack,
 };
 use spl_token::{
     instruction as token_instruction,
@@ -75,51 +74,7 @@ use crate::processors::utilities::validate_liquidity_not_paused;
 
 /// **PHASE 10: USER LP TOKEN ACCOUNT ON-DEMAND CREATION**
 ///
-/// Safely unpacks a token account with comprehensive error handling
-/// 
-/// This function provides robust error handling for TokenAccount::unpack_from_slice()
-/// calls, which can fail due to invalid account data, corruption, or wrong account types.
-/// 
-/// # Arguments
-/// * `account` - The account info to unpack
-/// * `account_name` - Human-readable name for error messages
-/// 
-/// # Returns
-/// * `Result<TokenAccount, ProgramError>` - The unpacked token account or an error
-fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Result<TokenAccount, ProgramError> {
-    // Check if account has data
-    if account.data_len() == 0 {
-        msg!("❌ {}: Account has no data (uninitialized)", account_name);
-        return Err(ProgramError::UninitializedAccount);
-    }
-    
-    // Check if account is owned by SPL Token program
-    if account.owner != &spl_token::id() {
-        msg!("❌ {}: Account is not owned by SPL Token program", account_name);
-        msg!("   • Expected owner: {}", spl_token::id());
-        msg!("   • Actual owner: {}", account.owner);
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    
-    // Try to unpack the token account data
-    match TokenAccount::unpack_from_slice(&account.data.borrow()) {
-        Ok(token_account) => {
-            msg!("✅ {}: Successfully unpacked token account", account_name);
-            msg!("   • Mint: {}", token_account.mint);
-            msg!("   • Owner: {}", token_account.owner);
-            msg!("   • Balance: {}", token_account.amount);
-            Ok(token_account)
-        }
-        Err(e) => {
-            msg!("❌ {}: Failed to unpack token account data", account_name);
-            msg!("   • Error: {:?}", e);
-            msg!("   • Account key: {}", account.key);
-            msg!("   • Data length: {} bytes", account.data_len());
-            msg!("   • This may indicate corrupted account data or wrong account type");
-            Err(ProgramError::InvalidAccountData)
-        }
-    }
-}
+// Removed the wrapper function - we'll use safe_unpack_and_validate_token_account directly
 
  
 
@@ -311,13 +266,26 @@ pub fn process_deposit<'a>(
 
     // ✅ OPTIMIZATION: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user input token account data (eliminates redundant deserialization)
-    let user_input_data = safe_unpack_token_account(user_input_account, "User Input Token Account")?;
+    // 🔒 SECURITY: Validate user input token account with comprehensive checks
+    let user_input_data = safe_unpack_and_validate_token_account(
+        user_input_account,
+        "User Input Token Account",
+        Some(user_authority_signer.key), // Must be owned by the user
+        None, // Mint will be validated separately
+        true, // Reject delegated accounts
+    )?;
     let actual_deposit_mint = user_input_data.mint;
     
     // Cache user output token account data (with safe handling for uninitialized accounts)
     let user_output_data = if user_output_account.data_len() > 0 {
         // Account exists, try to deserialize
-        match safe_unpack_token_account(user_output_account, "User Output LP Token Account") {
+        match safe_unpack_and_validate_token_account(
+            user_output_account,
+            "User Output LP Token Account",
+            Some(user_authority_signer.key), // Must be owned by the user
+            None, // Mint will be validated later
+            true, // Reject delegated accounts
+        ) {
             Ok(data) => Some(data),
             Err(_) => {
                 msg!("⚠️ User LP token account exists but is not properly initialized");
@@ -376,7 +344,14 @@ pub fn process_deposit<'a>(
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
     msg!("🔒 VALIDATING VAULT AND LP MINT AUTHORITIES...");
-    let target_vault_data = safe_unpack_token_account(target_vault, "Target Vault")?;
+    // 🔒 SECURITY: Validate vault account
+    let target_vault_data = safe_unpack_and_validate_token_account(
+        target_vault,
+        "Target Vault",
+        Some(pool_state_pda.key), // Must be owned by the pool
+        Some(&deposit_token_mint_key), // Must match the deposit token mint
+        false, // Vaults shouldn't have delegates
+    )?;
     
     use crate::utils::validation::{validate_vault_owner, validate_lp_mint_authority};
     validate_vault_owner(&target_vault_data, pool_state_pda.key, "Target Vault")?;
@@ -515,7 +490,14 @@ pub fn process_deposit<'a>(
 
     // ✅ OPTIMIZATION: OPTIMIZED 1:1 RATIO VERIFICATION
     // Use fresh deserialization only for final verification (post-mint operation)
-    let final_lp_balance = safe_unpack_token_account(user_output_account, "User Output LP Token Account")?.amount;
+    // Re-read LP balance after minting for validation
+    let final_lp_balance = safe_unpack_and_validate_token_account(
+        user_output_account,
+        "User Output LP Token Account",
+        Some(user_authority_signer.key),
+        Some(&target_lp_mint_pda),
+        true,
+    )?.amount;
     
     let lp_tokens_received = final_lp_balance.checked_sub(initial_lp_balance)
         .ok_or(ProgramError::ArithmeticOverflow)?;
@@ -741,11 +723,25 @@ pub fn process_withdraw<'a>(
 
     // ✅ OPTIMIZATION: CACHED TOKEN ACCOUNT DESERIALIZATIONS
     // Cache user output token account data (eliminates redundant deserialization)
-    let user_output_data = safe_unpack_token_account(user_output_account, "User Output Token Account")?;
+    // 🔒 SECURITY: Validate user output token account (where they'll receive tokens)
+    let user_output_data = safe_unpack_and_validate_token_account(
+        user_output_account,
+        "User Output Token Account",
+        Some(user_authority_signer.key), // Must be owned by the user
+        None, // Mint will be validated separately
+        true, // Reject delegated accounts
+    )?;
     let actual_withdraw_mint = user_output_data.mint;
     
     // Cache user input token account data (eliminates redundant deserialization)
-    let user_input_data = safe_unpack_token_account(user_input_account, "User Input LP Token Account")?;
+    // 🔒 SECURITY: Validate user LP token account
+    let user_input_data = safe_unpack_and_validate_token_account(
+        user_input_account,
+        "User Input LP Token Account",
+        Some(user_authority_signer.key), // Must be owned by the user
+        None, // Mint will be validated separately  
+        true, // Reject delegated accounts
+    )?;
     
     // ✅ ACCOUNT STATUS AND BALANCE PREVIEW
     msg!("✅ ACCOUNT STATUS:");
@@ -885,7 +881,14 @@ fn execute_withdrawal_logic<'a>(
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
     msg!("🔒 VALIDATING WITHDRAWAL AUTHORITIES...");
-    let source_vault_data = safe_unpack_token_account(source_pool_vault_acc, "Source Pool Vault")?;
+    // 🔒 SECURITY: Validate source vault account
+    let source_vault_data = safe_unpack_and_validate_token_account(
+        source_pool_vault_acc,
+        "Source Pool Vault",
+        Some(pool_state_account.key), // Must be owned by the pool
+        Some(&withdraw_token_mint_key), // Must match the withdrawal token mint
+        false, // Vaults shouldn't have delegates
+    )?;
     
     use crate::utils::validation::{validate_vault_owner, validate_lp_mint_authority};
     validate_vault_owner(&source_vault_data, pool_state_account.key, "Source Pool Vault")?;

@@ -11,60 +11,16 @@ use solana_program::{
 };
 use spl_token::{
     instruction as token_instruction,
-    state::{Account as TokenAccount},
 };
 
 use crate::{
     constants::*,
     error::PoolError,
     utils::reentrancy_protection::SafeTokenTransfer,
+    utils::token_validation::safe_unpack_and_validate_token_account,
 };
 
-/// Safely unpacks a token account with comprehensive error handling
-/// 
-/// This function provides robust error handling for TokenAccount::unpack_from_slice()
-/// calls, which can fail due to invalid account data, corruption, or wrong account types.
-/// 
-/// # Arguments
-/// * `account` - The account info to unpack
-/// * `account_name` - Human-readable name for error messages
-/// 
-/// # Returns
-/// * `Result<TokenAccount, ProgramError>` - The unpacked token account or an error
-fn safe_unpack_token_account(account: &AccountInfo, account_name: &str) -> Result<TokenAccount, ProgramError> {
-    // Check if account has data
-    if account.data_len() == 0 {
-        msg!("❌ {}: Account has no data (uninitialized)", account_name);
-        return Err(ProgramError::UninitializedAccount);
-    }
-    
-    // Check if account is owned by SPL Token program
-    if account.owner != &spl_token::id() {
-        msg!("❌ {}: Account is not owned by SPL Token program", account_name);
-        msg!("   • Expected owner: {}", spl_token::id());
-        msg!("   • Actual owner: {}", account.owner);
-        return Err(ProgramError::IncorrectProgramId);
-    }
-    
-    // Try to unpack the token account data
-    match TokenAccount::unpack_from_slice(&account.data.borrow()) {
-        Ok(token_account) => {
-            msg!("✅ {}: Successfully unpacked token account", account_name);
-            msg!("   • Mint: {}", token_account.mint);
-            msg!("   • Owner: {}", token_account.owner);
-            msg!("   • Balance: {}", token_account.amount);
-            Ok(token_account)
-        }
-        Err(e) => {
-            msg!("❌ {}: Failed to unpack token account data", account_name);
-            msg!("   • Error: {:?}", e);
-            msg!("   • Account key: {}", account.key);
-            msg!("   • Data length: {} bytes", account.data_len());
-            msg!("   • This may indicate corrupted account data or wrong account type");
-            Err(ProgramError::InvalidAccountData)
-        }
-    }
-}
+// Removed the wrapper function - we'll use safe_unpack_and_validate_token_account directly
 
 /// **Fixed-Ratio Token Swap with Basis Points Architecture**
 ///
@@ -381,8 +337,21 @@ pub fn process_swap<'a>(
     // Step 3: Validating user accounts
     
     // Load user token account data for validation
-    let user_input_token_data = safe_unpack_token_account(user_input_token_account, "User Input Token Account")?;
-    let user_output_token_data = safe_unpack_token_account(user_output_token_account, "User Output Token Account")?;
+    // 🔒 SECURITY: Validate user token accounts with comprehensive checks
+    let user_input_token_data = safe_unpack_and_validate_token_account(
+        user_input_token_account, 
+        "User Input Token Account",
+        Some(user_authority_signer.key), // Must be owned by the user
+        None, // Mint will be validated separately
+        true, // Reject delegated accounts
+    )?;
+    let user_output_token_data = safe_unpack_and_validate_token_account(
+        user_output_token_account,
+        "User Output Token Account", 
+        Some(user_authority_signer.key), // Must be owned by the user
+        None, // Mint will be validated separately
+        true, // Reject delegated accounts
+    )?;
 
     // Determine swap direction from user's input token mint
     let input_token_mint_key = user_input_token_data.mint;
@@ -414,8 +383,21 @@ pub fn process_swap<'a>(
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault authorities
     msg!("🔒 VALIDATING VAULT AUTHORITIES...");
-    let input_vault_data = safe_unpack_token_account(input_pool_vault_acc, "Input Pool Vault")?;
-    let output_vault_data = safe_unpack_token_account(output_pool_vault_acc, "Output Pool Vault")?;
+    // 🔒 SECURITY: Validate vault accounts - these should be owned by the pool PDA
+    let input_vault_data = safe_unpack_and_validate_token_account(
+        input_pool_vault_acc,
+        "Input Pool Vault",
+        Some(pool_state_pda.key), // Must be owned by the pool
+        Some(&input_token_mint_key), // Must match the input token mint
+        false, // Vaults shouldn't have delegates, but we check ownership already
+    )?;
+    let output_vault_data = safe_unpack_and_validate_token_account(
+        output_pool_vault_acc,
+        "Output Pool Vault",
+        Some(pool_state_pda.key), // Must be owned by the pool
+        Some(&output_token_mint_key), // Must match the output token mint
+        false, // Vaults shouldn't have delegates, but we check ownership already
+    )?;
     
     use crate::utils::validation::validate_vault_owner;
     validate_vault_owner(&input_vault_data, pool_state_pda.key, "Input Pool Vault")?;
