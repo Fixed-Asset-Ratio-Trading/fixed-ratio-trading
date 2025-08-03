@@ -199,42 +199,62 @@ pub fn process_instruction<'a>(
 ) -> ProgramResult {
     debug_msg!("🚨🚨🚨 PROGRAM ENTRY POINT - INSTRUCTION RECEIVED! 🚨🚨🚨");
     debug_msg!("🎯 ENTRY POINT: Processing instruction with {} bytes", instruction_data.len());
+    
+    // Validate instruction data has minimum size
+    use crate::utils::input_validation::*;
+    validate_instruction_data_size(instruction_data, MIN_INSTRUCTION_DATA_SIZE, "Any instruction")?;
+    
     let instruction = PoolInstruction::try_from_slice(instruction_data)?;
     debug_msg!("✅ DESERIALIZATION: Instruction deserialized successfully");
 
     match instruction {
         PoolInstruction::InitializeProgram {
             // No fields to extract - system authority comes from accounts[0]
-        } => process_initialize_program(program_id, accounts),
+        } => {
+            validate_account_count(accounts, INITIALIZE_PROGRAM_ACCOUNTS, "InitializeProgram")?;
+            process_initialize_program(program_id, accounts)
+        },
 
         PoolInstruction::InitializePool {
             ratio_a_numerator,
             ratio_b_denominator,
-        } => process_initialize_pool(program_id, ratio_a_numerator, ratio_b_denominator, accounts),
+        } => {
+            validate_account_count(accounts, INITIALIZE_POOL_ACCOUNTS, "InitializePool")?;
+            process_initialize_pool(program_id, ratio_a_numerator, ratio_b_denominator, accounts)
+        },
 
         PoolInstruction::Deposit {
             deposit_token_mint,
             amount,
-        } => process_deposit(program_id, amount, deposit_token_mint, accounts),
+        } => {
+            validate_account_count(accounts, DEPOSIT_ACCOUNTS, "Deposit")?;
+            process_deposit(program_id, amount, deposit_token_mint, accounts)
+        },
 
         PoolInstruction::Withdraw {
             withdraw_token_mint,
             lp_amount_to_burn,
-        } => process_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts),
+        } => {
+            validate_account_count(accounts, WITHDRAW_ACCOUNTS, "Withdraw")?;
+            process_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts)
+        },
 
         PoolInstruction::Swap {
             input_token_mint: _,
             amount_in,
             expected_amount_out,
         } => {
-            // Process swap instruction
+            validate_account_count(accounts, SWAP_ACCOUNTS, "Swap")?;
             process_swap(program_id, amount_in, expected_amount_out, accounts)
         },
 
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction,
             designated_owner,
-        } => process_set_swap_owner_only(program_id, enable_restriction, designated_owner, accounts),
+        } => {
+            validate_account_count(accounts, SET_SWAP_OWNER_ONLY_ACCOUNTS, "SetSwapOwnerOnly")?;
+            process_set_swap_owner_only(program_id, enable_restriction, designated_owner, accounts)
+        },
 
         PoolInstruction::UpdatePoolFees {
             update_flags,
@@ -293,11 +313,17 @@ pub fn process_instruction<'a>(
         // Pool Management Instructions
         PoolInstruction::PausePool {
             pause_flags,
-        } => process_pause_pool(program_id, pause_flags, accounts),
+        } => {
+            validate_account_count(accounts, PAUSE_POOL_ACCOUNTS, "PausePool")?;
+            process_pause_pool(program_id, pause_flags, accounts)
+        },
         
         PoolInstruction::UnpausePool {
             unpause_flags,
-        } => process_unpause_pool(program_id, unpause_flags, accounts),
+        } => {
+            validate_account_count(accounts, UNPAUSE_POOL_ACCOUNTS, "UnpausePool")?;
+            process_unpause_pool(program_id, unpause_flags, accounts)
+        },
     }
 }
 

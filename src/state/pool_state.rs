@@ -132,6 +132,32 @@ pub struct PoolState {
     
     /// Total SOL fees transferred to treasury via consolidation
     pub total_fees_consolidated: u64,
+    
+    // **NEW: POOL-SPECIFIC LIMITS FOR FUTURE USE**
+    /// Maximum amount allowed for swap operations (0 = no limit)
+    /// Prevents single large swaps from draining liquidity
+    pub max_swap_amount: u64,
+    
+    /// Minimum amount required for swap operations (helps prevent dust attacks)
+    pub min_swap_amount: u64,
+    
+    /// Maximum amount allowed for single deposit (0 = no limit)
+    /// Prevents liquidity concentration from single provider
+    pub max_deposit_amount: u64,
+    
+    /// Minimum amount required for deposits
+    pub min_deposit_amount: u64,
+    
+    /// Maximum amount allowed for single withdrawal (0 = no limit)
+    /// Provides additional protection beyond withdrawal_protection flag
+    pub max_withdrawal_amount: u64,
+    
+    /// Minimum amount required for withdrawals
+    pub min_withdrawal_amount: u64,
+    
+    /// Reserved space for future pool-specific configuration
+    /// Allows adding new fields without breaking existing pools
+    pub _reserved: [u64; 4],
 }
 
 
@@ -174,7 +200,16 @@ impl PoolState {
         // **NEW: CONSOLIDATION MANAGEMENT** (+24 bytes)
         8 +  // last_consolidation_timestamp
         8 +  // total_consolidations
-        8    // total_fees_consolidated
+        8 +  // total_fees_consolidated
+        
+        // **NEW: POOL-SPECIFIC LIMITS** (+80 bytes)
+        8 +  // max_swap_amount
+        8 +  // min_swap_amount
+        8 +  // max_deposit_amount
+        8 +  // min_deposit_amount
+        8 +  // max_withdrawal_amount
+        8 +  // min_withdrawal_amount
+        32   // _reserved [u64; 4]
         
         // **REMOVED FIELDS** (-57 bytes):
         // - is_initialized: bool (1 byte) - Pool existence = initialization

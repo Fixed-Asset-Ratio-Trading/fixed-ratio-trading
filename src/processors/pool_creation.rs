@@ -600,6 +600,15 @@ pub fn process_initialize_pool(
         last_consolidation_timestamp: 0,
         total_consolidations: 0,
         total_fees_consolidated: 0,
+        
+        // **NEW: POOL-SPECIFIC LIMITS** - Initialize to 0 (no limits)
+        max_swap_amount: 0,         // 0 = no limit
+        min_swap_amount: 0,         // 0 = no minimum
+        max_deposit_amount: 0,      // 0 = no limit
+        min_deposit_amount: 0,      // 0 = no minimum
+        max_withdrawal_amount: 0,   // 0 = no limit
+        min_withdrawal_amount: 0,   // 0 = no minimum
+        _reserved: [0; 4],          // Reserved for future use
     };
 
     // Serialize pool state to account

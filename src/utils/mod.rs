@@ -5,6 +5,7 @@
 //! for validation, serialization, and fee validation.
 
 pub mod fee_validation;
+pub mod input_validation;
 pub mod program_authority;
 pub mod reentrancy_protection;
 pub mod serialization;
@@ -13,6 +14,7 @@ pub mod validation;
 
 // Re-export commonly used items for convenience
 pub use fee_validation::*;
+pub use input_validation::*;
 pub use program_authority::*;
 pub use reentrancy_protection::*;
 pub use serialization::*;
