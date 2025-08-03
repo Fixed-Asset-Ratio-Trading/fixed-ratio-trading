@@ -106,6 +106,11 @@ fn swap_a_to_b(
     msg!("   • ratio_b_denominator: {}", ratio_b_denominator);
     msg!("   • token_a_decimals: {}, token_b_decimals: {}", token_a_decimals, token_b_decimals);
     
+    // Note: We don't enforce artificial ratio limits because:
+    // - 18-decimal tokens paired with 0-decimal tokens need ratios up to 10^18
+    // - The checked_* operations below will catch any actual overflow risks
+    // - This allows all legitimate token pairs while preventing overflow
+    
     // Convert to u128 to prevent overflow during calculation
     let amount_a_base = amount_a as u128;
     let ratio_a_num = ratio_a_numerator as u128;
@@ -123,17 +128,31 @@ fn swap_a_to_b(
     let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
     msg!("   • Decimal difference (B - A): {} - {} = {}", token_b_decimals, token_a_decimals, decimal_diff);
     
-    // Step 2: Apply the correct mathematical specification:
-    // B_out = floor( A_in * ratioB_den / ratioA_num )
-    // Since ratios are already in basis points, no additional decimal scaling is needed
+    // Step 2: Apply decimal scaling if needed (with overflow protection)
+    let scaled_amount = if decimal_diff > 0 {
+        // Need to scale up - check for overflow
+        let scale_factor = 10u128.checked_pow(decimal_diff as u32)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        amount_a_base.checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    } else if decimal_diff < 0 {
+        // Need to scale down - safe division
+        let scale_factor = 10u128.pow((-decimal_diff) as u32);
+        amount_a_base / scale_factor
+    } else {
+        amount_a_base
+    };
     
-    let numerator = amount_a_base
+    // Step 3: Perform the main calculation with full overflow protection
+    let numerator = scaled_amount
         .checked_mul(ratio_b_den)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_a, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", scaled_amount, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
     
-    let result = numerator / ratio_a_num;
+    // Safe division (division by zero already checked above)
+    let result = numerator.checked_div(ratio_a_num)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     
     msg!("   • Final result (floor): {}", result);
     
@@ -179,21 +198,40 @@ fn swap_b_to_a(
     // Apply the correct mathematical specification:
     // A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
     
+    // Note: We don't enforce artificial ratio limits because:
+    // - 18-decimal tokens paired with 0-decimal tokens need ratios up to 10^18
+    // - The checked_* operations below will catch any actual overflow risks
+    // - This allows all legitimate token pairs while preventing overflow
+    
     // Step 1: Calculate the decimal scaling factor
     let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
     msg!("   • Decimal difference (A - B): {} - {} = {}", token_a_decimals, token_b_decimals, decimal_diff);
     
-    // Step 2: Apply the correct mathematical specification:
-    // A_out = floor( B_in * ratioA_num / ratioB_den )
-    // Since ratios are already in basis points, no additional decimal scaling is needed
+    // Step 2: Apply decimal scaling if needed (with overflow protection)
+    let scaled_amount = if decimal_diff > 0 {
+        // Need to scale up - check for overflow
+        let scale_factor = 10u128.checked_pow(decimal_diff as u32)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        amount_b_base.checked_mul(scale_factor)
+            .ok_or(ProgramError::ArithmeticOverflow)?
+    } else if decimal_diff < 0 {
+        // Need to scale down - safe division
+        let scale_factor = 10u128.pow((-decimal_diff) as u32);
+        amount_b_base / scale_factor
+    } else {
+        amount_b_base
+    };
     
-    let numerator = amount_b_base
+    // Step 3: Perform the main calculation with full overflow protection
+    let numerator = scaled_amount
         .checked_mul(ratio_a_num)
         .ok_or(ProgramError::ArithmeticOverflow)?;
         
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", scaled_amount, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
     
-    let result = numerator / ratio_b_den;
+    // Safe division (division by zero already checked above)
+    let result = numerator.checked_div(ratio_b_den)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
     
     msg!("   • Final result (floor): {} basis points", result);
     

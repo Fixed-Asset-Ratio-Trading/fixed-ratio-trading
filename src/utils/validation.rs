@@ -296,6 +296,13 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
         return Err(ProgramError::InvalidArgument);
     }
     
+    // Note: We don't enforce artificial ratio limits because:
+    // - 18-decimal tokens paired with 0-decimal tokens legitimately need ratios up to 10^18
+    // - The swap calculations use checked arithmetic to prevent overflow
+    // - This allows all legitimate token pairs while maintaining safety
+    
+    msg!("✅ Ratio validation passed: {}:{}", ratio_a_numerator, ratio_b_denominator);
+    
     Ok(())
 }
 

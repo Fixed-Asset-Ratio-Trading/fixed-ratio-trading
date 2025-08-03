@@ -27,6 +27,10 @@ pub enum PoolError {
         max_ratio: u64,
     },
     
+    /// Unsafe ratio values that could cause overflow
+    #[error("Unsafe ratio values exceed maximum safe limit")]
+    UnsafeRatioValues,
+    
     /// Insufficient funds for the operation
     #[error("Insufficient funds: Required {required}, Available {available}, Account {account}")]
     InsufficientFunds {
@@ -227,6 +231,7 @@ impl PoolError {
             PoolError::InvalidSwapFee { .. } => 1045,
             PoolError::FeeUpdateValidationFailed { .. } => 1046,
             PoolError::AmountMismatch { .. } => 1047,
+            PoolError::UnsafeRatioValues => 1048,
         }
     }
 }
