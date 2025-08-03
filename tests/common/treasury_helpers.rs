@@ -169,7 +169,9 @@ pub async fn get_treasury_state_verified() -> Result<MainTreasuryState, Box<dyn 
         total_swap_contract_fees: 145000,
         last_update_timestamp: 1700000000,
         total_consolidations_performed: 2,
-        last_consolidation_timestamp: 1700000000,
+        last_withdrawal_timestamp: 0,
+        donation_count: 0,
+        total_donations: 0,
     };
     
     println!("📊 Treasury state verification (mock for debugging):");
@@ -533,7 +535,9 @@ pub async fn execute_treasury_withdrawal_with_verification(
         total_swap_contract_fees: 175000,
         last_update_timestamp: mock_timestamp - 1800, // 30 minutes ago
         total_consolidations_performed: 6,
-        last_consolidation_timestamp: mock_timestamp - 7200, // 2 hours ago
+        last_withdrawal_timestamp: mock_timestamp - 7200, // 2 hours ago
+        donation_count: 5,
+        total_donations: 500000, // 0.5 SOL in donations
     };
     
     // Calculate maximum withdrawable amount (respecting rent exemption)
@@ -627,7 +631,9 @@ pub async fn simulate_failed_treasury_withdrawal() -> Result<FailedOpResult, Box
         total_swap_contract_fees: 30000,
         last_update_timestamp: mock_timestamp - 3600, // 1 hour ago
         total_consolidations_performed: 2,
-        last_consolidation_timestamp: mock_timestamp - 10800, // 3 hours ago
+        last_withdrawal_timestamp: mock_timestamp - 10800, // 3 hours ago
+        donation_count: 2,
+        total_donations: 100000, // 0.1 SOL in donations
     };
     
     // Simulate attempting to withdraw more than available

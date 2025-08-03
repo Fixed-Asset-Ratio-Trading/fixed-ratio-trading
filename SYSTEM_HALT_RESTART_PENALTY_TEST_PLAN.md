@@ -159,11 +159,28 @@ This document outlines the testing strategy for the system halt (pause) and rest
 
 ## Test Data Scenarios
 
-### Realistic Treasury Balances
-- [ ] Small treasury: 100 SOL (10 SOL/hour rate)
-- [ ] Medium treasury: 2000 SOL (100 SOL/hour rate)  
-- [ ] Large treasury: 25000 SOL (1000 SOL/hour rate)
-- [ ] Very large treasury: 250000 SOL (10000 SOL/hour rate)
+### Treasury Setup Using DonateSol
+**All tests MUST use `donate_sol` instruction to add large SOL liquidity to treasury:**
+
+```rust
+// Standard treasury setup pattern for all tests
+const USE_DONATE_SOL_FOR_SETUP: bool = true;
+const DONATION_AMOUNT_SOL: u64 = 10000; // 10,000 SOL for comprehensive testing
+```
+
+**Benefits of using donate_sol:**
+- ✅ **Real Contract Execution**: Tests actual donation functionality
+- ✅ **Large Liquidity**: Easy setup of substantial treasury balances
+- ✅ **Non-Refundable**: Simulates real donation behavior
+- ✅ **System Pause Validation**: Tests pause blocking during setup
+- ✅ **State Persistence**: Verifies actual treasury state updates
+
+### Realistic Treasury Balance Scenarios
+- [ ] **Small Treasury**: 100 SOL via donate_sol (10 SOL/hour rate)
+- [ ] **Medium Treasury**: 2,000 SOL via donate_sol (100 SOL/hour rate)  
+- [ ] **Large Treasury**: 25,000 SOL via donate_sol (1,000 SOL/hour rate)
+- [ ] **Very Large Treasury**: 250,000 SOL via donate_sol (10,000 SOL/hour rate)
+- [ ] **Massive Treasury**: 1,000,000 SOL via donate_sol (50,000 SOL/hour rate)
 
 ### Time-based Scenarios
 - [ ] Immediate withdrawal after restart (should fail)
@@ -241,6 +258,12 @@ async fn test_system_halt_functionality() -> TestResult {
     const EXPECTED_HOURLY_RATE: u64 = 100;         // Expected withdrawal rate (SOL/hour)
     const WITHDRAWAL_AMOUNT_SOL: u64 = 50;         // Test withdrawal amount
     
+    // Donation Configuration for Treasury Setup
+    const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
+    const DONATION_AMOUNT_SOL: u64 = 10000;        // Large donation amount for testing (10,000 SOL)
+    const DONATION_MESSAGE: &str = "Test treasury setup for system halt/restart penalty testing";
+    const DONOR_ACCOUNT_INDEX: usize = 0;          // Index of donor account in test foundation
+    
     // Authority Configuration
     const USE_VALID_AUTHORITY: bool = true;        // Use valid program upgrade authority
     const TEST_INVALID_AUTHORITY: bool = false;    // Test with invalid authority
@@ -265,6 +288,51 @@ async fn test_system_halt_functionality() -> TestResult {
     println!("✅ EXPECTED: All treasury withdrawals blocked during pause");
     
     // ... test implementation using EnhancedTestFoundation
+    
+    // ============================================================================
+    // 💰 TREASURY SETUP USING DONATE_SOL
+    // ============================================================================
+    
+    // Create enhanced test foundation
+    let mut foundation = create_enhanced_liquidity_test_foundation(None).await?;
+    
+    // Setup treasury with large SOL balance using donate_sol
+    if USE_DONATE_SOL_FOR_SETUP {
+        println!("💰 Setting up treasury with {} SOL via donate_sol", DONATION_AMOUNT_SOL);
+        
+        // Get donor account from foundation
+        let donor_account = &foundation.env().payer;
+        let main_treasury_pda = foundation.env().main_treasury_pda;
+        let system_state_pda = foundation.env().system_state_pda;
+        
+        // Create donate_sol instruction
+        let donate_instruction = Instruction {
+            program_id: foundation.env().program_id,
+            accounts: vec![
+                AccountMeta::new(*donor_account.key, true),  // Donor (signer, writable)
+                AccountMeta::new(main_treasury_pda, false),  // Main Treasury PDA (writable)
+                AccountMeta::new_readonly(system_state_pda, false), // System State PDA (readable)
+                AccountMeta::new_readonly(solana_sdk::system_program::id(), false), // System Program
+            ],
+            data: PoolInstruction::DonateSol {
+                amount: DONATION_AMOUNT_SOL * 1_000_000_000, // Convert SOL to lamports
+                message: DONATION_MESSAGE.to_string(),
+            }.try_to_vec()?,
+        };
+        
+        // Execute donation transaction
+        let mut transaction = Transaction::new_with_payer(
+            &[donate_instruction],
+            Some(donor_account.key),
+        );
+        transaction.sign(&[donor_account], foundation.env().recent_blockhash);
+        
+        foundation.env_mut().banks_client.process_transaction(transaction).await?;
+        
+        println!("✅ Treasury setup complete: {} SOL donated", DONATION_AMOUNT_SOL);
+    }
+    
+    // ... continue with test implementation
 }
 ```
 
@@ -295,9 +363,44 @@ All tests must include:
 1. **Configuration Section**: Clear constants at top with 🎯 TEST CONFIGURATION header
 2. **Setup Section**: Test purpose and scenario description with 🧪 TEST SETUP header
 3. **Enhanced Foundation Usage**: Use `create_enhanced_test_foundation()` for setup
-4. **Real Environment Verification**: Confirm tests run against actual Solana program
-5. **State Validation**: Verify actual account state changes, not mock responses
-6. **Cleanup**: Proper resource cleanup using foundation's cleanup methods
+4. **Treasury Setup**: Use `donate_sol` instruction for large liquidity setup
+5. **Real Environment Verification**: Confirm tests run against actual Solana program
+6. **State Validation**: Verify actual account state changes, not mock responses
+7. **Cleanup**: Proper resource cleanup using foundation's cleanup methods
+
+### Required Helper Functions
+All tests should implement these helper functions for consistent treasury setup:
+
+```rust
+/// Helper function to setup treasury with large SOL balance using donate_sol
+async fn setup_treasury_with_donation(
+    foundation: &mut EnhancedTestFoundation,
+    amount_sol: u64,
+    message: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation using donate_sol instruction
+}
+
+/// Helper function to verify treasury balance after donation
+async fn verify_treasury_balance(
+    foundation: &EnhancedTestFoundation,
+    expected_balance_sol: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation to verify treasury state
+}
+
+/// Helper function to create donate_sol instruction
+fn create_donate_sol_instruction(
+    program_id: &Pubkey,
+    donor: &Keypair,
+    main_treasury_pda: &Pubkey,
+    system_state_pda: &Pubkey,
+    amount_lamports: u64,
+    message: &str,
+) -> Result<Instruction, Box<dyn std::error::Error>> {
+    // Implementation to create donate_sol instruction
+}
+```
 
 ---
 
