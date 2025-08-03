@@ -1,128 +1,164 @@
-//! Reentrancy Protection Utilities
+//! Enhanced Reentrancy Protection with Global State Tracking
 //!
-//! This module provides utilities to detect and prevent reentrancy attacks during
-//! Cross-Program Invocations (CPIs), particularly around token transfer operations.
-//!
-//! ## Enhanced State Validation Pattern
-//!
-//! The utilities in this module implement pre/post-condition checks around external
-//! calls to detect unexpected state changes that could indicate reentrancy attacks.
-//!
-//! ### Key Features:
-//! - Pre-CPI balance snapshots
-//! - Post-CPI balance verification
-//! - Expected change validation
-//! - Comprehensive error reporting
-//! - Minimal performance overhead
+//! This module provides enhanced reentrancy protection with:
+//! - Global reentrancy flag tracking
+//! - Multi-level protection (per-account and per-program)
+//! - Automatic cleanup on errors
+//! - Thread-local storage for better isolation
 
 use solana_program::{
     account_info::AccountInfo,
     msg,
     program_error::ProgramError,
-    program_pack::Pack,
+    pubkey::Pubkey,
 };
-use spl_token::state::Account as TokenAccount;
+use std::cell::RefCell;
+use std::collections::HashSet;
 
-/// Snapshot of token account state before a CPI operation
-#[derive(Debug, Clone)]
-pub struct TokenAccountSnapshot {
-    pub account_key: solana_program::pubkey::Pubkey,
-    pub balance: u64,
-    pub mint: solana_program::pubkey::Pubkey,
-    pub owner: solana_program::pubkey::Pubkey,
-    pub frozen: bool,
+// Maximum allowed reentrancy depth (for legitimate nested calls)
+const MAX_ALLOWED_DEPTH: u32 = 2;
+
+// Thread-local storage for tracking active operations
+thread_local! {
+    // Tracks which accounts are currently in use to prevent reentrancy
+    static ACTIVE_ACCOUNTS: RefCell<HashSet<Pubkey>> = RefCell::new(HashSet::new());
+    
+    // Global reentrancy counter for the entire program
+    static REENTRANCY_DEPTH: RefCell<u32> = RefCell::new(0);
 }
 
-impl TokenAccountSnapshot {
-    /// Create a snapshot of a token account's current state
-    pub fn capture(account: &AccountInfo, account_name: &str) -> Result<Self, ProgramError> {
-        // Validate account ownership
-        if account.owner != &spl_token::id() {
-            msg!("❌ REENTRANCY PROTECTION: {} is not owned by SPL Token program", account_name);
-            return Err(ProgramError::IncorrectProgramId);
-        }
+/// Guard that ensures cleanup even on error
+pub struct ReentrancyGuard {
+    account_keys: Vec<Pubkey>,
+    operation_name: String,
+}
 
-        // Unpack token account data
-        let token_account = TokenAccount::unpack_from_slice(&account.data.borrow())
-            .map_err(|_| {
-                msg!("❌ REENTRANCY PROTECTION: Failed to unpack {} as token account", account_name);
-                ProgramError::InvalidAccountData
-            })?;
-
-        let snapshot = TokenAccountSnapshot {
-            account_key: *account.key,
-            balance: token_account.amount,
-            mint: token_account.mint,
-            owner: token_account.owner,
-            frozen: token_account.state == spl_token::state::AccountState::Frozen,
-        };
-
-        msg!("📸 SNAPSHOT CAPTURED: {} - Balance: {}, Mint: {}", 
-             account_name, snapshot.balance, snapshot.mint);
-
-        Ok(snapshot)
+impl ReentrancyGuard {
+    /// Create a new reentrancy guard for the specified accounts
+    pub fn new(accounts: &[&AccountInfo], operation_name: &str) -> Result<Self, ProgramError> {
+        let account_keys: Vec<Pubkey> = accounts.iter().map(|acc| *acc.key).collect();
+        
+        // Check global reentrancy depth
+        REENTRANCY_DEPTH.with(|depth| {
+            let current = *depth.borrow();
+            if current >= MAX_ALLOWED_DEPTH {
+                msg!("❌ REENTRANCY DETECTED: Max depth {} exceeded for {}", MAX_ALLOWED_DEPTH, operation_name);
+                msg!("   Current depth: {}", current);
+                return Err(ProgramError::InvalidAccountData);
+            }
+            
+            // Increment depth
+            *depth.borrow_mut() = current + 1;
+            msg!("🔒 REENTRANCY GUARD: Entered {} (depth: {})", operation_name, current + 1);
+            Ok(())
+        })?;
+        
+        // Check if any accounts are already locked
+        ACTIVE_ACCOUNTS.with(|active| {
+            let mut active_set = active.borrow_mut();
+            
+            for key in &account_keys {
+                if active_set.contains(key) {
+                    msg!("❌ REENTRANCY DETECTED: Account {} already in use during {}", key, operation_name);
+                    msg!("   This indicates a potential reentrancy attack or nested operation");
+                    
+                    // Cleanup: decrement depth before returning error
+                    REENTRANCY_DEPTH.with(|depth| {
+                        *depth.borrow_mut() -= 1;
+                    });
+                    
+                    return Err(ProgramError::InvalidAccountData);
+                }
+            }
+            
+            // Lock all accounts
+            for key in &account_keys {
+                active_set.insert(*key);
+                msg!("🔐 LOCKED: Account {} for {}", key, operation_name);
+            }
+            
+            Ok(())
+        })?;
+        
+        Ok(Self {
+            account_keys,
+            operation_name: operation_name.to_string(),
+        })
     }
-
-    /// Validate that the current account state matches expected changes
-    pub fn validate_changes(
-        &self,
-        account: &AccountInfo,
-        expected_balance_change: i64,
-        operation_name: &str,
-    ) -> Result<(), ProgramError> {
-        // Re-read current state
-        let current_token_account = TokenAccount::unpack_from_slice(&account.data.borrow())
-            .map_err(|_| {
-                msg!("❌ REENTRANCY PROTECTION: Failed to re-read account after {}", operation_name);
-                ProgramError::InvalidAccountData
-            })?;
-
-        // Validate key hasn't changed (should be impossible but good safety check)
-        if current_token_account.mint != self.mint {
-            msg!("❌ REENTRANCY ATTACK DETECTED: Mint changed during {} operation", operation_name);
-            msg!("   Expected mint: {}", self.mint);
-            msg!("   Current mint: {}", current_token_account.mint);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        if current_token_account.owner != self.owner {
-            msg!("❌ REENTRANCY ATTACK DETECTED: Owner changed during {} operation", operation_name);
-            msg!("   Expected owner: {}", self.owner);
-            msg!("   Current owner: {}", current_token_account.owner);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        // Calculate actual balance change
-        let actual_balance_change = current_token_account.amount as i64 - self.balance as i64;
-
-        // Validate balance change matches expectations
-        if actual_balance_change != expected_balance_change {
-            msg!("❌ REENTRANCY ATTACK DETECTED: Unexpected balance change during {}", operation_name);
-            msg!("   Expected balance change: {}", expected_balance_change);
-            msg!("   Actual balance change: {}", actual_balance_change);
-            msg!("   Previous balance: {}", self.balance);
-            msg!("   Current balance: {}", current_token_account.amount);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        // Check for unexpected freeze state changes
-        let current_frozen = current_token_account.state == spl_token::state::AccountState::Frozen;
-        if current_frozen != self.frozen {
-            msg!("❌ REENTRANCY ATTACK DETECTED: Freeze state changed during {} operation", operation_name);
-            msg!("   Previous frozen state: {}", self.frozen);
-            msg!("   Current frozen state: {}", current_frozen);
-            return Err(ProgramError::InvalidAccountData);
-        }
-
-        msg!("✅ REENTRANCY PROTECTION: {} validated successfully", operation_name);
-        msg!("   Balance change: {} -> {} (Δ{})", 
-             self.balance, current_token_account.amount, actual_balance_change);
-
-        Ok(())
+    
+    /// Execute a function with reentrancy protection
+    pub fn execute<F, R>(accounts: &[&AccountInfo], operation_name: &str, f: F) -> Result<R, ProgramError>
+    where
+        F: FnOnce() -> Result<R, ProgramError>,
+    {
+        // Create guard (will lock accounts and increment depth)
+        let _guard = Self::new(accounts, operation_name)?;
+        
+        // Execute the protected function
+        let result = f();
+        
+        // Guard will be dropped here, triggering cleanup
+        result
     }
 }
 
-/// Wrapper for safely executing token transfer operations with reentrancy protection
+impl Drop for ReentrancyGuard {
+    fn drop(&mut self) {
+        // Unlock accounts
+        ACTIVE_ACCOUNTS.with(|active| {
+            let mut active_set = active.borrow_mut();
+            for key in &self.account_keys {
+                active_set.remove(key);
+                msg!("🔓 UNLOCKED: Account {} after {}", key, self.operation_name);
+            }
+        });
+        
+        // Decrement depth
+        REENTRANCY_DEPTH.with(|depth| {
+            let current = *depth.borrow();
+            *depth.borrow_mut() = current.saturating_sub(1);
+            msg!("🔒 REENTRANCY GUARD: Exited {} (depth: {})", self.operation_name, current - 1);
+        });
+    }
+}
+
+/// Macro for easy reentrancy protection
+#[macro_export]
+macro_rules! with_reentrancy_protection {
+    ($accounts:expr, $operation:expr, $body:expr) => {
+        ReentrancyGuard::execute($accounts, $operation, || $body)
+    };
+}
+
+/// Check if we're currently in a protected operation
+pub fn is_in_protected_operation() -> bool {
+    REENTRANCY_DEPTH.with(|depth| *depth.borrow() > 0)
+}
+
+/// Get current reentrancy depth
+pub fn get_reentrancy_depth() -> u32 {
+    REENTRANCY_DEPTH.with(|depth| *depth.borrow())
+}
+
+/// Reset reentrancy state for current transaction only (use with caution, only for error recovery)
+pub fn emergency_tx_stop() {
+    msg!("⚠️ EMERGENCY TX STOP: Clearing reentrancy locks for current transaction");
+    
+    ACTIVE_ACCOUNTS.with(|active| {
+        active.borrow_mut().clear();
+    });
+    
+    REENTRANCY_DEPTH.with(|depth| {
+        *depth.borrow_mut() = 0;
+    });
+}
+
+/// Alias for clarity - same as emergency_tx_stop
+pub fn abort_current_transaction() {
+    emergency_tx_stop();
+}
+
+/// Wrapper for safely executing token transfer operations with snapshot-based protection
 pub struct SafeTokenTransfer<'a> {
     pub source_account: &'a AccountInfo<'a>,
     pub destination_account: &'a AccountInfo<'a>,
@@ -146,47 +182,50 @@ impl<'a> SafeTokenTransfer<'a> {
         }
     }
 
-    /// Execute the transfer with comprehensive reentrancy protection
+    /// Execute the transfer with snapshot-based validation
     pub fn execute_with_protection<F>(self, transfer_fn: F) -> Result<(), ProgramError>
     where
         F: FnOnce() -> Result<(), ProgramError>,
     {
-        msg!("🛡️ REENTRANCY PROTECTION: Starting {} operation", self.operation_name);
+        use solana_program::program_pack::Pack;
+        use spl_token::state::Account as TokenAccount;
+        
+        msg!("📸 SNAPSHOT PROTECTION: Starting {} operation", self.operation_name);
 
         // Capture pre-transfer snapshots
-        let source_snapshot = TokenAccountSnapshot::capture(
-            self.source_account, 
-            &format!("{} Source", self.operation_name)
-        )?;
+        let source_before = TokenAccount::unpack_from_slice(&self.source_account.data.borrow())?;
+        let dest_before = TokenAccount::unpack_from_slice(&self.destination_account.data.borrow())?;
         
-        let destination_snapshot = TokenAccountSnapshot::capture(
-            self.destination_account, 
-            &format!("{} Destination", self.operation_name)
-        )?;
-
-        // Execute the actual transfer operation
+        // Execute the actual transfer
         msg!("💸 Executing {} transfer of {} tokens", self.operation_name, self.amount);
         transfer_fn()?;
-
+        
         // Validate post-transfer state
-        source_snapshot.validate_changes(
-            self.source_account,
-            -(self.amount as i64),
-            &format!("{} Source", self.operation_name),
-        )?;
-
-        destination_snapshot.validate_changes(
-            self.destination_account,
-            self.amount as i64,
-            &format!("{} Destination", self.operation_name),
-        )?;
-
-        msg!("✅ REENTRANCY PROTECTION: {} completed safely", self.operation_name);
+        let source_after = TokenAccount::unpack_from_slice(&self.source_account.data.borrow())?;
+        let dest_after = TokenAccount::unpack_from_slice(&self.destination_account.data.borrow())?;
+        
+        // Check source account
+        let source_change = source_after.amount as i64 - source_before.amount as i64;
+        if source_change != -(self.amount as i64) {
+            msg!("❌ REENTRANCY DETECTED: Unexpected source balance change");
+            msg!("   Expected: -{}, Actual: {}", self.amount, source_change);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
+        // Check destination account
+        let dest_change = dest_after.amount as i64 - dest_before.amount as i64;
+        if dest_change != self.amount as i64 {
+            msg!("❌ REENTRANCY DETECTED: Unexpected destination balance change");
+            msg!("   Expected: {}, Actual: {}", self.amount, dest_change);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
+        msg!("✅ SNAPSHOT PROTECTION: {} completed safely", self.operation_name);
         Ok(())
     }
 }
 
-/// Wrapper for safely executing token mint operations with reentrancy protection
+/// Wrapper for safely executing token mint operations with snapshot-based protection
 pub struct SafeTokenMint<'a> {
     pub destination_account: &'a AccountInfo<'a>,
     pub amount: u64,
@@ -194,7 +233,6 @@ pub struct SafeTokenMint<'a> {
 }
 
 impl<'a> SafeTokenMint<'a> {
-    /// Create a new safe mint wrapper
     pub fn new(
         destination_account: &'a AccountInfo<'a>,
         amount: u64,
@@ -207,36 +245,30 @@ impl<'a> SafeTokenMint<'a> {
         }
     }
 
-    /// Execute the mint with comprehensive reentrancy protection
     pub fn execute_with_protection<F>(self, mint_fn: F) -> Result<(), ProgramError>
     where
         F: FnOnce() -> Result<(), ProgramError>,
     {
-        msg!("🛡️ REENTRANCY PROTECTION: Starting {} operation", self.operation_name);
-
-        // Capture pre-mint snapshot
-        let destination_snapshot = TokenAccountSnapshot::capture(
-            self.destination_account, 
-            &format!("{} Destination", self.operation_name)
-        )?;
-
-        // Execute the actual mint operation
-        msg!("🪙 Executing {} mint of {} tokens", self.operation_name, self.amount);
+        use solana_program::program_pack::Pack;
+        use spl_token::state::Account as TokenAccount;
+        
+        let balance_before = TokenAccount::unpack_from_slice(&self.destination_account.data.borrow())?.amount;
+        
         mint_fn()?;
-
-        // Validate post-mint state
-        destination_snapshot.validate_changes(
-            self.destination_account,
-            self.amount as i64,
-            &format!("{} Destination", self.operation_name),
-        )?;
-
-        msg!("✅ REENTRANCY PROTECTION: {} completed safely", self.operation_name);
+        
+        let balance_after = TokenAccount::unpack_from_slice(&self.destination_account.data.borrow())?.amount;
+        let actual_change = balance_after as i64 - balance_before as i64;
+        
+        if actual_change != self.amount as i64 {
+            msg!("❌ REENTRANCY DETECTED: Unexpected mint amount");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
         Ok(())
     }
 }
 
-/// Wrapper for safely executing token burn operations with reentrancy protection
+/// Wrapper for safely executing token burn operations with snapshot-based protection
 pub struct SafeTokenBurn<'a> {
     pub source_account: &'a AccountInfo<'a>,
     pub amount: u64,
@@ -244,7 +276,6 @@ pub struct SafeTokenBurn<'a> {
 }
 
 impl<'a> SafeTokenBurn<'a> {
-    /// Create a new safe burn wrapper
     pub fn new(
         source_account: &'a AccountInfo<'a>,
         amount: u64,
@@ -257,31 +288,84 @@ impl<'a> SafeTokenBurn<'a> {
         }
     }
 
-    /// Execute the burn with comprehensive reentrancy protection
     pub fn execute_with_protection<F>(self, burn_fn: F) -> Result<(), ProgramError>
     where
         F: FnOnce() -> Result<(), ProgramError>,
     {
-        msg!("🛡️ REENTRANCY PROTECTION: Starting {} operation", self.operation_name);
-
-        // Capture pre-burn snapshot
-        let source_snapshot = TokenAccountSnapshot::capture(
-            self.source_account, 
-            &format!("{} Source", self.operation_name)
-        )?;
-
-        // Execute the actual burn operation
-        msg!("🔥 Executing {} burn of {} tokens", self.operation_name, self.amount);
+        use solana_program::program_pack::Pack;
+        use spl_token::state::Account as TokenAccount;
+        
+        let balance_before = TokenAccount::unpack_from_slice(&self.source_account.data.borrow())?.amount;
+        
         burn_fn()?;
-
-        // Validate post-burn state
-        source_snapshot.validate_changes(
-            self.source_account,
-            -(self.amount as i64),
-            &format!("{} Source", self.operation_name),
-        )?;
-
-        msg!("✅ REENTRANCY PROTECTION: {} completed safely", self.operation_name);
+        
+        let balance_after = TokenAccount::unpack_from_slice(&self.source_account.data.borrow())?.amount;
+        let actual_change = balance_after as i64 - balance_before as i64;
+        
+        if actual_change != -(self.amount as i64) {
+            msg!("❌ REENTRANCY DETECTED: Unexpected burn amount");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_program::account_info::AccountInfo;
+    use solana_program::pubkey::Pubkey;
+    
+    #[test]
+    fn test_reentrancy_guard() {
+        // Create test accounts
+        let key1 = Pubkey::new_unique();
+        let key2 = Pubkey::new_unique();
+        let mut lamports1 = 0;
+        let mut lamports2 = 0;
+        let mut data1 = vec![];
+        let mut data2 = vec![];
+        let owner = Pubkey::default();
+        
+        let account1 = AccountInfo::new(
+            &key1,
+            false,
+            false,
+            &mut lamports1,
+            &mut data1,
+            &owner,
+            false,
+            0,
+        );
+        
+        let account2 = AccountInfo::new(
+            &key2,
+            false,
+            false,
+            &mut lamports2,
+            &mut data2,
+            &owner,
+            false,
+            0,
+        );
+        
+        // Test normal operation
+        let result = ReentrancyGuard::execute(&[&account1, &account2], "test_op", || {
+            Ok(42)
+        });
+        assert_eq!(result.unwrap(), 42);
+        
+        // Test nested operation (should fail)
+        let result = ReentrancyGuard::execute(&[&account1], "outer_op", || {
+            // This inner operation should fail due to reentrancy
+            ReentrancyGuard::execute(&[&account1], "inner_op", || {
+                Ok(())
+            })
+        });
+        assert!(result.is_err());
+        
+        // Verify cleanup happened
+        assert_eq!(get_reentrancy_depth(), 0);
     }
 }
