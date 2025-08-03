@@ -393,4 +393,31 @@ pub enum PoolInstruction {
         new_swap_fee: u64,
     },
     
+    /// **DONATION: Voluntary SOL contribution to the protocol treasury**
+    /// 
+    /// Allows anyone to donate SOL to support the protocol. Donations are:
+    /// - 100% deposited to the main treasury
+    /// - Tracked separately from fees for transparency
+    /// - Non-refundable once sent (accidental donations will NOT be returned)
+    /// - Not allowed when system is paused
+    /// 
+    /// # Purpose:
+    /// - Testing treasury withdrawals without creating massive transactions
+    /// - Voluntary protocol support
+    /// - Lost/stuck funds recovery
+    /// 
+    /// # Arguments:
+    /// - `amount`: Amount of SOL to donate in lamports
+    /// - `message`: Optional message (logged but not stored on-chain)
+    /// 
+    /// # Account Order:
+    /// - [0] Donor Account (signer, writable) - Account donating SOL
+    /// - [1] Main Treasury PDA (writable) - Receives the donation
+    /// - [2] System State PDA (readable) - For pause validation
+    /// - [3] System Program Account (readable) - For SOL transfer
+    DonateSol {
+        amount: u64,
+        message: String,
+    },
+    
 } 

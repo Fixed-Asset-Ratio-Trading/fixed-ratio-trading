@@ -16,6 +16,7 @@ pub const INITIALIZE_POOL_ACCOUNTS: usize = 13;
 pub const DEPOSIT_ACCOUNTS: usize = 11;
 pub const WITHDRAW_ACCOUNTS: usize = 11;
 pub const SWAP_ACCOUNTS: usize = 11;  // 9 base + 2 mint accounts
+pub const DONATE_SOL_ACCOUNTS: usize = 4;  // donor, treasury, system state, system program
 pub const SET_SWAP_OWNER_ONLY_ACCOUNTS: usize = 4;
 pub const UPDATE_POOL_FEES_ACCOUNTS: usize = 4;
 pub const PAUSE_SYSTEM_ACCOUNTS: usize = 3;

@@ -343,6 +343,10 @@ pub fn process_get_treasury_info(
     msg!("   Consolidations: {} (Last: {})", 
          main_treasury_state.total_consolidations_performed,
          main_treasury_state.last_update_timestamp);
+    msg!("   Donations: {} (Total: {} lamports, {:.6} SOL)", 
+         main_treasury_state.donation_count,
+         main_treasury_state.total_donations,
+         main_treasury_state.total_donations as f64 / 1_000_000_000.0);
     msg!("");
     msg!("📊 ENHANCED ANALYTICS:");
     msg!("   Total Successful Operations: {}", main_treasury_state.total_successful_operations());
@@ -361,6 +365,151 @@ pub fn process_get_treasury_info(
     msg!("   • Single source of truth");
     msg!("   • No race conditions");
     msg!("   • Simplified architecture");
+    
+    Ok(())
+}
+
+/// Processes voluntary SOL donations to the treasury
+/// 
+/// This function allows anyone to donate SOL to the protocol treasury.
+/// Donations are tracked separately from fees for transparency and analytics.
+/// 
+/// # Security:
+/// - System pause validation prevents donations when system is paused
+/// - Donations are non-refundable once sent
+/// - All donations are logged with optional messages
+/// - Thread-safe counter updates
+/// 
+/// # Arguments:
+/// * `program_id` - The program ID for PDA derivation
+/// * `amount` - Amount to donate in lamports (must be > 0)
+/// * `message` - Optional message (logged but not stored)
+/// * `accounts` - Array of accounts in order
+/// 
+/// # Account Info
+/// The accounts must be provided in the following order:
+/// 0. **Donor Account** (signer, writable) - Account donating SOL
+/// 1. **Main Treasury PDA** (writable) - Receives the donation
+/// 2. **System State PDA** (readable) - For pause validation
+/// 3. **System Program Account** (readable) - For SOL transfer
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error
+pub fn process_donate_sol(
+    program_id: &Pubkey,
+    amount: u64,
+    message: String,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("💰 Processing SOL donation: {} lamports", amount);
+    msg!("📝 Donation message: \"{}\"", message);
+    msg!("⚠️  NOTICE: All donations are NON-REFUNDABLE. Accidental donations will NOT be returned.");
+    
+    // Extract accounts
+    let donor_account = &accounts[0];
+    let main_treasury_pda = &accounts[1];
+    let system_state_pda = &accounts[2];
+    let system_program = &accounts[3];
+    
+    // Validate accounts
+    use crate::utils::validation::{validate_writable, validate_signer};
+    validate_signer(donor_account, "Donor account")?;
+    validate_writable(donor_account, "Donor account")?;
+    validate_writable(main_treasury_pda, "Main treasury PDA")?;
+    
+    // Validate system program
+    if *system_program.key != solana_program::system_program::id() {
+        msg!("❌ Invalid system program account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    
+    // Validate amount > 0
+    if amount == 0 {
+        msg!("❌ Donation amount must be greater than 0");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Check donor has sufficient balance
+    if donor_account.lamports() < amount {
+        msg!("❌ Insufficient balance. Available: {}, Required: {}", 
+             donor_account.lamports(), amount);
+        return Err(ProgramError::InsufficientFunds);
+    }
+    
+    // Verify main treasury PDA
+    let (expected_main_treasury, _treasury_bump) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        program_id,
+    );
+    if *main_treasury_pda.key != expected_main_treasury {
+        msg!("❌ Invalid main treasury PDA. Expected: {}, Got: {}", 
+             expected_main_treasury, main_treasury_pda.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // ✅ SECURITY: Validate system not paused
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
+    msg!("✅ System pause validation passed");
+    
+    // Transfer SOL from donor to treasury
+    msg!("💸 Transferring {} lamports from {} to treasury", 
+         amount, donor_account.key);
+    
+    solana_program::program::invoke(
+        &solana_program::system_instruction::transfer(
+            donor_account.key,
+            main_treasury_pda.key,
+            amount,
+        ),
+        &[donor_account.clone(), main_treasury_pda.clone()],
+    )?;
+    
+    msg!("✅ Transfer successful");
+    
+    // Load and update treasury state
+    let mut main_treasury_state = match MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow()) {
+        Ok(state) => state,
+        Err(e) => {
+            msg!("⚠️ Failed to deserialize treasury state: {:?}", e);
+            msg!("🔄 Creating default treasury state");
+            
+            let current_balance = main_treasury_pda.lamports();
+            let mut default_state = MainTreasuryState::new();
+            default_state.total_balance = current_balance;
+            default_state.rent_exempt_minimum = 2_039_280;
+            default_state
+        }
+    };
+    
+    // Get current timestamp
+    use solana_program::clock::Clock;
+    use solana_program::sysvar::Sysvar;
+    
+    let current_timestamp = Clock::get()?.unix_timestamp;
+    
+    // Update treasury state with donation
+    main_treasury_state.add_donation(amount, current_timestamp);
+    main_treasury_state.total_balance = main_treasury_pda.lamports();
+    
+    // Serialize updated state back to account
+    use crate::utils::serialization::serialize_to_account;
+    serialize_to_account(&main_treasury_state, main_treasury_pda)?;
+    
+    // Log donation details
+    msg!("✅ DONATION RECORDED SUCCESSFULLY:");
+    msg!("   Donor: {}", donor_account.key);
+    msg!("   Amount: {} lamports ({:.6} SOL)", amount, amount as f64 / 1_000_000_000.0);
+    msg!("   Total Donations: {} ({:.6} SOL)", 
+         main_treasury_state.total_donations,
+         main_treasury_state.total_donations as f64 / 1_000_000_000.0);
+    msg!("   Donation Count: {}", main_treasury_state.donation_count);
+    msg!("   Treasury Balance: {} lamports", main_treasury_state.total_balance);
+    
+    if !message.is_empty() {
+        msg!("   Message: \"{}\"", message);
+    }
+    
+    msg!("💖 Thank you for supporting the protocol!");
     
     Ok(())
 }

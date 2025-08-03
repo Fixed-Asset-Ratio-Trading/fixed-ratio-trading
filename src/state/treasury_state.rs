@@ -81,6 +81,14 @@ pub struct MainTreasuryState {
     /// **RATE LIMITING: Timestamp of last treasury withdrawal**
     /// Used for rolling 60-minute withdrawal rate limiting
     pub last_withdrawal_timestamp: i64,
+    
+    /// **DONATION TRACKING: Total number of donations received**
+    /// Tracks voluntary SOL contributions to the protocol
+    pub donation_count: u64,
+    
+    /// **DONATION TRACKING: Total SOL donated to the protocol**
+    /// Sum of all voluntary donations in lamports
+    pub total_donations: u64,
 }
 
 /// **NEW: Consolidated operations data structure**
@@ -111,8 +119,10 @@ impl MainTreasuryState {
         8 +   // total_swap_contract_fees ← NEW
         8 +   // last_update_timestamp
         8 +   // total_consolidations_performed ← NEW
-        8;    // last_withdrawal_timestamp ← NEW (for rate limiting)
-        // **TOTAL ADDITION: +24 bytes**
+        8 +   // last_withdrawal_timestamp ← NEW (for rate limiting)
+        8 +   // donation_count ← NEW
+        8;    // total_donations ← NEW
+        // **TOTAL ADDITION: +40 bytes** (includes 16 bytes for donation tracking)
         // Authority removed: 32 bytes saved, validation handled through SystemState
 
     pub fn get_packed_len() -> usize {
@@ -136,6 +146,8 @@ impl MainTreasuryState {
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_withdrawal_timestamp: 0,
+            donation_count: 0,
+            total_donations: 0,
         }
     }
     
@@ -157,6 +169,8 @@ impl MainTreasuryState {
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
             last_withdrawal_timestamp: 0,
+            donation_count: 0,
+            total_donations: 0,
         }
     }
     
@@ -217,13 +231,28 @@ impl MainTreasuryState {
         self.last_update_timestamp = timestamp;
     }
     
+    /// **DONATION TRACKING: Records a voluntary donation to the treasury**
+    /// 
+    /// This function tracks donations separately from fees to provide transparency
+    /// about voluntary contributions vs mandatory protocol fees.
+    /// 
+    /// # Arguments
+    /// * `donation_amount` - The donation amount in lamports
+    /// * `timestamp` - Timestamp of the donation
+    pub fn add_donation(&mut self, donation_amount: u64, timestamp: i64) {
+        self.donation_count += 1;
+        self.total_donations += donation_amount;
+        self.last_update_timestamp = timestamp;
+    }
+    
     /// **NEW: Calculate total successful operations across all types**
     pub fn total_successful_operations(&self) -> u64 {
         self.pool_creation_count + 
         self.liquidity_operation_count + 
         self.regular_swap_count + 
         self.treasury_withdrawal_count +
-        self.total_consolidations_performed
+        self.total_consolidations_performed +
+        self.donation_count
     }
     
     /// **NEW: Calculate success rate (successful vs failed operations)**

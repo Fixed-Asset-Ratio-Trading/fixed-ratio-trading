@@ -205,23 +205,99 @@ This document outlines the testing strategy for the system halt (pause) and rest
 
 ## Testing Environment Setup
 
+### Test Foundation Requirements
+**All tests MUST use the Enhanced Test Foundation located at:**
+```
+/Users/davinci/code/fixed-ratio-trading/tests/common/enhanced_test_foundation.rs
+```
+
+This ensures:
+- ✅ **Actual Solana Environment**: Tests run against real contract code in live Solana environment
+- ✅ **No Mock/Smoke Tests**: All tests interact with deployed program functionality
+- ✅ **Standardized Test Structure**: Consistent test setup and teardown across all tests
+- ✅ **Multi-Pool Capability**: Support for complex scenarios with multiple pools
+- ✅ **Shared Resources**: Common system state, treasury, and token program access
+
+### Required Test Configuration Pattern
+**All tests MUST follow the standardized TEST CONFIGURATION pattern:**
+
+```rust
+#[serial]
+async fn test_system_halt_functionality() -> TestResult {
+    // ============================================================================
+    // 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
+    // ============================================================================
+    
+    // Debug Configuration
+    const ENABLE_DEBUG_LOGGING: bool = false; // Set to true for verbose Solana runtime logs
+    
+    // System State Configuration
+    const INITIAL_SYSTEM_PAUSED: bool = false;     // Initial system pause state
+    const PAUSE_REASON_CODE: u8 = 1;               // Reason code for system pause
+    const TEST_EMERGENCY_PAUSE: bool = false;      // Test emergency vs normal pause
+    
+    // Treasury Configuration
+    const TREASURY_BALANCE_SOL: u64 = 2000;        // Treasury balance in SOL
+    const EXPECTED_HOURLY_RATE: u64 = 100;         // Expected withdrawal rate (SOL/hour)
+    const WITHDRAWAL_AMOUNT_SOL: u64 = 50;         // Test withdrawal amount
+    
+    // Authority Configuration
+    const USE_VALID_AUTHORITY: bool = true;        // Use valid program upgrade authority
+    const TEST_INVALID_AUTHORITY: bool = false;    // Test with invalid authority
+    
+    // Time Configuration
+    const RESTART_PENALTY_HOURS: u64 = 71;        // 3-day cooling period in hours
+    const TEST_TIME_OFFSET_HOURS: u64 = 0;        // Time offset for penalty testing
+    
+    // Verification Configuration
+    const VERIFY_ERROR_MESSAGES: bool = true;     // Verify specific error message content
+    const VERIFY_LOG_MESSAGES: bool = true;       // Verify system log messages
+    const VERIFY_STATE_CHANGES: bool = true;      // Verify SystemState updates
+    
+    // ============================================================================
+    // 🧪 TEST SETUP AND EXECUTION
+    // ============================================================================
+    
+    println!("🧪 TEST: System Halt Functionality");
+    println!("====================================");
+    println!("🎯 PURPOSE: Verify system pause blocks treasury withdrawals");
+    println!("🔍 SCENARIO: Pausing system and attempting treasury operations");
+    println!("✅ EXPECTED: All treasury withdrawals blocked during pause");
+    
+    // ... test implementation using EnhancedTestFoundation
+}
+```
+
 ### Required Test Accounts
-- Program upgrade authority keypair
-- Invalid authority keypair
-- Main treasury PDA
-- System state PDA
-- Test destination accounts
+- Program upgrade authority keypair (via EnhancedTestFoundation)
+- Invalid authority keypair (for negative testing)
+- Main treasury PDA (managed by foundation)
+- System state PDA (managed by foundation)
+- Test destination accounts (created by foundation)
 
-### Mock Data Requirements
-- Various treasury balances for rate limit testing
-- Different timestamp scenarios
-- Multiple pause reason codes
+### Live Solana Environment Requirements
+- **Real Contract Execution**: Tests must execute actual program instructions
+- **Actual PDAs**: Use real Program Derived Addresses, not mock accounts
+- **Live Token Operations**: Real SPL token transfers and account management
+- **Authentic Authority Validation**: Test real signature and authority checking
+- **Genuine State Persistence**: Verify actual account state changes persist
 
-### Test Utilities Needed
-- Time manipulation helpers
-- Authority signature helpers
-- Treasury balance setup helpers
-- Penalty calculation verification helpers
+### Configuration-Driven Edge Case Testing
+Each test must provide clear configuration constants that allow:
+- **Quick Parameter Changes**: Modify test behavior without code restructuring
+- **Edge Case Exploration**: Easy testing of boundary conditions
+- **Scenario Variants**: Multiple test configurations from single test function
+- **Debug Control**: Toggle debug logging and verification levels
+- **Time Manipulation**: Configure time-based scenarios (penalty periods, etc.)
+
+### Test Structure Standards
+All tests must include:
+1. **Configuration Section**: Clear constants at top with 🎯 TEST CONFIGURATION header
+2. **Setup Section**: Test purpose and scenario description with 🧪 TEST SETUP header
+3. **Enhanced Foundation Usage**: Use `create_enhanced_test_foundation()` for setup
+4. **Real Environment Verification**: Confirm tests run against actual Solana program
+5. **State Validation**: Verify actual account state changes, not mock responses
+6. **Cleanup**: Proper resource cleanup using foundation's cleanup methods
 
 ---
 

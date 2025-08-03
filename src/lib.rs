@@ -154,6 +154,7 @@ use crate::processors::{
     treasury::{
         process_withdraw_treasury_fees,
         process_get_treasury_info,
+        process_donate_sol,
     },
     consolidation::{
         process_consolidate_pool_fees,
@@ -323,6 +324,14 @@ pub fn process_instruction<'a>(
         } => {
             validate_account_count(accounts, UNPAUSE_POOL_ACCOUNTS, "UnpausePool")?;
             process_unpause_pool(program_id, unpause_flags, accounts)
+        },
+        
+        PoolInstruction::DonateSol {
+            amount,
+            message,
+        } => {
+            validate_account_count(accounts, DONATE_SOL_ACCOUNTS, "DonateSol")?;
+            process_donate_sol(program_id, amount, message, accounts)
         },
     }
 }
