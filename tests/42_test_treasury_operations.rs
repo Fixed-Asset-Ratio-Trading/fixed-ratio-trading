@@ -763,7 +763,9 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
         total_swap_contract_fees: 15_000_000,
         last_update_timestamp: 1640995200,
         total_consolidations_performed: 2,
-        last_consolidation_timestamp: 1640995100,
+        last_withdrawal_timestamp: 1640995100,
+        donation_count: 0,
+        total_donations: 0,
     };
     
     let system_state = SystemState {
@@ -1642,7 +1644,9 @@ async fn test_analytics_methods_unit_test() -> Result<(), Box<dyn std::error::Er
         total_swap_contract_fees: 120_000_000,     // Same as regular swap fees
         last_update_timestamp: 1640995200,
         total_consolidations_performed: 1,
-        last_consolidation_timestamp: 1640995100,
+        last_withdrawal_timestamp: 1640995100,
+        donation_count: 0,
+        total_donations: 0,
     };
     
     println!("🔢 Testing analytics calculations with known data...");

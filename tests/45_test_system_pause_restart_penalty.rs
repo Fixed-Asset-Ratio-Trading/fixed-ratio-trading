@@ -979,7 +979,7 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with 2-second timeout protection (proven pattern from past fixes)
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Verify system is paused
     verify_system_paused(&mut banks_client, &system_state_pda, true, Some(PAUSE_REASON_CODE)).await?;
@@ -2771,7 +2771,7 @@ async fn test_last_update_timestamp_updated() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Record pause timestamp
     let pause_timestamp = if COMPARE_WITH_PAUSE_TIME {
@@ -2809,7 +2809,7 @@ async fn test_last_update_timestamp_updated() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Get treasury state after unpause
     let treasury_after = {
@@ -2948,7 +2948,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Unpause to apply penalty
     println!("\n🔧 Step 2: Unpausing system to apply penalty...");
@@ -2970,7 +2970,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Get treasury account data
     println!("\n🔍 Step 3: Verifying treasury state serialization...");
@@ -3133,7 +3133,7 @@ async fn test_log_messages_include_penalty_expiration() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Brief wait
     tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
@@ -3164,7 +3164,7 @@ async fn test_log_messages_include_penalty_expiration() -> TestResult {
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Get treasury state to verify penalty
     let treasury_state = {
@@ -3310,7 +3310,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with 2-second timeout protection
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Wait briefly
     if PAUSE_DURATION_MS > 0 {
@@ -3341,7 +3341,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with timeout protection
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Verify system is now unpaused
     let system_state_after_first_unpause = {
@@ -3555,7 +3555,7 @@ async fn test_system_unpause_logs_pause_duration() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute pause
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 600).await?;
     
     // Record pause timestamp
     let pause_timestamp = {
@@ -3603,7 +3603,7 @@ async fn test_system_unpause_logs_pause_duration() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute unpause
-    process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+    process_transaction_with_timeout(&mut banks_client, transaction, 500).await?;
     
     // Get unpause timestamp from treasury state
     let unpause_timestamp = {
@@ -3758,7 +3758,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
         
         // Execute pause
-        process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+        process_transaction_with_timeout(&mut banks_client, transaction, 500).await?;
         
         // Verify pause state
         let system_state_paused = {
@@ -3803,7 +3803,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
         
         // Execute unpause
-        process_transaction_with_timeout(&mut banks_client, transaction, 1500).await?;
+        process_transaction_with_timeout(&mut banks_client, transaction, 500).await?;
         
         // Verify unpause state
         let system_state_after = {
