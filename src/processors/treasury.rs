@@ -149,6 +149,69 @@ pub fn process_withdraw_treasury_fees(
         return Err(ProgramError::InsufficientFunds);
     }
     
+    // Get current timestamp for rate limiting validation
+    use solana_program::clock::Clock;
+    use solana_program::sysvar::Sysvar;
+    
+    let current_timestamp = match Clock::get() {
+        Ok(clock) => {
+            msg!("✅ Successfully retrieved current timestamp: {}", clock.unix_timestamp);
+            clock.unix_timestamp
+        },
+        Err(e) => {
+            msg!("⚠️ Warning: Failed to get current timestamp: {:?}", e);
+            msg!("🔄 Using fallback timestamp (0) for rate limiting validation");
+            0 // Fallback timestamp
+        }
+    };
+    
+    // **DYNAMIC RATE LIMITING VALIDATION**
+    // Enforce dynamic hourly withdrawal rate limiting with rolling 60-minute window
+    let current_hourly_limit = main_treasury_state.calculate_current_hourly_rate_limit();
+    
+    if let Err(rate_limit_error) = main_treasury_state.validate_withdrawal_rate_limit(withdrawal_amount, current_timestamp) {
+        msg!("🚫 WITHDRAWAL BLOCKED: {}", rate_limit_error);
+        
+        // Check if this is a system restart penalty
+        let restart_penalty_time = main_treasury_state.restart_penalty_time_remaining(current_timestamp);
+        if restart_penalty_time > 0 {
+            msg!("🔒 SYSTEM RESTART PENALTY ACTIVE:");
+            msg!("   Remaining penalty time: {} seconds ({} hours, {} days)", 
+                restart_penalty_time, 
+                restart_penalty_time / 3600,
+                restart_penalty_time / (3600 * 24));
+            msg!("   This 3-day cooling-off period prevents immediate fund drainage after system restart");
+            msg!("   Penalty started when system was last re-enabled after being paused");
+        } else {
+            // Regular rate limiting
+            let time_until_next = main_treasury_state.time_until_next_withdrawal_allowed(current_timestamp);
+            if time_until_next > 0 {
+                msg!("⏰ Next withdrawal allowed in {} seconds ({} minutes)", 
+                    time_until_next, time_until_next / 60);
+            }
+        }
+        
+        msg!("💡 Dynamic Rate Limiting Details:");
+        msg!("   Available for withdrawal: {} lamports ({} SOL)", 
+            available_balance, available_balance as f64 / 1_000_000_000.0);
+        msg!("   Current hourly limit: {} lamports ({} SOL)", 
+            current_hourly_limit, current_hourly_limit as f64 / 1_000_000_000.0);
+        msg!("   Requested amount: {} lamports ({} SOL)",
+            withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
+        msg!("   Drain time at current rate: {} hours", 
+            if current_hourly_limit > 0 { available_balance / current_hourly_limit } else { 0 });
+        msg!("   Last withdrawal: {} (timestamp)", main_treasury_state.last_withdrawal_timestamp);
+        msg!("   Base rate: {} SOL/hour, scales 10x every 48-hour threshold", 
+            crate::constants::TREASURY_BASE_HOURLY_RATE as f64 / 1_000_000_000.0);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    
+    msg!("✅ Rate limiting validation passed");
+    msg!("📊 Dynamic Rate Limit Info:");
+    msg!("   Current hourly limit: {} lamports ({} SOL)", 
+        current_hourly_limit, current_hourly_limit as f64 / 1_000_000_000.0);
+    msg!("   Estimated drain time: {} hours", 
+        if current_hourly_limit > 0 { available_balance / current_hourly_limit } else { 0 });
     msg!("💰 Treasury Withdrawal Details:");
     msg!("   Current balance: {} lamports", current_balance);
     msg!("   Rent-exempt minimum: {} lamports", rent_exempt_minimum);
@@ -159,23 +222,7 @@ pub fn process_withdraw_treasury_fees(
     **main_treasury_pda.try_borrow_mut_lamports()? -= withdrawal_amount;
     **destination_account.try_borrow_mut_lamports()? += withdrawal_amount;
     
-    // Update treasury statistics with new counter tracking
-    use solana_program::clock::Clock;
-    use solana_program::sysvar::Sysvar;
-    
-    // Get current timestamp with robust error handling
-    let current_timestamp = match Clock::get() {
-        Ok(clock) => {
-            msg!("✅ Successfully retrieved current timestamp: {}", clock.unix_timestamp);
-            clock.unix_timestamp
-        },
-        Err(e) => {
-            msg!("⚠️ Warning: Failed to get current timestamp: {:?}", e);
-            msg!("🔄 Using fallback timestamp (0) for withdrawal tracking");
-            0 // Fallback timestamp
-        }
-    };
-    
+    // Update treasury statistics with the timestamp we already obtained
     main_treasury_state.add_treasury_withdrawal(withdrawal_amount, current_timestamp);
     
     main_treasury_state.total_balance = main_treasury_pda.lamports();
@@ -295,7 +342,7 @@ pub fn process_get_treasury_info(
          main_treasury_state.total_withdrawn);
     msg!("   Consolidations: {} (Last: {})", 
          main_treasury_state.total_consolidations_performed,
-         main_treasury_state.last_consolidation_timestamp);
+         main_treasury_state.last_update_timestamp);
     msg!("");
     msg!("📊 ENHANCED ANALYTICS:");
     msg!("   Total Successful Operations: {}", main_treasury_state.total_successful_operations());

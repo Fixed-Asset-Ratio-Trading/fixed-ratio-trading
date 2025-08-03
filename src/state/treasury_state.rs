@@ -78,8 +78,9 @@ pub struct MainTreasuryState {
     /// Number of consolidation operations performed
     pub total_consolidations_performed: u64,
     
-    /// Timestamp of last consolidation
-    pub last_consolidation_timestamp: i64,
+    /// **RATE LIMITING: Timestamp of last treasury withdrawal**
+    /// Used for rolling 60-minute withdrawal rate limiting
+    pub last_withdrawal_timestamp: i64,
 }
 
 /// **NEW: Consolidated operations data structure**
@@ -110,7 +111,7 @@ impl MainTreasuryState {
         8 +   // total_swap_contract_fees ← NEW
         8 +   // last_update_timestamp
         8 +   // total_consolidations_performed ← NEW
-        8;    // last_consolidation_timestamp ← NEW
+        8;    // last_withdrawal_timestamp ← NEW (for rate limiting)
         // **TOTAL ADDITION: +24 bytes**
         // Authority removed: 32 bytes saved, validation handled through SystemState
 
@@ -134,7 +135,7 @@ impl MainTreasuryState {
             total_swap_contract_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
-            last_consolidation_timestamp: 0,
+            last_withdrawal_timestamp: 0,
         }
     }
     
@@ -155,7 +156,7 @@ impl MainTreasuryState {
             total_swap_contract_fees: 0,
             last_update_timestamp: 0,
             total_consolidations_performed: 0,
-            last_consolidation_timestamp: 0,
+            last_withdrawal_timestamp: 0,
         }
     }
     
@@ -207,6 +208,7 @@ impl MainTreasuryState {
         self.treasury_withdrawal_count += 1;
         self.total_withdrawn += withdrawal_amount;
         self.last_update_timestamp = timestamp;
+        self.last_withdrawal_timestamp = timestamp;
     }
     
     /// **NEW: Records a failed operation for debugging and analytics**
@@ -283,8 +285,162 @@ impl MainTreasuryState {
         
         // Update consolidation metadata
         self.total_consolidations_performed += 1;
-        self.last_consolidation_timestamp = timestamp;
         self.last_update_timestamp = timestamp;
+    }
+    
+    /// **DYNAMIC RATE LIMITING: Calculate current hourly withdrawal rate limit**
+    /// 
+    /// Calculates the appropriate hourly rate limit based on available treasury balance
+    /// using a dynamic scaling system that ensures the treasury can be drained within 48 hours.
+    /// 
+    /// **Scaling Logic:**
+    /// - Base rate: 10 SOL/hour for balances ≤ 480 SOL
+    /// - Rate increases by 10x when 48-hour drain time would be exceeded
+    /// - Examples: 10 SOL/hour (≤480 SOL), 100 SOL/hour (≤4800 SOL), 1000 SOL/hour (≤48000 SOL)
+    /// 
+    /// # Returns
+    /// * `u64` - Current hourly rate limit in lamports
+    pub fn calculate_current_hourly_rate_limit(&self) -> u64 {
+        use crate::constants::{
+            TREASURY_BASE_HOURLY_RATE, 
+            TREASURY_MAX_DRAIN_TIME_HOURS, 
+            TREASURY_RATE_SCALING_MULTIPLIER
+        };
+        
+        let available_balance = self.available_for_withdrawal();
+        let mut current_rate = TREASURY_BASE_HOURLY_RATE; // Start with 10 SOL/hour
+        
+        // Scale up rate by 10x whenever 48-hour drain time would be exceeded
+        while available_balance > (TREASURY_MAX_DRAIN_TIME_HOURS * current_rate) {
+            current_rate = current_rate.saturating_mul(TREASURY_RATE_SCALING_MULTIPLIER);
+            
+            // Safety check to prevent infinite loop (though practically impossible)
+            if current_rate == 0 || current_rate == u64::MAX {
+                break;
+            }
+        }
+        
+        current_rate
+    }
+    
+    /// **RATE LIMITING: Check if withdrawal amount is within dynamic hourly rate limit**
+    /// 
+    /// Validates that the requested withdrawal amount doesn't exceed the dynamically calculated
+    /// hourly rate limit using a rolling 60-minute window from the last withdrawal timestamp.
+    /// Also checks for system restart penalty that blocks withdrawals for 3 days after system restart.
+    /// 
+    /// # Arguments
+    /// * `withdrawal_amount` - Amount to be withdrawn in lamports
+    /// * `current_timestamp` - Current timestamp for rate limit window calculation
+    /// 
+    /// # Returns
+    /// * `Ok(())` - If withdrawal is within rate limit
+    /// * `Err(&'static str)` - If withdrawal exceeds rate limit with error message
+    pub fn validate_withdrawal_rate_limit(&self, withdrawal_amount: u64, current_timestamp: i64) -> Result<(), &'static str> {
+        use crate::constants::TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW;
+        
+        // **FIRST CHECK: System restart penalty**
+        // This takes precedence over all other rate limiting
+        if self.is_blocked_by_restart_penalty(current_timestamp) {
+            return Err("Withdrawal blocked: system restart penalty active (3-day cooling-off period)");
+        }
+        
+        // Calculate current dynamic rate limit based on available balance
+        let current_hourly_limit = self.calculate_current_hourly_rate_limit();
+        
+        // If this is the first withdrawal ever, check against current rate limit
+        if self.last_withdrawal_timestamp == 0 {
+            if withdrawal_amount > current_hourly_limit {
+                return Err("Withdrawal amount exceeds current hourly rate limit");
+            }
+            return Ok(());
+        }
+        
+        // Calculate time since last withdrawal
+        let time_since_last_withdrawal = current_timestamp - self.last_withdrawal_timestamp;
+        
+        // If more than 60 minutes have passed since last withdrawal, check against current rate limit
+        if time_since_last_withdrawal >= TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW {
+            if withdrawal_amount > current_hourly_limit {
+                return Err("Withdrawal amount exceeds current hourly rate limit");
+            }
+            return Ok(());
+        }
+        
+        // Within 60-minute window: reject any withdrawal request
+        // This enforces the "1 withdrawal per hour" rule regardless of amount
+        Err("Rate limit exceeded: withdrawals are limited to once per hour")
+    }
+    
+    /// **RATE LIMITING: Get time remaining until next withdrawal is allowed**
+    /// 
+    /// # Arguments
+    /// * `current_timestamp` - Current timestamp for calculation
+    /// 
+    /// # Returns
+    /// * `0` - If withdrawal is allowed now
+    /// * `seconds` - Number of seconds until next withdrawal is allowed
+    pub fn time_until_next_withdrawal_allowed(&self, current_timestamp: i64) -> i64 {
+        use crate::constants::TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW;
+        
+        if self.last_withdrawal_timestamp == 0 {
+            return 0; // First withdrawal ever, no waiting
+        }
+        
+        let time_since_last_withdrawal = current_timestamp - self.last_withdrawal_timestamp;
+        
+        if time_since_last_withdrawal >= TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW {
+            return 0; // Rate limit window has passed
+        }
+        
+        TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW - time_since_last_withdrawal
+    }
+    
+    /// **SYSTEM RESTART PENALTY: Apply withdrawal penalty when system is re-enabled**
+    /// 
+    /// Sets the last withdrawal timestamp to 71 hours in the future to prevent
+    /// withdrawals for 3 days after system restart. This security measure prevents
+    /// immediate fund drainage after system maintenance or emergency halts.
+    /// 
+    /// # Arguments
+    /// * `current_timestamp` - Current timestamp when system is being re-enabled
+    pub fn apply_system_restart_penalty(&mut self, current_timestamp: i64) {
+        use crate::constants::TREASURY_SYSTEM_RESTART_PENALTY_SECONDS;
+        
+        // Set last withdrawal timestamp 71 hours into the future
+        self.last_withdrawal_timestamp = current_timestamp + TREASURY_SYSTEM_RESTART_PENALTY_SECONDS;
+        
+        // Also update the general timestamp for tracking
+        self.last_update_timestamp = current_timestamp;
+    }
+    
+    /// **SYSTEM RESTART PENALTY: Check if withdrawal is blocked due to system restart penalty**
+    /// 
+    /// # Arguments
+    /// * `current_timestamp` - Current timestamp for penalty check
+    /// 
+    /// # Returns
+    /// * `true` - If withdrawal is blocked due to restart penalty
+    /// * `false` - If restart penalty period has expired
+    pub fn is_blocked_by_restart_penalty(&self, current_timestamp: i64) -> bool {
+        // If last withdrawal timestamp is in the future, we're in penalty period
+        self.last_withdrawal_timestamp > current_timestamp
+    }
+    
+    /// **SYSTEM RESTART PENALTY: Get remaining restart penalty time**
+    /// 
+    /// # Arguments
+    /// * `current_timestamp` - Current timestamp for calculation
+    /// 
+    /// # Returns
+    /// * `0` - If no penalty is active
+    /// * `seconds` - Number of seconds remaining in penalty period
+    pub fn restart_penalty_time_remaining(&self, current_timestamp: i64) -> i64 {
+        if self.last_withdrawal_timestamp > current_timestamp {
+            self.last_withdrawal_timestamp - current_timestamp
+        } else {
+            0
+        }
     }
     
     /// **NEW: Calculate available balance for withdrawal (considering rent exemption)**

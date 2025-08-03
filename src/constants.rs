@@ -289,5 +289,31 @@ pub const MIN_LIQUIDITY_FEE: u64 = 100_000; // 0.0001 SOL
 /// Ensures fees cover basic transaction costs
 pub const MIN_SWAP_FEE: u64 = 10_000; // 0.00001 SOL
 
+//=============================================================================
+// TREASURY WITHDRAWAL RATE LIMITING - DYNAMIC SCALING SYSTEM
+//=============================================================================
+
+/// Time window for treasury withdrawal rate limiting (60 minutes in seconds)
+/// Rolling window from last withdrawal for rate limiting calculations
+pub const TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW: i64 = 3600; // 60 minutes in seconds
+
+/// Base hourly withdrawal rate (10 SOL per hour)
+/// This is the starting rate that scales up by orders of magnitude based on treasury balance
+/// to ensure treasury can be drained within 48 hours maximum
+pub const TREASURY_BASE_HOURLY_RATE: u64 = 10_000_000_000; // 10 SOL in lamports
+
+/// Maximum drain time target (48 hours)
+/// Rate scaling ensures treasury can be fully drained within this timeframe
+pub const TREASURY_MAX_DRAIN_TIME_HOURS: u64 = 48;
+
+/// Rate scaling multiplier (10x per tier)
+/// Each scaling tier increases the hourly rate by this factor
+pub const TREASURY_RATE_SCALING_MULTIPLIER: u64 = 10;
+
+/// System restart withdrawal penalty (71 hours in seconds)
+/// When system is re-enabled after being paused, withdrawals are blocked for this duration
+/// This creates a 3-day cooling-off period to prevent immediate fund drainage after system restart
+pub const TREASURY_SYSTEM_RESTART_PENALTY_SECONDS: i64 = 71 * 3600; // 71 hours in seconds
+
 
 
