@@ -632,6 +632,21 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
         &[pool_state_data.pool_authority_bump_seed],
     ];
 
+    // CRITICAL: Collect fees BEFORE token operations to prevent free swaps
+    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
+    use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
+    
+    // Collect fee upfront - if this fails, no tokens are transferred
+    collect_fee_to_pool_state(
+        user_authority_signer,
+        pool_state_pda,
+        system_program_account,
+        program_id,
+        pool_state_data.swap_contract_fee,
+        FeeType::RegularSwap,
+    )?;
+    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.swap_contract_fee);
+    
     // Execute atomic token transfers with enhanced reentrancy protection
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting swap with global locks");
     
@@ -742,17 +757,8 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
     } // Release mutable borrow here before fee collection
     
     // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE OPERATIONS (GitHub Issue #31960 Workaround)
-    // Fee collection must happen AFTER all invoke/invoke_signed operations to prevent PDA corruption
-    use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
-    
-    collect_fee_to_pool_state(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-        pool_state_data.swap_contract_fee,
-        FeeType::RegularSwap,
-    )?;
+    // Note: Fee was already collected before token operations
+    // This prevents users from getting free swaps if fee collection fails
     
     msg!("✅ SWAP COMPLETED SUCCESSFULLY!");
     msg!("📈 SUMMARY: {} → {} tokens, Fee: {} lamports", amount_in, amount_out, pool_state_data.swap_contract_fee);

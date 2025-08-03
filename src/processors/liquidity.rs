@@ -407,6 +407,20 @@ pub fn process_deposit<'a>(
     
     msg!("Initial LP balance: {}, expecting to mint: {}", initial_lp_balance, amount);
 
+    // CRITICAL: Collect fees BEFORE token operations to prevent free deposits
+    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    
+    // Collect fee upfront - if this fails, no tokens are transferred
+    collect_liquidity_fee_distributed(
+        user_authority_signer,
+        pool_state_pda,
+        system_program_account,
+        program_id,
+        pool_state_data.contract_liquidity_fee,
+    )?;
+    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
+    
     // Enhanced reentrancy protection for deposit operations
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting deposit with global locks");
     
@@ -527,19 +541,8 @@ pub fn process_deposit<'a>(
     msg!("🔍 Step 4/4: Verifying transaction and finalizing...");
     
     // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
-    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
-    msg!("💰 Step 4a: Collecting fees after token operations...");
-    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
-    collect_liquidity_fee_distributed(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-        pool_state_data.contract_liquidity_fee,
-    )?;
-
-    msg!("✅ Deposit fee collected successfully after token operations");
-    msg!("💰 Fee collected: {} lamports (distributed to pool state)", crate::constants::DEPOSIT_WITHDRAWAL_FEE);
+    // Note: Fee was already collected before token operations
+    // This prevents users from getting free deposits if fee collection fails
 
     msg!("✅ DEPOSIT COMPLETED SUCCESSFULLY!");
     msg!("📈 COMPREHENSIVE TRANSACTION SUMMARY:");
@@ -847,19 +850,8 @@ pub fn process_withdraw<'a>(
     result?;
 
     // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
-    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
-    msg!("💰 Step 4a: Collecting fees after token operations...");
-    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
-    collect_liquidity_fee_distributed(
-        user_authority_signer,
-        pool_state_pda,  // ← Collect to pool state instead of main treasury
-        system_program_account,
-        program_id,
-        pool_state_data.contract_liquidity_fee,
-    )?;
-
-    msg!("✅ Withdrawal fee collected successfully after token operations");
-    msg!("💰 Fee collected: {} lamports (distributed to pool state)", pool_state_data.contract_liquidity_fee);
+    // Note: Fee was already collected before token operations
+    // This prevents users from getting free withdrawals if fee collection fails
 
     Ok(())
 }
@@ -889,8 +881,8 @@ fn execute_withdrawal_logic<'a>(
     source_lp_mint_account: &'a AccountInfo<'a>,
     pool_state_account: &'a AccountInfo<'a>,
     token_program_account: &'a AccountInfo<'a>,
-    _system_program_account: &'a AccountInfo<'a>,
-    _program_id: &Pubkey,
+    system_program_account: &'a AccountInfo<'a>,
+    program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};
     use spl_token::instruction as token_instruction;
@@ -912,6 +904,20 @@ fn execute_withdrawal_logic<'a>(
     validate_lp_mint_authority(source_lp_mint_account, pool_state_account.key, "Source LP Mint")?;
     msg!("✅ Withdrawal authorities validated successfully");
 
+    // CRITICAL: Collect fees BEFORE token operations to prevent free withdrawals
+    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
+    use crate::utils::fee_validation::collect_liquidity_fee_distributed;
+    
+    // Collect fee upfront - if this fails, no tokens are transferred
+    collect_liquidity_fee_distributed(
+        user_signer,
+        pool_state_account,
+        system_program_account,
+        program_id,
+        pool_state_data.contract_liquidity_fee,
+    )?;
+    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
+    
     // Enhanced reentrancy protection for withdrawal operations
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting withdrawal with global locks");
     
