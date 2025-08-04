@@ -23,8 +23,8 @@ use common::{
 };
 
 /// 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
-const SPAM_DONATION_COUNT: u64 = 100;        // Number of spam donations to test
-const MIN_DONATION_AMOUNT: u64 = 1;          // Minimum donation amount (1 lamport)
+const SPAM_DONATION_COUNT: u64 = 20;         // Number of spam donations to test (reduced due to 0.1 SOL minimum)
+const TEST_DONATION_AMOUNT: u64 = 100_000_000; // 0.1 SOL - minimum donation amount
 const NORMAL_DONATION_AMOUNT: u64 = 1_000_000_000; // 1 SOL for normal donations
 
 /// DONATE-001: Test spam protection for Donate_Sol function
@@ -73,7 +73,7 @@ async fn test_donate_sol_spam_protection() -> Result<(), Box<dyn Error>> {
     
     // Create a donor account with sufficient SOL for spam test
     let donor = Keypair::new();
-    let donor_balance = 10_000_000_000; // 10 SOL for transaction fees and donations
+    let donor_balance = 50_000_000_000; // 50 SOL for transaction fees and donations (more needed due to 0.1 SOL minimum)
     
     // Transfer SOL to donor
     let transfer_ix = solana_sdk::system_instruction::transfer(
@@ -89,17 +89,17 @@ async fn test_donate_sol_spam_protection() -> Result<(), Box<dyn Error>> {
     transfer_tx.sign(&[&env.payer], env.recent_blockhash);
     env.banks_client.process_transaction(transfer_tx).await?;
     
-    println!("\n🔥 Step 1: Attempting spam attack with {} small donations...", SPAM_DONATION_COUNT);
+    println!("\n🔥 Step 1: Attempting spam attack with {} minimum donations...", SPAM_DONATION_COUNT);
     
     let mut successful_donations = 0;
     let mut total_donated = 0u64;
     let mut failed_donations = 0;
     
-    // Attempt to spam small donations
+    // Attempt to spam minimum donations (0.1 SOL each)
     for i in 0..SPAM_DONATION_COUNT {
         env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
         
-        let donation_amount = MIN_DONATION_AMOUNT + (i % 10); // Vary between 1-10 lamports
+        let donation_amount = TEST_DONATION_AMOUNT + (i * 1_000_000); // Vary between 0.1-0.12 SOL
         let message = format!("Spam donation #{}", i);
         
         // Create donation instruction
@@ -127,9 +127,9 @@ async fn test_donate_sol_spam_protection() -> Result<(), Box<dyn Error>> {
             Ok(_) => {
                 successful_donations += 1;
                 total_donated += donation_amount;
-                if i % 10 == 0 {
-                    println!("   ✅ Donation #{} successful ({} lamports)", i, donation_amount);
-                }
+                            if i % 5 == 0 {
+                println!("   ✅ Donation #{} successful ({:.3} SOL)", i, donation_amount as f64 / 1_000_000_000.0);
+            }
             },
             Err(e) => {
                 failed_donations += 1;
@@ -195,6 +195,33 @@ async fn test_donate_sol_spam_protection() -> Result<(), Box<dyn Error>> {
         Err(_) => println!("   ✅ Zero donation correctly rejected"),
     }
     
+    // Test below minimum donation (should fail)
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
+    let below_min_ix = Instruction {
+        program_id: fixed_ratio_trading::ID,
+        accounts: vec![
+            AccountMeta::new(donor.pubkey(), true),
+            AccountMeta::new(main_treasury_pda, false),
+            AccountMeta::new_readonly(system_state_pda, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+        ],
+        data: PoolInstruction::DonateSol {
+            amount: 50_000_000, // 0.05 SOL - below 0.1 SOL minimum
+            message: "Below minimum donation test".to_string(),
+        }.try_to_vec()?,
+    };
+    
+    let mut below_min_tx = Transaction::new_with_payer(
+        &[below_min_ix],
+        Some(&donor.pubkey()),
+    );
+    below_min_tx.sign(&[&donor], env.recent_blockhash);
+    
+    match env.banks_client.process_transaction(below_min_tx).await {
+        Ok(_) => panic!("Below minimum donation should have failed"),
+        Err(_) => println!("   ✅ Below minimum (0.05 SOL) donation correctly rejected"),
+    }
+    
     // Test very large message (potential DoS vector)
     let large_message = "A".repeat(1000); // 1000 character message
     env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
@@ -253,7 +280,8 @@ async fn test_donate_sol_spam_protection() -> Result<(), Box<dyn Error>> {
     println!("🔐 Security findings:");
     println!("   - Function cannot be spammed to corrupt data");
     println!("   - Counters remain accurate under spam conditions");
-    println!("   - Transaction fees make spam attacks economically unfeasible");
+    println!("   - 0.1 SOL minimum donation requirement prevents meaningful spam");
+    println!("   - Combined with transaction fees, makes spam attacks very expensive");
     println!("   - No overflow risk for practical attack scenarios");
     
     Ok(())
@@ -302,7 +330,7 @@ async fn test_donation_spam_economic_analysis() -> Result<(), Box<dyn Error>> {
         let transfer_ix = solana_sdk::system_instruction::transfer(
             &env.payer.pubkey(),
             &donor.pubkey(),
-            1_000_000_000, // 1 SOL each
+            5_000_000_000, // 5 SOL each (needed for 20 donations at 0.1 SOL minimum + fees)
         );
         
         let mut transfer_tx = Transaction::new_with_payer(
@@ -325,7 +353,7 @@ async fn test_donation_spam_economic_analysis() -> Result<(), Box<dyn Error>> {
         for i in 0..20 {
             env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
             
-            let donation_amount = 1; // Minimum possible donation
+            let donation_amount = TEST_DONATION_AMOUNT; // 0.1 SOL minimum donation
             let donate_ix = Instruction {
                 program_id: fixed_ratio_trading::ID,
                 accounts: vec![
@@ -387,7 +415,7 @@ async fn test_donation_spam_economic_analysis() -> Result<(), Box<dyn Error>> {
     println!("   - Total donations value: {} lamports", final_state.total_donations);
     
     println!("\n✅ DONATE-002: Economic analysis completed!");
-    println!("🔐 Conclusion: Spam attacks are economically unfeasible due to transaction fees");
+    println!("🔐 Conclusion: Spam attacks are economically unfeasible due to 0.1 SOL minimum + transaction fees");
     
     Ok(())
 }

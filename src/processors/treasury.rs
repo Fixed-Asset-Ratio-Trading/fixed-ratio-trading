@@ -429,6 +429,18 @@ pub fn process_donate_sol(
         return Err(ProgramError::InvalidArgument);
     }
     
+    // Validate minimum donation amount (0.1 SOL)
+    use crate::constants::MIN_DONATION_AMOUNT;
+    if amount < MIN_DONATION_AMOUNT {
+        msg!("❌ Donation amount must be at least {} lamports ({:.1} SOL). Received: {} lamports ({:.6} SOL)", 
+             MIN_DONATION_AMOUNT, 
+             MIN_DONATION_AMOUNT as f64 / 1_000_000_000.0,
+             amount,
+             amount as f64 / 1_000_000_000.0);
+        msg!("💡 Minimum donation helps prevent spam and ensures meaningful contributions");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
     // Check donor has sufficient balance
     if donor_account.lamports() < amount {
         msg!("❌ Insufficient balance. Available: {}, Required: {}", 

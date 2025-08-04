@@ -289,6 +289,10 @@ pub const MIN_LIQUIDITY_FEE: u64 = 100_000; // 0.0001 SOL
 /// Ensures fees cover basic transaction costs
 pub const MIN_SWAP_FEE: u64 = 10_000; // 0.00001 SOL
 
+/// Minimum allowed donation amount in lamports (0.1 SOL)
+/// Prevents spam donations and ensures meaningful contributions
+pub const MIN_DONATION_AMOUNT: u64 = 100_000_000; // 0.1 SOL
+
 //=============================================================================
 // TREASURY WITHDRAWAL RATE LIMITING - DYNAMIC SCALING SYSTEM
 //=============================================================================
