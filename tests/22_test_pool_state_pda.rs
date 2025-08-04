@@ -877,11 +877,8 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
         lp_token_a_mint_bump_seed: 252,
         lp_token_b_mint_bump_seed: 251,
         flags: POOL_FLAG_ONE_TO_MANY_RATIO, // Set the flag
-        
-        // **NEW: CONFIGURABLE CONTRACT FEES**
-        contract_liquidity_fee: 1_300_000, // DEPOSIT_WITHDRAWAL_FEE
-        swap_contract_fee: 27_150, // SWAP_CONTRACT_FEE
-        
+        contract_liquidity_fee: 0,
+        swap_contract_fee: 0,
         collected_fees_token_a: 0,
         collected_fees_token_b: 0,
         total_fees_withdrawn_token_a: 0,
@@ -892,6 +889,13 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
         last_consolidation_timestamp: 0,
         total_consolidations: 0,
         total_fees_consolidated: 0,
+        max_swap_amount: 0,
+        min_swap_amount: 0,
+        max_deposit_amount: 0,
+        min_deposit_amount: 0,
+        max_withdrawal_amount: 0,
+        min_withdrawal_amount: 0,
+        _reserved: [0; 4],
     };
     
     println!("📊 Original PoolState:");
