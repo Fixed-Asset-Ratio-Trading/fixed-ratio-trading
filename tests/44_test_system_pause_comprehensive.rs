@@ -141,12 +141,21 @@ async fn unpause_system(
     recent_blockhash: solana_sdk::hash::Hash,
     system_state_account: &Pubkey,
 ) -> TestResult {
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[b"main_treasury"],
+        &PROGRAM_ID,
+    );
+    
+    let program_data_account = get_program_data_address(&PROGRAM_ID);
+    
     let unpause_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(authority.pubkey(), true),              // System authority (signer)
-            AccountMeta::new(*system_state_account, false),         // System state account
-            AccountMeta::new_readonly(solana_program::sysvar::clock::id(), false), // Clock sysvar
+            AccountMeta::new(authority.pubkey(), true),              // Index 0: Program Upgrade Authority (signer, writable)
+            AccountMeta::new(*system_state_account, false),         // Index 1: System State PDA (writable)
+            AccountMeta::new(main_treasury_pda, false),             // Index 2: Main Treasury PDA (writable for penalty)
+            AccountMeta::new_readonly(program_data_account, false), // Index 3: Program Data Account (readable)
         ],
         data: PoolInstruction::UnpauseSystem.try_to_vec().unwrap(),
     };
@@ -899,33 +908,37 @@ async fn test_swap_blocked_when_paused() -> TestResult {
     
     println!("✅ System state set to paused, now testing swap operation");
     
-    // Create dummy accounts for swap test (will fail before getting to them due to system pause)
-    let user_token_a_account = Keypair::new();
-    let user_token_b_account = Keypair::new();
+    // Use real user token accounts from foundation (user2 for swap)
+    let user_input_account = foundation.user2_primary_account.pubkey();  // User2's Token A account
+    let user_output_account = foundation.user2_base_account.pubkey();    // User2's Token B account
+    let input_mint = foundation.pool_config.token_a_mint;
+    let output_mint = foundation.pool_config.token_b_mint;
     
-    // Create swap instruction that should fail due to system pause
+    // Create swap instruction that should fail due to system pause (using correct 11-account structure)
     let swap_ix = Instruction {
         program_id: PROGRAM_ID,
         accounts: vec![
-            AccountMeta::new(foundation.env.payer.pubkey(), true),           // User (signer)
-            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
-            AccountMeta::new_readonly(system_state_pda, false),              // System state (paused) at index 2
-            AccountMeta::new(foundation.pool_config.pool_state_pda, false),  // Pool state
-            AccountMeta::new(user_token_a_account.pubkey(), false),          // User token A account (dummy)
-            AccountMeta::new(user_token_b_account.pubkey(), false),          // User token B account (dummy)
-            AccountMeta::new(foundation.pool_config.token_a_vault_pda, false), // Token A vault
-            AccountMeta::new(foundation.pool_config.token_b_vault_pda, false), // Token B vault
-            AccountMeta::new_readonly(spl_token::id(), false),               // Token program
+            AccountMeta::new(foundation.user2.pubkey(), true),                         // Index 0: Authority/User Signer
+            AccountMeta::new_readonly(solana_program::system_program::id(), false),   // Index 1: System Program
+            AccountMeta::new_readonly(system_state_pda, false),                       // Index 2: System State PDA (paused)
+            AccountMeta::new(foundation.pool_config.pool_state_pda, false),           // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                        // Index 4: SPL Token Program
+            AccountMeta::new(foundation.pool_config.token_a_vault_pda, false),        // Index 5: Token A Vault PDA
+            AccountMeta::new(foundation.pool_config.token_b_vault_pda, false),        // Index 6: Token B Vault PDA
+            AccountMeta::new(user_input_account, false),                              // Index 7: User Input Token Account
+            AccountMeta::new(user_output_account, false),                             // Index 8: User Output Token Account
+            AccountMeta::new_readonly(input_mint, false),                             // Index 9: Input Token Mint
+            AccountMeta::new_readonly(output_mint, false),                            // Index 10: Output Token Mint
         ],
         data: PoolInstruction::Swap {
             input_token_mint: foundation.pool_config.token_a_mint,
             amount_in: 1000,
-            expected_amount_out: 0, // Placeholder for test utility
+            expected_amount_out: 333, // Calculated for 2:1 ratio (1000 A -> 500 B, but decimal-aware: 1000 * 10^0 / 2 = 500 / 2 = 250, but need realistic calculation)
         }.try_to_vec().unwrap(),
     };
 
-    let mut transaction = Transaction::new_with_payer(&[swap_ix], Some(&foundation.env.payer.pubkey()));
-    transaction.sign(&[&foundation.env.payer], foundation.env.recent_blockhash);
+    let mut transaction = Transaction::new_with_payer(&[swap_ix], Some(&foundation.user2.pubkey()));
+    transaction.sign(&[&foundation.user2], foundation.env.recent_blockhash);
     
     let swap_result = foundation.env.banks_client.process_transaction(transaction).await;
     
