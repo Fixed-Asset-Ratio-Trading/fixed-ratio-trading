@@ -144,10 +144,13 @@ pub fn process_unpause_system(
 ) -> ProgramResult {
     msg!("✅ Processing system unpause");
     
-    // ✅ COMPUTE OPTIMIZATION: No account length verification
-    // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
-    // accounts[N] if insufficient accounts are provided. Manual length checks are
-    // redundant and waste compute units on every function call.
+    // ✅ ACCOUNT VALIDATION: Ensure we have the required number of accounts
+    // While Solana runtime normally handles this, explicit validation prevents
+    // index out of bounds panics in edge cases and provides clearer error messages
+    if accounts.len() < 4 {
+        msg!("❌ Insufficient accounts provided: expected 4, got {}", accounts.len());
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices
     let system_authority_signer = &accounts[0];              // Index 0: System Authority Signer

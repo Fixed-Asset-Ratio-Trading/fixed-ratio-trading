@@ -258,13 +258,19 @@ fn create_treasury_withdrawal_instruction(
     destination: &Pubkey,
     amount_lamports: u64,
 ) -> Result<Instruction, Box<dyn Error>> {
+    // Get required PDAs and accounts
+    let system_state_pda = get_system_state_pda(program_id);
+    let program_data_account = get_program_data_address(program_id);
+    
     Ok(Instruction {
         program_id: *program_id,
         accounts: vec![
-            AccountMeta::new(upgrade_authority.pubkey(), true), // Program upgrade authority (signer, writable)
-            AccountMeta::new(*main_treasury_pda, false),       // Main treasury PDA (writable)
-            AccountMeta::new(*destination, false),             // Destination account (writable)
-            AccountMeta::new_readonly(system_program::id(), false), // System program
+            AccountMeta::new(upgrade_authority.pubkey(), true),     // Index 0: System Authority Signer (signer, writable)
+            AccountMeta::new(*main_treasury_pda, false),            // Index 1: Main Treasury PDA (writable)
+            AccountMeta::new_readonly(sysvar::rent::id(), false),   // Index 2: Rent Sysvar Account (readable)
+            AccountMeta::new(*destination, false),                  // Index 3: Destination Account (writable)
+            AccountMeta::new_readonly(system_state_pda, false),     // Index 4: System State PDA (readable)
+            AccountMeta::new_readonly(program_data_account, false), // Index 5: Program Data Account (readable)
         ],
         data: PoolInstruction::WithdrawTreasuryFees {
             amount: amount_lamports,

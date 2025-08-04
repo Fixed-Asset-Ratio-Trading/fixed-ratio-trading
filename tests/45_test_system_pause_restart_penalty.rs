@@ -320,7 +320,7 @@ async fn test_system_pause_by_authority() -> TestResult {
     
     // Donation Configuration for Treasury Setup
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1000;         // Optimized donation amount for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 1000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for system pause testing";
     const DONOR_ACCOUNT_INDEX: usize = 0;          // Index of donor account in test foundation
     
@@ -449,7 +449,7 @@ async fn test_system_pause_invalid_authority() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1000;         // Donation amount for testing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 1000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for invalid authority test";
     
     // Authority Configuration
@@ -532,7 +532,7 @@ async fn test_system_pause_invalid_authority() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with 2-second timeout protection (proven pattern from past fixes)
-    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
     
     // Verify transaction failed with expected error
     match result {
@@ -582,7 +582,7 @@ async fn test_system_pause_state_updates() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1000;         // Optimized donation amount for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 1000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for state update verification";
     
     // Verification Configuration
@@ -748,7 +748,7 @@ async fn test_treasury_withdrawal_blocked_during_pause() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 2000;         // Reduced donation for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 2000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for withdrawal blocking test";
     const WITHDRAWAL_AMOUNT_SOL: u64 = 50;         // Reduced withdrawal amount
     
@@ -913,7 +913,7 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1500;         // Reduced donation for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 1500 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for pause precedence test";
     const WITHDRAWAL_AMOUNT_SOL: u64 = 25;         // Reduced withdrawal amount
     
@@ -1020,7 +1020,7 @@ async fn test_system_pause_validation_before_authority() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with 2-second timeout protection (proven pattern from past fixes)
-    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
     
     // Verify withdrawal failed with pause error (not authority error)
     match result {
@@ -1076,7 +1076,7 @@ async fn test_pause_already_paused_system() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 5000;         // Donation for edge case testing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 5000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for pause edge case testing";
     
     // Verification Configuration
@@ -1250,7 +1250,7 @@ async fn test_system_pause_different_reason_codes() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 500;          // Minimal donation for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 50;           // Further reduced for speed
     const DONATION_MESSAGE: &str = "Test treasury setup for reason code testing";
     
     // Verification Configuration
@@ -1390,7 +1390,7 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;   // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1000;         // Reduced donation for faster processing
+    const DONATION_AMOUNT_SOL: u64 = 100;          // Reduced from 1000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for pause persistence testing";
     const WITHDRAWAL_ATTEMPT_SOL: u64 = 5;         // Smaller withdrawal to attempt repeatedly
     
@@ -1618,7 +1618,7 @@ async fn test_system_unpause_by_authority() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;  // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 5000;        // Donation amount for testing penalty
+    const DONATION_AMOUNT_SOL: u64 = 100;         // Reduced from 5000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for unpause test";
     
     // Verification Configuration
@@ -1885,7 +1885,7 @@ async fn test_system_unpause_invalid_authority() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with 2-second timeout protection (expecting failure)
-    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
     
     // Verify transaction failed
     match result {
@@ -1937,7 +1937,7 @@ async fn test_system_unpause_state_updates() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;  // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 3000;        // Donation amount for testing
+    const DONATION_AMOUNT_SOL: u64 = 100;         // Reduced from 3000 for faster tests
     const DONATION_MESSAGE: &str = "Test treasury setup for state update verification";
     
     // Verification Configuration
@@ -2239,7 +2239,7 @@ async fn test_system_unpause_requires_treasury_account() -> TestResult {
     tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
     
     // Execute with timeout protection (expecting failure)
-    let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+    let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
     
     // Verify transaction failed
     match result {
@@ -2296,7 +2296,7 @@ async fn test_system_unpause_applies_71_hour_penalty() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;  // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 10000;       // Large donation for penalty testing
+    const DONATION_AMOUNT_SOL: u64 = 100;         // Reduced from 10000 for faster tests
     const DONATION_MESSAGE: &str = "Testing 71-hour restart penalty application";
     
     // Penalty Configuration
@@ -2496,7 +2496,7 @@ async fn test_last_withdrawal_timestamp_set_correctly() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;  // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 5000;        // Donation amount
+    const DONATION_AMOUNT_SOL: u64 = 100;         // Reduced from 5000 for faster tests
     const DONATION_MESSAGE: &str = "Testing last_withdrawal_timestamp update";
     
     // Test Configuration
@@ -2887,7 +2887,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
     
     // Treasury Configuration
     const USE_DONATE_SOL_FOR_SETUP: bool = true;  // Use donate_sol to add treasury liquidity
-    const DONATION_AMOUNT_SOL: u64 = 1000;        // Optimized donation amount
+    const DONATION_AMOUNT_SOL: u64 = 100;         // Reduced from 1000 for faster tests
     const DONATION_MESSAGE: &str = "Testing treasury serialization after penalty";
     
     // Test Configuration
@@ -3385,7 +3385,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
             tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
             
             // Attempt to process - should fail
-            let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+            let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
             
             // Verify the error
             match result {
@@ -3427,7 +3427,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
         
         tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
         
-        let result = process_transaction_with_timeout(&mut banks_client, transaction, 2000).await;
+        let result = process_transaction_with_timeout(&mut banks_client, transaction, 500).await;
         assert!(result.is_err(), "Transaction should have failed");
         
         if VERIFY_ERROR_CODE {
