@@ -685,6 +685,16 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
     )?;
     msg!("✅ Fee collected successfully: {} lamports", pool_state_data.swap_contract_fee);
     
+    // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
+    // The fee collection function updates collected_swap_contract_fees and total_sol_fees_collected
+    // but pool_state_data was loaded before fee collection, so we need fresh data
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    pool_state_data.collected_swap_contract_fees = fresh_pool_state.collected_swap_contract_fees;
+    pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
+    msg!("🔄 Pool state reloaded after fee collection:");
+    msg!("   collected_swap_contract_fees: {}", pool_state_data.collected_swap_contract_fees);
+    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
+    
     // Execute atomic token transfers with enhanced reentrancy protection
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting swap with global locks");
     

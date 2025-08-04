@@ -421,6 +421,16 @@ pub fn process_deposit<'a>(
     )?;
     msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
     
+    // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
+    // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
+    // but pool_state_data was loaded before fee collection, so we need fresh data
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
+    pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
+    msg!("🔄 Pool state reloaded after fee collection:");
+    msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
+    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
+    
     // Enhanced reentrancy protection for deposit operations
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting deposit with global locks");
     
@@ -917,6 +927,16 @@ fn execute_withdrawal_logic<'a>(
         pool_state_data.contract_liquidity_fee,
     )?;
     msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
+    
+    // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
+    // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
+    // but pool_state_data was loaded before fee collection, so we need fresh data
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
+    pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
+    pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
+    msg!("🔄 Pool state reloaded after fee collection:");
+    msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
+    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
     
     // Enhanced reentrancy protection for withdrawal operations
     msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting withdrawal with global locks");

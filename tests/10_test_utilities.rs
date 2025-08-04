@@ -222,35 +222,35 @@ fn test_pool_error_to_program_error() {
 
     let error = PoolError::PoolSwapsPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1008));
+    assert_eq!(program_error, ProgramError::Custom(1027));
 
     let error = PoolError::PoolSwapsAlreadyPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1009));
+    assert_eq!(program_error, ProgramError::Custom(1029));
 
     let error = PoolError::PoolSwapsNotPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1010));
+    assert_eq!(program_error, ProgramError::Custom(1030));
 
     let error = PoolError::SystemPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1011));
+    assert_eq!(program_error, ProgramError::Custom(1023));
 
     let error = PoolError::SystemAlreadyPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1012));
+    assert_eq!(program_error, ProgramError::Custom(1024));
 
     let error = PoolError::SystemNotPaused;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1013));
+    assert_eq!(program_error, ProgramError::Custom(1025));
 
     let error = PoolError::UnauthorizedAccess;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1014));
+    assert_eq!(program_error, ProgramError::Custom(1026));
 
     let error = PoolError::Unauthorized;
     let program_error: ProgramError = error.into();
-    assert_eq!(program_error, ProgramError::Custom(1016));
+    assert_eq!(program_error, ProgramError::Custom(1012));
 }
 
 // ================================================================================================
@@ -298,7 +298,18 @@ fn test_pool_state_get_packed_len() {
         // **NEW: CONSOLIDATION MANAGEMENT**
         8 +  // last_consolidation_timestamp
         8 +  // total_consolidations
-        8;   // total_fees_consolidated
+        8 +  // total_fees_consolidated
+        
+        // **NEW: POOL-SPECIFIC LIMITS**
+        8 +  // max_swap_amount
+        8 +  // min_swap_amount
+        8 +  // max_deposit_amount
+        8 +  // min_deposit_amount
+        8 +  // max_withdrawal_amount
+        8 +  // min_withdrawal_amount
+        
+        // **RESERVED SPACE**
+        32;  // _reserved: [u64; 4] = 4 * 8 bytes
         
         // **REMOVED FIELDS** (these are no longer in PoolState):
         // - is_initialized: bool (1 byte) - Pool existence = initialization

@@ -2588,20 +2588,50 @@ pub fn calculate_expected_swap_output(
     let result = match direction {
         SwapDirection::AToB => {
             // Swapping from Token A to Token B
-            // Formula: B_out = floor( A_in * ratioB_den / ratioA_num )
-            // Since ratios are already in basis points, no additional decimal scaling is needed
+            // Formula: B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+            // This matches the smart contract's decimal-aware calculation
             
-            let numerator = amount_in_base
+            let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
+            
+            // Apply decimal scaling
+            let scaled_amount = if decimal_diff > 0 {
+                // Scale up
+                let scale_factor = 10u128.pow(decimal_diff as u32);
+                amount_in_base * scale_factor
+            } else if decimal_diff < 0 {
+                // Scale down
+                let scale_factor = 10u128.pow((-decimal_diff) as u32);
+                amount_in_base / scale_factor
+            } else {
+                amount_in_base
+            };
+            
+            let numerator = scaled_amount
                 .checked_mul(ratio_b_den)
                 .unwrap_or(0);
             numerator / ratio_a_num
         }
         SwapDirection::BToA => {
             // Swapping from Token B to Token A
-            // Formula: A_out = floor( B_in * ratioA_num / ratioB_den )
-            // Since ratios are already in basis points, no additional decimal scaling is needed
+            // Formula: A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
+            // This matches the smart contract's decimal-aware calculation
             
-            let numerator = amount_in_base
+            let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
+            
+            // Apply decimal scaling
+            let scaled_amount = if decimal_diff > 0 {
+                // Scale up
+                let scale_factor = 10u128.pow(decimal_diff as u32);
+                amount_in_base * scale_factor
+            } else if decimal_diff < 0 {
+                // Scale down
+                let scale_factor = 10u128.pow((-decimal_diff) as u32);
+                amount_in_base / scale_factor
+            } else {
+                amount_in_base
+            };
+            
+            let numerator = scaled_amount
                 .checked_mul(ratio_a_num)
                 .unwrap_or(0);
             numerator / ratio_b_den
