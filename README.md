@@ -56,13 +56,13 @@ Enterprise-grade trading with guaranteed rates:
 
 ## 🏗️ **Architecture & Smart Contract Design**
 
-### **🔐 Anti-Fragmentation Engine**
-**CRITICAL INNOVATION**: Our smart contract enforces **one pool per token pair maximum** to prevent liquidity fragmentation:
+### **🔐 Intelligent Pool Management**
+**FLEXIBLE ARCHITECTURE**: Our smart contract supports **multiple pools per token pair** with different ratios to serve various use cases:
 
-- ✅ **All SOL/USDC liquidity** concentrates in ONE pool (not scattered across 50 different pools)
-- ✅ **Canonical pool discovery** - Always find THE pool for any token pair
-- ✅ **Maximum trading efficiency** - All liquidity working together
-- ✅ **No arbitrage confusion** - One price source per token pair
+- ✅ **Multiple SOL/USDC pools** with different ratios (e.g., 1:80, 1:100, 1:120 for different price targets)
+- ✅ **Diverse trading strategies** - Create pools at your preferred exchange rates
+- ✅ **Price tier liquidity** - Different pools for different market conditions
+- ✅ **Use case specialization** - Migration pools, micro-denomination pools, target-price pools
 
 ### **🎯 Enhanced Token Normalization**
 Prevents economic duplicates through advanced algorithms:
@@ -83,6 +83,7 @@ Pool C: 10 SOL = 1000 USDC
 - **LP-B Tokens**: Represent claims on Token B side of pool
 - **Perfect asymmetric deposits**: Deposit only the token you have
 - **Precise withdrawals**: Withdraw exactly the token you want
+- **Future Enhancement**: Upcoming versions will allow users to withdraw from both sides of the pool using either LP-A or LP-B tokens for maximum flexibility
 
 ---
 
@@ -111,23 +112,32 @@ The protocol implements a sophisticated **dual-fee system** designed for **decen
 
 ### **🏛️ Governance Transition Roadmap**
 
-#### **Phase 1: Current State (Authority-Controlled)**
+#### **Phase 1: Current State (V1 - Centralized Control)**
+- ✅ **DAVINCI CODES SOFTWARE DESIGN L.L.C** maintains sole control
 - ✅ System authority controls all fee parameters
 - ✅ Treasury system collects all SOL fees  
 - ✅ 0% trading fees to maximize adoption
 - ✅ Infrastructure ready for governance protocols
+- ✅ Secure key management with double NAT protection and 3 bonded employees
 
-#### **Phase 2: Governance Protocol Deployment** 
-- 🔄 **Upgrade authority transfer** to governance smart contract
-- 🔄 **Voting mechanisms** for fee rate changes
-- 🔄 **Governance token distribution** to stakeholders
-- 🔄 **Community-controlled treasury** management
+#### **Phase 2: Governance Activation Triggers**
+**Governance development begins when ONE condition is met:**
+- 🎯 **Revenue Milestone**: Fixed Ratio Trading earns/receives **1,500 SOL** in revenue/donations
+- 🎯 **Acceleration Payment**: Receipt of **$50,000 USD** payment (contact: info@davincicodes.net)
 
-#### **Phase 3: Full Decentralization**
-- 🎯 **Community votes** on all protocol parameters
-- 🎯 **Fee revenue distribution** to governance token holders
-- 🎯 **Protocol development funding** through governance treasury
+#### **Phase 3: Governance Protocol Deployment** 
+- 🔄 **2-of-3 Multisig** for treasury withdrawals and program upgrades
+- 🔄 **Role-based permissions** (pool pause/unpause, system management, consolidation)
+- 🔄 **Timelock Upgrade Controller** with 72-hour delays and cancellation
+- 🔄 **Security monitoring integration** with alert code validation
+- 🔄 **Authority transfer** from LLC to governance contract
+
+#### **Phase 4: Full Decentralization (V3 Future)**
+- 🎯 **Token-based voting** for protocol parameters (details TBD)
+- 🎯 **Community governance token distribution** 
+- 🎯 **Fee revenue distribution** to governance participants
 - 🎯 **Emergency controls** managed by community multisig
+- 🎯 **Upgradable governance** similar to Timelock Upgrade Controller
 
 ---
 
@@ -164,110 +174,7 @@ cd dashboard && python3 -m http.server 8000
 
 ---
 
-## 📚 **Real-World Examples**
 
-### **💡 Example 1: Micro-Bitcoin Trading**
-*"I want to trade Bitcoin in Satoshis instead of fractional BTC"*
-
-```rust
-// Create 1 BTC = 100,000,000 Satoshi pool
-let pool = create_pool(
-    btc_mint,     // Base token (1 BTC)  
-    sat_mint,     // Multiple token (Satoshis)
-    100_000_000   // 1 BTC = 100M Satoshis
-);
-
-// Users can now trade:
-// - Deposit 0.5 BTC → Get 50,000,000 Satoshi LP tokens
-// - Swap 1,000,000 Satoshis → Get 0.01 BTC
-// - Think in whole numbers: "I own 5 million satoshis!"
-```
-
-### **🔄 Example 2: Token Upgrade Migration**
-*"We're upgrading OLDTOKEN to NEWTOKEN at 1:1.5 ratio"*
-
-```rust
-// Create upgrade migration pool
-let migration_pool = create_pool(
-    old_token_mint,  // Deprecated token
-    new_token_mint,  // Upgraded token  
-    3                // 2 OLD = 3 NEW (1:1.5 ratio)
-);
-
-// Users migrate seamlessly:
-// - Deposit 1000 OLDTOKEN → Get exactly 1500 NEWTOKEN
-// - No slippage, no uncertainty
-// - Project controls migration rate precisely
-```
-
-### **🎯 Example 3: Sell Bitcoin at Exactly $200K**
-*"I want to sell my Bitcoin only when it hits exactly $200,000"*
-
-```rust
-// Create target-price liquidity pool
-let target_pool = create_pool(
-    btc_mint,     // Your Bitcoin
-    usdt_mint,    // USDT stablecoin
-    200_000       // Exact target: 1 BTC = 200,000 USDT
-);
-
-// Provide 1 BTC liquidity:
-// - If anyone wants BTC at $200K, they can buy it
-// - You get exactly 200,000 USDT per BTC
-// - No market orders, no slippage, perfect execution
-```
-
-### **🏢 Example 4: Corporate Payroll System**
-*"Pay employees in different tokens at fixed company rates"*
-
-```rust
-// Company sets internal exchange rates
-let payroll_usdc_sol = create_pool(usdc_mint, sol_mint, 80);     // 1 SOL = 80 USDC
-let payroll_usdc_eth = create_pool(usdc_mint, eth_mint, 2500);   // 1 ETH = 2500 USDC
-
-// Employees choose payment tokens:
-// - Alice chooses SOL: Gets paid at exactly 80 USDC/SOL rate
-// - Bob chooses ETH: Gets paid at exactly 2500 USDC/ETH rate  
-// - Predictable costs for company treasury management
-```
-
----
-
-## 🔧 **Advanced Pool Operations**
-
-### **💧 Asymmetric Liquidity Provision**
-```rust
-// Deposit only the tokens you have
-deposit_liquidity(
-    pool_address,
-    token_mint: usdc_mint,    // Only depositing USDC
-    amount: 10_000_000_000    // 10,000 USDC
-);
-// Receive LP tokens proportional to your contribution
-```
-
-### **⚖️ Perfect Ratio Swaps**
-```rust
-// Always exact ratio - no slippage ever
-swap_tokens(
-    pool_address,
-    input_mint: usdc_mint,     // Swapping USDC
-    input_amount: 1_000_000,   // 1,000 USDC
-    output_mint: sol_mint      // For SOL
-);
-// Get exactly: 1,000 ÷ pool_ratio SOL
-```
-
-### **🏦 Treasury Management (System Authority Only)**
-```rust
-// Withdraw collected SOL fees (governance-controlled)
-withdraw_treasury_fees(
-    treasury_pda,
-    amount: 1_000_000_000  // 1 SOL (0 = withdraw all)
-);
-```
-
----
 
 ## 🛡️ **Security & Governance**
 
@@ -341,44 +248,7 @@ PROGRAM_AUTHORITY: "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"
 
 ---
 
-## 🧪 **Testing & Quality Assurance**
 
-### **🔬 Comprehensive Test Coverage**
-```bash
-# Run full test suite (200+ tests)
-cargo test
-
-# Specific test categories
-cargo test test_pool_creation      # Pool setup and configuration
-cargo test test_liquidity          # Deposit/withdrawal mechanics  
-cargo test test_swaps              # Trading and exchange functionality
-cargo test test_security           # Pause controls and authority validation
-cargo test test_treasury           # Fee collection and governance
-cargo test test_edge_cases         # Overflow, underflow, edge conditions
-```
-
-### **📈 Test Metrics**
-- ✅ **95%+ Code Coverage**: Comprehensive function and line coverage
-- ✅ **200+ Test Cases**: Every function path tested extensively  
-- ✅ **Fuzz Testing**: Random input validation and overflow protection
-- ✅ **Security Audits**: Professional security review (planned)
-- ✅ **Economic Modeling**: Game theory and incentive analysis
-
-### **🌐 Browser Testing Dashboard**
-```bash
-# Launch interactive testing environment
-cd dashboard
-python3 -m http.server 8000
-# Visit http://localhost:8000
-
-# Test all functions:
-# - Create pools with various ratios
-# - Deposit/withdraw liquidity asymmetrically
-# - Execute swaps at fixed ratios
-# - Monitor fee collection and treasury
-```
-
----
 
 ## 📖 **API Documentation**
 
@@ -429,26 +299,6 @@ PausePool { pool_address: Pubkey, flags: u8 }    // Pause pool operations
 UnpausePool { pool_address: Pubkey }              // Resume pool operations
 ```
 
-### **🌐 REST API Endpoints**
-
-```http
-# Pool Discovery and Information
-GET  /api/pools                          # List all pools
-GET  /api/pools/{pool_id}               # Get specific pool details
-GET  /api/pools/search?tokenA=mint&tokenB=mint  # Find pool for token pair
-
-# Pool Operations
-POST /api/pools                         # Create new pool
-POST /api/pools/{pool_id}/deposit       # Add liquidity
-POST /api/pools/{pool_id}/withdraw      # Remove liquidity  
-POST /api/pools/{pool_id}/swap          # Execute trade
-
-# System Information
-GET  /api/system/status                 # System pause state, authority info
-GET  /api/treasury/balances             # Treasury SOL balances
-GET  /api/governance/state              # Governance transition status
-```
-
 ---
 
 ## 🏗️ **Development & Contributing**
@@ -458,11 +308,11 @@ GET  /api/governance/state              # Governance transition status
 fixed-ratio-trading/
 ├── src/                          # Smart contract source code
 │   ├── processors/              # Instruction processing logic
-│   │   ├── pool_creation.rs     # Pool initialization and setup
-│   │   ├── liquidity.rs         # Deposit/withdrawal logic
-│   │   ├── swap.rs              # Trading execution engine
-│   │   ├── treasury.rs          # Fee collection and management
-│   │   └── system_pause.rs      # Emergency controls and security
+│   │   ├── system.rs            # System management functions
+│   │   ├── pool.rs              # Pool management functions  
+│   │   ├── liquidity.rs         # Liquidity operations (deposit/withdrawal)
+│   │   ├── swap.rs              # Swap execution functions
+│   │   └── treasury.rs          # Treasury and fee management
 │   ├── state/                   # Account state structures
 │   │   ├── pool_state.rs        # Pool configuration and liquidity tracking
 │   │   ├── system_state.rs      # Global system state and governance
@@ -472,8 +322,13 @@ fixed-ratio-trading/
 │   └── lib.rs                   # Program entry point and instruction dispatch
 ├── tests/                       # Comprehensive test suite (200+ tests)
 ├── dashboard/                   # Web interface for testing and interaction
-├── FixedRatioTrading.Dashboard/ # .NET API server for advanced features
-├── docs/                        # Technical documentation and guides
+├── docs/                        # Documentation suite
+│   ├── api/                     # Developer API documentation
+│   ├── security/                # Security procedures and governance
+│   ├── FRT/                     # Fixed Ratio Trading specific docs
+│   ├── dashboard/               # Dashboard documentation
+│   ├── deploy/                  # Deployment guides
+│   └── tests/                   # Testing documentation
 └── scripts/                     # Deployment and management scripts
 ```
 
@@ -521,22 +376,27 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 
 ## 📚 **Documentation & Resources**
 
-### **📖 Technical Documentation**
-- [📋 **Technical Implementation Guide**](docs/TECHNICAL_IMPLEMENTATION.md) - Deep dive into smart contract architecture
-- [🔒 **Security Model & Controls**](docs/SYSTEM_PAUSE.md) - Security features and emergency procedures  
-- [🏛️ **Governance Transition Plan**](docs/FRT/SMART_CONTRACT_UPDATES_MIGRATION.md) - Roadmap for community control
-- [⚡ **Performance & Optimization**](docs/RECENT_IMPROVEMENTS.md) - Latest efficiency improvements
+### **📖 API Documentation**
+- [📋 **Fixed Ratio Trading API**](docs/api/FIXED_RATIO_TRADING_API.md) - Complete developer API reference
+- [⚡ **Quick Reference Guide**](docs/api/QUICK_REFERENCE.md) - Developer cheat sheet with function summaries
+- [💻 **Instruction Examples**](docs/api/INSTRUCTION_EXAMPLES.md) - JavaScript/TypeScript code examples
+- [📚 **API Documentation Suite**](docs/api/README.md) - Overview of all API documentation
+
+### **🔒 Security & Governance**
+- [🚨 **Emergency Procedures**](docs/security/EMERGENCY_PROCEDURES_AND_KEY_MANAGEMENT_V1.md) - V1 emergency procedures and key management
+- [📊 **Security Assessment Report**](docs/security/SECURITY_ASSESSMENT_REPORT.md) - Comprehensive security evaluation
+- [🏛️ **Future Governance Design**](docs/security/FUTURE_GOVERNANCE_CONTRACT_DESIGN.md) - Roadmap for decentralized governance
+- [📈 **Security Monitoring Design**](docs/security/SECURITY_MONITORING_DESIGN.md) - Off-chain monitoring system architecture
+
+### **🚀 Technical Documentation**
+- [📋 **Technical Implementation Guide**](docs/FRT/TECHNICAL_IMPLEMENTATION.md) - Deep dive into smart contract architecture
+- [⚡ **Performance & Optimization**](docs/FRT/RECENT_IMPROVEMENTS.md) - Latest efficiency improvements
 - [🧪 **Testing Guide**](docs/tests/TESTING_GUIDE.md) - How to run and contribute tests
 
 ### **🚀 Deployment Guides**
-- [🔧 **Local Development Setup**](LOCAL_TEST_DEPLOYMENT_GUIDE.md) - Get started developing locally
-- [🌐 **Production Deployment**](docs/DEPLOYMENT_AUTHORITY_SETUP.md) - Deploy to mainnet securely
+- [🔧 **Local Development Setup**](docs/tests/LOCAL_TEST_DEPLOYMENT_GUIDE.md) - Get started developing locally
+- [🌐 **Production Deployment**](docs/deploy/DEPLOYMENT_AUTHORITY_SETUP.md) - Deploy to mainnet securely
 - [📊 **Dashboard Configuration**](dashboard/README-Configuration.md) - Web interface setup
-
-### **💼 Integration Guides**
-- [🔌 **Client SDK Usage**](src/client_sdk.rs) - Integrate pools into your application
-- [🌐 **REST API Reference**](FixedRatioTrading.Dashboard/API_DOCUMENTATION.md) - HTTP endpoints and responses
-- [⚖️ **Governance Integration**](docs/FRT/OWNER_CLI_APPLICATION.md) - Prepare for governance transition
 
 ---
 
@@ -599,60 +459,13 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for f
 
 ---
 
-## 🎉 **Get Started Today**
+## 💬 **Support & Contact**
 
-Ready to experience **zero-slippage trading** with **predictable fixed ratios**?
-
-```bash
-# Quick start in 3 commands:
-git clone https://github.com/your-org/fixed-ratio-trading
-cd fixed-ratio-trading && cargo build-bpf
-cd dashboard && python3 -m http.server 8000
-```
-
-**Visit**: http://localhost:8000  
-**Create**: Your first fixed-ratio pool  
-**Trade**: With zero slippage forever  
+**Technical Support**: support@davincicodes.net  
+**Fee Modifications**: Contact for case-by-case fee adjustments  
+**Governance Acceleration**: info@davincicodes.net ($50,000 USD acceleration payment)  
+**Public Updates**: @davincij15 (Twitter/X)
 
 ---
 
-*🚀 **Welcome to the future of predictable DeFi trading.*** 
-
-# Fixed Ratio Trading Pool
-
-A Solana program that creates pools with fixed exchange rates between two tokens.
-
-## Features
-
-- **Fixed Ratios**: Pools maintain predetermined exchange rates (e.g., 1000:1, 2:1)
-- **Liquidity Management**: Add/remove liquidity with automatic LP token generation
-- **Token Swapping**: Exchange tokens at fixed rates with no slippage
-- **Pool Creation**: Create new pools with custom token ratios
-- **Token Creation**: Built-in token creation tools with Metaplex metadata
-- **Treasury Management**: Fee collection and protocol revenue tracking
-
-## Direct Pool Access
-
-The dashboard supports direct access to specific pools via URL parameters:
-
-### Swap Interface
-```
-dashboard/swap.html?pool=POOL_ADDRESS
-```
-
-Example:
-```
-dashboard/swap.html?pool=9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM
-```
-
-This allows users to:
-- Bookmark specific pools for quick access
-- Share direct links to trading pairs
-- Integrate with external applications
-- Skip the pool selection process
-
-### Pool Selection
-Users can find pool addresses in the main dashboard or by:
-1. Navigating to the main dashboard (`dashboard/index.html`)
-2. Selecting a pool from the list
-3. Using the "Swap" button which automatically includes the pool ID in the URL 
+*🚀 **Fixed Ratio Trading - Predictable DeFi with Zero Slippage*** 
