@@ -297,7 +297,7 @@ impl MainTreasuryState {
     }
     
     /// **NEW: Process batch consolidation from multiple pools**
-    pub fn process_batch_consolidation(
+    pub fn batch_consolidation(
         &mut self,
         _consolidated_fees: u64,
         consolidated_operations: &ConsolidatedOperations,

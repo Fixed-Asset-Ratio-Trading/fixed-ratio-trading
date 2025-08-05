@@ -306,7 +306,7 @@ fn perform_batch_consolidation(
     let mut treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
     
     // Process batch consolidation
-    treasury_state.process_batch_consolidation(total_sol_collected, &consolidated_ops, timestamp);
+    treasury_state.batch_consolidation(total_sol_collected, &consolidated_ops, timestamp);
     
     // Sync balance with actual account balance
     treasury_state.sync_balance_with_account(main_treasury_pda.lamports());
