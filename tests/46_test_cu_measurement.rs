@@ -1008,3 +1008,201 @@ async fn test_cu_measurement_withdrawal_liquidity() {
         }
     }
 } 
+/// REAL CU MEASUREMENT: Test compute units for treasury donation operations
+/// This test measures CU consumption for different donation amounts
+#[tokio::test]
+async fn test_cu_measurement_treasury_donation() {
+    println!("🔬 REAL CU MEASUREMENT: Treasury Donation Process Function");
+    println!("   This test measures the actual CUs consumed by process_treasury_donate_sol");
+    println!("   Testing both small (10 SOL) and large (100,000 SOL) donations");
+    
+    // =============================================
+    // STEP 1: Setup Test Environment
+    // =============================================
+    let mut ctx = setup_pool_test_context(false).await;
+    println!("✅ Test environment created");
+    
+    // =============================================
+    // STEP 2: Initialize Treasury System
+    // =============================================
+    let system_authority = create_test_program_authority_keypair()
+        .expect("Failed to create program authority keypair");
+    
+    initialize_treasury_system(
+        &mut ctx.env.banks_client,
+        &ctx.env.payer,
+        ctx.env.recent_blockhash,
+        &system_authority,
+    ).await.expect("Treasury initialization should succeed");
+    
+    // Fund the donor with enough SOL for large donation test
+    let donor = Keypair::new();
+    let fund_amount = 200_000 * 1_000_000_000; // 200,000 SOL
+    crate::common::setup::transfer_sol(&mut ctx.env.banks_client, &ctx.env.payer, ctx.env.recent_blockhash, &ctx.env.payer, &donor.pubkey(), fund_amount)
+        .await.expect("Donor funding should succeed");
+    
+    println!("✅ Donor funded with 200,000 SOL for testing");
+    
+    // =============================================
+    // STEP 3: Derive Required PDAs
+    // =============================================
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[fixed_ratio_trading::constants::SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
+    println!("✅ PDAs derived for treasury donation");
+    
+    // =============================================
+    // STEP 4: Test Small Donation (10 SOL)
+    // =============================================
+    println!("\n📊 Testing SMALL donation (10 SOL)...");
+    let small_amount = 10 * 1_000_000_000; // 10 SOL in lamports
+    
+    let small_donate_instruction = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(donor.pubkey(), true),                    // Donor (signer, writable)
+            AccountMeta::new(main_treasury_pda, false),               // Treasury (writable)
+            AccountMeta::new_readonly(system_state_pda, false),       // System state
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+        ],
+        data: PoolInstruction::DonateSol {
+            amount: small_amount,
+            message: "CU measurement test - 10 SOL".to_string(),
+        }.try_to_vec().expect("Instruction data creation should succeed"),
+    };
+    
+    use crate::common::cu_measurement::{measure_instruction_cu, CUMeasurementConfig};
+    
+    let small_cu_result = measure_instruction_cu(
+        &mut ctx.env.banks_client,
+        &donor,
+        ctx.env.recent_blockhash,
+        small_donate_instruction,
+        "process_treasury_donate_sol_SMALL_10_SOL",
+        Some(CUMeasurementConfig {
+            max_retries: 1,
+            enable_logging: true,
+            compute_limit: 100_000, // Start with modest limit for donations
+        }),
+    ).await;
+    
+    // =============================================
+    // STEP 5: Test Large Donation (100,000 SOL)
+    // =============================================
+    println!("\n📊 Testing LARGE donation (100,000 SOL)...");
+    let large_amount = 100_000 * 1_000_000_000; // 100,000 SOL in lamports
+    
+    let large_donate_instruction = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(donor.pubkey(), true),                    // Donor (signer, writable)
+            AccountMeta::new(main_treasury_pda, false),               // Treasury (writable)
+            AccountMeta::new_readonly(system_state_pda, false),       // System state
+            AccountMeta::new_readonly(solana_program::system_program::id(), false), // System program
+        ],
+        data: PoolInstruction::DonateSol {
+            amount: large_amount,
+            message: "CU measurement test - 100,000 SOL".to_string(),
+        }.try_to_vec().expect("Instruction data creation should succeed"),
+    };
+    
+    let large_cu_result = measure_instruction_cu(
+        &mut ctx.env.banks_client,
+        &donor,
+        ctx.env.recent_blockhash,
+        large_donate_instruction,
+        "process_treasury_donate_sol_LARGE_100K_SOL",
+        Some(CUMeasurementConfig {
+            max_retries: 1,
+            enable_logging: true,
+            compute_limit: 100_000, // Start with same limit to compare
+        }),
+    ).await;
+    
+    // =============================================
+    // STEP 6: Analyze and Report Results
+    // =============================================
+    println!("\n🎯 TREASURY DONATION CU MEASUREMENT RESULTS:");
+    println!("=========================================");
+    
+    if small_cu_result.success && large_cu_result.success {
+        let small_cus = small_cu_result.estimated_cu_consumed.unwrap_or(0);
+        let large_cus = large_cu_result.estimated_cu_consumed.unwrap_or(0);
+        
+        println!("✅ BOTH DONATION TESTS SUCCESSFUL:");
+        println!("   Small Donation (10 SOL):");
+        println!("     • CU Consumption: {} CUs", small_cus);
+        println!("     • Execution Time: {}ms", small_cu_result.execution_time_ms);
+        println!("     • Cost Efficiency: {:.2} CUs per SOL", small_cus as f64 / 10.0);
+        
+        println!("   Large Donation (100,000 SOL):");
+        println!("     • CU Consumption: {} CUs", large_cus);
+        println!("     • Execution Time: {}ms", large_cu_result.execution_time_ms);
+        println!("     • Cost Efficiency: {:.2} CUs per SOL", large_cus as f64 / 100_000.0);
+        
+        // Analyze the difference
+        if small_cus == large_cus {
+            println!("\n📊 ANALYSIS: CONSTANT CU CONSUMPTION");
+            println!("   • Both donations consumed identical CUs: {} CUs", small_cus);
+            println!("   • ✅ EXCELLENT: CU usage is independent of donation amount");
+            println!("   • 💰 Predictable costs regardless of donation size");
+        } else {
+            let difference = if large_cus > small_cus { large_cus - small_cus } else { small_cus - large_cus };
+            let percentage_diff = (difference as f64 / small_cus as f64) * 100.0;
+            
+            println!("\n📊 ANALYSIS: VARIABLE CU CONSUMPTION");
+            println!("   • Small donation: {} CUs", small_cus);
+            println!("   • Large donation: {} CUs", large_cus);
+            println!("   • Difference: {} CUs ({:.1}%)", difference, percentage_diff);
+            
+            if large_cus > small_cus {
+                println!("   • ⚠️ Large donations require more CUs");
+                println!("   • Possible causes: Additional validation for large amounts");
+            } else {
+                println!("   • ⚠️ Small donations require more CUs (unexpected)");
+                println!("   • This may indicate overhead dominates for small amounts");
+            }
+        }
+        
+        // Determine the maximum CU requirement
+        let max_cus = std::cmp::max(small_cus, large_cus);
+        println!("\n🎯 RECOMMENDATION FOR DEVELOPERS:");
+        println!("   • Maximum CUs required: {} CUs", max_cus);
+        println!("   • Recommended CU limit: {} CUs (with 20% buffer)", (max_cus as f64 * 1.2) as u64);
+        
+        // Performance category
+        if max_cus < 25_000 {
+            println!("   • Performance Category: 🟢 Low (< 25K CUs)");
+        } else if max_cus < 100_000 {
+            println!("   • Performance Category: 🟡 Moderate (25K-100K CUs)");
+        } else {
+            println!("   • Performance Category: 🔴 High (100K+ CUs)");
+        }
+        
+    } else {
+        println!("❌ DONATION CU MEASUREMENT ISSUES:");
+        
+        if !small_cu_result.success {
+            println!("   Small donation (10 SOL) failed:");
+            if let Some(error) = &small_cu_result.error {
+                println!("     • Error: {}", error);
+            }
+        }
+        
+        if !large_cu_result.success {
+            println!("   Large donation (100,000 SOL) failed:");
+            if let Some(error) = &large_cu_result.error {
+                println!("     • Error: {}", error);
+            }
+        }
+    }
+    
+    println!("\n🎯 Treasury donation CU measurement completed!");
+}

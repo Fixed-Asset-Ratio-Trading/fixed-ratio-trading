@@ -48,12 +48,12 @@ Secure Virtual Machine
 3. **Access Credentials**
    - **VM Access**: Password-protected
    - **Key Decryption**: Separate password
-   - **Distribution**: 3 bonded company employees
+   - **Distribution**: 3 Commercial Crime Insured employees
 
 ## Authorized Personnel
 
 ### Bonded Employees
-Three (3) bonded employees are authorized with equal permissions:
+Three (3) Insured employees are authorized with equal permissions:
 1. Employee 1: [Name withheld - stored separately]
 2. Employee 2: [Name withheld - stored separately]
 3. Employee 3: [Name withheld - stored separately]
