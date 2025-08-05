@@ -1163,7 +1163,7 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
         console.log('System State PDA:', systemStatePDA[0].toString());
         
         // ✅ SECURITY FIX: Updated account structure to match smart contract's expected order
-        // 13 accounts total, matching the exact order expected by process_initialize_pool
+        // 13 accounts total, matching the exact order expected by process_pool_initialize
         const accountKeys = [
             { pubkey: wallet.publicKey, isSigner: true, isWritable: true },           // 0: User Authority Signer
             { pubkey: solanaWeb3.SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program Account

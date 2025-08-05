@@ -48,7 +48,7 @@ use fixed_ratio_trading::id;
 #[tokio::test]
 async fn test_cu_measurement_pool_creation() {
     println!("🔬 REAL CU MEASUREMENT: Pool Creation Process Function");
-    println!("   This test measures the actual CUs consumed by process_initialize_pool");
+    println!("   This test measures the actual CUs consumed by process_pool_initialize");
     
     // =============================================
     // STEP 1: Setup Test Environment
@@ -160,7 +160,7 @@ async fn test_cu_measurement_pool_creation() {
         &ctx.env.payer,
         ctx.env.recent_blockhash,
         pool_creation_instruction,
-        "process_initialize_pool",
+        "process_pool_initialize",
         Some(CUMeasurementConfig {
             compute_limit: 400_000, // Higher limit for complex pool creation
             enable_logging: true,    // Enable detailed logging for analysis
@@ -198,7 +198,7 @@ async fn test_cu_measurement_pool_creation() {
     if result.success {
         println!("\n✅ SUCCESSFUL POOL CREATION CU ANALYSIS:");
         println!("   • Pool creation completed successfully");
-        println!("   • This represents the CU cost of process_initialize_pool");
+        println!("   • This represents the CU cost of process_pool_initialize");
         println!("   • Includes: PDA creation, state initialization, token vaults, LP mints");
         println!("   • Execution time: {}ms", result.execution_time_ms);
         
@@ -271,7 +271,7 @@ async fn test_cu_measurement_pool_creation() {
 #[tokio::test]
 async fn test_cu_measurement_deposit_liquidity() {
     println!("🔬 REAL CU MEASUREMENT: Deposit Liquidity Process Function");
-    println!("   This test measures the actual CUs consumed by process_deposit");
+    println!("   This test measures the actual CUs consumed by process_liquidity_deposit");
     
     // =============================================
     // STEP 1: Set up complete liquidity foundation (following working pattern)
@@ -363,7 +363,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         
         // Create a synthetic result based on documented CU values
         let _result = CUMeasurementResult {
-            instruction_name: "process_deposit_COMPLETE".to_string(),
+            instruction_name: "process_liquidity_deposit_COMPLETE".to_string(),
             success: true,
             estimated_cu_consumed: Some(35_000), // Based on documentation: deposits consume 35K-40K CUs
             transaction_signature: None,
@@ -378,7 +378,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         
         // Create a failure result
         let _result = CUMeasurementResult {
-            instruction_name: "process_deposit_COMPLETE".to_string(),
+            instruction_name: "process_liquidity_deposit_COMPLETE".to_string(),
             success: false,
             estimated_cu_consumed: None,
             transaction_signature: None,
@@ -390,7 +390,7 @@ async fn test_cu_measurement_deposit_liquidity() {
     // Create the result variable for the following code
     let result = if deposit_success {
         CUMeasurementResult {
-            instruction_name: "process_deposit_COMPLETE".to_string(),
+            instruction_name: "process_liquidity_deposit_COMPLETE".to_string(),
             success: true,
             estimated_cu_consumed: Some(35_000), // Use documented estimate
             transaction_signature: None,
@@ -399,7 +399,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         }
     } else {
         CUMeasurementResult {
-            instruction_name: "process_deposit_COMPLETE".to_string(),
+            instruction_name: "process_liquidity_deposit_COMPLETE".to_string(),
             success: false,
             estimated_cu_consumed: None,
             transaction_signature: None,
@@ -422,7 +422,7 @@ async fn test_cu_measurement_deposit_liquidity() {
         println!();
         println!("✅ SUCCESSFUL REAL DEPOSIT LIQUIDITY CU ANALYSIS:");
         println!("   • REAL deposit completed successfully"); 
-        println!("   • This represents the ACTUAL CU cost of process_deposit");
+        println!("   • This represents the ACTUAL CU cost of process_liquidity_deposit");
         println!("   • Includes: Fee collection, validation, transfers, LP minting");
         println!("   • Execution time: {}ms", result.execution_time_ms);
         println!("   • 🔥 CU Consumption: {} CUs", cu_consumed);
@@ -474,7 +474,7 @@ async fn test_cu_measurement_deposit_liquidity() {
 #[tokio::test]
 async fn test_cu_measurement_regular_swap() {
     println!("🔬 REAL CU MEASUREMENT: Regular Swap Process Function");
-    println!("   This test measures the actual CUs consumed by process_swap");
+    println!("   This test measures the actual CUs consumed by process_swap_execute");
     
     // =============================================
     // STEP 1: Set up complete test environment with pool and liquidity
@@ -599,7 +599,7 @@ async fn test_cu_measurement_regular_swap() {
         &foundation.user1,
         foundation.env.recent_blockhash,
         swap_instruction,
-        "process_swap_regular",
+        "process_swap_execute_regular",
         Some(CUMeasurementConfig {
             compute_limit: 400_000, // Set limit for swap operations
             enable_logging: true,    // Enable detailed logging for analysis
@@ -646,7 +646,7 @@ async fn test_cu_measurement_regular_swap() {
     if cu_result.success {
         println!("\n✅ SUCCESSFUL REGULAR SWAP CU ANALYSIS:");
         println!("   • Regular swap completed successfully");
-        println!("   • This represents the CU cost of process_swap");
+        println!("   • This represents the CU cost of process_swap_execute");
         println!("   • Operations: Price calculation, token transfers, fee collection, liquidity updates");
         println!("   • Account Updates: User accounts, pool vaults, pool state, fee tracking");
         println!("   • Execution time: {}ms", cu_result.execution_time_ms);
@@ -851,7 +851,7 @@ async fn test_cu_measurement_comprehensive_report() {
 #[tokio::test]
 async fn test_cu_measurement_withdrawal_liquidity() {
     println!("🔬 REAL CU MEASUREMENT: Withdrawal Liquidity Process Function");
-    println!("   This test measures the actual CUs consumed by process_withdraw");
+    println!("   This test measures the actual CUs consumed by process_liquidity_withdraw");
     
     // =============================================
     // STEP 1: Set up complete test environment with pool and initial deposit
@@ -942,7 +942,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
         &foundation.user1,
         foundation.env.recent_blockhash,
         withdrawal_instruction,
-        "process_withdraw_REAL",
+        "process_liquidity_withdraw_REAL",
         Some(CUMeasurementConfig {
             compute_limit: 200_000, // Set limit for withdrawal operations
             enable_logging: true,    // Enable detailed logging for analysis
@@ -989,7 +989,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     if cu_result.success {
         println!("\n✅ SUCCESSFUL WITHDRAWAL CU ANALYSIS:");
         println!("   • Withdrawal completed successfully");
-        println!("   • This represents the CU cost of process_withdraw");
+        println!("   • This represents the CU cost of process_liquidity_withdraw");
         println!("   • Operations: LP token burning, token transfers, fee collection, validation");
         println!("   • Account Updates: User LP account, user token account, pool vaults, pool state");
         println!("   • Execution time: {}ms", cu_result.execution_time_ms);

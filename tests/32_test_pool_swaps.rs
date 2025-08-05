@@ -42,8 +42,8 @@ Core Swap Tests:
 [✅] test_fixed_ratio_calculation_boundaries - Fixed ratio calculation logic
 [✅] test_swap_liquidity_constraints - Liquidity availability checks
 [✅] test_swap_edge_cases_and_security - Edge cases and security validation
-[✅] test_process_swap_a_to_b_execution - Low-level swap execution A→B
-[✅] test_process_swap_b_to_a_execution - Low-level swap execution B→A
+[✅] test_process_swap_execute_a_to_b_execution - Low-level swap execution A→B
+[✅] test_process_swap_execute_b_to_a_execution - Low-level swap execution B→A
 
 Fee Management Tests (TO REWRITE - Remove Delegate System):
 [✅] test_fee_change_request_success - REMOVED: Consolidated into test_owner_fee_management
@@ -1831,9 +1831,9 @@ async fn test_swap_edge_cases_and_security() -> TestResult {
 }
 
 /// Test low-level A→B swap execution process
-/// ✅ MIGRATED: test_process_swap_a_to_b_execution
+/// ✅ MIGRATED: test_process_swap_execute_a_to_b_execution
 #[tokio::test]
-async fn test_process_swap_a_to_b_execution() -> TestResult {
+async fn test_process_swap_execute_a_to_b_execution() -> TestResult {
     println!("===== SWAP-PROC-001: A→B Swap Execution Process Testing =====");
     
     let (mut ctx, config, user, user_primary_account, user_base_account) = setup_swap_test_environment(Some(2)).await?;
@@ -1959,9 +1959,9 @@ async fn test_process_swap_a_to_b_execution() -> TestResult {
 }
 
 /// Test low-level B→A swap execution process
-/// ✅ MIGRATED: test_process_swap_b_to_a_execution
+/// ✅ MIGRATED: test_process_swap_execute_b_to_a_execution
 #[tokio::test]
-async fn test_process_swap_b_to_a_execution() -> TestResult {
+async fn test_process_swap_execute_b_to_a_execution() -> TestResult {
     println!("===== SWAP-PROC-002: B→A Swap Execution Process Testing =====");
     
     let (mut ctx, config, user, user_primary_account, user_base_account) = setup_swap_test_environment(Some(2)).await?;

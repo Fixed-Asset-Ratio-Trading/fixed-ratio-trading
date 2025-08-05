@@ -1,6 +1,6 @@
-//! Test process_unpause_pool functionality
+//! Test process_pool_unpause functionality
 //! 
-//! This test verifies that process_unpause_pool works correctly by first pausing a pool
+//! This test verifies that process_pool_unpause works correctly by first pausing a pool
 //! and then unpausing it, testing the complete pause/unpause cycle.
 
 #![allow(unused_imports)]
@@ -34,7 +34,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 
-/// Test process_unpause_pool with PAUSE_FLAG_LIQUIDITY
+/// Test process_pool_unpause with PAUSE_FLAG_LIQUIDITY
 /// 
 /// This test verifies the complete pause/unpause cycle:
 /// 1. Create a pool and verify it's active
@@ -44,8 +44,8 @@ type TestResult = Result<(), Box<dyn std::error::Error>>;
 /// 5. Verify the pool is unpaused
 #[tokio::test]
 #[serial]
-async fn test_process_unpause_pool_liquidity() -> TestResult {
-    println!("🧪 Testing process_unpause_pool with PAUSE_FLAG_LIQUIDITY...");
+async fn test_process_pool_unpause_liquidity() -> TestResult {
+    println!("🧪 Testing process_pool_unpause with PAUSE_FLAG_LIQUIDITY...");
     
     // Create pool foundation
     let mut foundation = create_liquidity_test_foundation(Some(2)).await?;
@@ -153,18 +153,18 @@ async fn test_process_unpause_pool_liquidity() -> TestResult {
     assert!(!pool_state.liquidity_paused(), "Pool liquidity should be unpaused");
     println!("✅ Pool liquidity is unpaused as expected");
     
-    println!("🎉 process_unpause_pool test passed! Complete pause/unpause cycle works correctly.");
+    println!("🎉 process_pool_unpause test passed! Complete pause/unpause cycle works correctly.");
     
     Ok(())
 }
 
-/// Test process_unpause_pool with PAUSE_FLAG_ALL
+/// Test process_pool_unpause with PAUSE_FLAG_ALL
 /// 
 /// This test verifies unpausing all operations at once.
 #[tokio::test]
 #[serial]
-async fn test_process_unpause_pool_all_operations() -> TestResult {
-    println!("🧪 Testing process_unpause_pool with PAUSE_FLAG_ALL...");
+async fn test_process_pool_unpause_all_operations() -> TestResult {
+    println!("🧪 Testing process_pool_unpause with PAUSE_FLAG_ALL...");
     
     // Create pool foundation
     let mut foundation = create_liquidity_test_foundation(Some(3)).await?;
@@ -264,7 +264,7 @@ async fn test_process_unpause_pool_all_operations() -> TestResult {
     assert!(!pool_state.swaps_paused(), "Pool swaps should be unpaused");
     println!("✅ All operations are unpaused as expected");
     
-    println!("🎉 process_unpause_pool ALL operations test passed!");
+    println!("🎉 process_pool_unpause ALL operations test passed!");
     
     Ok(())
 } 

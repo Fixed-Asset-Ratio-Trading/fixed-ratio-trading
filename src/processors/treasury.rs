@@ -54,7 +54,7 @@ use crate::{
 /// # Returns
 /// * `ProgramResult` - Success or error
 ///
-pub fn process_withdraw_treasury_fees(
+pub fn process_treasury_withdraw_fees(
     program_id: &Pubkey,
     amount: u64,
     accounts: &[AccountInfo],
@@ -275,7 +275,7 @@ pub fn process_withdraw_treasury_fees(
 /// # Returns
 /// * `ProgramResult` - Success or error
 /// 
-pub fn process_get_treasury_info(
+pub fn process_treasury_get_info(
     _program_id: &Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
@@ -395,7 +395,7 @@ pub fn process_get_treasury_info(
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
-pub fn process_donate_sol(
+pub fn process_treasury_donate_sol(
     program_id: &Pubkey,
     amount: u64,
     message: String,

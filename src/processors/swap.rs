@@ -286,7 +286,7 @@ fn swap_b_to_a(
 /// - Authority checks: Only token owners can initiate swaps for their tokens
 /// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
 /// - Atomic operations: Token transfers are atomic - either both succeed or both fail
-pub fn process_swap<'a>(
+pub fn process_swap_execute<'a>(
     program_id: &Pubkey,
     amount_in: u64,              // Input amount in basis points
     expected_amount_out: u64,    // Expected output amount in basis points
@@ -911,7 +911,7 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
 ///
 /// This creates a secure foundation for custom fee structures while maintaining
 /// the protocol's core swap functionality and security model.
-pub fn process_set_swap_owner_only<'a>(
+pub fn process_swap_set_owner_only<'a>(
     program_id: &Pubkey,
     enable_restriction: bool,
     designated_owner: Pubkey,

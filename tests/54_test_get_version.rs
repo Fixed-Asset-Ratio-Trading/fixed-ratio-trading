@@ -3,29 +3,29 @@
 //! This module tests the GetVersion instruction functionality in a proper Solana test environment.
 //! Tests verify that the version information is correctly returned and logged.
 
-use fixed_ratio_trading::processors::utilities::process_get_version;
+use fixed_ratio_trading::processors::system::process_system_get_version;
 use fixed_ratio_trading::{id, process_instruction, types::instructions::PoolInstruction};
 use serial_test::serial;
 use solana_program::account_info::AccountInfo;
 use borsh::{BorshSerialize, BorshDeserialize};
 use std::fs;
 
-/// Test the process_get_version function directly
+/// Test the process_system_get_version function directly
 #[tokio::test]
 #[serial]
-async fn test_process_get_version_direct() {
-    println!("🧪 Testing process_get_version function directly...");
+async fn test_process_system_get_version_direct() {
+    println!("🧪 Testing process_system_get_version function directly...");
     
     // Test the function with empty accounts array (GetVersion doesn't use accounts)
     let accounts: Vec<AccountInfo> = vec![];
     
     // Call the function directly
-    let result = process_get_version(&accounts);
+    let result = process_system_get_version(&accounts);
     
     // Verify it succeeds
-    assert!(result.is_ok(), "process_get_version should succeed");
+    assert!(result.is_ok(), "process_system_get_version should succeed");
     
-    println!("✅ process_get_version function works correctly");
+    println!("✅ process_system_get_version function works correctly");
 }
 
 /// Test version information content matches expected values
@@ -48,10 +48,10 @@ async fn test_version_information_content() {
     println!("  Description: {}", expected_description);
     
     // Call the function (it logs the version info)
-    let result = process_get_version(&accounts);
+    let result = process_system_get_version(&accounts);
     
     // Verify it succeeds
-    assert!(result.is_ok(), "process_get_version should succeed");
+    assert!(result.is_ok(), "process_system_get_version should succeed");
     
     println!("✅ Version information logged successfully");
     println!("📝 Note: Check test output above for actual version logs");

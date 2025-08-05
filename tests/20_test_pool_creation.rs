@@ -222,7 +222,7 @@ async fn test_enhanced_pool_creation_validation() -> TestResult {
 /// This consolidated test covers all aspects of pool creation and initialization:
 /// 1. New single-instruction pattern testing (from test_initialize_pool_new_pattern)
 /// 2. Utility function integration testing (from test_pool_creation_with_utilities)
-/// 3. Complete environment setup and validation (from test_process_initialize_pool_success)
+/// 3. Complete environment setup and validation (from test_process_pool_initialize_success)
 /// 4. Multiple users and comprehensive state verification
 /// 
 /// This test creates a complete testing environment that serves as the foundation
@@ -245,7 +245,7 @@ async fn test_enhanced_pool_creation_validation() -> TestResult {
 /// # Returns
 /// Success when all components are properly initialized and verified
 #[tokio::test]
-async fn test_process_initialize_pool() -> TestResult {
+async fn test_process_pool_initialize() -> TestResult {
     println!("🚀 COMPREHENSIVE TEST: Complete pool initialization and validation");
     println!("   This test consolidates all pool creation testing into one comprehensive test");
     

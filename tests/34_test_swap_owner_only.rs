@@ -211,7 +211,7 @@ async fn test_set_swap_owner_only_success() -> TestResult {
 /// SWAP-OWNER-003: Test access control restrictions for SetSwapOwnerOnly
 /// 
 /// This test verifies that only the Program Upgrade Authority can call
-/// process_set_swap_owner_only, and other parties are properly denied.
+/// process_swap_set_owner_only, and other parties are properly denied.
 #[tokio::test]
 #[serial]
 async fn test_set_swap_owner_only_access_control() -> TestResult {

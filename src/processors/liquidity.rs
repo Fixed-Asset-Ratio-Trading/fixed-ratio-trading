@@ -125,7 +125,7 @@ use crate::processors::utilities::validate_liquidity_not_paused;
 /// - **CLIENT INTEGRATION**: Optimized account structure ready for dynamic implementation
 /// - **RATIO VALIDATION**: Strict 1:1 ratio violation (Custom error 3001)
 /// - **MINT INTEGRITY**: LP token mint operation integrity violation (Custom error 3002)
-pub fn process_deposit<'a>(
+pub fn process_liquidity_deposit<'a>(
     program_id: &Pubkey,
     amount: u64,
     deposit_token_mint_key: Pubkey,
@@ -628,7 +628,7 @@ pub fn process_deposit<'a>(
 /// - **COMPUTE SAVINGS**: Current compute unit savings: 50-80 CUs per transaction
 /// - **MEMORY EFFICIENCY**: Eliminated unnecessary account references and validations
 /// - **ERROR HANDLING**: Enhanced error handling and debugging capabilities
-pub fn process_withdraw<'a>(
+pub fn process_liquidity_withdraw<'a>(
     program_id: &Pubkey,
     lp_amount_to_burn: u64,
     withdraw_token_mint_key: Pubkey,

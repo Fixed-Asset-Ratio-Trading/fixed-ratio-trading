@@ -702,12 +702,12 @@ async fn test_treasury_withdrawal_operations() -> TestResult {
 // 2. Real-world testing scenarios in other test modules
 // 3. Integration testing through the dashboard and API endpoints
 //
-// Additional comprehensive unit tests for process_withdraw_treasury_fees would require
+// Additional comprehensive unit tests for process_treasury_withdraw_fees would require
 // extensive test infrastructure setup that may be implemented in future test iterations.
 
 /// TREASURY-003: Comprehensive treasury withdrawal operations test
 /// 
-/// This test specifically validates the process_withdraw_treasury_fees function
+/// This test specifically validates the process_treasury_withdraw_fees function
 /// with various scenarios including edge cases, error conditions, and state validation.
 #[tokio::test]
 #[serial]
@@ -715,11 +715,11 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
     println!("🧪 Testing TREASURY-003: Comprehensive treasury withdrawal operations...");
     
     // Note: This test demonstrates comprehensive unit testing patterns for
-    // the process_withdraw_treasury_fees function but is simplified due to
+    // the process_treasury_withdraw_fees function but is simplified due to
     // complex Solana program test infrastructure requirements.
     
     use fixed_ratio_trading::{
-        processors::treasury::process_withdraw_treasury_fees,
+        processors::treasury::process_treasury_withdraw_fees,
         state::{MainTreasuryState, SystemState},
         error::PoolError,
         utils::program_authority::get_program_data_address,
@@ -831,9 +831,9 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
     Ok(())
 } 
 
-/// TREASURY-004: Integration test that actually calls process_withdraw_treasury_fees
+/// TREASURY-004: Integration test that actually calls process_treasury_withdraw_fees
 /// 
-/// This test executes the actual process_withdraw_treasury_fees function through
+/// This test executes the actual process_treasury_withdraw_fees function through
 /// a complete instruction execution path to validate the function is working properly.
 #[tokio::test]
 #[serial]
@@ -923,7 +923,7 @@ async fn test_treasury_withdrawal_integration() -> Result<(), Box<dyn std::error
     };
     
     // Build the withdrawal instruction with proper account ordering
-    // Based on process_withdraw_treasury_fees account requirements:
+    // Based on process_treasury_withdraw_fees account requirements:
     // 0. System Authority Signer (signer, writable)
     // 1. Main Treasury PDA (writable) 
     // 2. Rent Sysvar Account (readable)
@@ -987,7 +987,7 @@ async fn test_treasury_withdrawal_integration() -> Result<(), Box<dyn std::error
             }
             
             println!("✅ TREASURY-004: Treasury withdrawal integration test completed successfully!");
-            println!("   - process_withdraw_treasury_fees function was called and executed");
+            println!("   - process_treasury_withdraw_fees function was called and executed");
             println!("   - Debug messages should be visible in test output");
             println!("   - SOL transfer from treasury to destination confirmed");
             
@@ -1212,14 +1212,14 @@ async fn test_get_treasury_info_with_real_data() -> Result<(), Box<dyn std::erro
     Ok(())
 } 
 
-/// TREASURY-007: Integration test for process_get_treasury_info
+/// TREASURY-007: Integration test for process_treasury_get_info
 /// 
-/// This test verifies the process_get_treasury_info function works correctly
+/// This test verifies the process_treasury_get_info function works correctly
 /// through proper Solana program execution context
 #[tokio::test]
 #[serial]
-async fn test_process_get_treasury_info_integration() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🧪 Testing TREASURY-007: Integration test for process_get_treasury_info...");
+async fn test_process_treasury_get_info_integration() -> Result<(), Box<dyn std::error::Error>> {
+    println!("🧪 Testing TREASURY-007: Integration test for process_treasury_get_info...");
     
     use solana_sdk::{
         signature::{Signer, Keypair},

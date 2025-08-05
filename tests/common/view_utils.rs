@@ -256,7 +256,7 @@ pub fn get_pool_sol_balance(accounts: &[AccountInfo]) -> ProgramResult {
 /// # Returns
 /// * `ProgramResult` - Logs comprehensive version information
 #[allow(dead_code)]
-pub fn process_get_version() -> ProgramResult {
+pub fn process_system_get_version_helper() -> ProgramResult {
     msg!("=== SMART CONTRACT VERSION ===");
     msg!("Contract Name: {}", env!("CARGO_PKG_NAME"));
     msg!("Contract Version: {}", env!("CARGO_PKG_VERSION"));

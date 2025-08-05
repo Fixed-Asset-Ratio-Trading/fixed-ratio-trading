@@ -121,25 +121,27 @@ pub use utils::*;
 // Import specific processor functions for internal use only
 // Note: We only import processors, not types, to avoid shadowing public re-exports
 use crate::processors::{
-    pool_creation::{
-        process_initialize_pool,
+    pool::{
+        process_pool_initialize,
+        process_pool_pause,
+        process_pool_unpause,
+        process_pool_update_fees,
     },
     liquidity::{
-        process_deposit,
-        process_withdraw,
+        process_liquidity_deposit,
+        process_liquidity_withdraw,
     },
     // fees module contains only governance-controlled fee architecture documentation
     swap::{
-        process_swap,
-        process_set_swap_owner_only,
+        process_swap_execute,
+        process_swap_set_owner_only,
     },
     // security module contains only governance-controlled security architecture documentation
-    process_initialize::{
-        process_initialize_program,
-    },
-    system_pause::{
-        process_pause_system,
-        process_unpause_system,
+    system::{
+        process_system_initialize,
+        process_system_pause,
+        process_system_unpause,
+        process_system_get_version,
     },
     utilities::{
         get_pool_state_pda,
@@ -149,24 +151,19 @@ use crate::processors::{
         get_liquidity_info,
         get_fee_info,
         get_pool_sol_balance,
-        process_get_version,
+
     },
     treasury::{
-        process_withdraw_treasury_fees,
-        process_get_treasury_info,
-        process_donate_sol,
+        process_treasury_withdraw_fees,
+        process_treasury_get_info,
+        process_treasury_donate_sol,
     },
     consolidation::{
         process_consolidate_pool_fees,
         get_consolidation_status,
     },
-    pool_management::{
-        process_pause_pool,
-        process_unpause_pool,
-    },
-    pool_fee_update::{
-        process_update_pool_fees,
-    },
+
+
 };
 
 /// Main entry point for the fixed-ratio trading pool Solana program.
@@ -213,7 +210,7 @@ pub fn process_instruction<'a>(
             // No fields to extract - system authority comes from accounts[0]
         } => {
             validate_account_count(accounts, INITIALIZE_PROGRAM_ACCOUNTS, "InitializeProgram")?;
-            process_initialize_program(program_id, accounts)
+            process_system_initialize(program_id, accounts)
         },
 
         PoolInstruction::InitializePool {
@@ -221,7 +218,7 @@ pub fn process_instruction<'a>(
             ratio_b_denominator,
         } => {
             validate_account_count(accounts, INITIALIZE_POOL_ACCOUNTS, "InitializePool")?;
-            process_initialize_pool(program_id, ratio_a_numerator, ratio_b_denominator, accounts)
+            process_pool_initialize(program_id, ratio_a_numerator, ratio_b_denominator, accounts)
         },
 
         PoolInstruction::Deposit {
@@ -229,7 +226,7 @@ pub fn process_instruction<'a>(
             amount,
         } => {
             validate_account_count(accounts, DEPOSIT_ACCOUNTS, "Deposit")?;
-            process_deposit(program_id, amount, deposit_token_mint, accounts)
+            process_liquidity_deposit(program_id, amount, deposit_token_mint, accounts)
         },
 
         PoolInstruction::Withdraw {
@@ -237,7 +234,7 @@ pub fn process_instruction<'a>(
             lp_amount_to_burn,
         } => {
             validate_account_count(accounts, WITHDRAW_ACCOUNTS, "Withdraw")?;
-            process_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts)
+            process_liquidity_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts)
         },
 
         PoolInstruction::Swap {
@@ -246,7 +243,7 @@ pub fn process_instruction<'a>(
             expected_amount_out,
         } => {
             validate_account_count(accounts, SWAP_ACCOUNTS, "Swap")?;
-            process_swap(program_id, amount_in, expected_amount_out, accounts)
+            process_swap_execute(program_id, amount_in, expected_amount_out, accounts)
         },
 
         PoolInstruction::SetSwapOwnerOnly {
@@ -254,14 +251,14 @@ pub fn process_instruction<'a>(
             designated_owner,
         } => {
             validate_account_count(accounts, SET_SWAP_OWNER_ONLY_ACCOUNTS, "SetSwapOwnerOnly")?;
-            process_set_swap_owner_only(program_id, enable_restriction, designated_owner, accounts)
+            process_swap_set_owner_only(program_id, enable_restriction, designated_owner, accounts)
         },
 
         PoolInstruction::UpdatePoolFees {
             update_flags,
             new_liquidity_fee,
             new_swap_fee,
-        } => process_update_pool_fees(program_id, accounts, update_flags, new_liquidity_fee, new_swap_fee),
+        } => process_pool_update_fees(program_id, accounts, update_flags, new_liquidity_fee, new_swap_fee),
 
 
 
@@ -289,18 +286,18 @@ pub fn process_instruction<'a>(
         
         PoolInstruction::PauseSystem {
             reason_code,
-        } => process_pause_system(program_id, reason_code, accounts),
+        } => process_system_pause(program_id, reason_code, accounts),
 
-        PoolInstruction::UnpauseSystem => process_unpause_system(program_id, accounts),
+        PoolInstruction::UnpauseSystem => process_system_unpause(program_id, accounts),
 
-        PoolInstruction::GetVersion => process_get_version(accounts),
+        PoolInstruction::GetVersion => process_system_get_version(accounts),
         
         // Treasury Management Instructions
         PoolInstruction::WithdrawTreasuryFees {
             amount,
-        } => process_withdraw_treasury_fees(program_id, amount, accounts),
+        } => process_treasury_withdraw_fees(program_id, amount, accounts),
 
-        PoolInstruction::GetTreasuryInfo {} => process_get_treasury_info(program_id, accounts),
+        PoolInstruction::GetTreasuryInfo {} => process_treasury_get_info(program_id, accounts),
         
         // Consolidation Instructions
         PoolInstruction::ConsolidatePoolFees {
@@ -316,14 +313,14 @@ pub fn process_instruction<'a>(
             pause_flags,
         } => {
             validate_account_count(accounts, PAUSE_POOL_ACCOUNTS, "PausePool")?;
-            process_pause_pool(program_id, pause_flags, accounts)
+            process_pool_pause(program_id, pause_flags, accounts)
         },
         
         PoolInstruction::UnpausePool {
             unpause_flags,
         } => {
             validate_account_count(accounts, UNPAUSE_POOL_ACCOUNTS, "UnpausePool")?;
-            process_unpause_pool(program_id, unpause_flags, accounts)
+            process_pool_unpause(program_id, unpause_flags, accounts)
         },
         
         PoolInstruction::DonateSol {
@@ -331,7 +328,7 @@ pub fn process_instruction<'a>(
             message,
         } => {
             validate_account_count(accounts, DONATE_SOL_ACCOUNTS, "DonateSol")?;
-            process_donate_sol(program_id, amount, message, accounts)
+            process_treasury_donate_sol(program_id, amount, message, accounts)
         },
     }
 }
