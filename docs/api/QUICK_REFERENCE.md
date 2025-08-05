@@ -23,7 +23,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### Pool Management
 | Function | Authority | Fee | Purpose |
 |----------|-----------|-----|---------|
-| `process_pool_initialize` | Any User | 0.05 SOL | Create pool |
+| `process_pool_initialize` | Any User | 1.15 SOL | Create pool |
 | `process_pool_pause` | Program Authority | - | Pause pool |
 | `process_pool_unpause` | Program Authority | - | Resume pool |
 | `process_pool_update_fees` | Program Authority* | - | Update fees |
@@ -33,13 +33,13 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### Liquidity Operations
 | Function | Authority | Default Fee | Purpose |
 |----------|-----------|-------------|---------|
-| `process_liquidity_deposit` | Any User | 0.003 SOL | Add liquidity |
-| `process_liquidity_withdraw` | LP Holder | 0.003 SOL | Remove liquidity |
+| `process_liquidity_deposit` | Any User | 0.0013 SOL | Add liquidity |
+| `process_liquidity_withdraw` | LP Holder | 0.0013 SOL | Remove liquidity |
 
 ### Swap Operations
 | Function | Authority | Default Fee | Purpose |
 |----------|-----------|-------------|---------|
-| `process_swap_execute` | Any User** | 0.0003 SOL | Execute swap |
+| `process_swap_execute` | Any User** | 0.00002715 SOL | Execute swap |
 | `process_swap_set_owner_only` | Program Authority | - | Restrict swaps |
 
 **Unless owner-only mode is enabled
@@ -47,10 +47,10 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### Treasury Operations
 | Function | Authority | Purpose |
 |----------|-----------|---------|
-| `process_treasury_withdraw_fees` | Program Authority | Withdraw fees (1st-3rd monthly) |
+| `process_treasury_withdraw_fees` | Program Authority | Withdraw fees (dynamic rate limiting) |
 | `process_treasury_get_info` | Public | View treasury info |
 | `process_treasury_donate_sol` | Any User | Support development |
-| `process_treasury_consolidate_fees` | Program Authority | Collect pool fees |
+| `process_consolidate_pool_fees` | Public | Collect pool fees |
 
 ## 🔑 Common PDA Derivations
 
@@ -129,7 +129,7 @@ const minOutput = expectedOutput * 0.99; // 1% slippage tolerance
 2. **Authority**: Most admin functions require Program Upgrade Authority
 3. **Fees**: Collected in SOL, configurable per pool
 4. **Pausing**: System pause overrides pool pause
-5. **Treasury**: Withdrawals limited to 1st-3rd of month
+5. **Treasury**: Withdrawals subject to dynamic rate limiting
 
 ## 📞 Support
 

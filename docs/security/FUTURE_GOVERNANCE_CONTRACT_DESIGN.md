@@ -1,7 +1,7 @@
 # Future Governance Contract Design - Fixed Ratio Trading
 
 **Version:** 1.0  
-**Date:** December 2024  
+**Date:** Aug 4, 2025  
 **Status:** Planning Phase  
 **Entity:** DAVINCI CODES SOFTWARE DESIGN L.L.C (Establishment No: 1371744)
 

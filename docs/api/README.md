@@ -59,7 +59,7 @@ JavaScript/TypeScript examples showing how to:
 - Owner-only mode configuration
 
 ### Treasury Operations
-- Fee withdrawals (monthly windows)
+- Fee withdrawals (dynamic rate limiting)
 - View treasury information
 - Accept donations
 - Consolidate pool fees
@@ -73,9 +73,9 @@ JavaScript/TypeScript examples showing how to:
 2. **Authority**: Most administrative functions require Program Upgrade Authority
 
 3. **Fees**: 
-   - Pool creation: 0.05 SOL
-   - Deposits/Withdrawals: 0.003 SOL (default)
-   - Swaps: 0.0003 SOL (default)
+   - Pool creation: 1.15 SOL (REGISTRATION_FEE)
+   - Deposits/Withdrawals: 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE)
+   - Swaps: 0.00002715 SOL (SWAP_CONTRACT_FEE)
    - Fee modifications: Contact support@davincicodes.net
 
 4. **Special Features**:
@@ -102,7 +102,7 @@ Contact us for:
 
 ## 🔄 Version History
 
-- **v1.0** (December 2024): Initial API documentation
+- **v1.0** (Aug 5, 2025): Initial API documentation with realistic CU scaling
 - Contract version: 0.14.1040
 
 ---
