@@ -10,8 +10,8 @@
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {
-    "tokenMetadataProgramId": "84hfBG6s2sVNhSoFN7iJjMkoYgfbAYBDJFXsEEeoNHx3",
-    "lastUpdated": "2025-08-02"
+    "tokenMetadataProgramId": "C8WLakiTDT9YAmTAj7EoPm4E2qaYJAPyAhDkTfrz3Xuf",
+    "lastUpdated": "2025-08-06"
   },
   "wallets": {
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"

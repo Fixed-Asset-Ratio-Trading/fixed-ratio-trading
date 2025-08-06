@@ -1,6 +1,6 @@
 [package]
 name = "fixed-ratio-trading"
-version = "0.14.1040"
+version = "0.15.1045"
 edition = "2021"
 description = "Fixed Ratio Trading Smart Contract for Solana"
 license = "Apache-2.0"
@@ -39,3 +39,8 @@ tokio = { version = "1.0", features = ["full"] }
 env_logger = "0.10"
 serial_test = "3.0"
 chrono = "0.4"
+
+[profile.release]
+overflow-checks = false
+lto = "fat"
+codegen-units = 1

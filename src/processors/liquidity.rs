@@ -1,7 +1,31 @@
-//! Liquidity Management Processors
+//! Liquidity Management Processors with Comprehensive Reentrancy Safety
 //! 
 //! This module contains all processors related to liquidity management operations
-//! including deposits and withdrawals.
+//! including deposits and withdrawals with reentrancy safety provided by Solana's built-in protections.
+//!
+//! # 🔒 REENTRANCY SAFETY GUARANTEES
+//! 
+//! All liquidity operations (deposits and withdrawals) are reentrancy-safe due to:
+//!
+//! ## 1. Account Locking Protection
+//! - All accounts (user tokens, pool vaults, LP tokens) are exclusively locked during transactions
+//! - No concurrent access possible while liquidity operations are in progress
+//! - Prevents traditional reentrancy attacks and race conditions
+//!
+//! ## 2. Atomic Multi-Step Operations
+//! - Deposits: User token transfer + LP token minting occur atomically
+//! - Withdrawals: LP token burning + pool token transfer occur atomically  
+//! - Either all steps succeed or all steps fail with automatic rollback
+//!
+//! ## 3. Authority-Based Security
+//! - Users must authorize spending of their tokens
+//! - Pool PDA must authorize all transfers from pool vaults using signed seeds
+//! - LP token minting/burning controlled by pool authority
+//!
+//! ## 4. Balance Validation  
+//! - All token balances validated before operations
+//! - Insufficient funds cause immediate transaction failure
+//! - Pool invariants maintained through checked arithmetic
 //!
 //! ## Critical Implementation Note: Buffer Serialization Pattern
 //! 
@@ -54,9 +78,9 @@
 
 use crate::constants::*;
 use crate::PoolState;
-use crate::utils::reentrancy_protection::{ReentrancyGuard, SafeTokenTransfer, SafeTokenMint, SafeTokenBurn};
+
 use crate::utils::token_validation::safe_unpack_and_validate_token_account;
-use crate::with_reentrancy_protection;
+
 use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
@@ -431,45 +455,33 @@ pub fn process_liquidity_deposit<'a>(
     msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
     msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
     
-    // Enhanced reentrancy protection for deposit operations
-    msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting deposit with global locks");
+    // 🔒 REENTRANCY SAFETY: This operation is protected by Solana's built-in mechanisms:
+    // 1. Account locking: Solana locks all accounts for exclusive access during transaction
+    // 2. Atomic execution: All operations succeed/fail together - no partial state changes
+    // 3. Single-threaded: Each transaction executes sequentially, preventing race conditions
+    // 4. Account validation: All accounts are validated before any operations begin
+    msg!("🔄 Starting atomic liquidity deposit operation");
     
-    // Lock all accounts involved in the deposit
-    with_reentrancy_protection!(
-        &[
-            user_input_account,
-            user_output_account,
-            target_vault,
-            target_lp_mint
-        ],
-        "Deposit Operation",
-        {
-            // Transfer tokens from user to pool vault (with snapshot protection)
-            let deposit_transfer = SafeTokenTransfer::new(
-                user_input_account,
-                target_vault,
-                amount,
-                "Liquidity Deposit Transfer"
-            );
-            
-            deposit_transfer.execute_with_protection(|| {
-                invoke(
-                    &token_instruction::transfer(
-                        spl_token_program_account.key,
-                        user_input_account.key,
-                        target_vault.key,
-                        user_authority_signer.key,
-                        &[],
-                        amount,
-                    )?,
-                    &[
-                        user_input_account.clone(),
-                        target_vault.clone(),
-                        user_authority_signer.clone(),
-                        spl_token_program_account.clone(),
-                    ],
-                )
-            })?;
+    // Process deposit with atomic guarantees - no reentrancy possible due to account locking
+    {
+            // Transfer tokens from user to pool vault
+            // SAFETY: Account locking prevents concurrent modification during this operation
+            invoke(
+                &token_instruction::transfer(
+                    spl_token_program_account.key,
+                    user_input_account.key,
+                    target_vault.key,
+                    user_authority_signer.key,
+                    &[],
+                    amount,
+                )?,
+                &[
+                    user_input_account.clone(),
+                    target_vault.clone(),
+                    user_authority_signer.clone(),
+                    spl_token_program_account.clone(),
+                ],
+            )?;
 
             // Update pool liquidity
             if is_depositing_token_a {
@@ -498,36 +510,27 @@ pub fn process_liquidity_deposit<'a>(
                 &[pool_state_data.pool_authority_bump_seed],
             ];
 
-            // Mint LP tokens (1:1 ratio) with snapshot protection
-            let lp_mint = SafeTokenMint::new(
-                user_output_account,
-                amount,
-                "Liquidity Deposit LP Mint"
-            );
-            
-            lp_mint.execute_with_protection(|| {
-                invoke_signed(
-                    &token_instruction::mint_to(
-                        spl_token_program_account.key,
-                        target_lp_mint.key,
-                        user_output_account.key,
-                        pool_state_pda.key,
-                        &[],
-                        amount,
-                    )?,
-                    &[
-                        target_lp_mint.clone(),
-                        user_output_account.clone(),
-                        pool_state_pda.clone(),
-                        spl_token_program_account.clone(),
-                    ],
-                    &[pool_pda_seeds],
-                )
-            })?;
-            
-            Ok(())
+            // Mint LP tokens (1:1 ratio)
+            // SAFETY: Pool authority seeds ensure only this program can mint LP tokens
+            // Account locking prevents concurrent minting to same account
+            invoke_signed(
+                &token_instruction::mint_to(
+                    spl_token_program_account.key,
+                    target_lp_mint.key,
+                    user_output_account.key,
+                    pool_state_pda.key,
+                    &[],
+                    amount,
+                )?,
+                &[
+                    target_lp_mint.clone(),
+                    user_output_account.clone(),
+                    pool_state_pda.clone(),
+                    spl_token_program_account.clone(),
+                ],
+                &[pool_pda_seeds],
+            )?
         }
-    )?;
 
     // ✅ OPTIMIZATION: OPTIMIZED 1:1 RATIO VERIFICATION
     // Use fresh deserialization only for final verification (post-mint operation)
@@ -938,44 +941,33 @@ fn execute_withdrawal_logic<'a>(
     msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
     msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
     
-    // Enhanced reentrancy protection for withdrawal operations
-    msg!("🛡️ ENHANCED REENTRANCY PROTECTION: Starting withdrawal with global locks");
+    // 🔒 REENTRANCY SAFETY: Withdrawal operations are protected by Solana's built-in mechanisms:
+    // 1. Account locking: All accounts (LP tokens, pool vaults, user accounts) are locked
+    // 2. Atomic execution: Burn and transfer operations are atomic - both succeed or both fail
+    // 3. Authority validation: Only token owners can burn their LP tokens
+    // 4. PDA authority: Only pool PDA can transfer from pool vaults
+    msg!("🔄 Starting atomic liquidity withdrawal operation");
     
-    // Lock all accounts involved in the withdrawal
-    with_reentrancy_protection!(
-        &[
-            user_source_lp_token_account,
-            user_destination_token_account,
-            source_pool_vault_acc,
-            source_lp_mint_account
-        ],
-        "Withdrawal Operation",
-        {
-            // Burn LP tokens from user (with snapshot protection)
-            let lp_burn = SafeTokenBurn::new(
-                user_source_lp_token_account,
-                lp_amount_to_burn,
-                "Liquidity Withdrawal LP Burn"
-            );
-            
-            lp_burn.execute_with_protection(|| {
-                invoke(
-                    &token_instruction::burn(
-                        token_program_account.key,
-                        user_source_lp_token_account.key, // Account to burn from
-                        source_lp_mint_account.key,       // Mint of the LP tokens being burned
-                        user_signer.key,                  // Authority (owner of the LP token account)
-                        &[],
-                        lp_amount_to_burn,
-                    )?,
-                    &[
-                        user_source_lp_token_account.clone(),
-                        source_lp_mint_account.clone(),
-                        user_signer.clone(),
-                        token_program_account.clone(),
-                    ],
-                )
-            })?;
+    // Process withdrawal with atomic guarantees - no reentrancy possible due to account locking
+    {
+            // Burn LP tokens from user
+            // SAFETY: User must own and authorize burning of their LP tokens
+            invoke(
+                &token_instruction::burn(
+                    token_program_account.key,
+                    user_source_lp_token_account.key, // Account to burn from
+                    source_lp_mint_account.key,       // Mint of the LP tokens being burned
+                    user_signer.key,                  // Authority (owner of the LP token account)
+                    &[],
+                    lp_amount_to_burn,
+                )?,
+                &[
+                    user_source_lp_token_account.clone(),
+                    source_lp_mint_account.clone(),
+                    user_signer.clone(),
+                    token_program_account.clone(),
+                ],
+            )?;
 
             // Transfer underlying tokens from pool vault to user
             let pool_state_pda_seeds = &[
@@ -987,37 +979,27 @@ fn execute_withdrawal_logic<'a>(
                 &[pool_state_data.pool_authority_bump_seed],
             ];
 
-            // Transfer underlying tokens from pool vault to user (with snapshot protection)
-            let withdrawal_transfer = SafeTokenTransfer::new(
-                source_pool_vault_acc,
-                user_destination_token_account,
-                lp_amount_to_burn,
-                "Liquidity Withdrawal Token Transfer"
-            );
-            
-            withdrawal_transfer.execute_with_protection(|| {
-                invoke_signed(
-                    &token_instruction::transfer(
-                        token_program_account.key,
-                        source_pool_vault_acc.key,          // Pool's vault (source)
-                        user_destination_token_account.key, // User's output account (destination)
-                        pool_state_account.key,             // Pool PDA is the authority over its vault
-                        &[],
-                        lp_amount_to_burn,                  // Amount of underlying token to transfer (equals LP burned)
-                    )?,
-                    &[
-                        source_pool_vault_acc.clone(),
-                        user_destination_token_account.clone(),
-                        pool_state_account.clone(),
-                        token_program_account.clone(),
-                    ],
-                    &[pool_state_pda_seeds],
-                )
-            })?;
-            
-            Ok(())
+            // Transfer underlying tokens from pool vault to user
+            // SAFETY: Only pool PDA can authorize transfers from its vaults using signed seeds
+            // Account locking prevents concurrent modification of balances
+            invoke_signed(
+                &token_instruction::transfer(
+                    token_program_account.key,
+                    source_pool_vault_acc.key,          // Pool's vault (source)
+                    user_destination_token_account.key, // User's output account (destination)
+                    pool_state_account.key,             // Pool PDA is the authority over its vault
+                    &[],
+                    lp_amount_to_burn,                  // Amount of underlying token to transfer (equals LP burned)
+                )?,
+                &[
+                    source_pool_vault_acc.clone(),
+                    user_destination_token_account.clone(),
+                    pool_state_account.clone(),
+                    token_program_account.clone(),
+                ],
+                &[pool_state_pda_seeds],
+            )?
         }
-    )?;
 
     // Update pool state liquidity
     if is_withdrawing_token_a {

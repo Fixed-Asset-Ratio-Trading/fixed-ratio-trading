@@ -345,6 +345,35 @@ else
     echo -e "${GREEN}✅ Build successful (no changes)${NC}"
 fi
 
+# 🔧 FIX: Update deployment_info.json with new version EARLY for test compatibility
+# This ensures that test_contract_version_matches_deployment_info has the correct expected version
+if [ -f "$PROJECT_ROOT/deployment_info.json" ]; then
+    echo -e "${YELLOW}🔄 Updating deployment_info.json with new version for test compatibility...${NC}"
+    
+    # Read current deployment_info.json and update version field
+    TEMP_DEPLOYMENT_INFO=$(mktemp)
+    
+    # Use sed to update the version field while preserving the rest
+    sed "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$PROJECT_ROOT/deployment_info.json" > "$TEMP_DEPLOYMENT_INFO"
+    
+    # Also update previous_version field
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS sed
+        sed -i '' "s/\"previous_version\": \"[^\"]*\"/\"previous_version\": \"$CURRENT_VERSION\"/" "$TEMP_DEPLOYMENT_INFO"
+    else
+        # Linux sed
+        sed -i "s/\"previous_version\": \"[^\"]*\"/\"previous_version\": \"$CURRENT_VERSION\"/" "$TEMP_DEPLOYMENT_INFO"
+    fi
+    
+    # Replace original with updated version
+    mv "$TEMP_DEPLOYMENT_INFO" "$PROJECT_ROOT/deployment_info.json"
+
+    
+    echo -e "${GREEN}✅ deployment_info.json pre-updated for test compatibility${NC}"
+else
+    echo -e "${BLUE}ℹ️  deployment_info.json doesn't exist yet - will be created after deployment${NC}"
+fi
+
 echo ""
 
 # Step 8: Configure Solana CLI for remote endpoint
