@@ -174,13 +174,17 @@ fn swap_a_to_b(
         // Need to scale up - check for overflow
         let scale_factor = 10u128.checked_pow(decimal_diff as u32)
             .ok_or(ProgramError::ArithmeticOverflow)?;
+
         amount_a_base.checked_mul(scale_factor)
             .ok_or(ProgramError::ArithmeticOverflow)?
     } else if decimal_diff < 0 {
         // Need to scale down - safe division
         let scale_factor = 10u128.pow((-decimal_diff) as u32);
-        amount_a_base / scale_factor
+        let scaled = amount_a_base / scale_factor;
+
+        scaled
     } else {
+
         amount_a_base
     };
     
@@ -253,13 +257,17 @@ fn swap_b_to_a(
         // Need to scale up - check for overflow
         let scale_factor = 10u128.checked_pow(decimal_diff as u32)
             .ok_or(ProgramError::ArithmeticOverflow)?;
+
         amount_b_base.checked_mul(scale_factor)
             .ok_or(ProgramError::ArithmeticOverflow)?
     } else if decimal_diff < 0 {
         // Need to scale down - safe division
         let scale_factor = 10u128.pow((-decimal_diff) as u32);
-        amount_b_base / scale_factor
+        let scaled = amount_b_base / scale_factor;
+
+        scaled
     } else {
+
         amount_b_base
     };
     
