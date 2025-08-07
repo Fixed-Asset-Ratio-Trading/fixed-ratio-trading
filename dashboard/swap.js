@@ -11,6 +11,7 @@ let wallet = null;
 let isConnected = false;
 let userTokens = [];
 let swapDirection = 'AtoB'; // 'AtoB' or 'BtoA'
+let tokenPairRatio = null; // 🎯 CENTRALIZED: TokenPairRatio instance for all calculations
 // No slippage tolerance needed for fixed ratio trading
 
 /**
@@ -241,6 +242,16 @@ async function enrichPoolData() {
         console.warn('Warning: Could not load token symbols:', error);
         poolData.tokenASymbol = `TOKEN-${(poolData.tokenAMint || poolData.token_a_mint)?.slice(0, 4) || 'A'}`;
         poolData.tokenBSymbol = `TOKEN-${(poolData.tokenBMint || poolData.token_b_mint)?.slice(0, 4) || 'B'}`;
+    }
+    
+    // 🎯 CENTRALIZED: Create TokenPairRatio instance for all calculations
+    try {
+        tokenPairRatio = TokenPairRatio.fromPoolData(poolData);
+        console.log(`🎯 TokenPairRatio created: ${tokenPairRatio.ExchangeDisplay()}`);
+        console.log(`🔍 TokenPairRatio ready:`, tokenPairRatio.getDebugInfo());
+    } catch (error) {
+        console.error('❌ Failed to create TokenPairRatio:', error);
+        throw error; // Critical error - cannot proceed without ratio calculations
     }
     
     // ✅ CENTRALIZED: Pool data is ready for display - no additional enrichment needed
@@ -691,7 +702,10 @@ function setMaxAmount() {
  * ensuring mathematical accuracy and matching the smart contract's calculation logic.
  */
 function calculateSwapOutputEnhanced() {
-    if (!poolData) return;
+    if (!poolData || !tokenPairRatio) {
+        console.warn('⚠️ Missing pool data or TokenPairRatio instance');
+        return;
+    }
     
     const fromAmount = parseFloat(document.getElementById('from-amount').value) || 0;
     const toAmountInput = document.getElementById('to-amount');
@@ -719,7 +733,9 @@ function calculateSwapOutputEnhanced() {
     }
     
     // Convert user input to basis points for comparison with stored balance
-    const fromAmountBasisPoints = window.TokenDisplayUtils.displayToBasisPoints(fromAmount, fromToken.decimals);
+    const fromAmountBasisPoints = swapDirection === 'AtoB' 
+        ? tokenPairRatio.ADisplayToBasisPoints(fromAmount)
+        : tokenPairRatio.BDisplayToBasisPoints(fromAmount);
     
     if (fromAmountBasisPoints > fromToken.balance) {
         swapBtn.disabled = true;
@@ -729,66 +745,19 @@ function calculateSwapOutputEnhanced() {
     }
     
     try {
-        // ✅ BASIS POINTS REFACTOR: Get pool ratios in basis points (from smart contract)
-        const ratioABasisPoints = poolData.ratioANumerator || poolData.ratio_a_numerator;
-        const ratioBBasisPoints = poolData.ratioBDenominator || poolData.ratio_b_denominator;
-        
-        console.log('🔄 SWAP CALCULATION (BASIS POINTS):');
-        console.log(`  Pool ratios: ${ratioABasisPoints} : ${ratioBBasisPoints} (basis points)`);
+        // 🎯 CENTRALIZED: Use TokenPairRatio class for all calculations
+        console.log('🔄 SWAP CALCULATION (TokenPairRatio):');
+        console.log(`  Exchange rate: ${tokenPairRatio.ExchangeDisplay()}`);
         console.log(`  Input: ${fromAmount} (display units)`);
         console.log(`  Direction: ${swapDirection}`);
         
-        // ✅ BASIS POINTS REFACTOR: Get token decimals from enriched pool data
-        let inputDecimals, outputDecimals, numerator, denominator;
-        
-        // 🚨 CRITICAL: Get token decimals - NEVER use fallbacks to prevent fund loss
-        let tokenADecimals, tokenBDecimals;
-        
-        if (poolData.ratioADecimal !== undefined && poolData.ratioBDecimal !== undefined) {
-            // Use decimals from pool data (preferred)
-            tokenADecimals = poolData.ratioADecimal;
-            tokenBDecimals = poolData.ratioBDecimal;
-        } else if (poolData.tokenDecimals && 
-                   poolData.tokenDecimals.tokenADecimals !== undefined && 
-                   poolData.tokenDecimals.tokenBDecimals !== undefined) {
-            // Use decimals from enriched data (backup)
-            tokenADecimals = poolData.tokenDecimals.tokenADecimals;
-            tokenBDecimals = poolData.tokenDecimals.tokenBDecimals;
-        } else {
-            // 🚨 CRITICAL ERROR: Missing decimal data - abort to prevent fund loss
-            const error = 'CRITICAL ERROR: Token decimal information missing. Cannot calculate swaps safely. This could result in significant fund loss.';
-            console.error('❌ SWAP CALCULATION ABORTED:', error);
-            console.error('📊 Available pool data:', poolData);
-            throw new Error(error);
-        }
-        
-        if (swapDirection === 'AtoB') {
-            // Swapping from Token A to Token B
-            inputDecimals = tokenADecimals;   // TS = 4 decimals
-            outputDecimals = tokenBDecimals;  // MST = 0 decimals
-            numerator = ratioBBasisPoints;     // Token B amount in basis points
-            denominator = ratioABasisPoints;   // Token A amount in basis points
-        } else {
-            // Swapping from Token B to Token A
-            inputDecimals = tokenBDecimals;   // MST = 0 decimals
-            outputDecimals = tokenADecimals;  // TS = 4 decimals
-            numerator = ratioABasisPoints;     // Token A amount in basis points
-            denominator = ratioBBasisPoints;   // Token B amount in basis points
-        }
-        
-        console.log(`  Token decimals: input=${inputDecimals}, output=${outputDecimals}`);
-        console.log(`  Calculation: (${fromAmount} * ${numerator}) / ${denominator}`);
-        
-        // ✅ BASIS POINTS REFACTOR: Use the new calculation function
-        const outputAmount = calculateSwapOutput(
-            fromAmount,         // Input in display units
-            inputDecimals,      // Input token decimals
-            outputDecimals,     // Output token decimals
-            numerator,          // Ratio numerator (basis points)
-            denominator         // Ratio denominator (basis points)
-        );
+        // Calculate output using centralized TokenPairRatio class
+        const outputAmount = swapDirection === 'AtoB' 
+            ? tokenPairRatio.SwapAToB(fromAmount)
+            : tokenPairRatio.SwapBToA(fromAmount);
         
         console.log(`  Output: ${outputAmount} (display units)`);
+        console.log(`🔍 TokenPairRatio debug:`, tokenPairRatio.getDebugInfo());
         
         toAmountInput.value = outputAmount.toFixed(6);
         
@@ -1021,18 +990,16 @@ async function buildSwapTransaction(fromAmount, fromToken, toTokenAccountPubkey)
         console.log(`  Ratio B (basis points): ${ratioBBasisPoints}`);
         console.log(`  Numerator: ${numerator}, Denominator: ${denominator}`);
         
-        // Calculate expected output using the same logic as the UI
+        // Calculate expected output using the centralized TokenPairRatio class
         const fromAmountDisplay = window.TokenDisplayUtils.basisPointsToDisplay(amountInBaseUnits, inputDecimals);
-        const expectedOutputDisplay = window.TokenDisplayUtils.calculateSwapOutput(
-            fromAmountDisplay,
-            inputDecimals,
-            outputDecimals,
-            numerator,
-            denominator
-        );
+        const expectedOutputDisplay = swapDirection === 'AtoB' 
+            ? tokenPairRatio.SwapAToB(fromAmountDisplay)
+            : tokenPairRatio.SwapBToA(fromAmountDisplay);
         
         // Convert expected output to basis points
-        expectedOutputAmount = window.TokenDisplayUtils.displayToBasisPoints(expectedOutputDisplay, outputDecimals);
+        expectedOutputAmount = swapDirection === 'AtoB'
+            ? tokenPairRatio.BDisplayToBasisPoints(expectedOutputDisplay)
+            : tokenPairRatio.ADisplayToBasisPoints(expectedOutputDisplay);
         
         console.log('🔍 Expected output calculation:');
         console.log(`  Input: ${fromAmountDisplay} (${amountInBaseUnits} basis points)`);

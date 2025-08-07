@@ -631,64 +631,237 @@ function validateOneToManyRatio(ratioADisplay, ratioBDisplay, decimalsA, decimal
 }
 
 /**
- * **BASIS POINTS REFACTOR: Calculate swap output in basis points**
+ * 🎯 CENTRALIZED TOKEN PAIR RATIO CLASS
  * 
- * Performs the core swap calculation using basis points arithmetic, exactly
- * matching the smart contract's logic. This ensures precision and accuracy.
+ * This class is the single source of truth for all ratio calculations across the dashboard.
+ * Every page should use this class to ensure consistent ratio calculations and displays.
  * 
- * @param {number} inputDisplay - Input amount in display units
- * @param {number} inputDecimals - Input token decimals
- * @param {number} outputDecimals - Output token decimals  
- * @param {number} numeratorBasisPoints - Pool ratio numerator (in basis points)
- * @param {number} denominatorBasisPoints - Pool ratio denominator (in basis points)
- * @returns {number} Output amount in display units
- * 
- * @example
- * // Pool: 1 SOL = 160 USDT (1×10^9 : 160×10^6 basis points)
- * // Swap: 0.5 SOL → ? USDT
- * const output = calculateSwapOutput(0.5, 9, 6, 160000000, 1000000000); // Returns 80.0
+ * @class TokenPairRatio
  */
-function calculateSwapOutput(inputDisplay, inputDecimals, outputDecimals, numeratorBasisPoints, denominatorBasisPoints) {
-    try {
-        // 🚨 CRITICAL VALIDATION: Ensure all parameters are valid to prevent fund loss
-        if (typeof inputDisplay !== 'number' || inputDisplay < 0) {
-            throw new Error(`Invalid input amount: ${inputDisplay}. Must be a positive number.`);
+class TokenPairRatio {
+    /**
+     * Create a TokenPairRatio instance
+     * @param {string} tickerA - Token A symbol (e.g., "TS")
+     * @param {number} ratioA - Token A ratio in basis points
+     * @param {number} decimalA - Token A decimal places
+     * @param {string} tickerB - Token B symbol (e.g., "MST")
+     * @param {number} ratioB - Token B ratio in basis points
+     * @param {number} decimalB - Token B decimal places
+     */
+    constructor(tickerA, ratioA, decimalA, tickerB, ratioB, decimalB) {
+        // Validate inputs
+        if (!tickerA || !tickerB) {
+            throw new Error('Both ticker symbols are required');
         }
-        if (typeof inputDecimals !== 'number' || inputDecimals < 0 || inputDecimals > 9) {
-            throw new Error(`Invalid input decimals: ${inputDecimals}. Must be between 0 and 9.`);
+        if (typeof ratioA !== 'number' || ratioA <= 0) {
+            throw new Error(`Invalid ratioA: ${ratioA}. Must be a positive number.`);
         }
-        if (typeof outputDecimals !== 'number' || outputDecimals < 0 || outputDecimals > 9) {
-            throw new Error(`Invalid output decimals: ${outputDecimals}. Must be between 0 and 9.`);
+        if (typeof ratioB !== 'number' || ratioB <= 0) {
+            throw new Error(`Invalid ratioB: ${ratioB}. Must be a positive number.`);
         }
-        if (typeof numeratorBasisPoints !== 'number' || numeratorBasisPoints <= 0) {
-            throw new Error(`Invalid numerator: ${numeratorBasisPoints}. Must be a positive number.`);
+        if (typeof decimalA !== 'number' || decimalA < 0 || decimalA > 9) {
+            throw new Error(`Invalid decimalA: ${decimalA}. Must be between 0 and 9.`);
         }
-        if (typeof denominatorBasisPoints !== 'number' || denominatorBasisPoints <= 0) {
-            throw new Error(`Invalid denominator: ${denominatorBasisPoints}. Must be a positive number.`);
+        if (typeof decimalB !== 'number' || decimalB < 0 || decimalB > 9) {
+            throw new Error(`Invalid decimalB: ${decimalB}. Must be between 0 and 9.`);
+        }
+
+        this.tickerA = tickerA;
+        this.ratioA = ratioA;
+        this.decimalA = decimalA;
+        this.tickerB = tickerB;
+        this.ratioB = ratioB;
+        this.decimalB = decimalB;
+
+        // Calculate display values once
+        this.displayA = this.ratioA / Math.pow(10, this.decimalA);
+        this.displayB = this.ratioB / Math.pow(10, this.decimalB);
+    }
+
+    /**
+     * Get whole ratio for Token A (converted to display units)
+     * @returns {number} Token A ratio in display units
+     */
+    WholeRatioA() {
+        return this.displayA;
+    }
+
+    /**
+     * Get whole ratio for Token B (converted to display units)
+     * @returns {number} Token B ratio in display units
+     */
+    WholeRatioB() {
+        return this.displayB;
+    }
+
+    /**
+     * Get standardized number ratio display "1:X" format
+     * Always shows 1 first, followed by the larger ratio
+     * @returns {string} Ratio display like "1:10,000"
+     */
+    NumberRatioDisplay() {
+        const ratioA = this.WholeRatioA();
+        const ratioB = this.WholeRatioB();
+        
+        if (ratioA <= ratioB) {
+            // A is smaller or equal, normalize to "1:X"
+            const normalized = ratioB / ratioA;
+            return `1:${formatNumberWithCommas(normalized)}`;
+        } else {
+            // B is smaller, normalize to "1:X"  
+            const normalized = ratioA / ratioB;
+            return `1:${formatNumberWithCommas(normalized)}`;
+        }
+    }
+
+    /**
+     * Get exchange rate display showing which token is more valuable
+     * @returns {string} Exchange rate like "1 TS = 10,000 MST"
+     */
+    ExchangeDisplay() {
+        const ratioA = this.WholeRatioA();
+        const ratioB = this.WholeRatioB();
+        
+        // Calculate exchange rates in both directions
+        const rate_A_to_B = ratioB / ratioA;  // How much B for 1 A
+        const rate_B_to_A = ratioA / ratioB;  // How much A for 1 B
+        
+        // Show the direction that produces rates >= 1 (more valuable asset first)
+        if (rate_A_to_B >= 1) {
+            return `1 ${this.tickerA} = ${formatNumberWithCommas(rate_A_to_B)} ${this.tickerB}`;
+        } else {
+            return `1 ${this.tickerB} = ${formatNumberWithCommas(rate_B_to_A)} ${this.tickerA}`;
+        }
+    }
+
+    /**
+     * Calculate Token A amount from Token B amount (basis points to basis points)
+     * @param {number} bAmountBasisPoints - Token B amount in basis points
+     * @returns {number} Token A amount in basis points
+     */
+    CalculateA(bAmountBasisPoints) {
+        if (typeof bAmountBasisPoints !== 'number' || bAmountBasisPoints < 0) {
+            throw new Error(`Invalid bAmountBasisPoints: ${bAmountBasisPoints}. Must be a non-negative number.`);
         }
         
-        // Convert input to basis points
-        const inputBasisPoints = displayToBasisPoints(inputDisplay, inputDecimals);
+        // B → A: (bAmount * ratioA) / ratioB
+        return Math.floor((bAmountBasisPoints * this.ratioA) / this.ratioB);
+    }
+
+    /**
+     * Calculate Token B amount from Token A amount (basis points to basis points)
+     * @param {number} aAmountBasisPoints - Token A amount in basis points
+     * @returns {number} Token B amount in basis points
+     */
+    CalculateB(aAmountBasisPoints) {
+        if (typeof aAmountBasisPoints !== 'number' || aAmountBasisPoints < 0) {
+            throw new Error(`Invalid aAmountBasisPoints: ${aAmountBasisPoints}. Must be a non-negative number.`);
+        }
         
-        // Perform calculation in basis points (matches smart contract)
-        const outputBasisPoints = Math.floor((inputBasisPoints * numeratorBasisPoints) / denominatorBasisPoints);
-        
-        // Convert result back to display units
-        const outputDisplay = basisPointsToDisplay(outputBasisPoints, outputDecimals);
-        
-        console.log(`🔄 SWAP CALCULATION:`, {
-            input: `${inputDisplay} (${inputBasisPoints} basis points)`,
-            output: `${outputDisplay} (${outputBasisPoints} basis points)`,
-            ratio: `${numeratorBasisPoints} : ${denominatorBasisPoints}`
-        });
-        
-        return outputDisplay;
-        
-    } catch (error) {
-        console.error('❌ Error calculating swap output:', error);
-        throw error;
+        // A → B: (aAmount * ratioB) / ratioA
+        return Math.floor((aAmountBasisPoints * this.ratioB) / this.ratioA);
+    }
+
+    /**
+     * Convert Token A display amount to basis points
+     * @param {number} displayAmount - Token A amount in display units
+     * @returns {number} Token A amount in basis points
+     */
+    ADisplayToBasisPoints(displayAmount) {
+        return displayToBasisPoints(displayAmount, this.decimalA);
+    }
+
+    /**
+     * Convert Token B display amount to basis points
+     * @param {number} displayAmount - Token B amount in display units
+     * @returns {number} Token B amount in basis points
+     */
+    BDisplayToBasisPoints(displayAmount) {
+        return displayToBasisPoints(displayAmount, this.decimalB);
+    }
+
+    /**
+     * Convert Token A basis points to display amount
+     * @param {number} basisPoints - Token A amount in basis points
+     * @returns {number} Token A amount in display units
+     */
+    ABasisPointsToDisplay(basisPoints) {
+        return basisPointsToDisplay(basisPoints, this.decimalA);
+    }
+
+    /**
+     * Convert Token B basis points to display amount
+     * @param {number} basisPoints - Token B amount in basis points
+     * @returns {number} Token B amount in display units
+     */
+    BBasisPointsToDisplay(basisPoints) {
+        return basisPointsToDisplay(basisPoints, this.decimalB);
+    }
+
+    /**
+     * Calculate swap from A to B (display units)
+     * @param {number} aDisplayAmount - Token A amount in display units
+     * @returns {number} Token B amount in display units
+     */
+    SwapAToB(aDisplayAmount) {
+        const aBasisPoints = this.ADisplayToBasisPoints(aDisplayAmount);
+        const bBasisPoints = this.CalculateB(aBasisPoints);
+        return this.BBasisPointsToDisplay(bBasisPoints);
+    }
+
+    /**
+     * Calculate swap from B to A (display units)
+     * @param {number} bDisplayAmount - Token B amount in display units
+     * @returns {number} Token A amount in display units
+     */
+    SwapBToA(bDisplayAmount) {
+        const bBasisPoints = this.BDisplayToBasisPoints(bDisplayAmount);
+        const aBasisPoints = this.CalculateA(bBasisPoints);
+        return this.ABasisPointsToDisplay(aBasisPoints);
+    }
+
+    /**
+     * Get debugging information
+     * @returns {Object} Debug information about the token pair
+     */
+    getDebugInfo() {
+        return {
+            tokens: `${this.tickerA}/${this.tickerB}`,
+            ratiosBasisPoints: `${this.ratioA}:${this.ratioB}`,
+            decimals: `${this.decimalA}:${this.decimalB}`,
+            ratiosDisplay: `${this.displayA}:${this.displayB}`,
+            numberRatioDisplay: this.NumberRatioDisplay(),
+            exchangeDisplay: this.ExchangeDisplay()
+        };
+    }
+
+    /**
+     * Create TokenPairRatio from pool data
+     * @param {Object} poolData - Pool data from RPC or state.json
+     * @returns {TokenPairRatio} New TokenPairRatio instance
+     */
+    static fromPoolData(poolData) {
+        const tickerA = poolData.tokenASymbol || 'TokenA';
+        const tickerB = poolData.tokenBSymbol || 'TokenB';
+        const ratioA = poolData.ratioANumerator || poolData.ratio_a_numerator;
+        const ratioB = poolData.ratioBDenominator || poolData.ratio_b_denominator;
+        const decimalA = poolData.ratioADecimal !== undefined ? poolData.ratioADecimal : 
+                        (poolData.tokenDecimals?.tokenADecimals !== undefined ? poolData.tokenDecimals.tokenADecimals : null);
+        const decimalB = poolData.ratioBDecimal !== undefined ? poolData.ratioBDecimal :
+                        (poolData.tokenDecimals?.tokenBDecimals !== undefined ? poolData.tokenDecimals.tokenBDecimals : null);
+
+        if (ratioA === undefined || ratioB === undefined) {
+            throw new Error('Pool data missing ratio information');
+        }
+        if (decimalA === null || decimalB === null) {
+            throw new Error('Pool data missing decimal information');
+        }
+
+        return new TokenPairRatio(tickerA, ratioA, decimalA, tickerB, ratioB, decimalB);
     }
 }
+
+
 
 /**
  * CENTRALIZED POOL DISPLAY FUNCTION - Handles decimals and display logic
@@ -968,7 +1141,8 @@ if (typeof window !== 'undefined') {
         formatLiquidityWithDecimals,
         getTokenLiquidityFormatted,
         validateOneToManyRatio,
-        calculateSwapOutput,
+        // 🎯 CENTRALIZED TOKEN PAIR RATIO CLASS
+        TokenPairRatio,
         // CENTRALIZED DISPLAY: New unified function
         enrichPoolWithCorrectDisplay,
         // CENTRALIZED: New centralized display functions
@@ -1003,7 +1177,8 @@ if (typeof module !== 'undefined' && module.exports) {
         formatLiquidityWithDecimals,
         getTokenLiquidityFormatted,
         validateOneToManyRatio,
-        calculateSwapOutput,
+        // 🎯 CENTRALIZED TOKEN PAIR RATIO CLASS
+        TokenPairRatio,
         // CENTRALIZED DISPLAY: New unified function
         enrichPoolWithCorrectDisplay,
         // CENTRALIZED: New centralized display functions
