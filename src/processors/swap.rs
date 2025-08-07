@@ -162,42 +162,18 @@ fn swap_a_to_b(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Apply the correct mathematical specification:
-    // B_out = floor( A_in * ratioB_den * 10^(decimals_B - decimals_A) / ratioA_num )
+    // Simple ratio-based calculation
+    // The pool creator must set ratios that account for decimal differences
+    // For 1 TS = 10,000 MST: use ratio 10000:10000 (both in basis points)
     
-    // Step 1: Calculate the decimal scaling factor
-    let decimal_diff = token_b_decimals as i32 - token_a_decimals as i32;
-    msg!("   • Decimal difference (B - A): {} - {} = {}", token_b_decimals, token_a_decimals, decimal_diff);
-    
-    // Step 2: Apply decimal scaling if needed (with overflow protection)
-    let scaled_amount = if decimal_diff > 0 {
-        // Need to scale up - check for overflow
-        let scale_factor = 10u128.checked_pow(decimal_diff as u32)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-
-        amount_a_base.checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-    } else if decimal_diff < 0 {
-        // Need to scale down - safe division
-        let scale_factor = 10u128.pow((-decimal_diff) as u32);
-        let scaled = amount_a_base / scale_factor;
-
-        scaled
-    } else {
-
-        amount_a_base
-    };
-    
-    // Step 3: Perform the main calculation with full overflow protection
-    let numerator = scaled_amount
+    let numerator = amount_a_base
         .checked_mul(ratio_b_den)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", scaled_amount, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
-    
-    // Safe division (division by zero already checked above)
     let result = numerator.checked_div(ratio_a_num)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_a, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
     
     msg!("   • Final result (floor): {}", result);
     
@@ -248,39 +224,17 @@ fn swap_b_to_a(
     // - The checked_* operations below will catch any actual overflow risks
     // - This allows all legitimate token pairs while preventing overflow
     
-    // Step 1: Calculate the decimal scaling factor
-    let decimal_diff = token_a_decimals as i32 - token_b_decimals as i32;
-    msg!("   • Decimal difference (A - B): {} - {} = {}", token_a_decimals, token_b_decimals, decimal_diff);
+    // Simple ratio-based calculation
+    // The pool creator must set ratios that account for decimal differences
     
-    // Step 2: Apply decimal scaling if needed (with overflow protection)
-    let scaled_amount = if decimal_diff > 0 {
-        // Need to scale up - check for overflow
-        let scale_factor = 10u128.checked_pow(decimal_diff as u32)
-            .ok_or(ProgramError::ArithmeticOverflow)?;
-
-        amount_b_base.checked_mul(scale_factor)
-            .ok_or(ProgramError::ArithmeticOverflow)?
-    } else if decimal_diff < 0 {
-        // Need to scale down - safe division
-        let scale_factor = 10u128.pow((-decimal_diff) as u32);
-        let scaled = amount_b_base / scale_factor;
-
-        scaled
-    } else {
-
-        amount_b_base
-    };
-    
-    // Step 3: Perform the main calculation with full overflow protection
-    let numerator = scaled_amount
+    let numerator = amount_b_base
         .checked_mul(ratio_a_num)
         .ok_or(ProgramError::ArithmeticOverflow)?;
         
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", scaled_amount, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
-    
-    // Safe division (division by zero already checked above)
     let result = numerator.checked_div(ratio_b_den)
         .ok_or(ProgramError::ArithmeticOverflow)?;
+    
+    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
     
     msg!("   • Final result (floor): {} basis points", result);
     
@@ -584,20 +538,18 @@ pub fn process_swap_execute<'a>(
     msg!("   • Input token decimals: {}", input_decimals);
     msg!("   • Output token decimals: {}", output_decimals);
     
-    // Get exchange ratio based on swap direction (these are basis points from pool creation)
-    let (numerator, denominator) = if input_is_token_a {
-        if pool_state_data.ratio_a_numerator == 0 {
-            msg!("❌ INVALID POOL RATIO: Token A numerator is zero");
-            return Err(ProgramError::InvalidAccountData);
-        }
-        (pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator)
-    } else {
-        if pool_state_data.ratio_b_denominator == 0 {
-            msg!("❌ INVALID POOL RATIO: Token B denominator is zero");
-            return Err(ProgramError::InvalidAccountData);
-        }
-        (pool_state_data.ratio_b_denominator, pool_state_data.ratio_a_numerator)
-    };
+    // Get exchange ratios - always use the same values regardless of direction
+    let ratio_a_num = pool_state_data.ratio_a_numerator;
+    let ratio_b_den = pool_state_data.ratio_b_denominator;
+    
+    if ratio_a_num == 0 {
+        msg!("❌ INVALID POOL RATIO: Token A numerator is zero");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if ratio_b_den == 0 {
+        msg!("❌ INVALID POOL RATIO: Token B denominator is zero");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
     // Swap direction determined
     
@@ -622,18 +574,17 @@ pub fn process_swap_execute<'a>(
         debug_msg!("🚨🚨🚨 CHECKPOINT 3: INSIDE TOKEN A BRANCH");
         msg!("🔥 CALLING swap_a_to_b with parameters:");
         msg!("   • amount_in: {}", amount_in);
-        msg!("   • numerator (ratio_a_numerator): {}", numerator);
-        msg!("   • denominator (ratio_b_denominator): {}", denominator);
+        msg!("   • ratio_a_numerator: {}", ratio_a_num);
+        msg!("   • ratio_b_denominator: {}", ratio_b_den);
         msg!("   • input_decimals (token_a): {}", input_decimals);
         msg!("   • output_decimals (token_b): {}", output_decimals);
         
         // Swapping Token A → Token B
         // Formula: amount_b = (amount_a * ratio_b_denominator) / ratio_a_numerator
-        // numerator = ratio_a_numerator, denominator = ratio_b_denominator
         let result = swap_a_to_b(
             amount_in,
-            numerator,      // ratio_a_numerator (basis points)
-            denominator,    // ratio_b_denominator (basis points) 
+            ratio_a_num,    // ratio_a_numerator (basis points)
+            ratio_b_den,    // ratio_b_denominator (basis points) 
             input_decimals as u8,  // token_a_decimals
             output_decimals as u8, // token_b_decimals
         )?;
@@ -643,19 +594,17 @@ pub fn process_swap_execute<'a>(
     } else {
         msg!("🔥 CALLING swap_b_to_a with parameters:");
         msg!("   • amount_in: {}", amount_in);
-        msg!("   • denominator as ratio_a_numerator: {}", denominator);
-        msg!("   • numerator as ratio_b_denominator: {}", numerator);
+        msg!("   • ratio_a_numerator: {}", ratio_a_num);
+        msg!("   • ratio_b_denominator: {}", ratio_b_den);
         msg!("   • input_decimals (token_b): {}", input_decimals);
         msg!("   • output_decimals (token_a): {}", output_decimals);
         
         // Swapping Token B → Token A  
         // Formula: amount_a = (amount_b * ratio_a_numerator) / ratio_b_denominator
-        // But ratio assignment gives us: numerator = ratio_b_denominator, denominator = ratio_a_numerator
-        // So we need to swap the parameters to match our function's expected formula!
         let result = swap_b_to_a(
             amount_in,
-            denominator,    // ratio_a_numerator (basis points) - swapped!
-            numerator,      // ratio_b_denominator (basis points) - swapped!
+            ratio_a_num,    // ratio_a_numerator (basis points)
+            ratio_b_den,    // ratio_b_denominator (basis points)
             input_decimals as u8,  // token_b_decimals
             output_decimals as u8, // token_a_decimals
         )?;

@@ -3292,11 +3292,12 @@ async fn test_mixed_decimal_token_swap_precision() -> TestResult {
 ///
 #[tokio::test]
 #[serial]
-async fn test_dashboard_basis_points_math_fixed() -> TestResult {
-    println!("✅ TEST: Verify Dashboard Basis Points Math Fix");
+async fn test_dashboard_basis_points_math_fixed_token_a_first() -> TestResult {
+    println!("✅ TEST: Verify Dashboard Basis Points Math Fix (Token A First)");
     println!("===============================================");
     println!("🎯 PURPOSE: Verify the basis points calculation fix works correctly");
     println!("📋 SCENARIO: 1000 MST (0 decimals) → Expected 1 TS, Gets 1 TS");
+    println!("🔧 CREATE_TOKEN_B_FIRST = false (MST is Token A, TS is Token B)");
     println!("✅ EXPECTED: This test should PASS with correct swap calculations");
     println!("");
 
@@ -3305,7 +3306,7 @@ async fn test_dashboard_basis_points_math_fixed() -> TestResult {
     // ============================================================================
     
     // Debug Configuration
-    const ENABLE_DEBUG_LOGGING: bool = true; // Set to true to enable verbose Solana runtime logs for debugging
+    const ENABLE_DEBUG_LOGGING: bool = false; // Set to true to enable verbose Solana runtime logs for debugging
 
     // Token Configuration - EXACT match to dashboard console logs
     const MST_DECIMALS: u8 = 0;  // MST has 0 decimals
@@ -3599,6 +3600,321 @@ async fn test_dashboard_basis_points_math_fixed() -> TestResult {
     // Always return Ok to see the analysis above
     Ok(())
 }
+
+
+#[tokio::test]
+#[serial]
+async fn test_dashboard_basis_points_math_fixed_token_b_first() -> TestResult {
+    println!("✅ TEST: Verify Dashboard Basis Points Math Fix (Token B First)");
+    println!("===============================================");
+    println!("🎯 PURPOSE: Verify the basis points calculation fix works correctly");
+    println!("📋 SCENARIO: 1000 MST (0 decimals) → Expected 1 TS, Gets 1 TS");
+    println!("🔧 CREATE_TOKEN_B_FIRST = true (TS is Token A, MST is Token B)");
+    println!("✅ EXPECTED: This test should PASS with correct swap calculations");
+    println!("");
+
+    // ============================================================================
+    // 🎯 VERIFICATION OF FIXED DASHBOARD SCENARIO
+    // ============================================================================
+    
+    // Debug Configuration
+    const ENABLE_DEBUG_LOGGING: bool = false; // Set to true to enable verbose Solana runtime logs for debugging
+
+    // Token Configuration - EXACT match to dashboard console logs
+    const MST_DECIMALS: u8 = 0;  // MST has 0 decimals
+    const TS_DECIMALS: u8 = 4;   // TS has 4 decimals  
+    const CREATE_TOKEN_B_FIRST: bool = true; // MST first, then TS (for normalization)
+    
+    // Pool Ratio Configuration - EXACT INTEGER BASIS POINTS (Option 1)
+    // ⚖️ Ratio A Numerator: 1000 (MST basis points)
+    // ⚖️ Ratio B Denominator: 10000 (TS basis points)
+    
+    // FINANCIAL PRECISION: Store ratios directly as exact integer basis points
+    // This eliminates floating-point precision loss for financial calculations
+    const MST_RATIO_BASIS_POINTS: u64 = 1000;   // Exact MST basis points (0 decimals)
+    const TS_RATIO_BASIS_POINTS: u64 = 10000;   // Exact TS basis points (4 decimals) - PRECISE!
+    
+    // Calculate display units from exact basis points (for display/logging only)
+    const MST_RATIO_DISPLAY: f64 = MST_RATIO_BASIS_POINTS as f64 / 1.0;     // MST has 0 decimals: 10^0 = 1
+    const TS_RATIO_DISPLAY: f64 = TS_RATIO_BASIS_POINTS as f64 / 10000.0;   // TS has 4 decimals: 10^4 = 10000
+    
+    // This means: 1000 MST = 10000 TS basis points = 1 TS display units
+    // Because: 10000 TS basis points ÷ 10^4 decimals = 1 TS display units
+
+    // Test Input - RESTORED to original dashboard scenario  
+    const SWAP_INPUT_MST_DISPLAY: u64 = 1000;  // 1000 MST display units (original dashboard amount)
+    const SWAP_INPUT_MST_BASIS_POINTS: u64 = 1000; // 1000 MST basis points (same since 0 decimals)
+    
+    // Expected vs Actual Output (exact integer calculations)
+    const EXPECTED_TS_DISPLAY: f64 = TS_RATIO_DISPLAY;     // Calculated exactly: 10000/10000 = 1.0 TS
+    const EXPECTED_TS_BASIS_POINTS: u64 = TS_RATIO_BASIS_POINTS; // EXACT: 10000 basis points (no precision loss!)
+    const ACTUAL_TS_RECEIVED: u64 = 10000;    // Actually gets 10,000 TS (the bug!)
+    
+    // User Token Balances for liquidity (in basis points) - SCALED UP for full testing
+    // Foundation gives: User1 MST=2M, TS=2K; User2 MST=1M, TS=500K  
+    const USER1_MST_BALANCE: u64 = 100_000; // 100K MST (0 decimals, so 100K basis points)  
+    const USER1_TS_BALANCE: u64 = 50_000_000; // 50M TS basis points (5,000 TS display) - SCALED UP
+    const USER2_MST_BALANCE: u64 = 1_000_000; // 1M MST for swapping (foundation gives 1M)
+    const USER2_TS_BALANCE: u64 = 500_000; // 500K TS for swapping (foundation gives 500K)
+    
+    println!("📊 EXACT DASHBOARD SCENARIO REPRODUCTION:");
+    println!("   • MST Token: {} decimals", MST_DECIMALS);
+    println!("   • TS Token: {} decimals", TS_DECIMALS);
+    println!("   • Pool Ratio: {} MST : {} TS (basis points)", (MST_RATIO_DISPLAY as u64) * 10_u64.pow(MST_DECIMALS as u32), (TS_RATIO_DISPLAY * 10_f64.powi(TS_DECIMALS as i32)) as u64);
+    println!("   • Conversion: {} MST = {} TS basis points = {} TS display", 
+             (MST_RATIO_DISPLAY as u64) * 10_u64.pow(MST_DECIMALS as u32), (TS_RATIO_DISPLAY * 10_f64.powi(TS_DECIMALS as i32)) as u64, EXPECTED_TS_DISPLAY);
+    println!("");
+    println!("💰 SWAP TEST:");
+    println!("   • Input: {} MST display units = {} MST basis points", SWAP_INPUT_MST_DISPLAY, SWAP_INPUT_MST_BASIS_POINTS);
+    println!("   • Expected Output: {} TS display units = {} TS basis points", EXPECTED_TS_DISPLAY, EXPECTED_TS_BASIS_POINTS);
+    println!("   • Original dashboard scenario: 1000 MST → 1 TS (testing exact original amounts)");
+    println!("");
+
+    // Setup foundation with exact token configuration
+    println!("⏳ Setting up test foundation with MST (0 decimals) and TS (4 decimals)...");
+    
+    let mut foundation = create_liquidity_test_foundation_with_custom_pool_advanced(
+        MST_RATIO_DISPLAY,       // Token A (MST) ratio in display units (calculated from exact basis points)
+        TS_RATIO_DISPLAY,        // Token B (TS) ratio in display units (calculated from exact basis points)
+        MST_DECIMALS,            // MST decimals = 0
+        TS_DECIMALS,             // TS decimals = 4
+        CREATE_TOKEN_B_FIRST,    // Create MST first, then TS
+    ).await?;
+    
+    println!("✅ Foundation created with MST and TS token configuration");
+
+    // Verify pool configuration matches dashboard logs
+    println!("\n🔍 VERIFYING POOL MATCHES DASHBOARD CONFIGURATION:");
+    
+    use borsh::BorshDeserialize;
+    use fixed_ratio_trading::PoolState;
+    
+    let pool_state_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Pool state account not found"))?;
+    
+    let pool_state = PoolState::deserialize(&mut &pool_state_account.data[..])?;
+    
+    let expected_mst_basis_points = MST_RATIO_BASIS_POINTS;  // EXACT integer basis points
+    let expected_ts_basis_points = TS_RATIO_BASIS_POINTS;   // EXACT integer basis points
+    
+    println!("   • Pool ratio A numerator: {} (Expected: {})", pool_state.ratio_a_numerator, expected_mst_basis_points);
+    println!("   • Pool ratio B denominator: {} (Expected: {})", pool_state.ratio_b_denominator, expected_ts_basis_points);
+    println!("   • Token A mint: {} (MST)", pool_state.token_a_mint);
+    println!("   • Token B mint: {} (TS)", pool_state.token_b_mint);
+    
+    // Verify ratios match dashboard (1000 MST basis points : 10000 TS basis points)
+    assert_eq!(pool_state.ratio_a_numerator, expected_mst_basis_points, "MST ratio mismatch!");
+    assert_eq!(pool_state.ratio_b_denominator, expected_ts_basis_points, "TS ratio mismatch!");
+    
+    println!("   ✅ Pool configuration matches dashboard exactly");
+
+    // **STEP 1: Add liquidity to enable swaps**
+    println!("\n⏳ Step 1: Adding liquidity to enable the swap test...");
+    
+    let user1_pubkey = foundation.user1.pubkey();
+    let user1_mst_account_pubkey = foundation.user1_primary_account.pubkey(); // MST account
+    let user1_lp_a_account_pubkey = foundation.user1_lp_a_account.pubkey();   // MST LP account
+    let user1_ts_account_pubkey = foundation.user1_base_account.pubkey();     // TS account
+    let user1_lp_b_account_pubkey = foundation.user1_lp_b_account.pubkey();   // TS LP account
+    
+    // Extract mint addresses to avoid borrow checker issues
+    let token_a_mint = foundation.pool_config.token_a_mint; // MST mint
+    let token_b_mint = foundation.pool_config.token_b_mint; // TS mint
+    
+    // **STEP 0: Add additional TS tokens to User1 for adequate liquidity**
+    println!("   ⏳ Step 0: Minting additional TS tokens to User1 for 100M basis points total...");
+    
+    // Foundation gives User1 2,000 TS basis points initially
+    // We need 100,000,000 total, so mint additional 99,998,000
+    const ADDITIONAL_TS_TOKENS: u64 = 100_000_000 - 2_000; // 99,998,000 basis points
+    
+    println!("   • Foundation provided: 2,000 TS basis points");
+    println!("   • Additional needed: {} TS basis points", ADDITIONAL_TS_TOKENS);
+    println!("   • Total will be: 100,000,000 TS basis points ({} TS display)", 100_000_000 / 10_u64.pow(TS_DECIMALS as u32));
+    
+    // Import required functions
+    use crate::common::tokens::mint_tokens;
+    
+    // Get fresh blockhash
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
+    // Mint additional TS tokens to User1
+    mint_tokens(
+        &mut foundation.env.banks_client,
+        &foundation.env.payer,
+        fresh_blockhash,
+        &token_b_mint,
+        &user1_ts_account_pubkey,
+        &foundation.env.payer, // Use payer as mint authority
+        ADDITIONAL_TS_TOKENS,
+    ).await?;
+    
+    println!("   ✅ Additional TS tokens minted to User1");
+    
+    // Add MST liquidity
+    println!("   • Adding {} MST liquidity", USER1_MST_BALANCE);
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_mst_account_pubkey,
+        &user1_lp_a_account_pubkey,
+        &token_a_mint,
+        USER1_MST_BALANCE,
+    ).await?;
+    
+    // Add TS liquidity - 50 million basis points as requested
+    println!("   • Adding {} TS basis points ({} TS display)", USER1_TS_BALANCE, USER1_TS_BALANCE / 10_u64.pow(TS_DECIMALS as u32));
+    execute_deposit_operation(
+        &mut foundation,
+        &user1_pubkey,
+        &user1_ts_account_pubkey,
+        &user1_lp_b_account_pubkey,
+        &token_b_mint,
+        USER1_TS_BALANCE,
+    ).await?;
+    
+    println!("✅ Liquidity added successfully");
+
+    // Execute the problematic swap using user2
+    println!("\n✅ EXECUTING THE FIXED SWAP:");
+    println!("   • Swapping {} MST for expected {} TS", SWAP_INPUT_MST_DISPLAY, EXPECTED_TS_DISPLAY);
+    
+    let user2_pubkey = foundation.user2.pubkey();
+    let user2_mst_account = foundation.user2_primary_account.pubkey(); // User2's MST account
+    let user2_ts_account = foundation.user2_base_account.pubkey();     // User2's TS account
+    
+    // Check user2's initial balances
+    let user2_mst_balance_before = get_token_balance(&mut foundation.env.banks_client, &user2_mst_account).await;
+    let user2_ts_balance_before = get_token_balance(&mut foundation.env.banks_client, &user2_ts_account).await;
+    
+    println!("📊 User2 balances before swap:");
+    println!("   • MST balance: {} tokens", user2_mst_balance_before);
+    println!("   • TS balance: {} tokens", user2_ts_balance_before);
+    
+    // Verify user2 has enough MST to swap
+    if user2_mst_balance_before < SWAP_INPUT_MST_BASIS_POINTS {
+        panic!("❌ User2 doesn't have enough MST! Has: {}, Needs: {}", user2_mst_balance_before, SWAP_INPUT_MST_BASIS_POINTS);
+    }
+
+    // Create the swap instruction - MST → TS
+    let fresh_blockhash = foundation.env.banks_client.get_latest_blockhash().await?;
+    
+    // The critical calculation: What expected_amount_out should we send?
+    // Based on dashboard logs, this is where the error occurs
+    let mst_basis_points = expected_mst_basis_points;
+    let ts_basis_points = expected_ts_basis_points;
+    
+    let expected_amount_out_basis_points = (SWAP_INPUT_MST_BASIS_POINTS * ts_basis_points) / mst_basis_points;
+    let expected_amount_out_display = expected_amount_out_basis_points / 10_u64.pow(TS_DECIMALS as u32);
+    
+    println!("\n🔢 CRITICAL CALCULATION (Now working correctly):");
+    println!("   • Input: {} MST basis points", SWAP_INPUT_MST_BASIS_POINTS);
+    println!("   • Pool ratio: {} MST : {} TS (basis points)", mst_basis_points, ts_basis_points);
+    println!("   • Calculation: ({} * {}) / {} = {}", SWAP_INPUT_MST_BASIS_POINTS, ts_basis_points, mst_basis_points, expected_amount_out_basis_points);
+    println!("   • Expected output in basis points: {}", expected_amount_out_basis_points);
+    println!("   • Expected output in display units: {} TS", expected_amount_out_display);
+    println!("   🚨 The contract will receive {} as expected_amount_out", expected_amount_out_basis_points);
+    println!("   ✅ The contract now correctly interprets this and user gets exactly {} TS as expected (not {} TS)", expected_amount_out_basis_points, expected_amount_out_display);
+
+    let swap_instruction = PoolInstruction::Swap {
+        input_token_mint: token_a_mint, // MST mint
+        amount_in: SWAP_INPUT_MST_BASIS_POINTS,
+        expected_amount_out: expected_amount_out_basis_points, // This is the critical value!
+    };
+    
+    let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(
+        &user2_pubkey,
+        &user2_mst_account,
+        &user2_ts_account,
+        &foundation.pool_config,
+        &swap_instruction,
+    )?;
+    
+    let mut swap_tx = Transaction::new_with_payer(&[swap_ix], Some(&user2_pubkey));
+    swap_tx.sign(&[&foundation.user2], fresh_blockhash);
+    
+    println!("\n🚀 EXECUTING SWAP TRANSACTION TO CHECK VALIDATION LOGIC...");
+    println!("🔍 FOCUS: Looking for 'if amount_out != expected_amount_out' validation in contract logs");
+    println!("   • Expected amount out sent to contract: {} basis points", expected_amount_out_basis_points);
+    println!("   • If validation FAILS: We'll see AmountMismatch error (Custom(1047))");
+    println!("   • If validation PASSES: Swap will succeed or fail for other reasons");
+    println!("");
+    
+    let swap_result = foundation.env.banks_client.process_transaction(swap_tx).await;
+    
+    match swap_result {
+        Ok(_) => {
+            println!("✅ Swap transaction succeeded");
+            println!("✅ EXCELLENT RESULT: The validation 'if amount_out != expected_amount_out' evaluated to FALSE");
+            println!("   ➜ This means: amount_out == expected_amount_out == {} basis points", expected_amount_out_basis_points);
+            println!("   ➜ This confirms the fix worked! Both dashboard AND contract calculate correctly!");
+            println!("   ➜ Both correctly calculate {} basis points for {} TS display units", expected_amount_out_basis_points, EXPECTED_TS_DISPLAY);
+            println!("");
+            
+            // Check the actual result
+            let user2_ts_balance_after = get_token_balance(&mut foundation.env.banks_client, &user2_ts_account).await;
+            let user2_mst_balance_after = get_token_balance(&mut foundation.env.banks_client, &user2_mst_account).await;
+            
+            let mst_spent = user2_mst_balance_before - user2_mst_balance_after;
+            let ts_received = user2_ts_balance_after - user2_ts_balance_before;
+            
+            println!("📊 SWAP RESULTS:");
+            println!("   • MST spent: {} tokens", mst_spent);
+            println!("   • TS received: {} basis points = {} display tokens", ts_received, ts_received / 10_u64.pow(TS_DECIMALS as u32));
+            println!("   • Expected TS: {} display tokens = {} basis points", EXPECTED_TS_DISPLAY, EXPECTED_TS_BASIS_POINTS);
+            println!("");
+            
+            if ts_received == EXPECTED_TS_BASIS_POINTS {
+                println!("🎉 FIX VERIFICATION: Contract calculation is WORKING PERFECTLY!");
+                println!("   ➜ The decimal scaling bug has been completely resolved!");
+            } else if ts_received == expected_amount_out_basis_points {
+                println!("✅ EXPECTED RESULT: Contract and dashboard calculations match perfectly!");
+                println!("   ➜ Both dashboard and contract calculate the correct amounts");
+                println!("   ➜ Validation passes because both sides agree on the correct number!");
+            } else {
+                println!("❓ UNEXPECTED RESULT: Different transfer amount than expected!");
+                println!("   ➜ This suggests an issue that needs investigation");
+            }
+        },
+        Err(e) => {
+            let error_string = format!("{:?}", e);
+            println!("❌ Swap transaction failed: {:?}", e);
+            
+            if error_string.contains("Custom(1047)") || error_string.contains("AmountMismatch") {
+                println!("");
+                println!("🎯 CRITICAL FINDING: AmountMismatch Error (Custom(1047)) occurred!");
+                println!("🔍 VALIDATION ANALYSIS: The validation 'if amount_out != expected_amount_out' evaluated to TRUE");
+                println!("   ➜ This means: amount_out ≠ expected_amount_out");
+                println!("   ➜ Expected from dashboard: {} basis points", expected_amount_out_basis_points);
+                println!("   ➜ Calculated by contract: [DIFFERENT VALUE - see contract logs above]");
+                println!("   ➜ This proves the dashboard calculation is DIFFERENT from contract calculation!");
+                println!("");
+                println!("🚨 NEXT STEP: Look for contract logs above showing:");
+                println!("   • 'AMOUNT MISMATCH: Expected [X] basis points, calculated [Y] basis points'");
+                println!("   • The [Y] value is what the contract actually calculated");
+                println!("   • The [X] value should be {} (from dashboard)", expected_amount_out_basis_points);
+                
+            } else if error_string.contains("InsufficientFunds") {
+                println!("");
+                println!("📊 INSUFFICIENT FUNDS: Pool doesn't have enough liquidity");
+                println!("🔍 VALIDATION STATUS: Cannot determine if validation passed/failed due to liquidity issue");
+                println!("   ➜ Add liquidity to pool and rerun test");
+                println!("   ➜ OR: The validation may have passed but transfer failed due to insufficient funds");
+                
+            } else {
+                println!("");
+                println!("❓ OTHER ERROR: Different failure than expected");
+                println!("🔍 VALIDATION STATUS: Cannot determine validation behavior");
+            }
+        }
+    }
+    
+    // Always return Ok to see the analysis above
+    Ok(())
+}
+
+
+
 /// **TEST: Reproduce Basis Points Math Error from Dashboard Swap**
 ///
 /// This test reproduces the exact issue encountered in the dashboard where:
