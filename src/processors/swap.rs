@@ -140,12 +140,6 @@ fn swap_a_to_b(
     token_a_decimals: u8,
     token_b_decimals: u8,
 ) -> Result<u64, ProgramError> {
-    debug_msg!("🚨🚨🚨 FUNCTION ENTRY: swap_a_to_b CALLED! 🚨🚨🚨");
-    msg!("🔍 SWAP_A_TO_B CORRECT SPECIFICATION:");
-    msg!("   • Input amount_a: {}", amount_a);
-    msg!("   • ratio_a_numerator: {}", ratio_a_numerator);
-    msg!("   • ratio_b_denominator: {}", ratio_b_denominator);
-    msg!("   • token_a_decimals: {}, token_b_decimals: {}", token_a_decimals, token_b_decimals);
     
     // Note: We don't enforce artificial ratio limits because:
     // - 18-decimal tokens paired with 0-decimal tokens need ratios up to 10^18
@@ -173,10 +167,6 @@ fn swap_a_to_b(
     let result = numerator.checked_div(ratio_a_num)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_a, ratio_b_denominator, ratio_a_numerator, numerator, ratio_a_num);
-    
-    msg!("   • Final result (floor): {}", result);
-    
     // Convert back to u64 and check for overflow
     if result > u64::MAX as u128 {
         msg!("❌ CALCULATION ERROR: Result exceeds u64::MAX");
@@ -184,7 +174,6 @@ fn swap_a_to_b(
     }
     
     let final_result = result as u64;
-    msg!("   • Final result: {}", final_result);
     
     Ok(final_result)
 }
@@ -200,11 +189,6 @@ fn swap_b_to_a(
     token_b_decimals: u8,
     token_a_decimals: u8,
 ) -> Result<u64, ProgramError> {
-    msg!("🔍 SWAP_B_TO_A CORRECT SPECIFICATION:");
-    msg!("   • Input amount_b: {}", amount_b);
-    msg!("   • ratio_a_numerator: {}", ratio_a_numerator);
-    msg!("   • ratio_b_denominator: {}", ratio_b_denominator);
-    msg!("   • token_b_decimals: {}, token_a_decimals: {}", token_b_decimals, token_a_decimals);
     
     // Convert to u128 to prevent overflow during calculation
     let amount_b_base = amount_b as u128;
@@ -234,9 +218,7 @@ fn swap_b_to_a(
     let result = numerator.checked_div(ratio_b_den)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     
-    msg!("   • Calculation: ({} * {}) / {} = {} / {}", amount_b, ratio_a_numerator, ratio_b_denominator, numerator, ratio_b_den);
     
-    msg!("   • Final result (floor): {} basis points", result);
     
     // Convert back to u64 and check for overflow
     if result > u64::MAX as u128 {
@@ -245,7 +227,6 @@ fn swap_b_to_a(
     }
     
     let final_result = result as u64;
-    msg!("   • Final result: {} basis points", final_result);
     
     Ok(final_result)
 }
@@ -295,10 +276,6 @@ pub fn process_swap_execute<'a>(
     expected_amount_out: u64,    // Expected output amount in basis points
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
-    debug_msg!("🚨🚨🚨 PROCESS_SWAP FUNCTION ENTRY - WE ARE HERE! 🚨🚨🚨");
-    msg!("📊 SWAP PARAMETERS: {} basis points in, {} basis points expected out", amount_in, expected_amount_out);
-    debug_msg!("🎯 STEP-BY-STEP DEBUG: Starting swap process...");
-    
     // 🔒 CRITICAL SECURITY FIX: Validate input amount is non-zero
     if amount_in == 0 {
         msg!("❌ INVALID SWAP: Input amount cannot be zero");
@@ -325,17 +302,11 @@ pub fn process_swap_execute<'a>(
     // Security: MEV protection, pause protection, fixed-ratio
     
     // Step 1: Validating system and pool state
-    debug_msg!("🎯 DEBUG: About to validate system not paused...");
-    
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
-    // System pause validation passed
     
     // Load and validate pool state data
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
-
-    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
-    msg!("💰 Fee: {} lamports", pool_state_data.swap_contract_fee);
 
     // Check if pool swaps are paused
     if pool_state_data.swaps_paused() {
@@ -347,29 +318,11 @@ pub fn process_swap_execute<'a>(
     
     // Check if swap operations are restricted to owners only
     if pool_state_data.swap_for_owners_only() {
-        msg!("🔒 CHECKING OWNER-ONLY SWAP PERMISSIONS");
-        
         let user_key = *user_authority_signer.key;
         let pool_owner = pool_state_data.owner;
         
         // Allow access to pool owner
-        if user_key == pool_owner {
-            msg!("✅ Access granted: Pool owner");
-        } else {
-            // 🎯 ARCHITECTURAL SOLUTION: Unified Authority Control
-            // 
-            // Through the process_set_swap_owner_only function, the pool owner is automatically
-            // reassigned to the Program Upgrade Authority when the restriction is enabled.
-            // This eliminates the coordination complexity and ensures that the entity with
-            // the power to enable/disable restrictions also has the power to swap.
-            //
-            // This approach:
-            // - ✅ Solves the Program Upgrade Authority swap access issue
-            // - ✅ Maintains lightweight swap instruction design  
-            // - ✅ Eliminates need for pool creator coordination
-            // - ✅ Unifies control under Program Upgrade Authority
-            
-            msg!("SWAP BLOCKED: Owner-only mode enabled. Pool owner: {}, Your address: {}", pool_owner, user_key);
+        if user_key != pool_owner {
             return Err(PoolError::SwapAccessRestricted.into());
         }
     }
@@ -405,7 +358,6 @@ pub fn process_swap_execute<'a>(
             // A->B swap validation
             if *pool_token_a_vault_pda.key != pool_state_data.token_a_vault || 
                *pool_token_b_vault_pda.key != pool_state_data.token_b_vault {
-                msg!("VAULT VALIDATION FAILED");
                 return Err(ProgramError::InvalidAccountData);
             }
             (pool_token_a_vault_pda, pool_token_b_vault_pda, pool_state_data.token_b_mint, true)
@@ -414,17 +366,14 @@ pub fn process_swap_execute<'a>(
             // B->A swap validation
             if *pool_token_b_vault_pda.key != pool_state_data.token_b_vault || 
                *pool_token_a_vault_pda.key != pool_state_data.token_a_vault {
-                msg!("VAULT VALIDATION FAILED");
                 return Err(ProgramError::InvalidAccountData);
             }
             (pool_token_b_vault_pda, pool_token_a_vault_pda, pool_state_data.token_a_mint, false)
         } else {
-            msg!("INVALID INPUT TOKEN: {} not in pool", input_token_mint_key);
             return Err(ProgramError::InvalidArgument);
         };
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault authorities
-    msg!("🔒 VALIDATING VAULT AUTHORITIES...");
     // 🔒 SECURITY: Validate vault accounts - these should be owned by the pool PDA
     let input_vault_data = safe_unpack_and_validate_token_account(
         input_pool_vault_acc,
@@ -444,7 +393,6 @@ pub fn process_swap_execute<'a>(
     use crate::utils::validation::validate_vault_owner;
     validate_vault_owner(&input_vault_data, pool_state_pda.key, "Input Pool Vault")?;
     validate_vault_owner(&output_vault_data, pool_state_pda.key, "Output Pool Vault")?;
-    msg!("✅ Vault authorities validated successfully");
 
     // Validate user account ownership and sufficient balance
     if user_input_token_data.mint != input_token_mint_key ||
@@ -462,10 +410,6 @@ pub fn process_swap_execute<'a>(
         return Err(ProgramError::IncorrectProgramId);
     }
     
-    msg!("✅ Step 3: Account validations passed");
-
-    msg!("⏳ Step 4/6: Calculating fixed-ratio exchange with decimal adjustment");
-    
     // 🚨 CRITICAL FIX: Get token decimals from token mints for accurate calculations
     // Since we don't have mint accounts directly, we need to get mint addresses from token accounts
     // and then fetch the mint data
@@ -473,9 +417,6 @@ pub fn process_swap_execute<'a>(
     let input_token_mint_key = user_input_token_data.mint;
     let output_token_mint_key = user_output_token_data.mint;
     
-    msg!("🔍 FETCHING TOKEN MINT DATA:");
-    msg!("   • Input token mint: {}", input_token_mint_key);
-    msg!("   • Output token mint: {}", output_token_mint_key);
     
     // We need to get the mint accounts from the remaining accounts
     // Let's check if mint accounts were provided as additional accounts
@@ -520,23 +461,7 @@ pub fn process_swap_execute<'a>(
     let input_decimals = input_mint_data.decimals as u32;
     let output_decimals = output_mint_data.decimals as u32;
     
-    msg!("🔍 ========== COMPLETE BLOCKCHAIN DATA ANALYSIS ==========");
-    msg!("📊 POOL STATE DATA (from blockchain):");
-    msg!("   • ratio_a_numerator: {}", pool_state_data.ratio_a_numerator);
-    msg!("   • ratio_b_denominator: {}", pool_state_data.ratio_b_denominator);
-    msg!("   • token_a_mint: {}", pool_state_data.token_a_mint);
-    msg!("   • token_b_mint: {}", pool_state_data.token_b_mint);
-    msg!("   • total_token_a_liquidity: {}", pool_state_data.total_token_a_liquidity);
-    msg!("   • total_token_b_liquidity: {}", pool_state_data.total_token_b_liquidity);
-    msg!("   • swap_contract_fee: {} lamports", pool_state_data.swap_contract_fee);
-    msg!("   • collected_fees_token_a: {}", pool_state_data.collected_fees_token_a);
-    msg!("   • collected_fees_token_b: {}", pool_state_data.collected_fees_token_b);
     
-    msg!("🪙 TOKEN INFORMATION (from blockchain):");
-    msg!("   • Token A decimals: {}", input_mint_data.decimals);
-    msg!("   • Token B decimals: {}", output_mint_data.decimals);
-    msg!("   • Input token decimals: {}", input_decimals);
-    msg!("   • Output token decimals: {}", output_decimals);
     
     // Get exchange ratios - always use the same values regardless of direction
     let ratio_a_num = pool_state_data.ratio_a_numerator;
@@ -560,7 +485,6 @@ pub fn process_swap_execute<'a>(
     // Debug logging removed to reduce CU usage
 
     // Starting calculation
-    debug_msg!("🚨🚨🚨 CHECKPOINT 1: ABOUT TO ENTER IF STATEMENT");
 
     // 🔧 PRECISE DECIMAL CALCULATION using u128 for accuracy
     // Based on user's mathematically sound approach that properly handles basis points
@@ -568,16 +492,8 @@ pub fn process_swap_execute<'a>(
     // Key insight: ratio values are already stored in basis points (smallest token units)
     // We need to properly handle decimal scaling between different token decimal places
     
-    debug_msg!("🚨🚨🚨 CHECKPOINT 2: ENTERING IF STATEMENT");
     
     let amount_out = if input_is_token_a {
-        debug_msg!("🚨🚨🚨 CHECKPOINT 3: INSIDE TOKEN A BRANCH");
-        msg!("🔥 CALLING swap_a_to_b with parameters:");
-        msg!("   • amount_in: {}", amount_in);
-        msg!("   • ratio_a_numerator: {}", ratio_a_num);
-        msg!("   • ratio_b_denominator: {}", ratio_b_den);
-        msg!("   • input_decimals (token_a): {}", input_decimals);
-        msg!("   • output_decimals (token_b): {}", output_decimals);
         
         // Swapping Token A → Token B
         // Formula: amount_b = (amount_a * ratio_b_denominator) / ratio_a_numerator
@@ -589,15 +505,8 @@ pub fn process_swap_execute<'a>(
             output_decimals as u8, // token_b_decimals
         )?;
         
-        msg!("🔥 swap_a_to_b RETURNED: {}", result);
         result
     } else {
-        msg!("🔥 CALLING swap_b_to_a with parameters:");
-        msg!("   • amount_in: {}", amount_in);
-        msg!("   • ratio_a_numerator: {}", ratio_a_num);
-        msg!("   • ratio_b_denominator: {}", ratio_b_den);
-        msg!("   • input_decimals (token_b): {}", input_decimals);
-        msg!("   • output_decimals (token_a): {}", output_decimals);
         
         // Swapping Token B → Token A  
         // Formula: amount_a = (amount_b * ratio_a_numerator) / ratio_b_denominator
@@ -609,11 +518,9 @@ pub fn process_swap_execute<'a>(
             output_decimals as u8, // token_a_decimals
         )?;
         
-            msg!("🔥 swap_b_to_a RETURNED: {} basis points", result);
     result
 };
 
-msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amount_in, amount_out);
     
     // 🔒 CRITICAL SECURITY FIX: Validate output amount is non-zero
     if amount_out == 0 {
@@ -634,9 +541,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
             difference,
         }.into());
     }
-    
-    msg!("✅ Amount validation passed: Expected {} basis points matches calculated {} basis points", 
-         expected_amount_out, amount_out);
 
     // Step 5: Checking liquidity
     
@@ -654,7 +558,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
         return Err(ProgramError::InsufficientFunds);
     }
     
-    msg!("✅ Liquidity check passed: {} basis points available, {} basis points needed", available_liquidity, amount_out);
 
     // Step 6: Executing transfers
     
@@ -669,7 +572,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
     ];
 
     // CRITICAL: Collect fees BEFORE token operations to prevent free swaps
-    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
     use crate::utils::fee_validation::{collect_fee_to_pool_state, FeeType};
     
     // Collect fee upfront - if this fails, no tokens are transferred
@@ -681,7 +583,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
         pool_state_data.swap_contract_fee,
         FeeType::RegularSwap,
     )?;
-    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.swap_contract_fee);
     
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_swap_contract_fees and total_sol_fees_collected
@@ -689,16 +590,12 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
     let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     pool_state_data.collected_swap_contract_fees = fresh_pool_state.collected_swap_contract_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
-    msg!("🔄 Pool state reloaded after fee collection:");
-    msg!("   collected_swap_contract_fees: {}", pool_state_data.collected_swap_contract_fees);
-    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
     
     // 🔒 REENTRANCY SAFETY: Swap operations are protected by Solana's built-in mechanisms:
     // 1. Account locking: All accounts (user tokens, pool vaults) are exclusively locked
     // 2. Atomic execution: Input and output transfers are atomic - both succeed or both fail
     // 3. Authority validation: User must authorize input transfer, pool PDA authorizes output
     // 4. Balance validation: Insufficient balance causes transaction failure and rollback
-    msg!("🔄 Starting atomic token swap operation");
     
     // Process swap with atomic guarantees - no reentrancy possible due to account locking
     {
@@ -742,8 +639,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
             )?;
     }
 
-    msg!("✅ Token transfers completed successfully");
-    msg!("📊 TRANSFER SUMMARY: {} basis points transferred in, {} basis points transferred out", amount_in, amount_out);
 
     // Update pool liquidity balances based on swap direction
     if input_is_token_a {
@@ -762,7 +657,6 @@ msg!("📊 SWAP CALCULATION COMPLETED: {} basis points -> {} basis points", amou
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
 
-    msg!("💾 Saving updated pool state");
     
     // Serialize updated pool state
     let mut serialized_data = Vec::new();
@@ -901,36 +795,22 @@ pub fn process_swap_set_owner_only<'a>(
     let pool_state_pda = &accounts[2];            // Index 2: Pool State PDA
     let program_data_account = &accounts[3];      // Index 3: Program Data Account
     
-    msg!("⏳ Step 1/4: Validating system state");
     
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    msg!("✅ Step 1 completed: System validation passed");
     
-    msg!("⏳ Step 2/4: Validating contract owner authority");
     
-    msg!("🔍 Authority Verification:");
-    msg!("   • Validating program upgrade authority");
-    msg!("   • Provided signer: {}", contract_owner_signer.key);
     
     // Validate that the caller is the program upgrade authority
     use crate::utils::program_authority::validate_program_upgrade_authority;
     validate_program_upgrade_authority(program_id, program_data_account, contract_owner_signer)?;
     
-    msg!("✅ Step 2 completed: Program upgrade authority validated");
     
-    msg!("⏳ Step 3/4: Loading and updating pool state");
     
     // Load and validate pool state data
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
     
-    msg!("📋 Pool Information:");
-    msg!("   • Pool: {} ↔ {}", pool_state_data.token_a_mint, pool_state_data.token_b_mint);
-    msg!("   • Current pool owner: {}", pool_state_data.owner);
-    msg!("   • Program upgrade authority: {}", contract_owner_signer.key);
-    msg!("   • Current owner-only status: {}", pool_state_data.swap_for_owners_only());
-    msg!("   • Requested status: {}", enable_restriction);
     
     // Check if flag is already in the requested state
     if pool_state_data.swap_for_owners_only() == enable_restriction {
@@ -950,12 +830,6 @@ pub fn process_swap_set_owner_only<'a>(
             let previous_owner = pool_state_data.owner;
             pool_state_data.owner = designated_owner;
             
-            msg!("🔄 OWNERSHIP DELEGATION:");
-            msg!("   • Previous owner: {}", previous_owner);
-            msg!("   • New designated owner: {}", designated_owner);
-            msg!("   • Delegated by: {}", contract_owner_signer.key);
-            msg!("   • Rationale: Enables flexible operational control while maintaining protocol authority");
-            msg!("   • Impact: Designated entity now has swap control for this pool");
         } else {
             msg!("ℹ️ Pool already owned by designated entity: {}", designated_owner);
         }
@@ -963,9 +837,7 @@ pub fn process_swap_set_owner_only<'a>(
         msg!("ℹ️ Restrictions disabled - ownership delegation not applicable");
     }
     
-    msg!("✅ Step 3 completed: Pool state updated");
     
-    msg!("⏳ Step 4/4: Saving updated pool state");
     
     // Serialize and save updated pool state
     let mut serialized_data = Vec::new();
@@ -986,38 +858,7 @@ pub fn process_swap_set_owner_only<'a>(
     msg!("   • Owner-only swaps: {}", if enable_restriction { "ENABLED" } else { "DISABLED" });
     msg!("   • Pool owner: {}", pool_state_data.owner);
     msg!("   • Program upgrade authority: {}", contract_owner_signer.key);
-    if enable_restriction {
-        msg!("   • Swap access: Pool owner ({})", pool_state_data.owner);
-        msg!("   • Architecture: Flexible delegation under Protocol Authority");
-        msg!("   • Designated by: Program Upgrade Authority");
-    } else {
-        msg!("   • Swap access: All users");
-    }
     
-    if enable_restriction {
-        msg!("🔒 SWAP ACCESS NOW RESTRICTED:");
-        msg!("   • Only designated owner can swap: {}", pool_state_data.owner);
-        msg!("   • Regular users must use authorized intermediary contracts");
-        msg!("   • Enables flexible operational models and custom fee structures");
-        msg!("   • Designated entity can deploy contracts with any operational model");
-        
-        msg!("💡 OPERATIONAL FLEXIBILITY BENEFITS:");
-        msg!("   • Custom fee collection through specialized contracts");
-        msg!("   • Treasury management through automated systems");
-        msg!("   • Strategic trading through algorithmic entities");
-        msg!("   • Multi-signature control for team-managed pools");
-        msg!("   • Protocol integration for composed operations");
-        msg!("   • Maximum operational flexibility while maintaining protocol security");
-    } else {
-        msg!("🔓 SWAP ACCESS NOW UNRESTRICTED:");
-        msg!("   • All users can swap directly with the pool");
-        msg!("   • Standard fixed swap contract fees apply");
-        msg!("   • No custom operational models active");
-        msg!("   • Traditional AMM-style operation");
-    }
-    
-    msg!("🎉 Swap access configuration updated successfully!");
-    msg!("💡 NEXT STEPS:");
     if enable_restriction {
         msg!("   • Designated owner ({}) can deploy operational contracts", pool_state_data.owner);
         msg!("   • Users should interact with authorized contracts for swaps");

@@ -302,15 +302,14 @@ pub fn create_swap_instruction(
     input_token_mint: &Pubkey,
     amount_in: u64,
 ) -> Result<Instruction, Box<dyn std::error::Error>> {
-    // Calculate expected output amount based on pool ratio and direction
-    let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
-        amount_in,
-        crate::common::liquidity_helpers::SwapDirection::AToB, // We'll determine the actual direction based on input token
-        pool_config.ratio_a_numerator,
-        pool_config.ratio_b_denominator,
-        6, // Token A decimals (assuming 6 for test tokens)
-        6, // Token B decimals (assuming 6 for test tokens)
-    );
+    // Calculate expected output amount using simple ratio calculation (same as smart contract)
+    let expected_amount_out = if *input_token_mint == pool_config.token_a_mint {
+        // Token A → Token B: out_B = in_A * B_denom / A_num
+        amount_in * pool_config.ratio_b_denominator / pool_config.ratio_a_numerator
+    } else {
+        // Token B → Token A: out_A = in_B * A_num / B_denom  
+        amount_in * pool_config.ratio_a_numerator / pool_config.ratio_b_denominator
+    };
     
     let instruction_data = PoolInstruction::Swap {
         input_token_mint: *input_token_mint,
@@ -2440,14 +2439,17 @@ async fn execute_swap_operation(
         crate::common::liquidity_helpers::SwapDirection::BToA
     };
     
-    let expected_amount_out = crate::common::liquidity_helpers::calculate_expected_swap_output(
-        amount,
-        swap_direction,
-        foundation.pool_config.ratio_a_numerator,
-        foundation.pool_config.ratio_b_denominator,
-        4, // Token A decimals (actual value from foundation creation)
-        0, // Token B decimals (actual value from foundation creation)
-    );
+    // Calculate expected output using simple ratio calculation (same as smart contract)
+    let expected_amount_out = match swap_direction {
+        crate::common::liquidity_helpers::SwapDirection::AToB => {
+            // Token A → Token B: out_B = in_A * B_denom / A_num
+            amount * foundation.pool_config.ratio_b_denominator / foundation.pool_config.ratio_a_numerator
+        },
+        crate::common::liquidity_helpers::SwapDirection::BToA => {
+            // Token B → Token A: out_A = in_B * A_num / B_denom  
+            amount * foundation.pool_config.ratio_a_numerator / foundation.pool_config.ratio_b_denominator
+        },
+    };
     
     println!("🔍 DEBUG: Swap calculation:");
     println!("   • Input amount: {} tokens", amount);

@@ -1465,15 +1465,14 @@ pub async fn execute_swap_operation(
 ) -> TestResult {
     println!("🔄 Executing swap: {} tokens", amount_in);
     
-    // Calculate expected output amount based on pool ratio and direction
-    let expected_amount_out = calculate_expected_swap_output(
-        amount_in,
-        SwapDirection::AToB, // We'll determine the actual direction based on input token
-        foundation.pool_config.ratio_a_numerator,
-        foundation.pool_config.ratio_b_denominator,
-        4, // Token A decimals (actual value from foundation creation)
-        0, // Token B decimals (actual value from foundation creation)
-    );
+    // Calculate expected output amount using simple ratio calculation (same as smart contract)
+    let expected_amount_out = if *input_token_mint == foundation.pool_config.token_a_mint {
+        // Token A → Token B: out_B = in_A * B_denom / A_num
+        amount_in * foundation.pool_config.ratio_b_denominator / foundation.pool_config.ratio_a_numerator
+    } else {
+        // Token B → Token A: out_A = in_B * A_num / B_denom  
+        amount_in * foundation.pool_config.ratio_a_numerator / foundation.pool_config.ratio_b_denominator
+    };
     
     // Create the swap instruction
     let swap_instruction_data = PoolInstruction::Swap {
