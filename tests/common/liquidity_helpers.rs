@@ -293,8 +293,9 @@ pub async fn create_liquidity_test_foundation_with_exact_basis_points(
             AccountMeta::new_readonly(spl_token::id(), false),               // Index 4: SPL Token Program
             AccountMeta::new(main_treasury_pda, false),                      // Index 5: Main Treasury PDA
             AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar
-            AccountMeta::new_readonly(primary_mint.pubkey(), false),        // Index 7: Token A Mint
-            AccountMeta::new_readonly(base_mint.pubkey(), false),            // Index 8: Token B Mint
+            // Pass normalized token mints to match pool configuration
+            AccountMeta::new_readonly(pool_config.token_a_mint, false),        // Index 7: Token A Mint (normalized)
+            AccountMeta::new_readonly(pool_config.token_b_mint, false),        // Index 8: Token B Mint (normalized)
             AccountMeta::new(pool_config.token_a_vault_pda, false),               // Index 9: Token A Vault PDA
             AccountMeta::new(pool_config.token_b_vault_pda, false),               // Index 10: Token B Vault PDA
             AccountMeta::new(lp_token_a_mint_pda, false),                    // Index 11: LP Token A Mint PDA

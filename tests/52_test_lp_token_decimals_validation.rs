@@ -220,12 +220,12 @@ async fn test_lp_token_decimals_direct() -> TestResult {
         &fixed_ratio_trading::id(),
     );
     
-    // Verify LP token decimals match source tokens
+    // Verify LP token decimals match source tokens (use normalized A/B from pool_config)
     let lp_token_a_account = env.banks_client.get_account(lp_token_a_mint_pda).await?;
     let lp_token_b_account = env.banks_client.get_account(lp_token_b_mint_pda).await?;
     
-    let source_token_a_account = env.banks_client.get_account(token_a_keypair.pubkey()).await?;
-    let source_token_b_account = env.banks_client.get_account(token_b_keypair.pubkey()).await?;
+    let source_token_a_account = env.banks_client.get_account(pool_config.token_a_mint).await?;
+    let source_token_b_account = env.banks_client.get_account(pool_config.token_b_mint).await?;
     
     if let (Some(lp_a), Some(lp_b), Some(src_a), Some(src_b)) = 
         (lp_token_a_account, lp_token_b_account, source_token_a_account, source_token_b_account) {
