@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated_at": "2025-08-07T11:29:26.199Z",
+    "generated_at": "2025-08-07T18:44:35.051Z",
     "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
@@ -22,8 +22,8 @@
       "ratio_b_denominator": 10000,
       "ratio_b_decimal": 0,
       "ratio_b_actual": 10000,
-      "total_token_a_liquidity": 0,
-      "total_token_b_liquidity": 100000000,
+      "total_token_a_liquidity": 10000,
+      "total_token_b_liquidity": 99990000,
       "pool_authority_bump_seed": 255,
       "token_a_vault_bump_seed": 254,
       "token_b_vault_bump_seed": 254,
