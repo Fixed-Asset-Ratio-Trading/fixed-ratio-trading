@@ -11,6 +11,8 @@ let selectedTokenA = null;
 let selectedTokenB = null;
 let currentRatio = 1;
 let errorCountdownTimer = null;
+// Compute unit budget for pool creation (tunable for testing)
+let poolCreateComputeUnits = 195_000; // Testing threshold - pool creation uses ~90k CUs
 
 /**
  * Browser-compatible helper to concatenate Uint8Arrays (replaces Buffer.concat)
@@ -756,21 +758,10 @@ async function createPool() {
         
     } catch (error) {
         console.error('❌ Error creating pool:', error);
-        
-        // Show detailed error with specific messaging
-        let errorMessage = error.message;
-        
-        if (error.message.includes('User rejected')) {
-            errorMessage = 'Transaction was rejected by user. Please try again and approve the transaction in your Backpack wallet.';
-        } else if (error.message.includes('Insufficient funds')) {
-            errorMessage = 'Insufficient SOL balance to pay for pool creation fee and transaction costs. Please add more SOL to your wallet.';
-        } else if (error.message.includes('Network error')) {
-            errorMessage = 'Network connection error. Please check your internet connection and try again.';
-        } else if (error.message.includes('Program not deployed')) {
-            errorMessage = 'Fixed Ratio Trading program is not deployed on this network. Please deploy the program first or switch to a network where it is deployed.';
-        }
-        
-        showPoolError(errorMessage);
+
+        // Prefer CU-specific, developer-friendly messaging
+        const userMsg = buildUserFacingErrorMessage(error, poolCreateComputeUnits);
+        showPoolError(userMsg);
     } finally {
         createBtn.disabled = false;
         createBtn.textContent = originalText;
@@ -1224,9 +1215,25 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             data: instructionData
         });
         
-        // Create compute budget instruction for pool creation (500K CUs)
+        // Create compute budget instruction for pool creation
+        console.log(`🎯 Setting compute budget: ${poolCreateComputeUnits.toLocaleString()} CUs`);
+        
+        // Verify ComputeBudgetProgram is available
+        if (!solanaWeb3.ComputeBudgetProgram) {
+            console.error('❌ ComputeBudgetProgram not available in solanaWeb3!');
+            throw new Error('ComputeBudgetProgram not available');
+        }
+        
         const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-            units: 500_000
+            units: poolCreateComputeUnits
+        });
+        
+        // Debug the compute budget instruction
+        console.log('🔍 Compute Budget Instruction:', {
+            programId: computeBudgetInstruction.programId.toString(),
+            data: Array.from(computeBudgetInstruction.data),
+            dataHex: computeBudgetInstruction.data.toString('hex'),
+            keys: computeBudgetInstruction.keys.length
         });
         
         // Create transaction with compute budget and pool creation instruction
@@ -1234,31 +1241,73 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
             .add(computeBudgetInstruction)
             .add(createPoolInstruction);
         
+        console.log(`✅ Added compute budget instruction: ${poolCreateComputeUnits.toLocaleString()} CUs`);
+        console.log('📋 Transaction has', transaction.instructions.length, 'instructions');
+        
         // ✅ SECURITY FIX: No longer need to sign with LP token mint keypairs
         // LP token mints are now PDAs controlled by the smart contract
         console.log('🔒 SECURITY: LP token mints are now PDAs controlled by the smart contract');
         console.log('   This prevents users from creating fake LP tokens to drain pools');
-        
-        // Get fresh blockhash right before sending to avoid "Blockhash not found" errors
+
+        // Get fresh blockhash right before simulating/sending
         console.log('🔄 Getting fresh blockhash...');
         const startTime = Date.now();
         const { blockhash: freshBlockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
         const blockhashTime = Date.now();
-        
         console.log(`📅 Fresh blockhash: ${freshBlockhash.slice(0, 8)}... (valid until block ${lastValidBlockHeight})`);
         console.log(`⏰ Blockhash fetch time: ${blockhashTime - startTime}ms`);
-        
+
         transaction.recentBlockhash = freshBlockhash;
         transaction.feePayer = wallet.publicKey;
+
+        // Pre-simulate to surface CU and logic errors before wallet signing
+        let simulation;
+        try {
+            console.log('🧪 Simulating pool creation transaction...');
+            console.log('🔍 Transaction details:', {
+                numInstructions: transaction.instructions.length,
+                computeUnits: poolCreateComputeUnits,
+                feePayer: transaction.feePayer?.toString()
+            });
+            
+            simulation = await connection.simulateTransaction(transaction);
+            console.log('📊 Simulation result:', simulation);
+            console.log('📊 Simulation logs exist?', !!simulation.value.logs);
+            console.log('📊 Number of logs:', simulation.value.logs?.length || 0);
+            
+            if (simulation.value.err) {
+                console.log('❌ Simulation failed:', simulation.value.err);
+                console.log('📋 Simulation logs:', simulation.value.logs);
+                
+                // Log first few and last few logs to see CU errors
+                if (simulation.value.logs && simulation.value.logs.length > 0) {
+                    console.log('📋 First 5 logs:', simulation.value.logs.slice(0, 5));
+                    console.log('📋 Last 5 logs:', simulation.value.logs.slice(-5));
+                }
+                
+                // Pass logs from the right location
+                const cuHint = getComputeUnitErrorMessage(simulation.value.err, simulation.value.logs, poolCreateComputeUnits);
+                const baseMsg = `Simulation failed: ${JSON.stringify(simulation.value.err)}`;
+                throw new Error(cuHint ? `${baseMsg}. ${cuHint}` : baseMsg);
+            }
+            
+            console.log('✅ Simulation successful - proceeding with transaction');
+            console.log('📊 Units consumed:', simulation.value.unitsConsumed);
+        } catch (simError) {
+            console.error('❌ Simulation error:', simError);
+            // Handle the error like liquidity.js does
+            const cuHint = getComputeUnitErrorMessage(simError?.message || JSON.stringify(simError), simulation?.value?.logs, poolCreateComputeUnits);
+            if (cuHint) {
+                throw new Error(`${simError.message || 'Simulation failed'}. ${cuHint}`);
+            }
+            throw simError;
+        }
         
         console.log('📝 Requesting wallet signature...');
-        console.log(`⚡ Time since blockhash: ${Date.now() - blockhashTime}ms`);
-        
-        // Note: Skipping pre-simulation as Backpack wallet will simulate the transaction itself
-        console.log('🔍 Transaction ready for wallet signature...');
-        console.log(`⚡ Time elapsed since blockhash: ${Date.now() - blockhashTime}ms`);
-        
-        const signature = await wallet.signAndSendTransaction(transaction);
+
+        // Request signature from wallet, then send
+        const signedTx = await wallet.signTransaction(transaction);
+        const signature = await connection.sendRawTransaction(signedTx.serialize());
         const sentTime = Date.now();
         console.log('✅ Pool creation transaction sent:', signature);
         console.log(`⚡ Total time from blockhash to send: ${sentTime - blockhashTime}ms`);
@@ -1329,6 +1378,77 @@ async function createPoolTransaction(tokenA, tokenB, ratio) {
     
     // This should never be reached, but just in case
     throw lastError || new Error('Pool creation failed after all retries');
+}
+
+/**
+ * Detect likely compute unit exhaustion from simulation error/logs (pool creation)
+ */
+function getComputeUnitErrorMessage(simulationError, simulationLogs, currentComputeUnits) {
+    try {
+        const errText = typeof simulationError === 'string'
+            ? simulationError
+            : JSON.stringify(simulationError || {});
+        const logs = Array.isArray(simulationLogs) ? simulationLogs.join('\n') : String(simulationLogs || '');
+
+        const patternMatches = [
+            'ProgramFailedToComplete',
+            'ComputationalBudgetExceeded',
+            'exceeded maximum number of instructions',
+            'Program failed to complete',
+        ].some(p => errText.includes(p) || logs.includes(p));
+
+        if (patternMatches) {
+            const cuText = currentComputeUnits ? ` (current: ${currentComputeUnits.toLocaleString()} CUs)` : '';
+            return `Likely insufficient compute units${cuText}. Try increasing the compute unit limit and re-run.`;
+        }
+    } catch (_) {
+        // ignore
+    }
+    return '';
+}
+
+/**
+ * Build a user-facing error message with specific CU guidance when applicable (pool creation)
+ */
+function buildUserFacingErrorMessage(error, currentComputeUnits) {
+    const raw = error?.message || String(error || '');
+    const lower = raw.toLowerCase();
+
+    // Prefer CU-specific messaging first
+    if (
+        raw.includes('compute unit') ||
+        raw.includes('ProgramFailedToComplete') ||
+        raw.includes('ComputationalBudgetExceeded') ||
+        raw.includes('exceeded maximum number of instructions') ||
+        raw.includes('Likely insufficient compute units')
+    ) {
+        const cuText = currentComputeUnits ? ` (current: ${currentComputeUnits.toLocaleString()} CUs)` : '';
+        return `❌ Insufficient compute units${cuText}. Increase the compute unit limit and retry.`;
+    }
+
+    // Wallet and user action messages
+    if (lower.includes('user rejected')) {
+        return 'Transaction cancelled by user';
+    }
+    if (lower.includes('wallet not connected')) {
+        return 'Wallet not connected. Please connect your Backpack wallet.';
+    }
+
+    // Balance/SOL errors
+    if (
+        lower.includes('insufficient funds') ||
+        lower.includes('insufficient sol') ||
+        lower.includes('insufficient lamports')
+    ) {
+        return 'Insufficient SOL for transaction fees';
+    }
+
+    // Program deploy issues
+    if (lower.includes('program not deployed')) {
+        return 'Fixed Ratio Trading program is not deployed on this network. Please deploy the program or switch networks.';
+    }
+
+    return `Transaction failed: ${raw}`;
 }
 
 /**

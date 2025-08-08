@@ -86,35 +86,35 @@ Each function has specific Compute Unit requirements for successful execution. T
 - **Measurement Notes**: Some functions include actual measured CU consumption from test environments
 
 ### Core Operations
-| Function | Max CUs | Performance Category | Notes |
-|----------|---------|---------------------|-------|
-| `process_system_initialize` | 25,000 | 🟢 Low | One-time system setup |
-| `process_system_pause` | 10,000 | 🟢 Low | Emergency system halt |
-| `process_system_unpause` | 15,000 | 🟢 Low | System recovery with penalty |
-| `process_pool_initialize` | **500,000** | 🔴 High | Dashboard tested: 500K CUs for security compatibility |
-| `process_liquidity_deposit` | **310,000** | 🟡 Moderate | Dashboard tested: min observed 249K; dashboard sets 310K for safety margin. See dashboard/liquidity.js line 755 for current min. |
-| `process_liquidity_withdraw` | **290,000** | 🟡 Moderate | Dashboard tested: min observed 227K; dashboard sets 290K for safety margin. |
-| `process_swap_execute` | **250,000** | 🟡 Moderate | Dashboard tested: 250K CUs (was 200K baseline; 202K observed OK; 250K set as max for headroom) |
-| `process_swap_set_owner_only` | 15,000 | 🟢 Low | Flag update operation |
+| Function | Minimum CUs | Max CUs | Performance Category | Notes |
+|----------|-------------|---------|----------------------|-------|
+| `process_system_initialize` | 25,000 | 150,000 | 🟢 Low | One-time system setup |
+| `process_system_pause` | 10,000 | 150,000 | 🟢 Low | Emergency system halt |
+| `process_system_unpause` | 15,000 | 150,000 | 🟢 Low | System recovery with penalty |
+| `process_pool_initialize` | ~91,000 | 150,000 | 🟢 Low | Dashboard simulation observed ~90,688 CUs; max capped to 150K per policy |
+| `process_liquidity_deposit` | 249,000 | 310,000 | 🟡 Moderate | Dashboard tested min observed 249K; 310K set for safety margin. |
+| `process_liquidity_withdraw` | 227,000 | 290,000 | 🟡 Moderate | Dashboard tested min observed 227K; 290K set for safety margin. |
+| `process_swap_execute` | 202,000 | 250,000 | 🟡 Moderate | 202K observed working; 250K set as max for headroom. |
+| `process_swap_set_owner_only` | 15,000 | 150,000 | 🟢 Low | Flag update operation |
 
 ### Treasury & Management
-| Function | Max CUs | Performance Category | Notes |
-|----------|---------|---------------------|-------|
-| `process_treasury_withdraw_fees` | 80,000 | 🟢 Low | Rate limiting validation |
-| `process_treasury_get_info` | 5,000 | 🟢 Low | Read-only information |
-| `process_treasury_donate_sol` | **120,000** | 🟢 Low | **Variable by amount**: 5K CUs (small) to 100K CUs (large) |
-| `process_consolidate_pool_fees` | **120,000** | 🟢 Low | **Variable by amount**: 5,000 per pool + 4,000 base |
+| Function | Minimum CUs | Max CUs | Performance Category | Notes |
+|----------|-------------|---------|----------------------|-------|
+| `process_treasury_withdraw_fees` | 80,000 | 150,000 | 🟢 Low | Rate limiting validation |
+| `process_treasury_get_info` | 5,000 | 150,000 | 🟢 Low | Read-only information |
+| `process_treasury_donate_sol` | 5,000 | 150,000 | 🟢 Low | Variable by amount: small=~5K; large up to ~120K. Use 150K cap per policy. |
+| `process_consolidate_pool_fees` | 5,000 | 150,000 | 🟢 Low | Variable: approx 4K base + 5K per pool. Use 150K cap per policy. |
 
 ### Pool Management
-| Function | Max CUs | Performance Category | Notes |
-|----------|---------|---------------------|-------|
-| `process_pool_pause` | 12,000 | 🟢 Low | Individual pool pause |
-| `process_pool_unpause` | 12,000 | 🟢 Low | Individual pool unpause |
-| `process_pool_update_fees` | 15,000 | 🟢 Low | Fee parameter updates |
+| Function | Minimum CUs | Max CUs | Performance Category | Notes |
+|----------|-------------|---------|----------------------|-------|
+| `process_pool_pause` | 12,000 | 150,000 | 🟢 Low | Individual pool pause |
+| `process_pool_unpause` | 12,000 | 150,000 | 🟢 Low | Individual pool unpause |
+| `process_pool_update_fees` | 15,000 | 150,000 | 🟢 Low | Fee parameter updates |
 
 ### CU Categories (Solana-Realistic Scale)
 
-Our CU categories are designed around **practical Solana development realities**, not theoretical minimums. Since basic token transfers cost 120K-200K CUs and most DeFi operations require multiple Cross-Program Invocations (CPIs), our scale accounts for real-world operational requirements.
+Our CU categories are designed around **practical Solana development realities**, not theoretical minimums. Since basic token transfers cost 120K-200K CUs and some DeFi operations require multiple Cross-Program Invocations (CPIs), our scale accounts for real-world operational requirements.
 
 #### **Rationale for This Scale:**
 - **Token transfers are fundamental** (120K-200K CUs baseline) - not exceptional operations
@@ -140,7 +140,7 @@ For `process_consolidate_pool_fees`: `Base_CUs = 4,000 + (pool_count × 5,000)`
 ### Developer Recommendations
 1. **Always allocate 10-20% buffer** above listed values for network conditions
 2. **Use dynamic CU limits** for consolidation based on pool count
-3. **🔴 High CU Operations**: Pool creation (500K) remains high. **Liquidity ops now 310K (🟡 Moderate)** with 249K observed minimum for deposits; **Swaps 250K (🟡 Moderate)** based on testing.
+3. **🟡 Moderate CU Operations**: Pool creation now 195K max (min observed ~91K). **Liquidity ops 310K (🟡 Moderate)** with 249K observed minimum for deposits; **Swaps 250K (🟡 Moderate)** based on testing.
 4. **Security Compatibility**: Dashboard values increased for security upgrade compatibility - use these production-tested values
 5. **Dynamic Donation CUs**: `process_treasury_donate_sol` requires variable CUs based on amount (5K-120K CUs)
 6. **Batch operations** when possible to optimize CU usage per transaction

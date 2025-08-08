@@ -1,71 +1,14 @@
 {
   "metadata": {
-    "generated_at": "2025-08-07T18:44:35.051Z",
+    "generated_at": "2025-08-08T11:43:07.115Z",
     "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
     "solana_environment": "local/remote-testnet"
   },
-  "pools": [
-    {
-      "address": "ANASA1bhEM37ENcqvwqXCficgBTq9xkSBCt3caLa3dgf",
-      "owner": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t",
-      "token_a_mint": "2tRhpaU39qGLJ4LSeQoFBaQMSDXEnGvAgNMPxwLHqWcX",
-      "token_b_mint": "C9i3QUurCizwXub3jki7GUaaAZ4RXMm1MesZfH1TafC3",
-      "token_a_vault": "CHu3J5AK697ckSpRYKyZLd9KMHh4eu7ovJuUKYxQXWjD",
-      "token_b_vault": "CNeXVQ7XLnJFofSRsAX25RbnYWzyh1WwbEuzAL9H3s26",
-      "lp_token_a_mint": "8kEb1GneeVo32rzHLCWArVAftKNfHXpLbQi9soDLDr2F",
-      "lp_token_b_mint": "6JmZKksnkTARBuYDH9g6Qc8HWqD2SemoppvwAyCGQifv",
-      "ratio_a_numerator": 10000,
-      "ratio_a_decimal": 4,
-      "ratio_a_actual": 1,
-      "ratio_b_denominator": 10000,
-      "ratio_b_decimal": 0,
-      "ratio_b_actual": 10000,
-      "total_token_a_liquidity": 10000,
-      "total_token_b_liquidity": 99990000,
-      "pool_authority_bump_seed": 255,
-      "token_a_vault_bump_seed": 254,
-      "token_b_vault_bump_seed": 254,
-      "lp_token_a_mint_bump_seed": 254,
-      "lp_token_b_mint_bump_seed": 255,
-      "flags": 1,
-      "collected_fees_token_a": 7723994720458826000,
-      "collected_fees_token_b": 16619538112488196000,
-      "total_fees_withdrawn_token_a": 9022874493675279000,
-      "total_fees_withdrawn_token_b": 10000,
-      "total_sol_fees_collected": 10000,
-      "flags_decoded": {
-        "one_to_many_ratio": true,
-        "liquidity_paused": false,
-        "swaps_paused": false,
-        "withdrawal_protection": false,
-        "single_lp_token_mode": false
-      }
-    }
-  ],
-  "main_treasury_state": {
-    "total_balance": 1151837440,
-    "rent_exempt_minimum": 0,
-    "total_withdrawn": 0,
-    "pool_creation_count": 1,
-    "liquidity_operation_count": 0,
-    "regular_swap_count": 0,
-    "treasury_withdrawal_count": 0,
-    "failed_operation_count": 0,
-    "total_pool_creation_fees": 1150000000,
-    "total_liquidity_fees": 0,
-    "total_regular_swap_fees": 0,
-    "total_swap_contract_fees": 0,
-    "last_update_timestamp": 1754472556,
-    "total_consolidations_performed": 0,
-    "last_consolidation_timestamp": 0
-  },
-  "system_state": {
-    "pause_reason_code": 0,
-    "is_paused": false,
-    "pause_timestamp": 0
-  },
+  "pools": [],
+  "main_treasury_state": null,
+  "system_state": null,
   "pda_addresses": {
     "main_treasury": "HBffTYMVJHgRYNCQ4opHrAVVeT1QPDtJLLDKki7mUp43",
     "system_state": "7mJQU5YkXBeeYR44TFosU4YhCciRC5ierTN29fa7ia3D"
