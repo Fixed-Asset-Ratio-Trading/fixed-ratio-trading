@@ -565,6 +565,17 @@ pub fn process_pool_initialize(
     // Log the ratio type for debugging
     msg!("📊 Pool ratio classified as: {}", ratio_type);
 
+    // ✅ RATIO TYPE VALIDATION: Only allow SimpleRatio and DecimalRatio
+    // EngineeringRatio pools are not supported for security and UX reasons
+    if ratio_type == crate::types::RatioType::EngineeringRatio {
+        msg!("❌ REJECTED: EngineeringRatio pools are not supported");
+        msg!("   Only SimpleRatio (1:2, 1:100) and DecimalRatio (1:100.24343) are allowed");
+        return Err(PoolError::UnsupportedRatioType {
+            ratio_type: ratio_type.short_name().to_string(),
+        }.into());
+    }
+    msg!("✅ ACCEPTED: {} ratio type is supported", ratio_type.short_name());
+
     // ✅ POOL STATE: Create pool state with comprehensive configuration
     let pool_state = PoolState {
         owner: *user_authority_signer.key,

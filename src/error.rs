@@ -187,6 +187,10 @@ pub enum PoolError {
     
     #[error("Fee update validation failed: {reason}")]
     FeeUpdateValidationFailed { reason: String },
+    
+    /// Unsupported ratio type for pool creation
+    #[error("Unsupported ratio type: {ratio_type}. Only SimpleRatio (1:2, 1:100) and DecimalRatio (1:100.24343) are supported")]
+    UnsupportedRatioType { ratio_type: String },
 }
 
 impl PoolError {
@@ -232,6 +236,7 @@ impl PoolError {
             PoolError::FeeUpdateValidationFailed { .. } => 1046,
             PoolError::AmountMismatch { .. } => 1047,
             PoolError::UnsafeRatioValues => 1048,
+            PoolError::UnsupportedRatioType { .. } => 1049,
         }
     }
 }

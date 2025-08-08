@@ -392,17 +392,36 @@ pub fn get_ratio_type(
     msg!("  token_a_factor: {} (10^{})", token_a_factor, token_a_decimals);
     msg!("  token_b_factor: {} (10^{})", token_b_factor, token_b_decimals);
     
+    // Backward-compatibility input normalization:
+    // Some legacy callers may pass raw display units (e.g., 2:1) instead of basis points.
+    // If a value is smaller than its decimal factor and not already a whole-multiple,
+    // treat it as display units and scale it up to basis points.
+    let adjusted_ratio_a = if token_a_factor > 1
+        && ratio_a_basis_points < token_a_factor
+        && (ratio_a_basis_points % token_a_factor) != 0
+    {
+        // 2 -> 2 * 10^decimals
+        ratio_a_basis_points.saturating_mul(token_a_factor)
+    } else { ratio_a_basis_points };
+
+    let adjusted_ratio_b = if token_b_factor > 1
+        && ratio_b_basis_points < token_b_factor
+        && (ratio_b_basis_points % token_b_factor) != 0
+    {
+        ratio_b_basis_points.saturating_mul(token_b_factor)
+    } else { ratio_b_basis_points };
+
     // Check if both ratios represent whole numbers (no fractional parts in display units)
-    let a_is_whole = (ratio_a_basis_points % token_a_factor) == 0;
-    let b_is_whole = (ratio_b_basis_points % token_b_factor) == 0;
+    let a_is_whole = (adjusted_ratio_a % token_a_factor) == 0;
+    let b_is_whole = (adjusted_ratio_b % token_b_factor) == 0;
     
     msg!("🔍 Step 2: Checking if ratios represent whole numbers in display units");
     msg!("  a_is_whole: {} ({} % {} == 0)", a_is_whole, ratio_a_basis_points, token_a_factor);
     msg!("  b_is_whole: {} ({} % {} == 0)", b_is_whole, ratio_b_basis_points, token_b_factor);
     
     // Convert to display units for validation
-    let display_ratio_a = ratio_a_basis_points / token_a_factor;
-    let display_ratio_b = ratio_b_basis_points / token_b_factor;
+    let display_ratio_a = adjusted_ratio_a / token_a_factor;
+    let display_ratio_b = adjusted_ratio_b / token_b_factor;
     
     msg!("🔍 Step 3: Converting to display units");
     msg!("  display_ratio_a: {} ({} / {})", display_ratio_a, ratio_a_basis_points, token_a_factor);

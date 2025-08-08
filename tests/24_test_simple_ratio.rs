@@ -163,8 +163,8 @@ mod integration_tests {
 
     #[tokio::test]
     #[serial]
-    async fn test_simple_ratio_flag_comprehensive() -> Result<(), Box<dyn std::error::Error>> {
-        println!("🧪 Testing POOL_FLAG_SIMPLE_RATIO with BASIS POINTS REFACTOR...");
+    async fn test_ratio_type_validation_comprehensive() -> Result<(), Box<dyn std::error::Error>> {
+        println!("🧪 Testing RATIO TYPE VALIDATION with EngineeringRatio rejection...");
         
         // Setup test environment
         let test_env = start_test_environment().await;
@@ -210,15 +210,15 @@ mod integration_tests {
             "1:160 simple ratio should set the flag (one side equals 1 whole token)");
         println!("✅ Pool 1 (1:160 simple ratio) - Flag correctly SET");
 
-        // Test Case 2: 2:3 ratio (engineering ratio - flag should NOT be set)
-        println!("\n🎯 TEST CASE 2: 2:3 ratio (engineering ratio - neither side is 1)");
+        // Test Case 2: 2:3 ratio (EngineeringRatio - should be REJECTED)
+        println!("\n🎯 TEST CASE 2: 2:3 ratio (EngineeringRatio - should be REJECTED)");
         let token_a = Keypair::new();
         let token_b = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &token_a, Some(6)).await?;
         create_mint(&mut banks_client, &funder, recent_blockhash, &token_b, Some(6)).await?;
         
-        // Use basis point conversion: 2.0 TokenA = 3.0 TokenB (neither equals 1)
-        let pool_2_config = create_pool_with_display_ratios(
+        // Attempt creation: should fail because EngineeringRatio is not supported
+        let pool_2_result = create_pool_with_display_ratios(
             &mut banks_client,
             &funder,
             recent_blockhash,
@@ -228,13 +228,9 @@ mod integration_tests {
             3.0,  // 3.0 TokenB in display units
             6,    // TokenA has 6 decimals
             6,    // TokenB has 6 decimals
-        ).await?;
-        
-        let pool_2_state = get_pool_state(&mut banks_client, &pool_2_config.pool_state_pda).await
-            .ok_or("Pool 2 state not found")?;
-        assert!(!pool_2_state.one_to_many_ratio(), 
-            "2.0:3.0 ratio should NOT set the flag (neither side equals 1)");
-        println!("✅ Pool 2 (2.0:3.0) - Flag correctly NOT SET");
+        ).await;
+        assert!(pool_2_result.is_err(), "2:3 EngineeringRatio should be rejected");
+        println!("✅ Pool 2 (2:3 EngineeringRatio) - Correctly REJECTED");
 
         // Test Case 3: 1000:1 ratio (simple ratio - flag should be SET)
         println!("\n🎯 TEST CASE 3: 1000:1 ratio (1000 DOGE = 1 USDC - simple ratio)");
@@ -270,15 +266,15 @@ mod integration_tests {
             "1000.0 DOGE = 1.0 USDC ratio should set the flag (USDC side equals 1)");
         println!("✅ Pool 3 (1000.0 DOGE = 1.0 USDC) - Flag correctly SET");
 
-        // Test Case 4: 5.0 TokenC = 7.0 TokenD (flag should NOT be set)
-        println!("\n🎯 TEST CASE 4: 5.0 TokenC = 7.0 TokenD (flag should NOT be set)");
+        // Test Case 4: 5.0 TokenC = 7.0 TokenD (EngineeringRatio - should be REJECTED)
+        println!("\n🎯 TEST CASE 4: 5.0 TokenC = 7.0 TokenD (EngineeringRatio - should be REJECTED)");
         let token_c = Keypair::new();
         let token_d = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &token_c, Some(6)).await?;
         create_mint(&mut banks_client, &funder, recent_blockhash, &token_d, Some(6)).await?;
         
-        // Use basis point conversion: 5.0 TokenC = 7.0 TokenD (neither equals 1)
-        let pool_4_config = create_pool_with_display_ratios(
+        // Use basis point conversion: 5.0 TokenC = 7.0 TokenD (neither equals 1 - EngineeringRatio)
+        let pool_4_result = create_pool_with_display_ratios(
             &mut banks_client,
             &funder,
             recent_blockhash,
@@ -288,30 +284,29 @@ mod integration_tests {
             7.0,  // 7.0 TokenD in display units
             6,    // TokenC has 6 decimals
             6,    // TokenD has 6 decimals
-        ).await?;
+        ).await;
         
-        let pool_4_state = get_pool_state(&mut banks_client, &pool_4_config.pool_state_pda).await
-            .ok_or("Pool 4 state not found")?;
-        assert!(!pool_4_state.one_to_many_ratio(), 
-            "5.0:7.0 ratio should NOT set the flag (neither side equals 1)");
-        println!("✅ Pool 4 (5.0:7.0) - Flag correctly NOT SET");
+        // This should fail because EngineeringRatio is not supported
+        assert!(pool_4_result.is_err(), 
+            "5.0:7.0 EngineeringRatio should be REJECTED (neither side equals 1)");
+        println!("✅ Pool 4 (5.0:7.0 EngineeringRatio) - Correctly REJECTED");
 
-        // Test Case 5: 1.0 BTC = 50000.0 USDT (flag should be SET)
-        println!("\n🎯 TEST CASE 5: 1.0 BTC = 50000.0 USDT (flag should be SET)");
+        // Test Case 5: 1.0 BTC = 1.01 USDT (DecimalRatio - should be ACCEPTED)
+        println!("\n🎯 TEST CASE 5: 1.0 BTC = 1.01 USDT (DecimalRatio - should be ACCEPTED)");
         let btc_mint = Keypair::new();
-        let usdt2_mint = Keypair::new();
+        let usdt3_mint = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &btc_mint, Some(8)).await?;
-        create_mint(&mut banks_client, &funder, recent_blockhash, &usdt2_mint, Some(6)).await?;
+        create_mint(&mut banks_client, &funder, recent_blockhash, &usdt3_mint, Some(6)).await?;
         
-        // Use basis point conversion: 1.0 BTC = 50000.0 USDT (BTC side equals 1)
+        // Use basis point conversion: 1.0 BTC = 1.01 USDT (one side equals 1, other has decimals)
         let pool_5_config = create_pool_with_display_ratios(
             &mut banks_client,
             &funder,
             recent_blockhash,
             &btc_mint,
-            &usdt2_mint,
+            &usdt3_mint,
             1.0,      // 1.0 BTC in display units
-            50000.0,  // 50000.0 USDT in display units
+            1.01,     // 1.01 USDT in display units (DecimalRatio)
             8,        // BTC has 8 decimals
             6,        // USDT has 6 decimals
         ).await?;
@@ -326,19 +321,55 @@ mod integration_tests {
         println!("   • Flags: 0b{:08b} ({})", pool_5_state.flags, pool_5_state.flags);
         println!("   • One-to-many flag set: {}", pool_5_state.one_to_many_ratio());
         
-        assert!(pool_5_state.one_to_many_ratio(), 
-            "1.0 BTC = 50000.0 USDT ratio should set the flag (BTC side equals 1)");
-        println!("✅ Pool 5 (1.0 BTC = 50000.0 USDT) - Flag correctly SET");
+        // DecimalRatio should be accepted but not set the simple ratio flag
+        assert!(!pool_5_state.one_to_many_ratio(), 
+            "1.0 BTC = 1.01 USDT DecimalRatio should NOT set the simple ratio flag");
+        println!("✅ Pool 5 (1.0 BTC = 1.01 USDT DecimalRatio) - Correctly ACCEPTED");
 
-        println!("\n🎉 SIMPLE RATIO TEST COMPLETED SUCCESSFULLY!");
+        // Test Case 6: 1.0 BTC = 50000.0 USDT (SimpleRatio - should be ACCEPTED)
+        println!("\n🎯 TEST CASE 6: 1.0 BTC = 50000.0 USDT (SimpleRatio - should be ACCEPTED)");
+        let btc2_mint = Keypair::new();
+        let usdt2_mint = Keypair::new();
+        create_mint(&mut banks_client, &funder, recent_blockhash, &btc2_mint, Some(8)).await?;
+        create_mint(&mut banks_client, &funder, recent_blockhash, &usdt2_mint, Some(6)).await?;
+        
+        // Use basis point conversion: 1.0 BTC = 50000.0 USDT (BTC side equals 1)
+        let pool_6_config = create_pool_with_display_ratios(
+            &mut banks_client,
+            &funder,
+            recent_blockhash,
+            &btc2_mint,
+            &usdt2_mint,
+            1.0,      // 1.0 BTC in display units
+            50000.0,  // 50000.0 USDT in display units
+            8,        // BTC has 8 decimals
+            6,        // USDT has 6 decimals
+        ).await?;
+        
+        let pool_6_state = get_pool_state(&mut banks_client, &pool_6_config.pool_state_pda).await
+            .ok_or("Pool 6 state not found")?;
+        
+        // Debug output to understand what's happening
+        println!("🔍 DEBUG: Pool 6 State Analysis:");
+        println!("   • Ratio A: {} basis points", pool_6_state.ratio_a_numerator);
+        println!("   • Ratio B: {} basis points", pool_6_state.ratio_b_denominator);
+        println!("   • Flags: 0b{:08b} ({})", pool_6_state.flags, pool_6_state.flags);
+        println!("   • One-to-many flag set: {}", pool_6_state.one_to_many_ratio());
+        
+        assert!(pool_6_state.one_to_many_ratio(), 
+            "1.0 BTC = 50000.0 USDT SimpleRatio should set the flag (BTC side equals 1)");
+        println!("✅ Pool 6 (1.0 BTC = 50000.0 USDT SimpleRatio) - Correctly ACCEPTED");
+
+        println!("\n🎉 RATIO TYPE VALIDATION TEST COMPLETED SUCCESSFULLY!");
         println!("====================================================================");
-        println!("✅ VERIFIED SIMPLE RATIO DETECTION:");
-        println!("   • 1:160 ratio - Flag SET ✓ (simple ratio)");
-        println!("   • 2:3 ratio - Flag NOT SET ✓ (engineering ratio)");
-        println!("   • 1000:1 ratio - Flag SET ✓ (simple ratio)");
-        println!("   • 5:7 ratio - Flag NOT SET ✓ (engineering ratio)");
-        println!("   • 1:50000 ratio - Flag SET ✓ (simple ratio)");
-        println!("🔧 Simple ratios have one side = 1 and both sides are whole numbers!");
+        println!("✅ VERIFIED RATIO TYPE VALIDATION:");
+        println!("   • 1:160 ratio - ACCEPTED ✓ (SimpleRatio)");
+        println!("   • 2:3 ratio - REJECTED ✓ (EngineeringRatio not supported)");
+        println!("   • 1000:1 ratio - ACCEPTED ✓ (SimpleRatio)");
+        println!("   • 5:7 ratio - REJECTED ✓ (EngineeringRatio not supported)");
+        println!("   • 1:1.01 ratio - ACCEPTED ✓ (DecimalRatio)");
+        println!("   • 1:50000 ratio - ACCEPTED ✓ (SimpleRatio)");
+        println!("🔧 Only SimpleRatio and DecimalRatio pools are supported!");
         println!("====================================================================");
 
         Ok(())
