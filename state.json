@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2025-08-08T11:39:08.014Z",
-    "program_id": "8Aqx61EAjyRjqeiC9GTcAknMbjBHGoMY9H141gJvx31g",
+    "generated_at": "2025-08-08T12:26:52.119Z",
+    "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
     "rpc_url": "http://192.168.2.88:8899",
     "script_version": "1.0.0",
     "solana_environment": "remote"
@@ -31,7 +31,7 @@
     "pause_reason_decoded": "No pause / Normal operation"
   },
   "pda_addresses": {
-    "main_treasury": "6YR8bJbXWWmMHww12Ua6Na253T7aH64K1CGTiGkgwagN",
-    "system_state": "Atb9Y15L17uVHaF2LtRLwTqrwtBoBX33PTvxejbfwkxp"
+    "main_treasury": "HBffTYMVJHgRYNCQ4opHrAVVeT1QPDtJLLDKki7mUp43",
+    "system_state": "7mJQU5YkXBeeYR44TFosU4YhCciRC5ierTN29fa7ia3D"
   }
 }
