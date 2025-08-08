@@ -179,21 +179,42 @@ pub async fn create_liquidity_test_foundation_with_exact_basis_points(
     };
     
     // 2. Create token mints with optional creation order control
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
+    // When create_token_b_first is true, ensure Multiple (MST) becomes Token A by
+    // forcing primary_mint.pubkey() < base_mint.pubkey() with a bounded loop.
     let (primary_mint, base_mint) = if create_token_b_first {
-        // For normalization testing: create token B first, then token A
-        println!("   • Creating Token B first (for normalization testing)");
-        (keypair2, keypair1) // keypair2 becomes primary (Token A), keypair1 becomes base (Token B)
+        println!("   • Creating Token B first (normalization test with A/B guarantee)");
+        let mut attempts = 0u8;
+        let (chosen_primary, chosen_base) = loop {
+            attempts = attempts.saturating_add(1);
+            let candidate1 = Keypair::new();
+            let candidate2 = Keypair::new();
+            // We desire: Multiple (primary) < Base (lexicographic) so Multiple is Token A
+            let (p, b) = if candidate1.pubkey() < candidate2.pubkey() {
+                (candidate1, candidate2)
+            } else {
+                (candidate2, candidate1)
+            };
+            if p.pubkey() < b.pubkey() {
+                println!(
+                    "   • Lexicographic selection (attempt {}):\n     - Multiple (intended MST) pubkey: {}\n     - Base (intended TS) pubkey: {}",
+                    attempts, p.pubkey(), b.pubkey()
+                );
+                break (p, b);
+            }
+            if attempts >= 20 {
+                panic!(
+                    "Failed to obtain lexicographic ordering within 20 attempts: desired Multiple < Base for Token A/B mapping"
+                );
+            }
+        };
+        println!("   • Final selection after {} attempt(s)", attempts);
+        (chosen_primary, chosen_base)
     } else {
-        // Normal order: create token A first, then token B
+        // Normal order: deterministically select A/B by lexicographic order
         println!("   • Creating Token A first (normal order)");
-        if keypair1.pubkey() < keypair2.pubkey() {
-            (keypair1, keypair2)
-        } else {
-            (keypair2, keypair1)
-        }
+        let k1 = Keypair::new();
+        let k2 = Keypair::new();
+        if k1.pubkey() < k2.pubkey() { (k1, k2) } else { (k2, k1) }
     };
     
     // 3. Create user keypairs early
@@ -503,21 +524,41 @@ pub async fn create_liquidity_test_foundation_with_custom_pool_advanced(
     };
     
     // 2. Create token mints with optional creation order control
-    let keypair1 = Keypair::new();
-    let keypair2 = Keypair::new();
-    
+    // When create_token_b_first is true, ensure Multiple (MST) becomes Token A by
+    // forcing primary_mint.pubkey() < base_mint.pubkey() with a bounded loop.
     let (primary_mint, base_mint) = if create_token_b_first {
-        // For normalization testing: create token B first, then token A
-        println!("   • Creating Token B first (for normalization testing)");
-        (keypair2, keypair1) // keypair2 becomes primary (Token A), keypair1 becomes base (Token B)
+        println!("   • Creating Token B first (normalization test with A/B guarantee)");
+        let mut attempts = 0u8;
+        let (chosen_primary, chosen_base) = loop {
+            attempts = attempts.saturating_add(1);
+            let candidate1 = Keypair::new();
+            let candidate2 = Keypair::new();
+            let (p, b) = if candidate1.pubkey() < candidate2.pubkey() {
+                (candidate1, candidate2)
+            } else {
+                (candidate2, candidate1)
+            };
+            if p.pubkey() < b.pubkey() {
+                println!(
+                    "   • Lexicographic selection (attempt {}):\n     - Multiple (intended MST) pubkey: {}\n     - Base (intended TS) pubkey: {}",
+                    attempts, p.pubkey(), b.pubkey()
+                );
+                break (p, b);
+            }
+            if attempts >= 20 {
+                panic!(
+                    "Failed to obtain lexicographic ordering within 20 attempts: desired Multiple < Base for Token A/B mapping"
+                );
+            }
+        };
+        println!("   • Final selection after {} attempt(s)", attempts);
+        (chosen_primary, chosen_base)
     } else {
-        // Normal order: create token A first, then token B
+        // Normal order: deterministically select A/B by lexicographic order
         println!("   • Creating Token A first (normal order)");
-        if keypair1.pubkey() < keypair2.pubkey() {
-            (keypair1, keypair2)
-        } else {
-            (keypair2, keypair1)
-        }
+        let k1 = Keypair::new();
+        let k2 = Keypair::new();
+        if k1.pubkey() < k2.pubkey() { (k1, k2) } else { (k2, k1) }
     };
     
     // 3. Create user keypairs early
