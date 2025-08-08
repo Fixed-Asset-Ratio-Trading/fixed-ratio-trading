@@ -1245,8 +1245,8 @@ async fn create_pool_with_normalized_config(
     banks: &mut BanksClient,
     payer: &Keypair,
     recent_blockhash: solana_sdk::hash::Hash,
-    multiple_mint: &Keypair,
-    base_mint: &Keypair,
+    _multiple_mint: &Keypair,
+    _base_mint: &Keypair,
     config: PoolConfig,
 ) -> Result<PoolConfig, solana_program_test::BanksClientError> {
     // Check if pool already exists

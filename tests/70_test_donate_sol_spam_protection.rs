@@ -25,6 +25,7 @@ use common::{
 /// 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
 const SPAM_DONATION_COUNT: u64 = 20;         // Number of spam donations to test (reduced due to 0.1 SOL minimum)
 const TEST_DONATION_AMOUNT: u64 = 100_000_000; // 0.1 SOL - minimum donation amount
+#[allow(dead_code)]
 const NORMAL_DONATION_AMOUNT: u64 = 1_000_000_000; // 1 SOL for normal donations
 
 /// DONATE-001: Test spam protection for Donate_Sol function

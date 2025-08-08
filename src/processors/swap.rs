@@ -137,8 +137,8 @@ fn swap_a_to_b(
     amount_a: u64,
     ratio_a_numerator: u64,     // Token A ratio in basis points
     ratio_b_denominator: u64,   // Token B ratio in basis points 
-    token_a_decimals: u8,
-    token_b_decimals: u8,
+    _token_a_decimals: u8,
+    _token_b_decimals: u8,
 ) -> Result<u64, ProgramError> {
     
     // Note: We don't enforce artificial ratio limits because:
@@ -186,8 +186,8 @@ fn swap_b_to_a(
     amount_b: u64,
     ratio_a_numerator: u64,     // Token A ratio in basis points
     ratio_b_denominator: u64,   // Token B ratio in basis points
-    token_b_decimals: u8,
-    token_a_decimals: u8,
+    _token_b_decimals: u8,
+    _token_a_decimals: u8,
 ) -> Result<u64, ProgramError> {
     
     // Convert to u128 to prevent overflow during calculation
@@ -827,7 +827,7 @@ pub fn process_swap_set_owner_only<'a>(
     // control over the ability to change restrictions and delegate ownership
     if enable_restriction {
         if pool_state_data.owner != designated_owner {
-            let previous_owner = pool_state_data.owner;
+            let _previous_owner = pool_state_data.owner;
             pool_state_data.owner = designated_owner;
             
         } else {

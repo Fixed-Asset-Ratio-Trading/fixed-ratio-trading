@@ -39,14 +39,11 @@ SOFTWARE.
 //! 5. **Scalable Pattern**: Support for 1-20+ pools without environment conflicts
 //! 6. **Backwards Compatibility**: Existing tests continue working unchanged
 
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{Keypair, Signer},
-};
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Signer;
 use crate::common::{
     liquidity_helpers::{LiquidityTestFoundation, create_liquidity_test_foundation},
     pool_helpers::PoolConfig,
-    setup::TestEnvironment,
 };
 
 /// Enhanced Test Foundation - Official Multi-Pool Architecture
@@ -59,61 +56,6 @@ pub struct EnhancedTestFoundation {
     
     /// Additional pools for multi-pool testing
     additional_pools: Vec<PoolConfig>,
-    
-    /// Multi-pool configuration and state
-    multi_pool_config: MultiPoolConfig,
-}
-
-/// Configuration for multi-pool testing
-#[derive(Debug, Clone)]
-pub struct MultiPoolConfig {
-    pub max_pools: usize,
-    pub cleanup_strategy: CleanupStrategy,
-    pub pool_isolation_level: IsolationLevel,
-}
-
-impl Default for MultiPoolConfig {
-    fn default() -> Self {
-        Self {
-            max_pools: 20, // Maximum pools supported by the program
-            cleanup_strategy: CleanupStrategy::FreshEnvironmentPerTest,
-            pool_isolation_level: IsolationLevel::SharedTokenMints,
-        }
-    }
-}
-
-/// Cleanup strategy for test isolation
-#[derive(Debug, Clone)]
-pub enum CleanupStrategy {
-    /// Create fresh environment for each test (recommended)
-    FreshEnvironmentPerTest,
-    /// Reuse environment with reset between tests
-    EnvironmentReuseWithReset,
-}
-
-/// Pool isolation level for multi-pool testing
-#[derive(Debug, Clone)]
-pub enum IsolationLevel {
-    /// Each pool has unique token mints (full isolation)
-    UniqueTokenMints,
-    /// Shared token mints across pools (more realistic for some tests)
-    SharedTokenMints,
-    /// Configurable per pool (maximum flexibility)
-    ConfigurablePerPool,
-}
-
-/// Pool configuration for additional pools
-#[derive(Debug)]
-pub struct PoolConfigExtended {
-    pub pool_id: u8,
-    pub pool_state_pda: Pubkey,
-    pub token_a_mint: Pubkey,
-    pub token_b_mint: Pubkey,
-    pub vault_a_pda: Pubkey,
-    pub vault_b_pda: Pubkey,
-    pub lp_mint_pda: Pubkey,
-    pub ratio: (u64, u64),
-    pub user_accounts: UserAccountSet,
 }
 
 /// PDA set for a pool (used during pool creation)
@@ -127,25 +69,13 @@ pub struct PoolPdaSet {
     pub vault_b_bump: u8,
 }
 
-/// User account set for a specific pool
-#[derive(Debug)]
-pub struct UserAccountSet {
-    pub authority: Keypair,
-    pub token_a_account: Pubkey,
-    pub token_b_account: Pubkey,
-    pub lp_token_account: Pubkey,
-}
+// Removed unused multi-pool configuration and user account types
 
 /// Pool creation parameters
 #[derive(Debug, Clone)]
 pub struct PoolCreationParams {
     pub ratio_a: u64,
     pub ratio_b: u64,
-    pub initial_liquidity_a: Option<u64>,
-    pub initial_liquidity_b: Option<u64>,
-    pub token_a_decimals: u8,
-    pub token_b_decimals: u8,
-    pub create_new_tokens: bool, // If false, reuse existing tokens
 }
 
 impl Default for PoolCreationParams {
@@ -153,11 +83,6 @@ impl Default for PoolCreationParams {
         Self {
             ratio_a: 2,
             ratio_b: 1,
-            initial_liquidity_a: Some(1_000_000),
-            initial_liquidity_b: Some(500_000),
-            token_a_decimals: 9,
-            token_b_decimals: 9,
-            create_new_tokens: true,
         }
     }
 }
@@ -172,19 +97,11 @@ impl PoolCreationParams {
         }
     }
     
-    /// Create pool parameters with custom liquidity amounts
-    pub fn with_liquidity(ratio_a: u64, ratio_b: u64, liquidity_a: u64, liquidity_b: u64) -> Self {
-        Self {
-            ratio_a,
-            ratio_b,
-            initial_liquidity_a: Some(liquidity_a),
-            initial_liquidity_b: Some(liquidity_b),
-            ..Default::default()
-        }
-    }
+    // Removed unused with_liquidity; add when needed
 }
 
 /// Reference to pool (either primary or additional)
+#[allow(dead_code)]
 pub enum PoolReference<'a> {
     Primary(&'a LiquidityTestFoundation),
     Additional(&'a PoolConfig),
@@ -194,7 +111,9 @@ pub enum PoolReference<'a> {
 #[derive(Debug)]
 pub enum TestError {
     PoolNotFound(usize),
+    #[allow(dead_code)]
     MaxPoolsExceeded(usize),
+    #[allow(dead_code)]
     InvalidPoolConfiguration(String),
     EnvironmentError(String),
 }
@@ -221,7 +140,6 @@ impl EnhancedTestFoundation {
         Ok(Self {
             primary_pool: foundation,
             additional_pools: Vec::new(),
-            multi_pool_config: MultiPoolConfig::default(),
         })
     }
     
@@ -229,12 +147,13 @@ impl EnhancedTestFoundation {
     pub fn as_liquidity_foundation(&self) -> &LiquidityTestFoundation {
         &self.primary_pool
     }
-    
-    /// Mutable access to legacy foundation
+    /// Mutable access to legacy foundation (needed by some tests)
+    #[allow(dead_code)]
     pub fn as_liquidity_foundation_mut(&mut self) -> &mut LiquidityTestFoundation {
         &mut self.primary_pool
     }
     
+    // Removed unused mutable accessor
     /// Add a new pool to the foundation (PHASE 1B: Full implementation)
     /// 
     /// Creates a new pool with unique PDAs in the same test environment as the primary pool.
@@ -243,12 +162,7 @@ impl EnhancedTestFoundation {
         &mut self,
         params: PoolCreationParams,
     ) -> Result<usize, TestError> {
-        use fixed_ratio_trading::constants::*;
-        use crate::common::{
-            pool_helpers::normalize_pool_config,
-            tokens::create_mint,
-        };
-        
+        // no local imports needed
         println!("🏗️ PHASE 1B: Creating additional pool in shared environment...");
         println!("   📋 Pool parameters: {}:{} ratio", params.ratio_a, params.ratio_b);
         
@@ -274,7 +188,7 @@ impl EnhancedTestFoundation {
         println!("     • Vault B: {}", pool_pdas.vault_b_pda);
         
         // Normalize pool parameters using existing logic
-        let normalized_config = normalize_pool_config(
+        let normalized_config = crate::common::pool_helpers::normalize_pool_config(
             &token_a_mint,
             &token_b_mint, 
             params.ratio_a,
@@ -459,31 +373,12 @@ impl EnhancedTestFoundation {
         1 + self.additional_pools.len()
     }
     
-    /// Get all pool PDAs for consolidation
+    /// Get all pool PDAs for consolidation tests
+    #[allow(dead_code)]
     pub fn get_all_pool_pdas(&self) -> Vec<Pubkey> {
         let mut pdas = vec![self.primary_pool.pool_config.pool_state_pda];
         pdas.extend(self.additional_pools.iter().map(|p| p.pool_state_pda));
         pdas
-    }
-    
-    /// Get the shared test environment
-    pub fn env(&self) -> &TestEnvironment {
-        &self.primary_pool.env
-    }
-    
-    /// Get mutable access to the shared test environment
-    pub fn env_mut(&mut self) -> &mut TestEnvironment {
-        &mut self.primary_pool.env
-    }
-    
-    /// Get multi-pool configuration
-    pub fn config(&self) -> &MultiPoolConfig {
-        &self.multi_pool_config
-    }
-    
-    /// Update multi-pool configuration
-    pub fn set_config(&mut self, config: MultiPoolConfig) {
-        self.multi_pool_config = config;
     }
 }
 
@@ -512,23 +407,7 @@ pub async fn create_enhanced_liquidity_test_foundation(
     Ok(enhanced)
 }
 
-/// Create an EnhancedTestFoundation with specific multi-pool configuration
-pub async fn create_enhanced_test_foundation_with_config(
-    ratio: Option<u64>,
-    config: MultiPoolConfig,
-) -> Result<EnhancedTestFoundation, Box<dyn std::error::Error>> {
-    println!("🏗️ Creating Enhanced Test Foundation with custom configuration...");
-    
-    let mut enhanced = create_enhanced_liquidity_test_foundation(ratio).await?;
-    enhanced.set_config(config);
-    
-    println!("✅ Enhanced Test Foundation with custom config created");
-    println!("   • Max pools: {}", enhanced.config().max_pools);
-    println!("   • Cleanup strategy: {:?}", enhanced.config().cleanup_strategy);
-    println!("   • Isolation level: {:?}", enhanced.config().pool_isolation_level);
-    
-    Ok(enhanced)
-}
+// Removed unused custom-config factory
 
 #[cfg(test)]
 mod tests {
