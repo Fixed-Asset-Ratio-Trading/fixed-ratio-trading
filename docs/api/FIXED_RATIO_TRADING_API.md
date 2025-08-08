@@ -94,7 +94,7 @@ Each function has specific Compute Unit requirements for successful execution. T
 | `process_pool_initialize` | **500,000** | 🔴 High | Dashboard tested: 500K CUs for security compatibility |
 | `process_liquidity_deposit` | **500,000** | 🔴 High | Dashboard tested: 500K CUs (was 300K, increased for security) |
 | `process_liquidity_withdraw` | **500,000** | 🔴 High | Dashboard tested: 500K CUs (was 300K, increased for security) |
-| `process_swap_execute` | **450,000** | 🔴 High | Dashboard tested: 450K CUs (was 200K, increased for security) |
+| `process_swap_execute` | **250,000** | 🟡 Moderate | Dashboard tested: 250K CUs (was 200K baseline; 202K observed OK; 250K set as max for headroom) |
 | `process_swap_set_owner_only` | 15,000 | 🟢 Low | Flag update operation |
 
 ### Treasury & Management
@@ -140,7 +140,7 @@ For `process_consolidate_pool_fees`: `Base_CUs = 4,000 + (pool_count × 5,000)`
 ### Developer Recommendations
 1. **Always allocate 10-20% buffer** above listed values for network conditions
 2. **Use dynamic CU limits** for consolidation based on pool count
-3. **🔴 High CU Operations**: Pool creation (500K), liquidity ops (500K), swaps (450K) are complex multi-step operations
+3. **🔴 High CU Operations**: Pool creation (500K), liquidity ops (500K) are complex multi-step operations. **Swaps now 250K (🟡 Moderate)** based on production dashboard testing with headroom over 202K observed usage.
 4. **Security Compatibility**: Dashboard values increased for security upgrade compatibility - use these production-tested values
 5. **Dynamic Donation CUs**: `process_treasury_donate_sol` requires variable CUs based on amount (5K-120K CUs)
 6. **Batch operations** when possible to optimize CU usage per transaction
@@ -849,7 +849,7 @@ Example: Pool ratio 1 SOL = 160 USDT
 
 **Authority:** Any user (unless owner-only mode)  
 **Fee:** 0.00002715 SOL (SWAP_CONTRACT_FEE constant)  
-**Compute Units:** 450,000 CUs maximum (Dashboard: increased from 200K for security compatibility)
+**Compute Units:** 250,000 CUs maximum (Dashboard: tested 202K works; set to 250K to allow for fee changes and variability)
 
 #### Parameters
 ```rust
