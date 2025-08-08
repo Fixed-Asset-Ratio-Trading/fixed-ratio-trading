@@ -146,8 +146,6 @@ pub fn process_pool_initialize(
     msg!("🏊 POOL CREATION | TokenA decimals: {} | TokenB decimals: {} | Registration: {} SOL", 
          token_a_decimals, token_b_decimals, REGISTRATION_FEE as f64 / 1_000_000_000.0);
     
-    msg!("Processing InitializePool with fixed system pause validation");
-    
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
     // accounts[N] if insufficient accounts are provided. Manual length checks are
@@ -574,8 +572,7 @@ pub fn process_pool_initialize(
             ratio_type: ratio_type.short_name().to_string(),
         }.into());
     }
-    msg!("✅ ACCEPTED: {} ratio type is supported", ratio_type.short_name());
-
+ 
     // ✅ POOL STATE: Create pool state with comprehensive configuration
     let pool_state = PoolState {
         owner: *user_authority_signer.key,

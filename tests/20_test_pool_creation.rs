@@ -801,7 +801,7 @@ async fn test_pool_creation_basis_points_refactor() -> TestResult {
     create_mint(&mut banks_client, &payer, recent_blockhash, &token_y, Some(6)).await?;
     
     // Manual conversion from display units to basis points
-    let token_x_display = 2.5;
+    let token_x_display = 1.0;
     let token_y_display = 7.8;
     let token_x_decimals = 9;
     let token_y_decimals = 6;

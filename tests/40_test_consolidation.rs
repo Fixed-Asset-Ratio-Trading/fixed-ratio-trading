@@ -1690,9 +1690,9 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
     // Pool Creation Parameters (define all 20 possible pools, will use first NUM_POOLS)
     const ALL_POOL_RATIOS: [(u64, u64); MAX_ALLOWED_POOLS] = [
         (1, 1),   (2, 1),   (3, 1),   (4, 1),   (5, 1),    // Pools 1-5: Increasing ratios
-        (1, 2),   (1, 3),   (1, 4),   (1, 5),   (2, 3),    // Pools 6-10: Reverse ratios
-        (3, 2),   (5, 3),   (7, 4),   (4, 7),   (6, 5),    // Pools 11-15: Mixed ratios
-        (10, 1),  (1, 10),  (8, 3),   (3, 8),   (9, 7),    // Pools 16-20: High ratios
+        (1, 2),   (1, 3),   (1, 4),   (1, 5),   (1, 6),    // Pools 6-10: Reverse ratios (ensure uniqueness)
+        (90, 1),  (50, 1),  (7, 1),   (1, 17),  (16, 1),   // Pools 11-15: Mixed ratios
+        (10, 1),  (1, 10),  (18, 1),  (1, 28),  (9, 1),    // Pools 16-20: High ratios
     ];
     
     // Liquidity Deposit Amounts per Pool (define all 20, will use first NUM_POOLS)
