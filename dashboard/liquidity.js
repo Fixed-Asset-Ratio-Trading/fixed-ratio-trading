@@ -751,6 +751,8 @@ async function addLiquidity() {
     
     const addBtn = document.getElementById('add-liquidity-btn');
     const originalText = addBtn.textContent;
+    // Make computeUnits available to both try/catch blocks
+    let computeUnits = 310_000; // default for this flow; can be tweaked
     
     try {
         addBtn.disabled = true;
@@ -810,10 +812,10 @@ async function addLiquidity() {
         
         // Add compute budget instruction to increase CU limit (security upgrades need ~400k CUs)
         const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-            units: 500000 // Increased for security upgrade compatibility (was 300k)
+            units: computeUnits
         });
         transaction.add(computeBudgetInstruction);
-        console.log('✅ Added compute budget instruction: 500,000 CUs');
+        console.log(`✅ Added compute budget instruction: ${computeUnits.toLocaleString()} CUs`);
         
         // Add create associated token account instruction if needed
         if (!lpAccountInfo) {
@@ -893,6 +895,10 @@ async function addLiquidity() {
             console.log('✅ Simulation successful - proceeding with transaction');
         } catch (simError) {
             console.error('❌ Simulation error:', simError);
+            const cuHint = getComputeUnitErrorMessage(simError?.message, simError?.logs, computeUnits);
+            if (cuHint) {
+                throw new Error(`Simulation failed: ${JSON.stringify(simError?.message || simError)}. ${cuHint}`);
+            }
             throw new Error(`Simulation failed: ${simError.message}`);
         }
         
@@ -946,21 +952,8 @@ async function addLiquidity() {
         
     } catch (error) {
         console.error('❌ Error adding liquidity:', error);
-        
-        // Show detailed error message
-        let errorMessage = 'Failed to add liquidity';
-        if (error.message.includes('User rejected')) {
-            errorMessage = 'Transaction cancelled by user';
-        } else if (error.message.includes('insufficient')) {
-            errorMessage = 'Insufficient balance or SOL for transaction fees';
-        } else if (error.message.includes('Wallet not connected')) {
-            errorMessage = error.message;
-        } else {
-            errorMessage = `Transaction failed: ${error.message}`;
-        }
-        
-        showStatus('error', `❌ ${errorMessage}`);
-        console.log('💡 Tip: Make sure you have enough SOL for transaction fees and the correct token balance');
+        const userMsg = buildUserFacingErrorMessage(error, computeUnits);
+        showStatus('error', `❌ ${userMsg}`);
         
     } finally {
         addBtn.disabled = false;
@@ -983,6 +976,72 @@ function showStatus(type, message) {
 function clearStatus() {
     const container = document.getElementById('status-container');
     container.innerHTML = '';
+}
+
+/**
+ * Detect likely compute unit exhaustion from simulation error/logs
+ */
+function getComputeUnitErrorMessage(simulationError, simulationLogs, currentComputeUnits) {
+    try {
+        const errText = typeof simulationError === 'string' 
+            ? simulationError 
+            : JSON.stringify(simulationError || {});
+        const logs = Array.isArray(simulationLogs) ? simulationLogs.join('\n') : String(simulationLogs || '');
+
+        const patternMatches = [
+            'ProgramFailedToComplete',
+            'ComputationalBudgetExceeded',
+            'exceeded maximum number of instructions',
+            'Program failed to complete',
+        ].some(p => errText.includes(p) || logs.includes(p));
+
+        if (patternMatches) {
+            const cuText = currentComputeUnits ? ` (current: ${currentComputeUnits.toLocaleString()} CUs)` : '';
+            return `Likely insufficient compute units${cuText}. Try increasing the compute unit limit and re-run.`;
+        }
+    } catch (_) {
+        // fall through
+    }
+    return '';
+}
+
+/**
+ * Build a user-facing error message with specific CU guidance when applicable
+ */
+function buildUserFacingErrorMessage(error, currentComputeUnits) {
+    const raw = error?.message || String(error || '');
+    const lower = raw.toLowerCase();
+
+    // Prefer CU-specific messaging first
+    if (
+        raw.includes('compute unit') ||
+        raw.includes('ProgramFailedToComplete') ||
+        raw.includes('ComputationalBudgetExceeded') ||
+        raw.includes('exceeded maximum number of instructions') ||
+        raw.includes('Likely insufficient compute units')
+    ) {
+        const cuText = currentComputeUnits ? ` (current: ${currentComputeUnits.toLocaleString()} CUs)` : '';
+        return `❌ Insufficient compute units${cuText}. Increase the compute unit limit and retry.`;
+    }
+
+    // Wallet and user action messages
+    if (lower.includes('user rejected')) {
+        return 'Transaction cancelled by user';
+    }
+    if (lower.includes('wallet not connected')) {
+        return 'Wallet not connected. Please connect your Backpack wallet.';
+    }
+
+    // Balance/SOL errors (be specific to avoid catching CU phrase)
+    if (
+        lower.includes('insufficient funds') ||
+        lower.includes('insufficient sol') ||
+        lower.includes('insufficient lamports')
+    ) {
+        return 'Insufficient SOL for transaction fees';
+    }
+
+    return `Transaction failed: ${raw}`;
 }
 
 /**
@@ -1449,27 +1508,46 @@ async function removeLiquidity() {
     }
     
     // ✅ CRITICAL VALIDATION: Check if pool has sufficient underlying liquidity
-    const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
-    const poolLiquidity = underlyingToken === 'TS' 
-        ? (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0)  // ✅ FIXED: TS liquidity is in token B
-        : (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0); // MST liquidity is in token A
-    
-    console.log(`🔍 LIQUIDITY VALIDATION: ${underlyingToken} pool liquidity = ${poolLiquidity}, withdrawal amount = ${amount}`);
-    
-    if (poolLiquidity === undefined || poolLiquidity === null || poolLiquidity <= 0) {
-        showStatus('error', `❌ Pool has no ${underlyingToken} liquidity! Cannot withdraw ${underlyingToken} tokens when the pool is empty.`);
-        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidity} ${underlyingToken}, cannot withdraw ${amount}`);
+    const underlyingMintForWithdraw = window.selectedLPToken.underlyingMint;
+    const tokenAMintForPool = poolData.tokenAMint || poolData.token_a_mint;
+    const tokenBMintForPool = poolData.tokenBMint || poolData.token_b_mint;
+
+    const isWithdrawUnderlyingA = underlyingMintForWithdraw === tokenAMintForPool;
+    const poolLiquidityBasisPointsForWithdraw = isWithdrawUnderlyingA
+        ? (poolData.total_token_a_liquidity || poolData.tokenALiquidity || 0)
+        : (poolData.total_token_b_liquidity || poolData.tokenBLiquidity || 0);
+
+    // Convert pool liquidity to display units using underlying token decimals
+    let underlyingWithdrawDecimals;
+    try {
+        underlyingWithdrawDecimals = await window.TokenDisplayUtils.getTokenDecimals(new solanaWeb3.PublicKey(underlyingMintForWithdraw), connection);
+    } catch (e) {
+        console.warn('⚠️ Failed to fetch underlying token decimals for withdraw, defaulting to 6:', e?.message);
+        underlyingWithdrawDecimals = 6;
+    }
+    const poolLiquidityDisplayForWithdraw = window.TokenDisplayUtils.basisPointsToDisplay(
+        poolLiquidityBasisPointsForWithdraw,
+        underlyingWithdrawDecimals
+    );
+
+    console.log(`🔍 LIQUIDITY VALIDATION: pool liquidity (display) = ${poolLiquidityDisplayForWithdraw}, withdrawal amount (LP display) = ${amount}`);
+
+    if (!poolLiquidityDisplayForWithdraw || poolLiquidityDisplayForWithdraw <= 0) {
+        showStatus('error', `❌ Pool has no underlying liquidity! Cannot withdraw when the pool is empty.`);
+        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidityDisplayForWithdraw}, cannot withdraw ${amount}`);
         return;
     }
-    
-    if (amount > poolLiquidity) {
-        showStatus('error', `❌ Pool has insufficient ${underlyingToken} liquidity! Pool has ${poolLiquidity.toLocaleString()} ${underlyingToken}, but you're trying to withdraw ${amount.toLocaleString()} ${underlyingToken}.`);
-        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidity} ${underlyingToken}, cannot withdraw ${amount}`);
+
+    if (amount > poolLiquidityDisplayForWithdraw) {
+        showStatus('error', `❌ Pool has insufficient underlying liquidity! Pool has ${poolLiquidityDisplayForWithdraw.toLocaleString()}, but you're trying to withdraw ${amount.toLocaleString()}.`);
+        console.error(`❌ INSUFFICIENT POOL LIQUIDITY: Pool has ${poolLiquidityDisplayForWithdraw}, cannot withdraw ${amount}`);
         return;
     }
     
     const removeBtn = document.getElementById('remove-liquidity-btn');
     const originalText = removeBtn.textContent;
+    // Make computeUnitsRemove available to both try/catch blocks
+    let computeUnitsRemove = 205_000; // default; adjust for testing as needed
     
     try {
         removeBtn.disabled = true;
@@ -1556,12 +1634,13 @@ async function removeLiquidity() {
         // Create transaction with compute budget
         const transaction = new solanaWeb3.Transaction();
         
-        // Add compute budget instruction to increase CU limit (security upgrades need ~400k CUs)
+        // Add compute budget instruction to increase CU limit
+        computeUnitsRemove = 290_000; // default; adjust for testing as needed
         const computeBudgetInstruction = solanaWeb3.ComputeBudgetProgram.setComputeUnitLimit({
-            units: 500000 // Increased for security upgrade compatibility (was 300k)
+            units: computeUnitsRemove
         });
         transaction.add(computeBudgetInstruction);
-        console.log('✅ Added compute budget instruction: 500,000 CUs');
+        console.log(`✅ Added compute budget instruction: ${computeUnitsRemove.toLocaleString()} CUs`);
         
         // Add create associated token account instruction if needed
         if (!outputAccountInfo) {
@@ -1672,7 +1751,9 @@ async function removeLiquidity() {
             if (simulation.value.err) {
                 console.log('❌ Simulation failed:', simulation.value.err);
                 console.log('📋 Simulation logs:', simulation.value.logs);
-                throw new Error(`Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`);
+                const cuHint = getComputeUnitErrorMessage(simulation.value.err, simulation.value.logs, computeUnitsRemove);
+                const baseMsg = `Transaction simulation failed: ${JSON.stringify(simulation.value.err)}`;
+                throw new Error(cuHint ? `${baseMsg}. ${cuHint}` : baseMsg);
             } else {
                 console.log('✅ Simulation successful!');
                 console.log('📋 Simulation logs:', simulation.value.logs);
@@ -1709,7 +1790,8 @@ async function removeLiquidity() {
         
     } catch (error) {
         console.error('❌ Error removing liquidity:', error);
-        showStatus('error', `Failed to remove liquidity: ${error.message}`);
+        const userMsg = buildUserFacingErrorMessage(error, computeUnitsRemove);
+        showStatus('error', `❌ ${userMsg}`);
     } finally {
         removeBtn.disabled = false;
         removeBtn.textContent = originalText;
@@ -1735,7 +1817,7 @@ function updateAddButton() {
 /**
  * Set maximum amount for liquidity operations
  */
-function setMaxAmount(operation) {
+async function setMaxAmount(operation) {
     try {
         if (operation === 'add') {
             // For adding liquidity, use the selected token's balance
@@ -1795,29 +1877,44 @@ function setMaxAmount(operation) {
             }
             
             // Check pool liquidity for the underlying token
-            const underlyingToken = window.selectedLPToken.underlyingToken; // 'TS' or 'MST'
-            
-            // Fix: Map underlying token to correct pool vault
-            // TS = Token B, MST = Token A (based on mint addresses)
-            const poolLiquidity = underlyingToken === 'TS' 
-                ? (poolData.tokenBLiquidity || poolData.total_token_b_liquidity || 0)
-                : (poolData.tokenALiquidity || poolData.total_token_a_liquidity || 0);
-            
-            console.log(`🔍 MAX CALCULATION: User LP balance = ${window.selectedLPToken.balance}, Pool ${underlyingToken} liquidity = ${poolLiquidity}`);
+            const underlyingMint = window.selectedLPToken.underlyingMint;
+            const tokenAMint = poolData.tokenAMint || poolData.token_a_mint;
+            const tokenBMint = poolData.tokenBMint || poolData.token_b_mint;
+
+            // Determine which side (A/B) the underlying token belongs to via mint
+            const isUnderlyingTokenA = underlyingMint === tokenAMint;
+
+            // Raw basis points from pool state
+            const poolLiquidityBasisPoints = isUnderlyingTokenA
+                ? (poolData.total_token_a_liquidity || poolData.tokenALiquidity || 0)
+                : (poolData.total_token_b_liquidity || poolData.tokenBLiquidity || 0);
+
+            // Convert pool liquidity to display units using underlying token decimals
+            let underlyingDecimals;
+            try {
+                underlyingDecimals = await window.TokenDisplayUtils.getTokenDecimals(new solanaWeb3.PublicKey(underlyingMint), connection);
+            } catch (e) {
+                console.warn('⚠️ Failed to fetch underlying token decimals, defaulting to 6:', e?.message);
+                underlyingDecimals = 6;
+            }
+
+            const poolLiquidityDisplay = window.TokenDisplayUtils.basisPointsToDisplay(poolLiquidityBasisPoints, underlyingDecimals);
+
+            console.log(`🔍 MAX CALCULATION: User LP balance = ${window.selectedLPToken.balance}, Pool liquidity (display) = ${poolLiquidityDisplay}`);
             
             // Max amount is limited by both user's LP tokens AND pool's underlying liquidity
             let maxAmount = window.selectedLPToken.balance;
             let limitReason = 'LP token balance';
             
-            if (poolLiquidity === undefined || poolLiquidity === null || poolLiquidity <= 0) {
-                showStatus('error', `❌ Cannot withdraw: Pool has no ${underlyingToken} liquidity!`);
-                console.error(`❌ POOL EMPTY: No ${underlyingToken} liquidity available for withdrawal`);
+            if (poolLiquidityDisplay === undefined || poolLiquidityDisplay === null || poolLiquidityDisplay <= 0) {
+                showStatus('error', `❌ Cannot withdraw: Pool has no underlying liquidity!`);
+                console.error('❌ POOL EMPTY: No underlying liquidity available for withdrawal');
                 return;
             }
             
-            if (poolLiquidity < maxAmount) {
-                maxAmount = poolLiquidity;
-                limitReason = `pool ${underlyingToken} liquidity`;
+            if (poolLiquidityDisplay < maxAmount) {
+                maxAmount = poolLiquidityDisplay;
+                limitReason = 'pool underlying liquidity';
             }
             
             const amountInput = document.getElementById('remove-liquidity-amount');

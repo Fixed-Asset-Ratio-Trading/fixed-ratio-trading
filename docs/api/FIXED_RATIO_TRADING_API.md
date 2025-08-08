@@ -92,8 +92,8 @@ Each function has specific Compute Unit requirements for successful execution. T
 | `process_system_pause` | 10,000 | 🟢 Low | Emergency system halt |
 | `process_system_unpause` | 15,000 | 🟢 Low | System recovery with penalty |
 | `process_pool_initialize` | **500,000** | 🔴 High | Dashboard tested: 500K CUs for security compatibility |
-| `process_liquidity_deposit` | **500,000** | 🔴 High | Dashboard tested: 500K CUs (was 300K, increased for security) |
-| `process_liquidity_withdraw` | **500,000** | 🔴 High | Dashboard tested: 500K CUs (was 300K, increased for security) |
+| `process_liquidity_deposit` | **310,000** | 🟡 Moderate | Dashboard tested: min observed 249K; dashboard sets 310K for safety margin. See dashboard/liquidity.js line 755 for current min. |
+| `process_liquidity_withdraw` | **290,000** | 🟡 Moderate | Dashboard tested: min observed 227K; dashboard sets 290K for safety margin. |
 | `process_swap_execute` | **250,000** | 🟡 Moderate | Dashboard tested: 250K CUs (was 200K baseline; 202K observed OK; 250K set as max for headroom) |
 | `process_swap_set_owner_only` | 15,000 | 🟢 Low | Flag update operation |
 
@@ -140,7 +140,7 @@ For `process_consolidate_pool_fees`: `Base_CUs = 4,000 + (pool_count × 5,000)`
 ### Developer Recommendations
 1. **Always allocate 10-20% buffer** above listed values for network conditions
 2. **Use dynamic CU limits** for consolidation based on pool count
-3. **🔴 High CU Operations**: Pool creation (500K), liquidity ops (500K) are complex multi-step operations. **Swaps now 250K (🟡 Moderate)** based on production dashboard testing with headroom over 202K observed usage.
+3. **🔴 High CU Operations**: Pool creation (500K) remains high. **Liquidity ops now 310K (🟡 Moderate)** with 249K observed minimum for deposits; **Swaps 250K (🟡 Moderate)** based on testing.
 4. **Security Compatibility**: Dashboard values increased for security upgrade compatibility - use these production-tested values
 5. **Dynamic Donation CUs**: `process_treasury_donate_sol` requires variable CUs based on amount (5K-120K CUs)
 6. **Batch operations** when possible to optimize CU usage per transaction
@@ -717,7 +717,7 @@ Adds liquidity to a pool by depositing a single token type and minting correspon
 
 **Authority:** Any user  
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
-**Compute Units:** 500,000 CUs maximum (Dashboard: increased from 300K for security compatibility)
+**Compute Units:** 310,000 CUs maximum (Dashboard: min observed 249K; set 310K for safety margin)
 
 #### Parameters
 ```rust
@@ -786,7 +786,7 @@ If you deposited 100 SOL and received 100 Token A LP tokens:
 
 **Authority:** LP token holder  
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
-**Compute Units:** 500,000 CUs maximum (Dashboard: increased from 300K for security compatibility)
+**Compute Units:** 290,000 CUs maximum (Dashboard: min observed 227K; set 290K for safety margin)
 
 #### Parameters
 ```rust
