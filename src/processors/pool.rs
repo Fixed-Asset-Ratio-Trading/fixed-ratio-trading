@@ -10,7 +10,7 @@ use crate::{
     utils::{
         serialization::serialize_to_account, 
         validation::{
-            check_one_to_many_ratio,
+            get_ratio_type,
             validate_and_deserialize_pool_state_secure,
             validate_signer,
         }
@@ -549,18 +549,21 @@ pub fn process_pool_initialize(
         (token_b_decimals_v2, token_a_decimals_v2)
     };
 
-    // ✅ ONE-TO-MANY RATIO FLAG: Determine if this pool qualifies for the one-to-many ratio flag
-    // This flag is set when one or both tokens have a ratio value of exactly 1 (whole token)
-    // and both ratios represent whole numbers only (no fractional amounts)
+    // ✅ RATIO TYPE CLASSIFICATION: Determine the type of ratio for this pool
+    // This classifies the ratio into SimpleRatio, DecimalRatio, or EngineeringRatio
+    // based on whether values are whole numbers and if one equals exactly 1.0
     
     // 🔧 BASIS POINTS REFACTOR: Input ratios are already in basis points (client responsibility)
     // Contract fetches decimals for validation only, no conversion needed
-    let is_one_to_many_ratio = check_one_to_many_ratio(
+    let ratio_type = get_ratio_type(
         ratio_a_numerator,     // Already in basis points
         ratio_b_denominator,   // Already in basis points
         ratio_a_decimals,      // Correct decimals for ratio A after normalization
         ratio_b_decimals       // Correct decimals for ratio B after normalization
     );
+    
+    // Log the ratio type for debugging
+    msg!("📊 Pool ratio classified as: {}", ratio_type);
 
     // ✅ POOL STATE: Create pool state with comprehensive configuration
     let pool_state = PoolState {
@@ -580,8 +583,9 @@ pub fn process_pool_initialize(
         token_b_vault_bump_seed,
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
-        flags: if is_one_to_many_ratio { 
-            crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO 
+        // Set the simple ratio flag only for SimpleRatio type
+        flags: if ratio_type == crate::types::RatioType::SimpleRatio { 
+            crate::constants::POOL_FLAG_SIMPLE_RATIO 
         } else { 
             0 
         },
@@ -618,8 +622,8 @@ pub fn process_pool_initialize(
     serialize_to_account(&pool_state, pool_state_pda)?;
     
     // ✅ POOL ID: Emit the unique pool identifier for easy client parsing
-    msg!("🎯 POOL_ID: {} | Ratio: {}:{} | OneToMany: {}", 
-         pool_state_pda.key, ratio_a_numerator, ratio_b_denominator, is_one_to_many_ratio);
+    msg!("🎯 POOL_ID: {} | Ratio: {}:{} | Type: {}", 
+         pool_state_pda.key, ratio_a_numerator, ratio_b_denominator, ratio_type.short_name());
     
     Ok(())
 }

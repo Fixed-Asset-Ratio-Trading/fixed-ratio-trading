@@ -4,7 +4,9 @@
 
 pub mod instructions;
 pub mod errors;
+pub mod ratio;
 
 // Re-export all types for easy access
 pub use instructions::*;
-pub use errors::*; 
+pub use errors::*;
+pub use ratio::*; 

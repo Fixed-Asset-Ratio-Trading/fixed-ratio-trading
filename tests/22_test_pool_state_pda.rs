@@ -659,7 +659,7 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     
     // Flag Verification
     const EXPECT_FLAG_TO_BE_SET: bool = true; // Should the one-to-many flag be set?
-    const FLAG_CONSTANT_VALUE: u8 = 1;        // POOL_FLAG_ONE_TO_MANY_RATIO value
+    const FLAG_CONSTANT_VALUE: u8 = 1;        // POOL_FLAG_SIMPLE_RATIO value
     
     // ============================================================================
     // 🧪 TEST SETUP AND EXECUTION
@@ -669,7 +669,7 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     println!("==================================================");
     println!("🎯 PURPOSE: Test that the one-to-many ratio flag is correctly set and persisted");
     println!("🔍 SCENARIO: Creating a pool with 1:160 ratio (1 SOL = 160 USDT)");
-    println!("✅ EXPECTED: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for this ratio");
+    println!("✅ EXPECTED: POOL_FLAG_SIMPLE_RATIO should be SET for this ratio");
     
     println!("\n📋 TOKEN CONFIGURATION:");
     println!("   • Token A (SOL-like): {} decimals", TOKEN_A_DECIMALS);
@@ -695,7 +695,7 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     let _ = env_logger::try_init(); // Use try_init to avoid panic if already initialized
     
     use crate::common::*;
-    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::constants::POOL_FLAG_SIMPLE_RATIO;
     use solana_sdk::signer::keypair::Keypair;
     
     // Setup test environment
@@ -755,7 +755,7 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
     println!("     - Token A: {} basis points", normalized_token_a_basis_points);
     println!("     - Token B: {} basis points", normalized_token_b_basis_points);
     
-    println!("   Creating pool with {}:{} ratio ({} Token A = {} Token B) - should set POOL_FLAG_ONE_TO_MANY_RATIO flag", 
+    println!("   Creating pool with {}:{} ratio ({} Token A = {} Token B) - should set POOL_FLAG_SIMPLE_RATIO flag", 
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64,
              TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
     
@@ -801,12 +801,12 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
                 println!("   Token B match: {}", pool_state.ratio_b_denominator == normalized_token_b_basis_points);
                 
                 // **CRITICAL CHECK: Verify the flag is set correctly**
-                let flag_is_set = (pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0;
+                let flag_is_set = (pool_state.flags & POOL_FLAG_SIMPLE_RATIO) != 0;
                 
                 println!("\n🎯 FLAG VERIFICATION:");
                 println!("   Expected flag to be set: {}", EXPECT_FLAG_TO_BE_SET);
                 println!("   Flag actually set: {}", flag_is_set);
-                println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
+                println!("   POOL_FLAG_SIMPLE_RATIO constant: 0b{:08b} ({})", POOL_FLAG_SIMPLE_RATIO, POOL_FLAG_SIMPLE_RATIO);
                 
                 // Verify basis points conversion first
                 assert_eq!(pool_state.ratio_a_numerator, normalized_token_a_basis_points, 
@@ -818,11 +818,11 @@ async fn test_pool_flag_persistence_immediate_verification() -> Result<(), Box<d
                 
                 // Then verify flag setting
                 if EXPECT_FLAG_TO_BE_SET {
-                    assert!(flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should be SET for {}:{} ratio but is NOT SET!", 
+                    assert!(flag_is_set, "❌ BUG FOUND: POOL_FLAG_SIMPLE_RATIO should be SET for {}:{} ratio but is NOT SET!", 
                         TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
                     println!("✅ SUCCESS: Flag is correctly SET as expected");
                 } else {
-                    assert!(!flag_is_set, "❌ BUG FOUND: POOL_FLAG_ONE_TO_MANY_RATIO should NOT be SET for {}:{} ratio but IS SET!", 
+                    assert!(!flag_is_set, "❌ BUG FOUND: POOL_FLAG_SIMPLE_RATIO should NOT be SET for {}:{} ratio but IS SET!", 
                         TOKEN_A_RATIO_DISPLAY as u64, TOKEN_B_RATIO_DISPLAY as u64);
                     println!("✅ SUCCESS: Flag is correctly NOT SET as expected");
                 }
@@ -852,7 +852,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     println!("🧪 SERIALIZATION METHOD COMPARISON TEST");
     println!("=====================================");
     
-    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::constants::POOL_FLAG_SIMPLE_RATIO;
     use fixed_ratio_trading::PoolState;
 
     use borsh::{BorshSerialize, BorshDeserialize};
@@ -876,7 +876,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
         token_b_vault_bump_seed: 253,
         lp_token_a_mint_bump_seed: 252,
         lp_token_b_mint_bump_seed: 251,
-        flags: POOL_FLAG_ONE_TO_MANY_RATIO, // Set the flag
+        flags: POOL_FLAG_SIMPLE_RATIO, // Set the flag
         contract_liquidity_fee: 0,
         swap_contract_fee: 0,
         collected_fees_token_a: 0,
@@ -900,7 +900,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     
     println!("📊 Original PoolState:");
     println!("   Flags: 0b{:08b} ({})", test_pool_state.flags, test_pool_state.flags);
-    println!("   Flag set: {}", (test_pool_state.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    println!("   Flag set: {}", (test_pool_state.flags & POOL_FLAG_SIMPLE_RATIO) != 0);
     
     // **METHOD 1: serialize() + Vec**
     println!("\n🔍 METHOD 1: serialize() + Vec (used by serialize_to_account, liquidity, swap)");
@@ -911,7 +911,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     // Deserialize back
     let deserialized_method1 = PoolState::try_from_slice(&serialized_method1)?;
     println!("   Deserialized flags: 0b{:08b} ({})", deserialized_method1.flags, deserialized_method1.flags);
-    println!("   Flag preserved: {}", (deserialized_method1.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    println!("   Flag preserved: {}", (deserialized_method1.flags & POOL_FLAG_SIMPLE_RATIO) != 0);
     
     // **METHOD 2: try_to_vec()**
     println!("\n🔍 METHOD 2: try_to_vec() (used by pool_management, fee_validation)");
@@ -921,7 +921,7 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     // Deserialize back
     let deserialized_method2 = PoolState::try_from_slice(&serialized_method2)?;
     println!("   Deserialized flags: 0b{:08b} ({})", deserialized_method2.flags, deserialized_method2.flags);
-    println!("   Flag preserved: {}", (deserialized_method2.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    println!("   Flag preserved: {}", (deserialized_method2.flags & POOL_FLAG_SIMPLE_RATIO) != 0);
     
     // **COMPARISON**
     println!("\n🎯 COMPARISON RESULTS:");
@@ -966,8 +966,8 @@ async fn test_serialization_method_comparison() -> Result<(), Box<dyn std::error
     // **ASSERTIONS**
     assert_eq!(serialized_method1, serialized_method2, "Serialization methods should produce identical byte sequences");
     assert_eq!(deserialized_method1.flags, deserialized_method2.flags, "Flag values should match between methods");
-    assert!((deserialized_method1.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0, "Flag should be preserved in method 1");
-    assert!((deserialized_method2.flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0, "Flag should be preserved in method 2");
+    assert!((deserialized_method1.flags & POOL_FLAG_SIMPLE_RATIO) != 0, "Flag should be preserved in method 1");
+    assert!((deserialized_method2.flags & POOL_FLAG_SIMPLE_RATIO) != 0, "Flag should be preserved in method 2");
     
     println!("\n✅ SERIALIZATION COMPARISON COMPLETED SUCCESSFULLY!");
     println!("Both methods are equivalent and preserve all data correctly.");
@@ -980,29 +980,29 @@ async fn test_flag_bit_manipulation_standalone() -> Result<(), Box<dyn std::erro
     println!("🧪 STANDALONE FLAG BIT MANIPULATION TEST");
     println!("======================================");
     
-    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::constants::POOL_FLAG_SIMPLE_RATIO;
     use borsh::{BorshSerialize, BorshDeserialize};
     
     println!("🔍 Testing flag bit operations...");
-    println!("   POOL_FLAG_ONE_TO_MANY_RATIO constant: 0b{:08b} ({})", POOL_FLAG_ONE_TO_MANY_RATIO, POOL_FLAG_ONE_TO_MANY_RATIO);
+    println!("   POOL_FLAG_SIMPLE_RATIO constant: 0b{:08b} ({})", POOL_FLAG_SIMPLE_RATIO, POOL_FLAG_SIMPLE_RATIO);
     
     // Test setting the flag
     let mut flags: u8 = 0;
     println!("   Initial flags: 0b{:08b} ({})", flags, flags);
     
     // Set the flag
-    flags |= POOL_FLAG_ONE_TO_MANY_RATIO;
+    flags |= POOL_FLAG_SIMPLE_RATIO;
     println!("   After setting flag: 0b{:08b} ({})", flags, flags);
-    println!("   Flag is set: {}", (flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    println!("   Flag is set: {}", (flags & POOL_FLAG_SIMPLE_RATIO) != 0);
     
     // Test clearing the flag
-    flags &= !POOL_FLAG_ONE_TO_MANY_RATIO;
+    flags &= !POOL_FLAG_SIMPLE_RATIO;
     println!("   After clearing flag: 0b{:08b} ({})", flags, flags);
-    println!("   Flag is set: {}", (flags & POOL_FLAG_ONE_TO_MANY_RATIO) != 0);
+    println!("   Flag is set: {}", (flags & POOL_FLAG_SIMPLE_RATIO) != 0);
     
     // Test serialization of just the flag value
     println!("\n🔍 Testing flag serialization...");
-    let flag_value = POOL_FLAG_ONE_TO_MANY_RATIO;
+    let flag_value = POOL_FLAG_SIMPLE_RATIO;
     
     // Method 1: serialize
     let mut serialized_flag1 = Vec::new();
@@ -1022,8 +1022,8 @@ async fn test_flag_bit_manipulation_standalone() -> Result<(), Box<dyn std::erro
     println!("   Deserialized flag 1: {}", deserialized_flag1);
     println!("   Deserialized flag 2: {}", deserialized_flag2);
     
-    assert_eq!(deserialized_flag1, POOL_FLAG_ONE_TO_MANY_RATIO);
-    assert_eq!(deserialized_flag2, POOL_FLAG_ONE_TO_MANY_RATIO);
+    assert_eq!(deserialized_flag1, POOL_FLAG_SIMPLE_RATIO);
+    assert_eq!(deserialized_flag2, POOL_FLAG_SIMPLE_RATIO);
     assert_eq!(deserialized_flag1, deserialized_flag2);
     
     println!("✅ FLAG MANIPULATION TEST COMPLETED SUCCESSFULLY!");

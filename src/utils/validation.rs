@@ -306,37 +306,29 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
     Ok(())
 }
 
-/// **BASIS POINTS REFACTOR: One-to-Many Ratio Validation**
+/// **BASIS POINTS REFACTOR: Ratio Type Classification**
 /// 
-/// Validates if a pool qualifies for the POOL_FLAG_ONE_TO_MANY_RATIO based on specific criteria:
-/// * Both ratios must represent whole numbers when converted to display units
-/// * One of the ratios must equal exactly 1.0 in display units (representing 1 whole token, not fractional)
-/// * The corresponding token(s) must have whole number values only (no fractional amounts)
-/// * Both ratios must be positive (greater than zero)
+/// Classifies pool ratios into three categories based on their numeric characteristics:
+/// * SimpleRatio: One side equals 1.0 and both sides are whole numbers (e.g., 1:2, 1:100, 50:1)
+/// * DecimalRatio: One side equals 1.0 but the other side has decimal places
+/// * EngineeringRatio: Neither side equals 1.0 or both sides have decimal values
 ///
 /// **Technical Implementation**:
-/// 1. Validates both ratios represent whole numbers (no fractional parts in display units)
-/// 2. Ensures both ratios are positive
-/// 3. Checks if one of the ratios equals exactly 1.0 in display units
+/// 1. Converts basis points to display units using token decimals
+/// 2. Checks if values are whole numbers or have fractional parts
+/// 3. Determines if either value equals exactly 1.0
+/// 4. Classifies based on these characteristics
 ///
-/// **Valid Examples** (returns true):
-/// * ✅ 1 SOL = 160 USDT (1.0 * 10^9 basis points, 160.0 * 10^6 basis points)
-/// * ✅ 1000 DOGE = 1 USDC (1000.0 * 10^8 basis points, 1.0 * 10^6 basis points)
-/// * ✅ 1 BTC = 50000 USDT (1.0 * 10^8 basis points, 50000.0 * 10^6 basis points)
+/// **Examples**:
+/// * SimpleRatio: 1:2, 1:100, 1000:1, 1:50 (whole numbers, one side = 1)
+/// * DecimalRatio: 1:100.24343, 1:0.5, 1:1234.56789 (one side = 1, decimals allowed)
+/// * EngineeringRatio: 223.34984:10.2345, 0.5:0.3, 2.5:3.7 (arbitrary decimals)
 ///
-/// **Invalid Examples** (returns false):
-/// * ❌ 1 SOL = 160.55 USDT (fractional value violates whole-number requirement)
-/// * ❌ 0.5 BTC = 1 ETH (fractional value violates whole-number requirement)
-/// * ❌ 2 TokenA = 3 TokenB (neither token equals exactly 1)
-/// * ❌ 2.5 TokenA = 3.7 TokenB (fractional values violate whole-number requirement)
-///
-/// **Application Purpose**: This flag serves as a filtering mechanism for applications
-/// that specifically target pools with these whole-number ratios. Other applications
-/// remain free to implement different ratio types as needed.
+/// **Application Purpose**: This classification helps applications filter and display
+/// pools based on their ratio complexity, enabling better UX for different use cases.
 ///
 /// **Usage in Pool Creation**: This function is called during pool creation in
-/// `process_initialize_pool()` to automatically set the POOL_FLAG_ONE_TO_MANY_RATIO
-/// flag based on the provided token ratios and their decimal configurations.
+/// `process_initialize_pool()` to classify the pool ratio type for future reference.
 ///
 /// # Arguments
 /// * `ratio_a_basis_points` - Token A ratio in basis points (client-converted)
@@ -345,40 +337,51 @@ pub fn validate_ratio_values(ratio_a_numerator: u64, ratio_b_denominator: u64) -
 /// * `token_b_decimals` - Number of decimal places for token B (used for display conversion)
 ///
 /// # Returns
-/// * `bool` - true if the pool qualifies for POOL_FLAG_ONE_TO_MANY_RATIO, false otherwise
+/// * `RatioType` - The classification of the ratio
 ///
 /// # Examples
 /// ```
-/// use fixed_ratio_trading::utils::validation::check_one_to_many_ratio;
+/// use fixed_ratio_trading::utils::validation::get_ratio_type;
+/// use fixed_ratio_trading::types::RatioType;
 /// 
-/// // ✅ Valid: 1 SOL = 2 USDC (SOL: 9 decimals, USDC: 6 decimals)
-/// let is_one_to_many = check_one_to_many_ratio(
+/// // SimpleRatio: 1 SOL = 2 USDC (both whole numbers, one = 1)
+/// let ratio_type = get_ratio_type(
 ///     1_000_000_000,  // 1.0 SOL in basis points
 ///     2_000_000,      // 2.0 USDC in basis points
 ///     9,              // SOL decimals
 ///     6               // USDC decimals
-/// ); // Returns true - one token equals 1, both are whole numbers
-/// assert!(is_one_to_many);
+/// );
+/// assert_eq!(ratio_type, RatioType::SimpleRatio);
 /// 
-/// // ❌ Invalid: 1 BTC = 1.01 USDT (BTC: 8 decimals, USDT: 6 decimals)
-/// let is_one_to_many = check_one_to_many_ratio(
+/// // DecimalRatio: 1 BTC = 1.01 USDT (one = 1, other has decimals)
+/// let ratio_type = get_ratio_type(
 ///     100_000_000,    // 1.0 BTC in basis points
 ///     1_010_000,      // 1.01 USDT in basis points
 ///     8,              // BTC decimals
 ///     6               // USDT decimals
-/// ); // Returns false - 1.01 USDT is not a whole number
-/// assert!(!is_one_to_many);
+/// );
+/// assert_eq!(ratio_type, RatioType::DecimalRatio);
+/// 
+/// // EngineeringRatio: 2.5 TokenA = 3.7 TokenB (neither = 1, both have decimals)
+/// let ratio_type = get_ratio_type(
+///     2_500_000_000,  // 2.5 TokenA in basis points
+///     3_700_000,      // 3.7 TokenB in basis points
+///     9,              // TokenA decimals
+///     6               // TokenB decimals
+/// );
+/// assert_eq!(ratio_type, RatioType::EngineeringRatio);
 /// ```
-pub fn check_one_to_many_ratio(
+pub fn get_ratio_type(
     ratio_a_basis_points: u64,
     ratio_b_basis_points: u64, 
     token_a_decimals: u8,
     token_b_decimals: u8
-) -> bool {
+) -> crate::types::RatioType {
     // ✅ ENHANCED DEBUG LOGGING: Step-by-step tracing
     use solana_program::msg;
+    use crate::types::RatioType;
     
-    msg!("🔍 BASIS POINTS REFACTOR: Entering check_one_to_many_ratio");
+    msg!("🔍 BASIS POINTS REFACTOR: Entering get_ratio_type");
     msg!("  Input: ratio_a_basis_points={}, ratio_b_basis_points={}", ratio_a_basis_points, ratio_b_basis_points);
     msg!("  Input: token_a_decimals={}, token_b_decimals={}", token_a_decimals, token_b_decimals);
     
@@ -405,26 +408,39 @@ pub fn check_one_to_many_ratio(
     msg!("  display_ratio_a: {} ({} / {})", display_ratio_a, ratio_a_basis_points, token_a_factor);
     msg!("  display_ratio_b: {} ({} / {})", display_ratio_b, ratio_b_basis_points, token_b_factor);
     
-    // Check if both are greater than zero, whole numbers, and one equals exactly 1
-    let both_positive = display_ratio_a > 0 && display_ratio_b > 0;
-    let one_equals_one = display_ratio_a == 1 || display_ratio_b == 1;
+    // Check if either value equals exactly 1
+    let a_equals_one = display_ratio_a == 1;
+    let b_equals_one = display_ratio_b == 1;
+    let one_equals_one = a_equals_one || b_equals_one;
     
-    msg!("🔍 Step 4: Checking final conditions");
-    msg!("  both_positive: {} ({} > 0 && {} > 0)", both_positive, display_ratio_a, display_ratio_b);
-    msg!("  one_equals_one: {} ({} == 1 || {} == 1)", one_equals_one, display_ratio_a, display_ratio_b);
+    msg!("🔍 Step 4: Checking if either side equals 1");
+    msg!("  a_equals_one: {} (display_ratio_a == 1)", a_equals_one);
+    msg!("  b_equals_one: {} (display_ratio_b == 1)", b_equals_one);
+    msg!("  one_equals_one: {} (a_equals_one || b_equals_one)", one_equals_one);
     
-    let final_result = a_is_whole && b_is_whole && both_positive && one_equals_one;
+    // Determine ratio type based on characteristics
+    let ratio_type = if one_equals_one {
+        if a_is_whole && b_is_whole {
+            // Both whole numbers and one equals 1: SimpleRatio
+            RatioType::SimpleRatio
+        } else {
+            // One equals 1 but at least one has decimals: DecimalRatio
+            RatioType::DecimalRatio
+        }
+    } else {
+        // Neither equals 1: EngineeringRatio
+        RatioType::EngineeringRatio
+    };
     
-    msg!("🔍 Step 5: Final calculation");
+    msg!("🔍 Step 5: Final classification");
     msg!("  a_is_whole: {}", a_is_whole);
     msg!("  b_is_whole: {}", b_is_whole);
-    msg!("  both_positive: {}", both_positive);
     msg!("  one_equals_one: {}", one_equals_one);
-    msg!("  final_result: {} (a_is_whole && b_is_whole && both_positive && one_equals_one)", final_result);
+    msg!("  ratio_type: {:?}", ratio_type);
     
-    msg!("🔍 BASIS POINTS REFACTOR: Exiting check_one_to_many_ratio with result: {}", final_result);
+    msg!("🔍 BASIS POINTS REFACTOR: Exiting get_ratio_type with type: {}", ratio_type.short_name());
     
-    final_result
+    ratio_type
 } 
 
 /// **NEW: Secure system state validation**

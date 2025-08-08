@@ -5,21 +5,22 @@
 #![allow(unused_assignments)]
 #![allow(unused_results)]
 
-//! Tests for the one-to-many ratio detection functionality
+//! Tests for the simple ratio detection functionality
 //!
 //! **BASIS POINTS REFACTOR: Updated Test Suite**
 //! 
-//! These tests now work with the basis points architecture where:
+//! These tests verify that simple ratios (1:2, 1:100, etc.) are correctly identified.
+//! Simple ratios have one side equal to 1 and both sides are whole numbers.
 //! - Pool creation expects basis point ratios (client converts display units)
-//! - One-to-many validation works on basis point values
+//! - Simple ratio validation works on basis point values
 //! - Tests verify correct flag setting based on display unit patterns
 
 mod common;
 
 use fixed_ratio_trading::{
-    constants::POOL_FLAG_ONE_TO_MANY_RATIO,
+    constants::POOL_FLAG_SIMPLE_RATIO,
     state::PoolState,
-    utils::validation::check_one_to_many_ratio,
+    utils::validation::get_ratio_type,
 };
 use spl_token::state::Mint;
 use solana_program_test::*;
@@ -156,14 +157,14 @@ async fn create_pool_with_display_ratios(
 mod integration_tests {
     use super::*;
     use crate::common::*;
-    use fixed_ratio_trading::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+    use fixed_ratio_trading::constants::POOL_FLAG_SIMPLE_RATIO;
     use solana_sdk::signer::keypair::Keypair;
     use serial_test::serial;
 
     #[tokio::test]
     #[serial]
-    async fn test_one_to_many_flag_comprehensive() -> Result<(), Box<dyn std::error::Error>> {
-        println!("🧪 Testing POOL_FLAG_ONE_TO_MANY_RATIO with BASIS POINTS REFACTOR...");
+    async fn test_simple_ratio_flag_comprehensive() -> Result<(), Box<dyn std::error::Error>> {
+        println!("🧪 Testing POOL_FLAG_SIMPLE_RATIO with BASIS POINTS REFACTOR...");
         
         // Setup test environment
         let test_env = start_test_environment().await;
@@ -175,8 +176,8 @@ mod integration_tests {
         initialize_treasury_system(&mut banks_client, &funder, recent_blockhash, &funder).await?;
         println!("✅ Treasury system initialized");
 
-        // Test Case 1: 1.0 SOL = 160.0 USDT (flag should be SET)
-        println!("\n🎯 TEST CASE 1: 1.0 SOL = 160.0 USDT (flag should be SET)");
+        // Test Case 1: 1:160 ratio (simple ratio - flag should be SET)
+        println!("\n🎯 TEST CASE 1: 1:160 ratio (1 SOL = 160 USDT - simple ratio)");
         let sol_mint = Keypair::new();
         let usdt_mint = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &sol_mint, Some(9)).await?;
@@ -206,11 +207,11 @@ mod integration_tests {
         println!("   • One-to-many flag set: {}", pool_1_state.one_to_many_ratio());
         
         assert!(pool_1_state.one_to_many_ratio(), 
-            "1.0 SOL = 160.0 USDT ratio should set the flag (one side equals 1 whole token)");
-        println!("✅ Pool 1 (1.0 SOL = 160.0 USDT) - Flag correctly SET");
+            "1:160 simple ratio should set the flag (one side equals 1 whole token)");
+        println!("✅ Pool 1 (1:160 simple ratio) - Flag correctly SET");
 
-        // Test Case 2: 2.0 TokenA = 3.0 TokenB (flag should NOT be set)
-        println!("\n🎯 TEST CASE 2: 2.0 TokenA = 3.0 TokenB (flag should NOT be set)");
+        // Test Case 2: 2:3 ratio (engineering ratio - flag should NOT be set)
+        println!("\n🎯 TEST CASE 2: 2:3 ratio (engineering ratio - neither side is 1)");
         let token_a = Keypair::new();
         let token_b = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &token_a, Some(6)).await?;
@@ -235,8 +236,8 @@ mod integration_tests {
             "2.0:3.0 ratio should NOT set the flag (neither side equals 1)");
         println!("✅ Pool 2 (2.0:3.0) - Flag correctly NOT SET");
 
-        // Test Case 3: 1000.0 DOGE = 1.0 USDC (flag should be SET)
-        println!("\n🎯 TEST CASE 3: 1000.0 DOGE = 1.0 USDC (flag should be SET)");
+        // Test Case 3: 1000:1 ratio (simple ratio - flag should be SET)
+        println!("\n🎯 TEST CASE 3: 1000:1 ratio (1000 DOGE = 1 USDC - simple ratio)");
         let doge_mint = Keypair::new();
         let usdc_mint = Keypair::new();
         create_mint(&mut banks_client, &funder, recent_blockhash, &doge_mint, Some(8)).await?;
@@ -329,15 +330,15 @@ mod integration_tests {
             "1.0 BTC = 50000.0 USDT ratio should set the flag (BTC side equals 1)");
         println!("✅ Pool 5 (1.0 BTC = 50000.0 USDT) - Flag correctly SET");
 
-        println!("\n🎉 COMPREHENSIVE BASIS POINTS TEST COMPLETED SUCCESSFULLY!");
+        println!("\n🎉 SIMPLE RATIO TEST COMPLETED SUCCESSFULLY!");
         println!("====================================================================");
-        println!("✅ VERIFIED ON BLOCKCHAIN (BASIS POINTS REFACTOR):");
-        println!("   • 1.0 SOL = 160.0 USDT - Flag SET ✓ (SOL side = 1)");
-        println!("   • 2.0:3.0 ratio - Flag NOT SET ✓ (neither = 1)");
-        println!("   • 1000.0 DOGE = 1.0 USDC - Flag SET ✓ (USDC side = 1)");
-        println!("   • 5.0:7.0 ratio - Flag NOT SET ✓ (neither = 1)");
-        println!("   • 1.0 BTC = 50000.0 USDT - Flag SET ✓ (BTC side = 1)");
-        println!("🔧 All ratios converted from display units to basis points correctly!");
+        println!("✅ VERIFIED SIMPLE RATIO DETECTION:");
+        println!("   • 1:160 ratio - Flag SET ✓ (simple ratio)");
+        println!("   • 2:3 ratio - Flag NOT SET ✓ (engineering ratio)");
+        println!("   • 1000:1 ratio - Flag SET ✓ (simple ratio)");
+        println!("   • 5:7 ratio - Flag NOT SET ✓ (engineering ratio)");
+        println!("   • 1:50000 ratio - Flag SET ✓ (simple ratio)");
+        println!("🔧 Simple ratios have one side = 1 and both sides are whole numbers!");
         println!("====================================================================");
 
         Ok(())

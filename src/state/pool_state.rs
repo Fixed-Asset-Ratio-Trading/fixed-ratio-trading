@@ -245,13 +245,13 @@ impl PoolState {
     /// target whole-number ratio patterns, while other applications remain free to
     /// implement different ratio types as needed.
     pub fn one_to_many_ratio(&self) -> bool {
-        self.flags & crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO != 0
+        self.flags & crate::constants::POOL_FLAG_SIMPLE_RATIO != 0
     }
     
-    /// Sets or clears the one-to-many ratio flag
+    /// Sets or clears the simple ratio flag
     /// 
     /// **Important**: This flag should only be set during pool creation based on the
-    /// `check_one_to_many_ratio()` validation function. Manual modification after pool
+    /// `get_ratio_type()` validation function. Manual modification after pool
     /// creation is not recommended as it may create inconsistencies.
     /// 
     /// **Technical Note**: The flag is determined by analyzing token decimals and ratios
@@ -261,9 +261,9 @@ impl PoolState {
     /// * `value` - true to set the flag, false to clear it
     pub fn set_one_to_many_ratio(&mut self, value: bool) {
         if value {
-            self.flags |= crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+            self.flags |= crate::constants::POOL_FLAG_SIMPLE_RATIO;
         } else {
-            self.flags &= !crate::constants::POOL_FLAG_ONE_TO_MANY_RATIO;
+            self.flags &= !crate::constants::POOL_FLAG_SIMPLE_RATIO;
         }
     }
     
