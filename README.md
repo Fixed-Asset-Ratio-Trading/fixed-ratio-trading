@@ -1,5 +1,8 @@
 # Fixed Ratio Trading Protocol
 
+v0.15.1050 
+Aug 8, 2025 5:18PM
+
 **Revolutionary fixed-ratio token trading infrastructure for Solana - enabling predictable exchanges, micro-denominations, token migrations, and precise liquidity provision at any price point.**
 
 ---
