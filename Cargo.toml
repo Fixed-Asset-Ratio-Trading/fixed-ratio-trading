@@ -16,15 +16,15 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
-default = ["devnet"]
+default = ["localnet"]
 test-bpf = []
 custom-heap = []
 custom-panic = []
 hft-debug-logs = []  # Enable minimal debug logging for HFT optimized functions
 
 # Network-specific features - mutually exclusive
+localnet = []  # LocalNet deployment
 devnet = []  # DevNet deployment
-testnet = []  # TestNet deployment
 mainnet = []  # MainNet deployment
 
 [dependencies]

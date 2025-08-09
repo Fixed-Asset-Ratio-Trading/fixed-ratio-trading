@@ -96,18 +96,18 @@ use solana_program::entrypoint;
 
 // ⚠️ IMPORTANT: When changing the program ID, also update PROGRAM_AUTHORITY in constants.rs
 // Network-specific program IDs using conditional compilation
-#[cfg(feature = "devnet")]
-declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"); // DevNet Program ID
+#[cfg(feature = "localnet")]
+declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"); // LocalNet Program ID
 
-#[cfg(feature = "testnet")]
-declare_id!("9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7"); // TestNet Program ID
+#[cfg(feature = "devnet")]
+declare_id!("9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7"); // DevNet Program ID
 
 #[cfg(feature = "mainnet")]
 declare_id!("quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"); // MainNet Program ID
 
-// Default to DevNet if no network is specified (shouldn't happen with default=["devnet"])
-#[cfg(not(any(feature = "devnet", feature = "testnet", feature = "mainnet")))]
-declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"); // Default to DevNet
+// Default to LocalNet if no network is specified (shouldn't happen with default=["localnet"])
+#[cfg(not(any(feature = "localnet", feature = "devnet", feature = "mainnet")))]
+declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"); // Default to LocalNet
 
 // Declare the entrypoint
 #[cfg(all(not(feature = "no-entrypoint"), target_os = "solana"))]
