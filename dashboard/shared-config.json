@@ -1,7 +1,7 @@
 {
   "solana": {
-    "rpcUrl": "http://localhost:8899",
-    "wsUrl": "ws://localhost:8900",
+    "rpcUrl": "http://192.168.2.88:8899",
+    "wsUrl": "ws://192.168.2.88:8900",
     "commitment": "confirmed",
     "disableRetryOnRateLimit": true
   },
@@ -10,8 +10,12 @@
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {
-    "tokenMetadataProgramId": "1i2iQhNTUzvq9S11aYAAMnu7NjJjK5gPsVL3cevGGja",
-    "lastUpdated": "2025-08-09"
+    "tokenMetadataProgramId": "HK2G5hbxGU1iE7VbcT5qoWWkNX9AYpwrXKSi3WCg5YzZ",
+    "candyMachineProgramId": "EzqzGLSEmahbgjTpei6ZfLarjNVFyDJbv6CpTxJFC2Rz",
+    "auctionHouseProgramId": "9kTpk4N2GdCahXkAaV2gxvjH9UeKVktfrPXTTDaKce8P",
+    "lastUpdated": "2025-08-09",
+    "deploymentType": "remote",
+    "remoteRpcUrl": "http://192.168.2.88:8899"
   },
   "wallets": {
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
@@ -21,6 +25,6 @@
     "stateFile": "state.json"
   },
   "version": "1.0.0",
-  "lastUpdated": "2024-01-15",
+  "lastUpdated": "2025-08-09",
   "_description": "Centralized configuration for Fixed Ratio Trading project - used by dashboard, scripts, and deployment tools"
 }

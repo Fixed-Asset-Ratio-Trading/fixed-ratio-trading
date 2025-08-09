@@ -148,8 +148,8 @@ if [ "$VALIDATOR_RESET" = true ]; then
     echo "   Starting fresh validator (script will handle stopping previous one)..."
     
     # Start fresh validator and show output
-    echo "   Running: cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh --reset"
-    if ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/start_production_validator.sh --reset'; then
+    echo "   Running: cd ~/code/fixed-ratio-trading && ./scripts/remote_server_only/start_production_validator.sh --reset"
+    if ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/remote_server_only/start_production_validator.sh --reset'; then
         echo -e "${GREEN}✅ Validator start script completed${NC}"
         
         # Verify validator is actually running by testing connectivity
@@ -197,6 +197,96 @@ if [ "$VALIDATOR_RESET" = true ]; then
     fi
     
     echo -e "${GREEN}✅ Remote validator reset completed${NC}"
+    
+    # Step 2.5: Update Metaplex configuration after reset
+    echo -e "${YELLOW}🎨 Updating Metaplex configuration after reset...${NC}"
+    echo "   Extracting Metaplex program IDs from remote deployment..."
+    
+    # Get Metaplex status from remote server to extract program IDs
+    echo "   Querying remote Metaplex status..."
+    METAPLEX_STATUS_OUTPUT=$(ssh dev@vmdevbox1 'cd ~/code/fixed-ratio-trading && ./scripts/remote_server_only/metaplex.sh status' 2>/dev/null || echo "")
+    
+    # Try to extract program IDs from the validator reset output or status
+    # Look for the program IDs in the earlier SSH output from the reset process
+    TOKEN_METADATA_PROGRAM_ID=""
+    CANDY_MACHINE_PROGRAM_ID=""
+    AUCTION_HOUSE_PROGRAM_ID=""
+    
+    # Extract Token Metadata Program ID
+    if echo "$METAPLEX_STATUS_OUTPUT" | grep -q "Token Metadata Program"; then
+        TOKEN_METADATA_PROGRAM_ID=$(echo "$METAPLEX_STATUS_OUTPUT" | grep "Token Metadata Program" | grep -o '[A-Za-z0-9]\{43,44\}' | tail -1)
+    fi
+    
+    # Extract Candy Machine Program ID
+    if echo "$METAPLEX_STATUS_OUTPUT" | grep -q "Candy Machine Program"; then
+        CANDY_MACHINE_PROGRAM_ID=$(echo "$METAPLEX_STATUS_OUTPUT" | grep "Candy Machine Program" | grep -o '[A-Za-z0-9]\{43,44\}' | tail -1)
+    fi
+    
+    # Extract Auction House Program ID
+    if echo "$METAPLEX_STATUS_OUTPUT" | grep -q "Auction House Program"; then
+        AUCTION_HOUSE_PROGRAM_ID=$(echo "$METAPLEX_STATUS_OUTPUT" | grep "Auction House Program" | grep -o '[A-Za-z0-9]\{43,44\}' | tail -1)
+    fi
+    
+    # Fallback to known deployed IDs if extraction failed
+    if [ -z "$TOKEN_METADATA_PROGRAM_ID" ]; then
+        TOKEN_METADATA_PROGRAM_ID="HK2G5hbxGU1iE7VbcT5qoWWkNX9AYpwrXKSi3WCg5YzZ"
+        echo "   Using fallback Token Metadata Program ID"
+    fi
+    
+    if [ -z "$CANDY_MACHINE_PROGRAM_ID" ]; then
+        CANDY_MACHINE_PROGRAM_ID="EzqzGLSEmahbgjTpei6ZfLarjNVFyDJbv6CpTxJFC2Rz"
+        echo "   Using fallback Candy Machine Program ID"
+    fi
+    
+    if [ -z "$AUCTION_HOUSE_PROGRAM_ID" ]; then
+        AUCTION_HOUSE_PROGRAM_ID="9kTpk4N2GdCahXkAaV2gxvjH9UeKVktfrPXTTDaKce8P"
+        echo "   Using fallback Auction House Program ID"
+    fi
+    
+    echo "   Updating shared-config.json with remote Metaplex program IDs..."
+    echo "   Token Metadata Program: $TOKEN_METADATA_PROGRAM_ID"
+    echo "   Candy Machine Program: $CANDY_MACHINE_PROGRAM_ID"
+    echo "   Auction House Program: $AUCTION_HOUSE_PROGRAM_ID"
+    
+    # Update the shared-config.json file with new Metaplex program IDs
+    if [ -f "$PROJECT_ROOT/shared-config.json" ] && command -v jq >/dev/null 2>&1; then
+        # Create a temporary file for the updated configuration
+        TEMP_CONFIG=$(mktemp)
+        
+        # Update the Metaplex section with new program IDs
+        jq --arg tokenMetadata "$TOKEN_METADATA_PROGRAM_ID" \
+           --arg candyMachine "$CANDY_MACHINE_PROGRAM_ID" \
+           --arg auctionHouse "$AUCTION_HOUSE_PROGRAM_ID" \
+           --arg lastUpdated "$(date -u +%Y-%m-%d)" \
+           '.metaplex = {
+             "tokenMetadataProgramId": $tokenMetadata,
+             "candyMachineProgramId": $candyMachine,
+             "auctionHouseProgramId": $auctionHouse,
+             "lastUpdated": $lastUpdated,
+             "deploymentType": "remote",
+             "remoteRpcUrl": "http://192.168.2.88:8899"
+           }' "$PROJECT_ROOT/shared-config.json" > "$TEMP_CONFIG"
+        
+        # Replace the original file
+        mv "$TEMP_CONFIG" "$PROJECT_ROOT/shared-config.json"
+        
+        # Also update the dashboard configuration
+        if [ -f "$PROJECT_ROOT/dashboard/shared-config.json" ]; then
+            cp "$PROJECT_ROOT/shared-config.json" "$PROJECT_ROOT/dashboard/shared-config.json"
+            echo -e "${GREEN}✅ Updated both main and dashboard shared-config.json files${NC}"
+        else
+            echo -e "${GREEN}✅ Updated main shared-config.json file${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Could not update shared-config.json (file not found or jq not available)${NC}"
+        echo "   Please manually update Metaplex program IDs:"
+        echo "   Token Metadata Program: $TOKEN_METADATA_PROGRAM_ID"
+        echo "   Candy Machine Program: $CANDY_MACHINE_PROGRAM_ID"
+        echo "   Auction House Program: $AUCTION_HOUSE_PROGRAM_ID"
+    fi
+    
+    echo -e "${GREEN}✅ Metaplex configuration update completed${NC}"
+    
 else
     echo -e "${BLUE}ℹ️  Keeping existing validator state${NC}"
 fi
