@@ -33,11 +33,17 @@ You can also manage Metaplex manually:
 # Check status
 ./scripts/metaplex.sh status
 
-# Stop/cleanup
+# Safe stop (preserves deployment state)
 ./scripts/metaplex.sh stop
 
-# Restart
+# Full reset stop (clears tracking and program IDs)
+./scripts/metaplex.sh stop --reset
+
+# Safe restart (preserves state)
 ./scripts/metaplex.sh restart
+
+# Full reset restart (clears tracking, then redeploys)
+./scripts/metaplex.sh restart --reset
 ```
 
 ## 📊 **Programs Deployed**
@@ -50,9 +56,14 @@ You can also manage Metaplex manually:
 
 ## 🔧 **Configuration**
 
+### **Safety Features**
+- **Safe Stop**: Default `stop` and `restart` commands preserve deployment state
+- **Reset Option**: Use `--reset` flag for full cleanup of tracking and program IDs
+- **Smart Detection**: Script detects existing programs and avoids unnecessary redeployment
+
 ### **Environment Variables**
-- `RPC_URL` - Solana RPC endpoint (default: `http://192.168.2.88:8899` for remote deployment)
-- `WEBSOCKET_URL` - Solana WebSocket endpoint (default: `ws://192.168.2.88:8900` for remote deployment)
+- `RPC_URL` - Solana RPC endpoint (default: `http://localhost:8899` for local development)
+- `WEBSOCKET_URL` - Solana WebSocket endpoint (default: `ws://localhost:8900` for local development)
 
 ### **Directories Created**
 - `.metaplex/` - Main Metaplex directory (git-ignored)
@@ -63,7 +74,7 @@ You can also manage Metaplex manually:
 ## ✅ **Prerequisites**
 
 1. **Solana CLI**: Installed and configured
-2. **Solana Validator**: Running at `http://192.168.2.88:8899` (remote) or `http://localhost:8899` (local)
+2. **Solana Validator**: Running at `http://localhost:8899` (local)
 3. **Internet Connection**: For downloading program binaries (first time only)
 4. **curl**: For downloading programs and health checks
 
@@ -78,9 +89,6 @@ You can also manage Metaplex manually:
 
 ### **"Program not deployed" Error**
 ```bash
-# Check validator is running (remote)
-curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' http://192.168.2.88:8899
-
 # Check validator is running (local)
 curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' http://localhost:8899
 

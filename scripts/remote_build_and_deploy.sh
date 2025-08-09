@@ -1,4 +1,4 @@
-#!/bin/bash
+ #!/bin/bash
 # Deploy Fixed Ratio Trading Contract to Remote Solana Validator
 # This script builds the contract and deploys/upgrades the program to the remote validator
 # Targets the direct validator endpoint at http://192.168.2.88:8899

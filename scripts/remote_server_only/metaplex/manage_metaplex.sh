@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 METAPLEX_DIR="$PROJECT_ROOT/.metaplex"
 METAPLEX_PROGRAMS_DIR="$METAPLEX_DIR/programs"
 METAPLEX_LOGS_DIR="$METAPLEX_DIR/logs"
@@ -26,9 +26,9 @@ CANDY_MACHINE_PROGRAM_ID="cndy3Z4yapfJBmL3ShUp5exZKqR3z33thTzeNMm2gRZ"
 AUCTION_HOUSE_PROGRAM_ID="hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk"
 
 # RPC Configuration
-# Default to remote server for remote deployments, fallback to local for development
-RPC_URL="${RPC_URL:-http://192.168.2.88:8899}"
-WEBSOCKET_URL="${WEBSOCKET_URL:-ws://192.168.2.88:8900}"
+# Default to local validator for development, can be overridden with environment variables
+RPC_URL="${RPC_URL:-http://localhost:8899}"
+WEBSOCKET_URL="${WEBSOCKET_URL:-ws://localhost:8900}"
 
 # Function to print colored output
 print_status() {
@@ -266,17 +266,38 @@ start_metaplex() {
 
 # Function to stop Metaplex (remove programs)
 stop_metaplex() {
+    local reset_flag="${1:-false}"
+    
     print_status "$BLUE" "🛑 Stopping Metaplex local deployment..."
     
     # Note: In a local validator, programs are automatically cleared when validator restarts
     # This function mainly cleans up tracking files
     
-    if [ -f "$METAPLEX_PID_FILE" ]; then
-        rm "$METAPLEX_PID_FILE"
-        print_status "$GREEN" "✅ Metaplex tracking cleared"
+    if [ "$reset_flag" = "true" ]; then
+        if [ -f "$METAPLEX_PID_FILE" ]; then
+            rm "$METAPLEX_PID_FILE"
+            print_status "$GREEN" "✅ Metaplex tracking cleared"
+        fi
+        
+        # Also clean up program ID files when resetting
+        if [ -f "$METAPLEX_DIR/token_metadata_program_id.txt" ]; then
+            rm "$METAPLEX_DIR/token_metadata_program_id.txt"
+            print_status "$GREEN" "✅ Token Metadata Program ID cleared"
+        fi
+        if [ -f "$METAPLEX_DIR/candy_machine_program_id.txt" ]; then
+            rm "$METAPLEX_DIR/candy_machine_program_id.txt"
+            print_status "$GREEN" "✅ Candy Machine Program ID cleared"
+        fi
+        if [ -f "$METAPLEX_DIR/auction_house_program_id.txt" ]; then
+            rm "$METAPLEX_DIR/auction_house_program_id.txt"
+            print_status "$GREEN" "✅ Auction House Program ID cleared"
+        fi
+        
+        print_status "$YELLOW" "ℹ️  Metaplex programs will be cleared when Solana validator restarts"
+    else
+        print_status "$YELLOW" "ℹ️  Metaplex deployment preserved (use --reset to clear tracking)"
+        print_status "$YELLOW" "ℹ️  Metaplex programs will be cleared when Solana validator restarts"
     fi
-    
-    print_status "$YELLOW" "ℹ️  Metaplex programs will be cleared when Solana validator restarts"
 }
 
 # Function to get Metaplex status
@@ -329,17 +350,22 @@ update_shared_config_with_program_id() {
 
 # Function to show usage
 show_usage() {
-    echo "Usage: $0 {start|stop|status|restart}"
+    echo "Usage: $0 {start|stop [--reset]|status|restart [--reset]}"
     echo ""
     echo "Commands:"
-    echo "  start   - Deploy Metaplex programs to local validator"
-    echo "  stop    - Clean up Metaplex tracking (programs cleared on validator restart)"
-    echo "  status  - Show current Metaplex deployment status"
-    echo "  restart - Stop and start Metaplex deployment"
+    echo "  start          - Deploy Metaplex programs to local validator"
+    echo "  stop           - Preserve Metaplex deployment state (safe stop)"
+    echo "  stop --reset   - Clear Metaplex tracking and program IDs (full reset)"
+    echo "  status         - Show current Metaplex deployment status"
+    echo "  restart        - Stop and start Metaplex deployment (preserves state)"
+    echo "  restart --reset - Reset and restart Metaplex deployment (full reset)"
+    echo ""
+    echo "Options:"
+    echo "  --reset        - Clear all tracking files and program IDs (use with stop/restart)"
     echo ""
     echo "Environment Variables:"
-    echo "  RPC_URL      - Solana RPC endpoint (default: http://192.168.2.88:8899)"
-    echo "  WEBSOCKET_URL - Solana WebSocket endpoint (default: ws://192.168.2.88:8900)"
+    echo "  RPC_URL        - Solana RPC endpoint (default: http://localhost:8899)"
+    echo "  WEBSOCKET_URL  - Solana WebSocket endpoint (default: ws://localhost:8900)"
 }
 
 # Main script logic
@@ -348,13 +374,23 @@ case "${1:-}" in
         start_metaplex
         ;;
     stop)
-        stop_metaplex
+        # Check if --reset flag is provided as second argument
+        if [ "${2:-}" = "--reset" ]; then
+            stop_metaplex true
+        else
+            stop_metaplex false
+        fi
         ;;
     status)
         status_metaplex
         ;;
     restart)
-        stop_metaplex
+        # Check if --reset flag is provided as second argument
+        if [ "${2:-}" = "--reset" ]; then
+            stop_metaplex true
+        else
+            stop_metaplex false
+        fi
         start_metaplex
         ;;
     *)

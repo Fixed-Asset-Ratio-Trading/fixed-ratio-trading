@@ -1,7 +1,7 @@
 {
   "solana": {
-    "rpcUrl": "http://192.168.2.88:8899",
-    "wsUrl": null,
+    "rpcUrl": "http://localhost:8899",
+    "wsUrl": "ws://localhost:8900",
     "commitment": "confirmed",
     "disableRetryOnRateLimit": true
   },
@@ -10,8 +10,8 @@
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {
-    "tokenMetadataProgramId": "4qPoa9YzorPLtNuSdr8k89LFJ5nrEduFviUgHqFqnPc5",
-    "lastUpdated": "2025-08-08"
+    "tokenMetadataProgramId": "CWgnMSw1ehq2TnU4Hb35aUA7EvNQMWCEXfEPkzgYCPXz",
+    "lastUpdated": "2025-08-09"
   },
   "wallets": {
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"

@@ -30,3 +30,4 @@ artifacts/
 *.nuget.props
 *.nuget.targets
 swap_debug_output.txt
+logs/
