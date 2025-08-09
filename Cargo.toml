@@ -16,11 +16,16 @@ no-entrypoint = []
 no-idl = []
 no-log-ix-name = []
 cpi = ["no-entrypoint"]
-default = []
+default = ["devnet"]
 test-bpf = []
 custom-heap = []
 custom-panic = []
 hft-debug-logs = []  # Enable minimal debug logging for HFT optimized functions
+
+# Network-specific features - mutually exclusive
+devnet = []  # DevNet deployment
+testnet = []  # TestNet deployment
+mainnet = []  # MainNet deployment
 
 [dependencies]
 solana-program = "~1.18.26"
