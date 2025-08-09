@@ -2,7 +2,9 @@
 
 **Version:** 1.0  
 **Date:** Aug 5, 2025  
-**Program ID:** `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn`  
+**DevNet Program ID:** `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn` 
+**TestNet Program ID:** `9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7` 
+**MainNet Program ID:** `quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD`
 **Support:** support@davincicodes.net
 
 <!-- 
@@ -417,6 +419,13 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 - **Liquidity Tracking**: Sets up comprehensive tracking for deposits, withdrawals, and LP token operations
 - **Revenue Tracking**: Initializes fee collection counters and consolidation tracking
 
+**🔎 Pool Creation Ratio Policy:**
+- **Anchored to 1**: Exactly one side of the ratio must be a whole 1 unit of its token. In basis points, this means one of the provided values must equal `10^decimals` for that token's mint.
+- **Allowed**: `1:1.01`, `1:2`, `1:3`, `1:160`, `1:0.000001` (all expressed in basis points at call time)
+- **Not Allowed**: Ratios where both sides are non-integers or both sides differ from 1 (e.g., `234.34:10.3434`, `2:3.5`, `0.5:250`).
+- **Validation**: If neither side represents exactly one whole token unit after token normalization, the instruction fails with `InvalidRatio (1002)`.
+- **Normalization Note**: Tokens are normalized to lexicographic order before storage. You must normalize both the token order and the ratio so that one side is exactly 1 whole token in the final, normalized order. Use `normalize_pool_config()` to enforce this safely.
+
 **⚙️ Technical Implementation Details:**
 - **Account Creation Sequence**: Pool State → Token A Vault → Token B Vault → LP Token A Mint → LP Token B Mint
 - **Rent Calculations**: Automatically calculates and pays rent for all created accounts
@@ -469,6 +478,19 @@ const ratioBBasisPoints = 160.0 * Math.pow(10, usdtDecimals);  // 160,000,000 (b
 ```
 
 **The contract expects basis points, not display values. Always multiply by 10^decimals.**
+
+#### Valid vs Invalid Ratios
+
+- Valid (anchored to 1):
+  - `1 SOL : 1.01 USDC`
+  - `1 SOL : 160 USDT`
+  - `1 tBTC : 100,000,000 tSAT`
+- Invalid (both sides not 1):
+  - `234.34 : 10.3434`
+  - `2 : 3.5`
+  - `0.5 : 250`
+
+When expressed in basis points at call time, one of `ratio_a_numerator` or `ratio_b_denominator` must equal exactly `10 ** token_decimals` of the corresponding token after normalization.
 
 #### ⚠️ Critical Implementation Notes
 

@@ -30,7 +30,7 @@ Seamlessly migrate users from old tokens to new versions with guaranteed exchang
 Set exact prices where you're willing to trade your assets:
 
 - **"I'll sell my 1 BTC at exactly 200,000 USDT"** - Create a 1:200,000 pool
-- **"I'll trade my 10 ETH at exactly 3,500 USDC each"** - Create a 10:35,000 pool  
+- **"I'll trade my 10 ETH at exactly 3,500 USDC each"** - Create a 1:3,500 pool  
 - **"I want to buy SOL at exactly $100"** - Create USDC:SOL pools at 100:1 ratio
 
 *No slippage. No surprise pricing. Just your exact target price.*
@@ -78,6 +78,15 @@ Pool C: 10 SOL = 1000 USDC
 
 // Our system normalizes to ONE canonical pool
 ```
+
+### **🧭 Pool Creation Ratio Policy **
+
+- **Anchored to 1**: Pool ratios must be defined with exactly one side equal to a whole 1 unit of its token (after normalization). Practically, one side must be `10^decimals` in basis points for that token mint.
+- **Allowed**: `1:1.01`, `1:2`, `1:3`, `1:160`, `1:0.000001` (expressed in basis points in API calls)
+- **Not Allowed**: Ratios where both sides are non-integers or neither side equals 1 (e.g., `234.34:10.3434`, `2:3.5`, `0.5:250`).
+- **Normalization Reminder**: Token order is normalized before storage. Ensure your final, normalized ratio keeps one side exactly 1 using `normalize_pool_config()` from the SDK.
+
+See `docs/api/FIXED_RATIO_TRADING_API.md` under `process_pool_initialize` for details and examples.
 
 ### **💎 LP Token Innovation**
 **Dual LP Token System** - Each side of the pool gets separate LP tokens:
