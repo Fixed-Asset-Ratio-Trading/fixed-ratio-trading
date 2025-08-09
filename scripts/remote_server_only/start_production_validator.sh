@@ -266,6 +266,13 @@ else
     echo -e "${GREEN}✅ jq available${NC}"
 fi
 
+if ! command -v bc &> /dev/null; then
+    echo -e "${YELLOW}⚠️  bc not found - using awk fallback for balance calculations${NC}"
+    echo -e "${YELLOW}💡 Install with: apt install bc${NC}"
+else
+    echo -e "${GREEN}✅ bc available${NC}"
+fi
+
 if ! command -v ngrok &> /dev/null; then
     echo -e "${RED}❌ ngrok not found - please install ngrok${NC}"
     exit 1
@@ -638,23 +645,47 @@ manage_metaplex() {
     # Make sure script is executable
     chmod +x "$METAPLEX_SCRIPT"
     
-    # Check current metaplex status
+    # Check current metaplex status with timeout
     echo -e "${CYAN}🔍 Checking current Metaplex status...${NC}"
-    METAPLEX_STATUS_OUTPUT=$("$METAPLEX_SCRIPT" status 2>&1)
-    METAPLEX_STATUS_CODE=$?
+    METAPLEX_STATUS_OUTPUT=""
+    METAPLEX_STATUS_CODE=1
+    
+    # Use timeout to prevent hanging on status check
+    if command -v timeout &> /dev/null; then
+        METAPLEX_STATUS_OUTPUT=$(timeout 30 "$METAPLEX_SCRIPT" status 2>&1 || echo "Status check timed out or failed")
+        METAPLEX_STATUS_CODE=$?
+    else
+        # Fallback without timeout
+        METAPLEX_STATUS_OUTPUT=$("$METAPLEX_SCRIPT" status 2>&1 || echo "Status check failed")
+        METAPLEX_STATUS_CODE=$?
+    fi
+    
+    echo -e "${CYAN}📋 Metaplex status check result: exit code $METAPLEX_STATUS_CODE${NC}"
     
     if [ $METAPLEX_STATUS_CODE -eq 0 ]; then
         # Metaplex is deployed and working
+        echo -e "${GREEN}✅ Metaplex status check successful${NC}"
         if [ "$FORCE_RESET" = true ]; then
             echo -e "${YELLOW}⚠️  Metaplex detected but --reset flag specified${NC}"
             echo -e "${YELLOW}🔄 Resetting Metaplex deployment...${NC}"
             
-            if "$METAPLEX_SCRIPT" restart --reset >/dev/null 2>&1; then
-                echo -e "${GREEN}✅ Metaplex reset and redeployed successfully${NC}"
-                METAPLEX_RESET_PERFORMED=true
+            # Use timeout for reset operation
+            if command -v timeout &> /dev/null; then
+                if timeout 60 "$METAPLEX_SCRIPT" restart --reset >/dev/null 2>&1; then
+                    echo -e "${GREEN}✅ Metaplex reset and redeployed successfully${NC}"
+                    METAPLEX_RESET_PERFORMED=true
+                else
+                    echo -e "${RED}❌ Metaplex reset failed or timed out${NC}"
+                    echo -e "${YELLOW}💡 Continuing without Metaplex reset${NC}"
+                fi
             else
-                echo -e "${RED}❌ Metaplex reset failed${NC}"
-                echo -e "${YELLOW}💡 Continuing without Metaplex reset${NC}"
+                if "$METAPLEX_SCRIPT" restart --reset >/dev/null 2>&1; then
+                    echo -e "${GREEN}✅ Metaplex reset and redeployed successfully${NC}"
+                    METAPLEX_RESET_PERFORMED=true
+                else
+                    echo -e "${RED}❌ Metaplex reset failed${NC}"
+                    echo -e "${YELLOW}💡 Continuing without Metaplex reset${NC}"
+                fi
             fi
         else
             echo -e "${GREEN}✅ Metaplex programs already deployed${NC}"
@@ -665,21 +696,37 @@ manage_metaplex() {
         fi
     else
         # Metaplex is not deployed or has issues
-        echo -e "${YELLOW}⚠️  Metaplex programs not deployed${NC}"
+        echo -e "${YELLOW}⚠️  Metaplex programs not deployed (status check failed)${NC}"
+        echo -e "${CYAN}📋 Status output: $METAPLEX_STATUS_OUTPUT${NC}"
         echo -e "${YELLOW}🚀 Deploying Metaplex programs...${NC}"
         
-        if "$METAPLEX_SCRIPT" start >/dev/null 2>&1; then
-            echo -e "${GREEN}✅ Metaplex programs deployed successfully${NC}"
+        # Use timeout for deployment
+        if command -v timeout &> /dev/null; then
+            if timeout 120 "$METAPLEX_SCRIPT" start >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Metaplex programs deployed successfully${NC}"
+            else
+                echo -e "${RED}❌ Metaplex deployment failed or timed out${NC}"
+                echo -e "${YELLOW}💡 Token metadata functionality may be limited${NC}"
+                echo -e "${YELLOW}💡 To retry manually: $METAPLEX_SCRIPT start${NC}"
+            fi
         else
-            echo -e "${RED}❌ Metaplex deployment failed${NC}"
-            echo -e "${YELLOW}💡 Token metadata functionality may be limited${NC}"
-            echo -e "${YELLOW}💡 To retry manually: $METAPLEX_SCRIPT start${NC}"
+            if "$METAPLEX_SCRIPT" start >/dev/null 2>&1; then
+                echo -e "${GREEN}✅ Metaplex programs deployed successfully${NC}"
+            else
+                echo -e "${RED}❌ Metaplex deployment failed${NC}"
+                echo -e "${YELLOW}💡 Token metadata functionality may be limited${NC}"
+                echo -e "${YELLOW}💡 To retry manually: $METAPLEX_SCRIPT start${NC}"
+            fi
         fi
     fi
     
-    # Show final metaplex status
+    # Show final metaplex status with timeout
     echo -e "${CYAN}📊 Final Metaplex Status:${NC}"
-    "$METAPLEX_SCRIPT" status 2>/dev/null | grep -E "(Token Metadata|Candy Machine|Auction House)" | sed 's/^/   /' || echo "   ❌ Metaplex status unavailable"
+    if command -v timeout &> /dev/null; then
+        timeout 15 "$METAPLEX_SCRIPT" status 2>/dev/null | grep -E "(Token Metadata|Candy Machine|Auction House)" | sed 's/^/   /' || echo "   ❌ Metaplex status unavailable"
+    else
+        "$METAPLEX_SCRIPT" status 2>/dev/null | grep -E "(Token Metadata|Candy Machine|Auction House)" | sed 's/^/   /' || echo "   ❌ Metaplex status unavailable"
+    fi
 }
 
 # Test Metaplex functionality by creating a token with metadata
@@ -940,11 +987,22 @@ if [ "$VALIDATOR_RUNNING" = true ]; then
     manage_metaplex
     
     # Test metaplex functionality after deployment
-    if "$METAPLEX_SCRIPT" status >/dev/null 2>&1; then
-        echo ""
-        test_metaplex_functionality
+    echo ""
+    echo -e "${BLUE}🧪 Checking if Metaplex is ready for functionality testing...${NC}"
+    if command -v timeout &> /dev/null; then
+        if timeout 15 "$METAPLEX_SCRIPT" status >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Metaplex status check passed - proceeding with functionality test${NC}"
+            test_metaplex_functionality
+        else
+            echo -e "${YELLOW}⚠️  Metaplex not properly deployed or status check timed out, skipping functionality test${NC}"
+        fi
     else
-        echo -e "${YELLOW}⚠️  Metaplex not properly deployed, skipping functionality test${NC}"
+        if "$METAPLEX_SCRIPT" status >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ Metaplex status check passed - proceeding with functionality test${NC}"
+            test_metaplex_functionality
+        else
+            echo -e "${YELLOW}⚠️  Metaplex not properly deployed, skipping functionality test${NC}"
+        fi
     fi
 fi
 
@@ -965,27 +1023,83 @@ if [ "$VALIDATOR_RUNNING" = true ]; then
         echo -e "${RED}❌ CLI configuration failed${NC}"
     fi
     
-    # Perform airdrops
+    # Perform airdrops (smart logic based on reset flag)
     echo -e "${YELLOW}💰 Performing SOL airdrops...${NC}"
     
-    # Primary account airdrop
-    echo -e "${CYAN}   Primary Target: $PRIMARY_ACCOUNT${NC}"
-    if solana airdrop $AIRDROP_AMOUNT $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
-        sleep 2
-        BALANCE=$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
-        echo -e "${GREEN}✅ Primary airdrop successful: $BALANCE SOL${NC}"
-    else
-        echo -e "${RED}❌ Primary airdrop failed${NC}"
+    # Function to check if balance is below threshold (50% of airdrop amount)
+    check_airdrop_needed() {
+        local account="$1"
+        local airdrop_amount="$2"
+        local account_name="$3"
+        
+        # Get current balance
+        local current_balance
+        current_balance=$(solana balance "$account" --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "0")
+        
+        # Calculate 50% threshold
+        local threshold
+        if command -v bc &> /dev/null; then
+            threshold=$(echo "scale=8; $airdrop_amount * 0.5" | bc 2>/dev/null || echo "0")
+        else
+            # Fallback for systems without bc (simple integer math)
+            threshold=$(awk "BEGIN {printf \"%.8f\", $airdrop_amount * 0.5}" 2>/dev/null || echo "0")
+        fi
+        
+        echo -e "${CYAN}   $account_name Target: $account${NC}"
+        echo -e "${CYAN}   Current Balance: $current_balance SOL${NC}"
+        echo -e "${CYAN}   Airdrop Amount: $airdrop_amount SOL${NC}"
+        echo -e "${CYAN}   Threshold (50%): $threshold SOL${NC}"
+        
+        # Compare balances (handle decimal comparison)
+        local comparison_result
+        if command -v bc &> /dev/null; then
+            comparison_result=$(echo "$current_balance < $threshold" | bc -l 2>/dev/null || echo "0")
+        else
+            # Fallback comparison using awk
+            comparison_result=$(awk "BEGIN {print ($current_balance < $threshold)}" 2>/dev/null || echo "0")
+        fi
+        
+        if [ "$comparison_result" = "1" ]; then
+            echo -e "${YELLOW}   💡 Balance below threshold - airdrop needed${NC}"
+            return 0  # Airdrop needed
+        else
+            echo -e "${GREEN}   ✅ Balance sufficient - skipping airdrop${NC}"
+            return 1  # Airdrop not needed
+        fi
+    }
+    
+    # Primary account airdrop logic
+    if [ "$FORCE_RESET" = true ] || check_airdrop_needed "$PRIMARY_ACCOUNT" "$AIRDROP_AMOUNT" "Primary"; then
+        if [ "$FORCE_RESET" = false ]; then
+            echo -e "${YELLOW}   🎯 Performing conditional airdrop...${NC}"
+        else
+            echo -e "${YELLOW}   🔄 Performing reset airdrop...${NC}"
+        fi
+        
+        if solana airdrop $AIRDROP_AMOUNT $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
+            sleep 2
+            BALANCE=$(solana balance $PRIMARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
+            echo -e "${GREEN}✅ Primary airdrop successful: $BALANCE SOL${NC}"
+        else
+            echo -e "${RED}❌ Primary airdrop failed${NC}"
+        fi
     fi
     
-    # Secondary account airdrop
-    echo -e "${CYAN}   Secondary Target: $SECONDARY_ACCOUNT${NC}"
-    if solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
-        sleep 2
-        SECONDARY_BALANCE=$(solana balance $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
-        echo -e "${GREEN}✅ Secondary airdrop successful: $SECONDARY_BALANCE SOL${NC}"
-    else
-        echo -e "${RED}❌ Secondary airdrop failed${NC}"
+    # Secondary account airdrop logic
+    if [ "$FORCE_RESET" = true ] || check_airdrop_needed "$SECONDARY_ACCOUNT" "$SECONDARY_AIRDROP_AMOUNT" "Secondary"; then
+        if [ "$FORCE_RESET" = false ]; then
+            echo -e "${YELLOW}   🎯 Performing conditional airdrop...${NC}"
+        else
+            echo -e "${YELLOW}   🔄 Performing reset airdrop...${NC}"
+        fi
+        
+        if solana airdrop $SECONDARY_AIRDROP_AMOUNT $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL >/dev/null 2>&1; then
+            sleep 2
+            SECONDARY_BALANCE=$(solana balance $SECONDARY_ACCOUNT --url $LOCAL_RPC_URL 2>/dev/null | cut -d' ' -f1 || echo "Error")
+            echo -e "${GREEN}✅ Secondary airdrop successful: $SECONDARY_BALANCE SOL${NC}"
+        else
+            echo -e "${RED}❌ Secondary airdrop failed${NC}"
+        fi
     fi
     
     # Verify reset worked if --reset was used

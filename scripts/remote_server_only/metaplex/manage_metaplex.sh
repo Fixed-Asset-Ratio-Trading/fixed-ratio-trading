@@ -66,33 +66,77 @@ download_metaplex_programs() {
     # Download Token Metadata Program from mainnet
     if [ ! -f "mpl_token_metadata.so" ]; then
         print_status "$YELLOW" "Dumping Token Metadata Program from mainnet..."
-        if solana program dump "$TOKEN_METADATA_PROGRAM_ID" mpl_token_metadata.so --url mainnet-beta; then
-            print_status "$GREEN" "✅ Token Metadata Program downloaded"
+        print_status "$BLUE" "⏳ This may take a few minutes - downloading from mainnet..."
+        
+        # Use timeout if available to prevent hanging
+        if command -v timeout &> /dev/null; then
+            if timeout 300 solana program dump "$TOKEN_METADATA_PROGRAM_ID" mpl_token_metadata.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Token Metadata Program downloaded"
+            else
+                print_status "$RED" "❌ Failed to download Token Metadata Program (timeout or network error)"
+                print_status "$YELLOW" "💡 Will try to use canonical program ID instead"
+                # Create a placeholder file to avoid re-attempting download
+                touch "mpl_token_metadata.so.failed"
+            fi
         else
-            print_status "$RED" "❌ Failed to download Token Metadata Program"
-            return 1
+            if solana program dump "$TOKEN_METADATA_PROGRAM_ID" mpl_token_metadata.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Token Metadata Program downloaded"
+            else
+                print_status "$RED" "❌ Failed to download Token Metadata Program"
+                print_status "$YELLOW" "💡 Will try to use canonical program ID instead"
+                # Create a placeholder file to avoid re-attempting download
+                touch "mpl_token_metadata.so.failed"
+            fi
         fi
     fi
     
-    # Download Candy Machine Program from mainnet
-    if [ ! -f "mpl_candy_machine_core.so" ]; then
+    # Download Candy Machine Program from mainnet (optional)
+    if [ ! -f "mpl_candy_machine_core.so" ] && [ ! -f "mpl_candy_machine_core.so.failed" ]; then
         print_status "$YELLOW" "Dumping Candy Machine Program from mainnet..."
-        if solana program dump "$CANDY_MACHINE_PROGRAM_ID" mpl_candy_machine_core.so --url mainnet-beta; then
-            print_status "$GREEN" "✅ Candy Machine Program downloaded"
+        print_status "$BLUE" "⏳ This is optional - downloading from mainnet..."
+        
+        # Use timeout if available to prevent hanging
+        if command -v timeout &> /dev/null; then
+            if timeout 180 solana program dump "$CANDY_MACHINE_PROGRAM_ID" mpl_candy_machine_core.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Candy Machine Program downloaded"
+            else
+                print_status "$YELLOW" "⚠️  Failed to download Candy Machine Program (timeout or network error)"
+                print_status "$YELLOW" "💡 This is optional - continuing without it"
+                touch "mpl_candy_machine_core.so.failed"
+            fi
         else
-            print_status "$RED" "❌ Failed to download Candy Machine Program"
-            return 1
+            if solana program dump "$CANDY_MACHINE_PROGRAM_ID" mpl_candy_machine_core.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Candy Machine Program downloaded"
+            else
+                print_status "$YELLOW" "⚠️  Failed to download Candy Machine Program"
+                print_status "$YELLOW" "💡 This is optional - continuing without it"
+                touch "mpl_candy_machine_core.so.failed"
+            fi
         fi
     fi
     
-    # Download Auction House Program from mainnet
-    if [ ! -f "mpl_auction_house.so" ]; then
+    # Download Auction House Program from mainnet (optional)
+    if [ ! -f "mpl_auction_house.so" ] && [ ! -f "mpl_auction_house.so.failed" ]; then
         print_status "$YELLOW" "Dumping Auction House Program from mainnet..."
-        if solana program dump "$AUCTION_HOUSE_PROGRAM_ID" mpl_auction_house.so --url mainnet-beta; then
-            print_status "$GREEN" "✅ Auction House Program downloaded"
+        print_status "$BLUE" "⏳ This is optional - downloading from mainnet..."
+        
+        # Use timeout if available to prevent hanging
+        if command -v timeout &> /dev/null; then
+            if timeout 180 solana program dump "$AUCTION_HOUSE_PROGRAM_ID" mpl_auction_house.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Auction House Program downloaded"
+            else
+                print_status "$YELLOW" "⚠️  Failed to download Auction House Program (timeout or network error)"
+                print_status "$YELLOW" "💡 This is optional - continuing without it"
+                touch "mpl_auction_house.so.failed"
+            fi
         else
-            print_status "$RED" "❌ Failed to download Auction House Program"
-            return 1
+            if solana program dump "$AUCTION_HOUSE_PROGRAM_ID" mpl_auction_house.so --url mainnet-beta; then
+                print_status "$GREEN" "✅ Auction House Program downloaded"
+            else
+                print_status "$YELLOW" "⚠️  Failed to download Auction House Program"
+                print_status "$YELLOW" "💡 This is optional - continuing without it"
+                touch "mpl_auction_house.so.failed"
+            fi
         fi
     fi
     
@@ -106,52 +150,72 @@ deploy_metaplex_programs() {
     cd "$METAPLEX_PROGRAMS_DIR"
     
     # Deploy Token Metadata Program (most important for token names/symbols)
-    print_status "$YELLOW" "Deploying Token Metadata Program..."
-    TOKEN_METADATA_DEPLOYMENT=$(solana program deploy mpl_token_metadata.so \
-        --url "$RPC_URL" \
-        --upgrade-authority ~/.config/solana/id.json 2>&1)
-    
-    if echo "$TOKEN_METADATA_DEPLOYMENT" | grep -q "Program Id:"; then
-        DEPLOYED_TOKEN_METADATA_ID=$(echo "$TOKEN_METADATA_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
-        print_status "$GREEN" "✅ Token Metadata Program deployed at: $DEPLOYED_TOKEN_METADATA_ID"
+    if [ -f "mpl_token_metadata.so" ] && [ ! -f "mpl_token_metadata.so.failed" ]; then
+        print_status "$YELLOW" "Deploying Token Metadata Program..."
+        TOKEN_METADATA_DEPLOYMENT=$(solana program deploy mpl_token_metadata.so \
+            --url "$RPC_URL" \
+            --upgrade-authority ~/.config/solana/id.json 2>&1)
         
-        # Save the deployed program ID for later use
-        echo "$DEPLOYED_TOKEN_METADATA_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
-        
-        # Update shared-config.json with new program ID
-        update_shared_config_with_program_id "$DEPLOYED_TOKEN_METADATA_ID"
+        if echo "$TOKEN_METADATA_DEPLOYMENT" | grep -q "Program Id:"; then
+            DEPLOYED_TOKEN_METADATA_ID=$(echo "$TOKEN_METADATA_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
+            print_status "$GREEN" "✅ Token Metadata Program deployed at: $DEPLOYED_TOKEN_METADATA_ID"
+            
+            # Save the deployed program ID for later use
+            echo "$DEPLOYED_TOKEN_METADATA_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
+            
+            # Update shared-config.json with new program ID
+            update_shared_config_with_program_id "$DEPLOYED_TOKEN_METADATA_ID"
+        else
+            print_status "$RED" "❌ Token Metadata Program deployment failed"
+            echo "$TOKEN_METADATA_DEPLOYMENT"
+            print_status "$YELLOW" "💡 Will use canonical program ID instead"
+            echo "$TOKEN_METADATA_PROGRAM_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
+        fi
     else
-        print_status "$RED" "❌ Token Metadata Program deployment failed"
-        echo "$TOKEN_METADATA_DEPLOYMENT"
-        return 1
+        print_status "$YELLOW" "⚠️  Token Metadata Program binary not available, using canonical program ID"
+        print_status "$BLUE" "🔗 Using canonical Token Metadata Program: $TOKEN_METADATA_PROGRAM_ID"
+        echo "$TOKEN_METADATA_PROGRAM_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
+        update_shared_config_with_program_id "$TOKEN_METADATA_PROGRAM_ID"
     fi
     
     # Deploy Candy Machine Program (optional)
-    print_status "$YELLOW" "Deploying Candy Machine Program..."
-    CANDY_MACHINE_DEPLOYMENT=$(solana program deploy mpl_candy_machine_core.so \
-        --url "$RPC_URL" \
-        --upgrade-authority ~/.config/solana/id.json 2>&1)
-    
-    if echo "$CANDY_MACHINE_DEPLOYMENT" | grep -q "Program Id:"; then
-        DEPLOYED_CANDY_MACHINE_ID=$(echo "$CANDY_MACHINE_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
-        print_status "$GREEN" "✅ Candy Machine Program deployed at: $DEPLOYED_CANDY_MACHINE_ID"
-        echo "$DEPLOYED_CANDY_MACHINE_ID" > "$METAPLEX_DIR/candy_machine_program_id.txt"
+    if [ -f "mpl_candy_machine_core.so" ] && [ ! -f "mpl_candy_machine_core.so.failed" ]; then
+        print_status "$YELLOW" "Deploying Candy Machine Program..."
+        CANDY_MACHINE_DEPLOYMENT=$(solana program deploy mpl_candy_machine_core.so \
+            --url "$RPC_URL" \
+            --upgrade-authority ~/.config/solana/id.json 2>&1)
+        
+        if echo "$CANDY_MACHINE_DEPLOYMENT" | grep -q "Program Id:"; then
+            DEPLOYED_CANDY_MACHINE_ID=$(echo "$CANDY_MACHINE_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
+            print_status "$GREEN" "✅ Candy Machine Program deployed at: $DEPLOYED_CANDY_MACHINE_ID"
+            echo "$DEPLOYED_CANDY_MACHINE_ID" > "$METAPLEX_DIR/candy_machine_program_id.txt"
+        else
+            print_status "$YELLOW" "⚠️ Candy Machine Program deployment failed (non-critical)"
+            echo "$CANDY_MACHINE_PROGRAM_ID" > "$METAPLEX_DIR/candy_machine_program_id.txt"
+        fi
     else
-        print_status "$YELLOW" "⚠️ Candy Machine Program deployment failed (non-critical)"
+        print_status "$YELLOW" "⚠️ Candy Machine Program binary not available, using canonical program ID"
+        echo "$CANDY_MACHINE_PROGRAM_ID" > "$METAPLEX_DIR/candy_machine_program_id.txt"
     fi
     
     # Deploy Auction House Program (optional)
-    print_status "$YELLOW" "Deploying Auction House Program..."
-    AUCTION_HOUSE_DEPLOYMENT=$(solana program deploy mpl_auction_house.so \
-        --url "$RPC_URL" \
-        --upgrade-authority ~/.config/solana/id.json 2>&1)
-    
-    if echo "$AUCTION_HOUSE_DEPLOYMENT" | grep -q "Program Id:"; then
-        DEPLOYED_AUCTION_HOUSE_ID=$(echo "$AUCTION_HOUSE_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
-        print_status "$GREEN" "✅ Auction House Program deployed at: $DEPLOYED_AUCTION_HOUSE_ID"
-        echo "$DEPLOYED_AUCTION_HOUSE_ID" > "$METAPLEX_DIR/auction_house_program_id.txt"
+    if [ -f "mpl_auction_house.so" ] && [ ! -f "mpl_auction_house.so.failed" ]; then
+        print_status "$YELLOW" "Deploying Auction House Program..."
+        AUCTION_HOUSE_DEPLOYMENT=$(solana program deploy mpl_auction_house.so \
+            --url "$RPC_URL" \
+            --upgrade-authority ~/.config/solana/id.json 2>&1)
+        
+        if echo "$AUCTION_HOUSE_DEPLOYMENT" | grep -q "Program Id:"; then
+            DEPLOYED_AUCTION_HOUSE_ID=$(echo "$AUCTION_HOUSE_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
+            print_status "$GREEN" "✅ Auction House Program deployed at: $DEPLOYED_AUCTION_HOUSE_ID"
+            echo "$DEPLOYED_AUCTION_HOUSE_ID" > "$METAPLEX_DIR/auction_house_program_id.txt"
+        else
+            print_status "$YELLOW" "⚠️ Auction House Program deployment failed (non-critical)"
+            echo "$AUCTION_HOUSE_PROGRAM_ID" > "$METAPLEX_DIR/auction_house_program_id.txt"
+        fi
     else
-        print_status "$YELLOW" "⚠️ Auction House Program deployment failed (non-critical)"
+        print_status "$YELLOW" "⚠️ Auction House Program binary not available, using canonical program ID"
+        echo "$AUCTION_HOUSE_PROGRAM_ID" > "$METAPLEX_DIR/auction_house_program_id.txt"
     fi
     
     print_status "$GREEN" "✅ Metaplex programs deployed successfully"
@@ -177,7 +241,11 @@ check_metaplex_programs() {
     if [ -f "$METAPLEX_DIR/token_metadata_program_id.txt" ]; then
         local deployed_token_metadata_id=$(cat "$METAPLEX_DIR/token_metadata_program_id.txt")
         if solana program show "$deployed_token_metadata_id" --url "$RPC_URL" >/dev/null 2>&1; then
-            print_status "$GREEN" "✅ Token Metadata Program is deployed ($deployed_token_metadata_id)"
+            if [ "$deployed_token_metadata_id" = "$TOKEN_METADATA_PROGRAM_ID" ]; then
+                print_status "$GREEN" "✅ Token Metadata Program is deployed (canonical: $deployed_token_metadata_id)"
+            else
+                print_status "$GREEN" "✅ Token Metadata Program is deployed (custom: $deployed_token_metadata_id)"
+            fi
             token_metadata_deployed=true
         else
             print_status "$RED" "❌ Token Metadata Program not accessible ($deployed_token_metadata_id)"
@@ -279,7 +347,7 @@ stop_metaplex() {
             print_status "$GREEN" "✅ Metaplex tracking cleared"
         fi
         
-        # Also clean up program ID files when resetting
+        # Also clean up program ID files and failed download markers when resetting
         if [ -f "$METAPLEX_DIR/token_metadata_program_id.txt" ]; then
             rm "$METAPLEX_DIR/token_metadata_program_id.txt"
             print_status "$GREEN" "✅ Token Metadata Program ID cleared"
@@ -291,6 +359,13 @@ stop_metaplex() {
         if [ -f "$METAPLEX_DIR/auction_house_program_id.txt" ]; then
             rm "$METAPLEX_DIR/auction_house_program_id.txt"
             print_status "$GREEN" "✅ Auction House Program ID cleared"
+        fi
+        
+        # Clean up failed download markers to allow retry
+        cd "$METAPLEX_PROGRAMS_DIR" 2>/dev/null || mkdir -p "$METAPLEX_PROGRAMS_DIR"
+        rm -f *.so.failed 2>/dev/null || true
+        if [ -f "mpl_token_metadata.so.failed" ] || [ -f "mpl_candy_machine_core.so.failed" ] || [ -f "mpl_auction_house.so.failed" ]; then
+            print_status "$GREEN" "✅ Failed download markers cleared"
         fi
         
         print_status "$YELLOW" "ℹ️  Metaplex programs will be cleared when Solana validator restarts"
