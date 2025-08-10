@@ -400,14 +400,28 @@
     <script src="libs/spl-token.min.js"></script>
     <!-- Load Metaplex Token Metadata instruction builder via ESM and expose to window -->
     <script type="module">
-      try {
-        const { createCreateMetadataAccountV3Instruction } = await import('https://esm.sh/@metaplex-foundation/mpl-token-metadata@2.10.1');
-        window.MPL = { createCreateMetadataAccountV3Instruction };
-        console.log('✅ Metaplex Token Metadata builder loaded');
-      } catch (e) {
-        console.warn('⚠️ Failed to load Metaplex Token Metadata builder:', e?.message || e);
+      async function loadMPL() {
+        const sources = [
+          'https://esm.sh/@metaplex-foundation/mpl-token-metadata',
+          'https://esm.sh/@metaplex-foundation/mpl-token-metadata@2',
+          'https://cdn.skypack.dev/@metaplex-foundation/mpl-token-metadata',
+        ];
+        for (const src of sources) {
+          try {
+            const mod = await import(src);
+            if (mod?.createCreateMetadataAccountV3Instruction) {
+              window.MPL = { createCreateMetadataAccountV3Instruction: mod.createCreateMetadataAccountV3Instruction };
+              console.log('✅ Metaplex Token Metadata builder loaded from', src);
+              return;
+            }
+          } catch (e) {
+            console.warn('⚠️ Failed MPL import from', src, '-', e?.message || e);
+          }
+        }
+        console.warn('⚠️ Metaplex Token Metadata builder unavailable - metadata creation will be skipped');
         window.MPL = null;
       }
+      loadMPL();
     </script>
     <script src="config.js?v=1753358130"></script>
     <script src="utils.js?v=1732061213"></script>

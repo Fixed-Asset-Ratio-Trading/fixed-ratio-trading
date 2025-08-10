@@ -144,18 +144,8 @@ function createMetadataInstruction(
             },
         }, TOKEN_METADATA_PROGRAM_ID);
     }
-    
-    // Fallback to manual builder (not recommended)
-    const dataBytes = concatUint8Arrays([
-        new Uint8Array([0]),
-        nameBuffer,
-        symbolBuffer,
-        uriBuffer,
-        new Uint8Array([0, 0]),
-        new Uint8Array([0]),
-        new Uint8Array([1]),
-    ]);
-    return new solanaWeb3.TransactionInstruction({ keys, programId: TOKEN_METADATA_PROGRAM_ID, data: dataBytes });
+    // If MPL is unavailable, skip metadata creation in browser (prevents deprecated instruction errors)
+    return null;
 }
 
 // Initialize when page loads
@@ -881,6 +871,9 @@ async function createSPLToken(tokenData) {
                 tokenData.symbol,
                 imageURI || ''
             );
+            if (!metadataInstruction) {
+                throw new Error('Metaplex builder unavailable in browser; skipping metadata creation');
+            }
             
             // Create metadata transaction
             const metadataTransaction = new solanaWeb3.Transaction().add(metadataInstruction);
