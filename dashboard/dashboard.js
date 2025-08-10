@@ -780,7 +780,6 @@ function updateSummaryStats() {
     document.getElementById('active-pools').textContent = activePools;
     document.getElementById('paused-pools').textContent = pausedPools;
     const feesEl = document.getElementById('total-fees');
-    const avgFeeEl = document.getElementById('avg-swap-fee');
     const poolFeesEl = document.getElementById('pool-fees-sol');
     // Contract fees from treasury (lamports → SOL)
     if (feesEl) {
@@ -804,7 +803,6 @@ function updateSummaryStats() {
             poolFeesEl.textContent = '-- SOL';
         }
     }
-    if (avgFeeEl) avgFeeEl.textContent = '--';
     
     // Phase 2.3: Add system status indicator
     updateSystemStatusIndicator();
@@ -1237,7 +1235,9 @@ function goSwapSelected() {
 function updateTreasuryStateDisplay() {
     const treasurySection = document.getElementById('treasury-state-section');
     const treasuryContent = document.getElementById('treasury-state-content');
-    
+    // If section was removed from DOM, safely exit
+    if (!treasurySection || !treasuryContent) return;
+
     if (!mainTreasuryState) {
         treasurySection.style.display = 'none';
         return;
@@ -1297,7 +1297,9 @@ function generateTreasuryStateFields() {
 function updateSystemStateDisplay() {
     const systemSection = document.getElementById('system-state-section');
     const systemContent = document.getElementById('system-state-content');
-    
+    // If section was removed from DOM, safely exit
+    if (!systemSection || !systemContent) return;
+
     if (!systemState) {
         systemSection.style.display = 'none';
         return;
@@ -1361,6 +1363,7 @@ function decodePauseReason(reasonCode) {
 function toggleTreasuryStateDetails() {
     const details = document.getElementById('treasury-state-details');
     const indicator = document.getElementById('treasury-expand-indicator');
+    if (!details || !indicator) return;
     
     if (details.style.display === 'none') {
         details.style.display = 'block';
@@ -1377,6 +1380,7 @@ function toggleTreasuryStateDetails() {
 function toggleSystemStateDetails() {
     const details = document.getElementById('system-state-details');
     const indicator = document.getElementById('system-expand-indicator');
+    if (!details || !indicator) return;
     
     if (details.style.display === 'none') {
         details.style.display = 'block';
