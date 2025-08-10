@@ -81,6 +81,29 @@ CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Paths and Metaplex preloading configuration
+# This section enforces the use of the canonical Metaplex Token Metadata Program ID
+# and preloads its binary into the validator at genesis via --bpf-program.
+#
+# Why: Preloading avoids deploying a custom metadata program and ensures
+# CreateMetadata instructions target the canonical program, preventing
+# "Incorrect account owner (Custom 57)" errors caused by ID mismatches.
+#
+# Details & rationale:
+# - See Critical Notes in scripts/remote_server_only/metaplex/README.md
+# - Program ID (METAPLEX_TMD_PROGRAM_ID) is the canonical mainnet/devnet ID
+# - Binary (METAPLEX_TMD_BINARY) is dumped once by manage_metaplex.sh into
+#   .metaplex/programs/mpl_token_metadata.so
+# - If the binary is missing, run:
+#     ./scripts/remote_server_only/metaplex.sh start
+#   to fetch it before starting the validator
+# - No on-chain deployment is performed for Token Metadata; the validator maps
+#   the binary to the canonical address at startup
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+METAPLEX_TMD_PROGRAM_ID="metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+METAPLEX_TMD_BINARY="$PROJECT_ROOT/.metaplex/programs/mpl_token_metadata.so"
+
 # Function to auto-detect external IP
 detect_external_ip() {
     local detected_ip=""
@@ -546,11 +569,15 @@ if [ "$NEED_VALIDATOR_START" = true ]; then
                 echo 'Logs: test-ledger/validator.log'
                 echo 'Reset Flag: $current_reset_flag'
                 echo ''
+
+                echo '🔗 Using canonical Token Metadata Program ID: '"$METAPLEX_TMD_PROGRAM_ID"
+                echo '📦 Preloading Token Metadata from: '"$METAPLEX_TMD_BINARY"
                 
                 # Start the validator
                 solana-test-validator \\
                     --rpc-port $RPC_PORT \\
                     --bind-address 0.0.0.0 \\
+                    --bpf-program "$METAPLEX_TMD_PROGRAM_ID" "$METAPLEX_TMD_BINARY" \\
                     $current_reset_flag \\
                     --quiet
             "

@@ -10,6 +10,23 @@ The Metaplex programs provide token metadata functionality, allowing tokens to h
 - ✅ **Images**: Token logos and artwork
 - ✅ **Metadata**: Additional token properties
 
+## ⚠️ Critical Notes (Canonical ID & Preloading)
+
+- Always use the canonical Token Metadata Program ID: `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s`.
+- Do NOT deploy a custom Token Metadata Program. Instead, preload the canonical binary at the canonical address when starting the validator using `--bpf-program`.
+- The `manage_metaplex.sh` script is updated to skip on-chain deployment of Token Metadata and to write the canonical ID into `shared-config.json` and `dashboard/shared-config.json`.
+- Ensure your validator start command includes:
+
+  ```bash
+  solana-test-validator \
+    --rpc-port 8899 \
+    --bind-address 0.0.0.0 \
+    --bpf-program metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s ~/.metaplex/programs/mpl_token_metadata.so \
+    --reset
+  ```
+
+- Without preloading, attempts to create metadata may fail with "Incorrect account owner (Custom 57)".
+
 ## 📁 **Files**
 
 - `manage_metaplex.sh` - Main Metaplex management script
@@ -80,10 +97,10 @@ You can also manage Metaplex manually:
 
 ## 🔍 **How It Works**
 
-1. **Downloads**: Gets official Metaplex program binaries from GitHub releases
-2. **Deploys**: Uses `solana program deploy` with correct Program IDs
-3. **Verifies**: Checks that programs are accessible via RPC
-4. **Tracks**: Maintains state in `.metaplex/metaplex.pid`
+1. **Downloads**: Dumps the Token Metadata binary from mainnet to `.metaplex/programs/mpl_token_metadata.so` (once).
+2. **Preloading (Required)**: The validator must be started with `--bpf-program` to preload the Token Metadata binary at the canonical ID.
+3. **Config Writes**: `manage_metaplex.sh` writes the canonical ID into `shared-config.json` and `dashboard/shared-config.json`.
+4. **Status**: Status checks verify accessibility and print the configured program IDs.
 
 ## 🐛 **Troubleshooting**
 
@@ -107,11 +124,8 @@ curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"me
 
 ## 🔄 **Integration with Deployment**
 
-The `remote_build_and_deploy.sh` script automatically:
-1. ✅ **Checks** if Metaplex programs are deployed
-2. ✅ **Deploys** them if missing
-3. ✅ **Continues** with normal deployment if successful
-4. ✅ **Warns** if deployment fails but continues
+- The `remote_build_and_deploy.sh` script now forces canonical Metaplex IDs into configs and does not auto-discover/override them.
+- Update `start_production_validator.sh` to include the `--bpf-program` preloading flag (see Critical Notes). This ensures the RPC uses the canonical program at genesis without on-chain deploy.
 
 ## 📝 **Development Benefits**
 

@@ -145,38 +145,18 @@ download_metaplex_programs() {
 
 # Function to deploy Metaplex programs
 deploy_metaplex_programs() {
-    print_status "$BLUE" "🚀 Deploying Metaplex programs..."
+    print_status "$BLUE" "🚀 Configuring Metaplex programs..."
     
     cd "$METAPLEX_PROGRAMS_DIR"
     
-    # Deploy Token Metadata Program (most important for token names/symbols)
-    if [ -f "mpl_token_metadata.so" ] && [ ! -f "mpl_token_metadata.so.failed" ]; then
-        print_status "$YELLOW" "Deploying Token Metadata Program..."
-        TOKEN_METADATA_DEPLOYMENT=$(solana program deploy mpl_token_metadata.so \
-            --url "$RPC_URL" \
-            --upgrade-authority ~/.config/solana/id.json 2>&1)
-        
-        if echo "$TOKEN_METADATA_DEPLOYMENT" | grep -q "Program Id:"; then
-            DEPLOYED_TOKEN_METADATA_ID=$(echo "$TOKEN_METADATA_DEPLOYMENT" | grep "Program Id:" | awk '{print $3}')
-            print_status "$GREEN" "✅ Token Metadata Program deployed at: $DEPLOYED_TOKEN_METADATA_ID"
-            
-            # Save the deployed program ID for later use
-            echo "$DEPLOYED_TOKEN_METADATA_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
-            
-            # Update shared-config.json with new program ID
-            update_shared_config_with_program_id "$DEPLOYED_TOKEN_METADATA_ID"
-        else
-            print_status "$RED" "❌ Token Metadata Program deployment failed"
-            echo "$TOKEN_METADATA_DEPLOYMENT"
-            print_status "$YELLOW" "💡 Will use canonical program ID instead"
-            echo "$TOKEN_METADATA_PROGRAM_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
-        fi
-    else
-        print_status "$YELLOW" "⚠️  Token Metadata Program binary not available, using canonical program ID"
-        print_status "$BLUE" "🔗 Using canonical Token Metadata Program: $TOKEN_METADATA_PROGRAM_ID"
-        echo "$TOKEN_METADATA_PROGRAM_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
-        update_shared_config_with_program_id "$TOKEN_METADATA_PROGRAM_ID"
-    fi
+    #================================================================================
+    # IMPORTANT: Do NOT deploy a custom Token Metadata Program. Always use canonical ID.
+    # We rely on the validator to preload the binary at the canonical address via --bpf-program.
+    print_status "$YELLOW" "⏭️  Skipping on-chain deployment of Token Metadata Program"
+    print_status "$BLUE" "🔗 Using canonical Token Metadata Program ID: $TOKEN_METADATA_PROGRAM_ID"
+    echo "$TOKEN_METADATA_PROGRAM_ID" > "$METAPLEX_DIR/token_metadata_program_id.txt"
+    update_shared_config_with_program_id "$TOKEN_METADATA_PROGRAM_ID"
+    #================================================================================
     
     # Deploy Candy Machine Program (optional)
     if [ -f "mpl_candy_machine_core.so" ] && [ ! -f "mpl_candy_machine_core.so.failed" ]; then
@@ -218,7 +198,7 @@ deploy_metaplex_programs() {
         echo "$AUCTION_HOUSE_PROGRAM_ID" > "$METAPLEX_DIR/auction_house_program_id.txt"
     fi
     
-    print_status "$GREEN" "✅ Metaplex programs deployed successfully"
+    print_status "$GREEN" "✅ Metaplex programs configured successfully"
     print_status "$BLUE" "📋 Deployed Program IDs:"
     if [ -f "$METAPLEX_DIR/token_metadata_program_id.txt" ]; then
         print_status "$BLUE" "  Token Metadata: $(cat "$METAPLEX_DIR/token_metadata_program_id.txt")"
