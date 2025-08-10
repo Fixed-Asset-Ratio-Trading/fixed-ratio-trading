@@ -398,6 +398,17 @@
     <!-- Scripts - Using local libraries (no internet required) -->
     <script src="libs/solana-web3.min.js"></script>
     <script src="libs/spl-token.min.js"></script>
+    <!-- Load Metaplex Token Metadata instruction builder via ESM and expose to window -->
+    <script type="module">
+      try {
+        const { createCreateMetadataAccountV3Instruction } = await import('https://esm.sh/@metaplex-foundation/mpl-token-metadata@2.10.1');
+        window.MPL = { createCreateMetadataAccountV3Instruction };
+        console.log('✅ Metaplex Token Metadata builder loaded');
+      } catch (e) {
+        console.warn('⚠️ Failed to load Metaplex Token Metadata builder:', e?.message || e);
+        window.MPL = null;
+      }
+    </script>
     <script src="config.js?v=1753358130"></script>
     <script src="utils.js?v=1732061213"></script>
     <script>

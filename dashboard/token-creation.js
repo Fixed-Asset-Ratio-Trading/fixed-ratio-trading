@@ -120,21 +120,42 @@ function createMetadataInstruction(
     symbolBuffer.set(symbolBytes.slice(0, 10));
     uriBuffer.set(uriBytes.slice(0, 200));
     
+    // Prefer official V3 builder if available (avoids deprecated discriminator 0x4b errors)
+    if (window.MPL && window.MPL.createCreateMetadataAccountV3Instruction) {
+        return window.MPL.createCreateMetadataAccountV3Instruction({
+            metadata: metadataAccount,
+            mint: mint,
+            mintAuthority: mintAuthority,
+            payer: payer,
+            updateAuthority: updateAuthority,
+        }, {
+            createMetadataAccountArgsV3: {
+                data: {
+                    name: data.name,
+                    symbol: data.symbol,
+                    uri: data.uri,
+                    sellerFeeBasisPoints: 0,
+                    creators: null,
+                    collection: null,
+                    uses: null,
+                },
+                isMutable: true,
+                collectionDetails: null,
+            },
+        }, TOKEN_METADATA_PROGRAM_ID);
+    }
+    
+    // Fallback to manual builder (not recommended)
     const dataBytes = concatUint8Arrays([
-        new Uint8Array([0]), // CreateMetadataAccount instruction discriminator
-        nameBuffer,          // name (32 bytes)
-        symbolBuffer,        // symbol (10 bytes)
-        uriBuffer,          // uri (200 bytes)
-        new Uint8Array([0, 0]), // sellerFeeBasisPoints (u16 = 0)
-        new Uint8Array([0]), // creators option (0 = None)
-        new Uint8Array([1]), // isMutable (1 = true)
+        new Uint8Array([0]),
+        nameBuffer,
+        symbolBuffer,
+        uriBuffer,
+        new Uint8Array([0, 0]),
+        new Uint8Array([0]),
+        new Uint8Array([1]),
     ]);
-
-    return new solanaWeb3.TransactionInstruction({
-        keys,
-        programId: TOKEN_METADATA_PROGRAM_ID,
-        data: dataBytes
-    });
+    return new solanaWeb3.TransactionInstruction({ keys, programId: TOKEN_METADATA_PROGRAM_ID, data: dataBytes });
 }
 
 // Initialize when page loads
