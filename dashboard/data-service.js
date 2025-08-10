@@ -1,6 +1,6 @@
 // Fixed Ratio Trading - Centralized Data Service
 // This service provides a unified interface for loading pool and system state data
-// Supports multiple data sources: state.json, RPC, and future API servers
+// RPC-only: loads live data directly from the blockchain (no local state.json)
 
 class TradingDataService {
     constructor() {
@@ -20,106 +20,15 @@ class TradingDataService {
     }
 
     /**
-     * Load all data from the configured source
-     * @param {string} source - 'state.json', 'rpc', or 'api' (future)
+     * Load all data (RPC only)
      * @returns {Object} Complete state data
      */
-    async loadAllData(source = 'auto') {
+    async loadAllData(source = 'rpc') {
         try {
-            console.log(`📥 Loading data from source: ${source}`);
-            
-            switch (source) {
-                case 'state.json':
-                    return await this.loadFromStateFile();
-                case 'rpc':
-                    return await this.loadFromRPC();
-                case 'auto':
-                default:
-                    // Try state.json first, fallback to RPC
-                    try {
-                        const stateData = await this.loadFromStateFile();
-                        if (stateData.pools.length > 0 || stateData.mainTreasuryState || stateData.systemState) {
-                            return stateData;
-                        }
-                    } catch (error) {
-                        console.warn('⚠️ State file not available, trying RPC...');
-                    }
-                    return await this.loadFromRPC();
-            }
+            console.log('📥 Loading data from RPC (RPC-only mode)');
+            return await this.loadFromRPC();
         } catch (error) {
             console.error('❌ Error loading data:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Load data from state.json file
-     */
-    async loadFromStateFile() {
-        try {
-            const stateFile = this.config?.stateFile || 'state.json';
-            const cacheBuster = `?t=${Date.now()}`;
-            
-            const response = await fetch(`${stateFile}${cacheBuster}`, {
-                cache: 'no-cache',
-                headers: {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const stateData = await response.json();
-            console.log(`✅ Loaded from state.json: ${stateData.pools?.length || 0} pools, treasury: ${!!stateData.main_treasury_state}, system: ${!!stateData.system_state}`);
-            
-            // Map snake_case field names from state.json to camelCase for JavaScript compatibility
-            const mappedPools = (stateData.pools || []).map(pool => ({
-                address: pool.address,
-                owner: pool.owner,
-                tokenAMint: pool.token_a_mint,
-                tokenBMint: pool.token_b_mint,
-                tokenAVault: pool.token_a_vault,
-                tokenBVault: pool.token_b_vault,
-                lpTokenAMint: pool.lp_token_a_mint,
-                lpTokenBMint: pool.lp_token_b_mint,
-                ratioANumerator: pool.ratio_a_numerator,
-                ratioADecimal: pool.ratio_a_decimal,
-                ratioAActual: pool.ratio_a_actual,
-                ratioBDenominator: pool.ratio_b_denominator,
-                ratioBDecimal: pool.ratio_b_decimal,
-                ratioBActual: pool.ratio_b_actual,
-                tokenALiquidity: pool.total_token_a_liquidity,
-                tokenBLiquidity: pool.total_token_b_liquidity,
-                poolAuthorityBumpSeed: pool.pool_authority_bump_seed,
-                tokenAVaultBumpSeed: pool.token_a_vault_bump_seed,
-                tokenBVaultBumpSeed: pool.token_b_vault_bump_seed,
-                lpTokenAMintBumpSeed: pool.lp_token_a_mint_bump_seed,
-                lpTokenBMintBumpSeed: pool.lp_token_b_mint_bump_seed,
-                flags: pool.flags,
-                collectedFeesTokenA: pool.collected_fees_token_a,
-                collectedFeesTokenB: pool.collected_fees_token_b,
-                collectedSolFees: pool.collected_sol_fees,
-                swapFeeBasisPoints: pool.swap_fee_basis_points,
-                isInitialized: pool.is_initialized !== false, // Default to true if not specified
-                isPaused: pool.is_paused || false,
-                swapsPaused: pool.swaps_paused || false,
-                dataSource: 'JSON'
-            }));
-
-            return {
-                pools: mappedPools,
-                mainTreasuryState: stateData.main_treasury_state,
-                systemState: stateData.system_state,
-                pdaAddresses: stateData.pda_addresses,
-                metadata: stateData.metadata,
-                source: 'state.json'
-            };
-        } catch (error) {
-            console.error('❌ Error loading from state file:', error);
             throw error;
         }
     }
@@ -157,15 +66,51 @@ class TradingDataService {
                     }
                 }
             }
-            
-            // TODO: Parse treasury and system state from RPC
-            // For now, return pools only from RPC
+
+            // Enrich pools with on-chain token decimals to replace former state.json dependency
+            if (pools.length > 0 && window.TokenDisplayUtils?.getTokenDecimals) {
+                await Promise.all(pools.map(async (pool) => {
+                    try {
+                        const [decA, decB] = await Promise.all([
+                            window.TokenDisplayUtils.getTokenDecimals(pool.tokenAMint, this.connection),
+                            window.TokenDisplayUtils.getTokenDecimals(pool.tokenBMint, this.connection)
+                        ]);
+                        pool.ratioADecimal = decA;
+                        pool.ratioBDecimal = decB;
+                        // Optional: compute display ratios for convenience
+                        pool.ratioAActual = (pool.ratioANumerator || 0) / Math.pow(10, decA);
+                        pool.ratioBActual = (pool.ratioBDenominator || 0) / Math.pow(10, decB);
+                    } catch (e) {
+                        console.warn('⚠️ Failed to fetch token decimals for pool', pool.address, e?.message);
+                    }
+                }));
+            }
+
+            // Load treasury and system state from PDAs
+            let mainTreasuryState = null;
+            let systemState = null;
+            let pdaAddresses = null;
+            try {
+                const { mainTreasuryPda, systemStatePda } = await this.derivePDAAddresses();
+                pdaAddresses = {
+                    main_treasury: mainTreasuryPda.toString(),
+                    system_state: systemStatePda.toString()
+                };
+                const [treasuryAcc, systemAcc] = await Promise.all([
+                    this.connection.getAccountInfo(mainTreasuryPda, 'confirmed'),
+                    this.connection.getAccountInfo(systemStatePda, 'confirmed')
+                ]);
+                if (treasuryAcc?.data) mainTreasuryState = this.parseMainTreasuryState(treasuryAcc.data);
+                if (systemAcc?.data) systemState = this.parseSystemState(systemAcc.data);
+            } catch (e) {
+                console.warn('⚠️ Failed to load treasury/system state:', e?.message);
+            }
             
             return {
                 pools,
-                mainTreasuryState: null,
-                systemState: null,
-                pdaAddresses: null,
+                mainTreasuryState,
+                systemState,
+                pdaAddresses,
                 metadata: {
                     generated_at: new Date().toISOString(),
                     source: 'rpc'
@@ -184,7 +129,7 @@ class TradingDataService {
      * @param {string} source - Data source preference
      * @returns {Object} Pool data
      */
-    async getPool(poolAddress, source = 'auto') {
+    async getPool(poolAddress, source = 'rpc') {
         try {
             const cacheKey = `pool_${poolAddress}_${source}`;
             
@@ -199,18 +144,25 @@ class TradingDataService {
             
             let poolData = null;
             
-            if (source === 'rpc' || source === 'auto') {
-                // Load directly from RPC for real-time data
-                poolData = await this.getPoolFromRPC(poolAddress);
-            }
-            
-            if (!poolData && (source === 'state.json' || source === 'auto')) {
-                // Fallback to state file
-                const allData = await this.loadFromStateFile();
-                poolData = allData.pools.find(p => p.address === poolAddress);
-            }
+            // Load directly from RPC for real-time data
+            poolData = await this.getPoolFromRPC(poolAddress);
             
             if (poolData) {
+                // Enrich with decimals if available
+                if (window.TokenDisplayUtils?.getTokenDecimals) {
+                    try {
+                        const [decA, decB] = await Promise.all([
+                            window.TokenDisplayUtils.getTokenDecimals(poolData.tokenAMint, this.connection),
+                            window.TokenDisplayUtils.getTokenDecimals(poolData.tokenBMint, this.connection)
+                        ]);
+                        poolData.ratioADecimal = decA;
+                        poolData.ratioBDecimal = decB;
+                        poolData.ratioAActual = (poolData.ratioANumerator || 0) / Math.pow(10, decA);
+                        poolData.ratioBActual = (poolData.ratioBDenominator || 0) / Math.pow(10, decB);
+                    } catch (e) {
+                        console.warn('⚠️ Failed to enrich pool with decimals:', e?.message);
+                    }
+                }
                 // Cache the result
                 this.cache.set(cacheKey, {
                     data: poolData,
@@ -399,6 +351,191 @@ class TradingDataService {
             console.error(`❌ Error parsing pool state for ${address}:`, error);
             throw new Error(`Failed to parse pool state: ${error.message}`);
         }
+    }
+
+    // ==========================
+    // Exact state.json builders
+    // ==========================
+
+    async derivePDAAddresses() {
+        const programId = new solanaWeb3.PublicKey(this.config.programId);
+        const [mainTreasuryPda] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('main_treasury')],
+            programId
+        );
+        const [systemStatePda] = await solanaWeb3.PublicKey.findProgramAddress(
+            [new TextEncoder().encode('system_state')],
+            programId
+        );
+        return { mainTreasuryPda, systemStatePda };
+    }
+
+    parseMainTreasuryState(data) {
+        try {
+            const bytes = new Uint8Array(data);
+            let offset = 0;
+            const readU64 = () => {
+                const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 8);
+                const val = Number(view.getBigUint64(0, true));
+                offset += 8;
+                return val;
+            };
+            const readI64 = () => {
+                const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 8);
+                const val = Number(view.getBigInt64(0, true));
+                offset += 8;
+                return val;
+            };
+            return {
+                total_balance: readU64(),
+                rent_exempt_minimum: readU64(),
+                total_withdrawn: readU64(),
+                pool_creation_count: readU64(),
+                liquidity_operation_count: readU64(),
+                regular_swap_count: readU64(),
+                treasury_withdrawal_count: readU64(),
+                failed_operation_count: readU64(),
+                total_pool_creation_fees: readU64(),
+                total_liquidity_fees: readU64(),
+                total_regular_swap_fees: readU64(),
+                total_swap_contract_fees: readU64(),
+                last_update_timestamp: readI64(),
+                total_consolidations_performed: readU64(),
+                last_consolidation_timestamp: readI64()
+            };
+        } catch (e) {
+            console.warn('⚠️ Failed to parse MainTreasuryState:', e?.message);
+            return null;
+        }
+    }
+
+    parseSystemState(data) {
+        try {
+            const bytes = new Uint8Array(data);
+            let offset = 0;
+            const readU8 = () => bytes[offset++];
+            const readBool = () => (bytes[offset++] !== 0);
+            const readI64 = () => {
+                const view = new DataView(bytes.buffer, bytes.byteOffset + offset, 8);
+                const val = Number(view.getBigInt64(0, true));
+                offset += 8;
+                return val;
+            };
+            const pause_reason_code = readU8();
+            const is_paused = readBool();
+            const pause_timestamp = readI64();
+            return { pause_reason_code, is_paused, pause_timestamp };
+        } catch (e) {
+            console.warn('⚠️ Failed to parse SystemState:', e?.message);
+            return null;
+        }
+    }
+
+    async loadStateJsonExact() {
+        if (!this.connection) throw new Error('RPC connection not initialized');
+        const programId = this.config.programId;
+        const rpcUrl = (this.connection?._rpcEndpoint) || this.config.rpcUrl || '';
+        const result = {
+            metadata: {
+                generated_at: new Date().toISOString(),
+                program_id: programId,
+                rpc_url: rpcUrl,
+                script_version: '1.0.0',
+                solana_environment: 'local/remote-testnet'
+            },
+            pools: [],
+            main_treasury_state: null,
+            system_state: null,
+            pda_addresses: null
+        };
+
+        // Derive PDAs
+        const { mainTreasuryPda, systemStatePda } = await this.derivePDAAddresses();
+        result.pda_addresses = {
+            main_treasury: mainTreasuryPda.toString(),
+            system_state: systemStatePda.toString()
+        };
+
+        // Load program accounts
+        const programAccounts = await this.connection.getProgramAccounts(
+            new solanaWeb3.PublicKey(programId),
+            { encoding: 'base64' }
+        );
+
+        // Parse pools
+        const pools = [];
+        for (const account of programAccounts) {
+            if (account.account.data.length > 300) {
+                try {
+                    const pool = this.parsePoolState(account.account.data, account.pubkey.toString());
+                    // Fetch decimals
+                    let decA = 6, decB = 6;
+                    try {
+                        if (window.TokenDisplayUtils?.getTokenDecimals) {
+                            [decA, decB] = await Promise.all([
+                                window.TokenDisplayUtils.getTokenDecimals(pool.tokenAMint, this.connection),
+                                window.TokenDisplayUtils.getTokenDecimals(pool.tokenBMint, this.connection)
+                            ]);
+                        }
+                    } catch (_) {}
+
+                    const ratio_a_actual = (pool.ratioANumerator || 0) / Math.pow(10, decA);
+                    const ratio_b_actual = (pool.ratioBDenominator || 0) / Math.pow(10, decB);
+
+                    const poolJson = {
+                        address: pool.address,
+                        owner: pool.owner,
+                        token_a_mint: pool.tokenAMint,
+                        token_b_mint: pool.tokenBMint,
+                        token_a_vault: pool.tokenAVault,
+                        token_b_vault: pool.tokenBVault,
+                        lp_token_a_mint: pool.lpTokenAMint,
+                        lp_token_b_mint: pool.lpTokenBMint,
+                        ratio_a_numerator: pool.ratioANumerator,
+                        ratio_a_decimal: decA,
+                        ratio_a_actual: ratio_a_actual,
+                        ratio_b_denominator: pool.ratioBDenominator,
+                        ratio_b_decimal: decB,
+                        ratio_b_actual: ratio_b_actual,
+                        total_token_a_liquidity: pool.tokenALiquidity,
+                        total_token_b_liquidity: pool.tokenBLiquidity,
+                        pool_authority_bump_seed: pool.poolAuthorityBumpSeed,
+                        token_a_vault_bump_seed: pool.tokenAVaultBumpSeed,
+                        token_b_vault_bump_seed: pool.tokenBVaultBumpSeed,
+                        lp_token_a_mint_bump_seed: pool.lpTokenAMintBumpSeed,
+                        lp_token_b_mint_bump_seed: pool.lpTokenBMintBumpSeed,
+                        flags: pool.flags,
+                        collected_fees_token_a: pool.collectedFeesTokenA,
+                        collected_fees_token_b: pool.collectedFeesTokenB,
+                        total_fees_withdrawn_token_a: pool.totalFeesWithdrawnTokenA,
+                        total_fees_withdrawn_token_b: pool.totalFeesWithdrawnTokenB,
+                        total_sol_fees_collected: pool.totalSolFeesCollected
+                    };
+                    pools.push(poolJson);
+                } catch (e) {
+                    console.warn('Failed parsing pool for state.json:', e?.message);
+                }
+            }
+        }
+        result.pools = pools;
+
+        // Load treasury state
+        try {
+            const acc = await this.connection.getAccountInfo(mainTreasuryPda, 'confirmed');
+            if (acc?.data) result.main_treasury_state = this.parseMainTreasuryState(acc.data);
+        } catch (e) {
+            console.warn('Treasury state load failed:', e?.message);
+        }
+
+        // Load system state
+        try {
+            const acc = await this.connection.getAccountInfo(systemStatePda, 'confirmed');
+            if (acc?.data) result.system_state = this.parseSystemState(acc.data);
+        } catch (e) {
+            console.warn('System state load failed:', e?.message);
+        }
+
+        return result;
     }
 
     /**

@@ -160,31 +160,8 @@ async function loadPoolInformation() {
             await window.TradingDataService.initialize(window.TRADING_CONFIG, connection);
         }
         
-        // Get pool data using centralized service (tries state.json first, then RPC)
-        poolData = await window.TradingDataService.getPool(poolAddress, 'auto');
-        
-        // 🔧 MERGE: Add decimal information from state.json if missing
-        if (poolData && (!poolData.ratioADecimal || !poolData.ratioBDecimal)) {
-            try {
-                const stateData = await window.TradingDataService.loadFromStateFile();
-                const statePool = stateData.pools.find(p => p.address === poolAddress);
-                
-                if (statePool) {
-                    // Merge decimal information from state.json
-                    poolData = {
-                        ...poolData,
-                        ratioADecimal: statePool.ratioADecimal,
-                        ratioAActual: statePool.ratioAActual,
-                        ratioBDecimal: statePool.ratioBDecimal,
-                        ratioBActual: statePool.ratioBActual,
-                        dataSource: poolData.dataSource + '+state'
-                    };
-                    console.log('✅ Merged decimal information from state.json');
-                }
-            } catch (error) {
-                console.warn('⚠️ Could not merge decimal information from state.json:', error);
-            }
-        }
+        // Get pool data using centralized service (RPC only)
+        poolData = await window.TradingDataService.getPool(poolAddress, 'rpc');
         
         if (poolData) {
             console.log(`✅ Pool loaded via TradingDataService (source: ${poolData.source || poolData.dataSource || 'unknown'})`);

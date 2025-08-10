@@ -21,8 +21,7 @@
     "expectedBackpackWallet": "5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
   },
   "dashboard": {
-    "refreshInterval": 10000,
-    "stateFile": "state.json"
+    "refreshInterval": 10000
   },
   "version": "1.0.0",
   "lastUpdated": "2025-08-09",

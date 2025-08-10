@@ -861,6 +861,11 @@ async function createSPLToken(tokenData) {
         let metadataAdded = false;
         try {
             console.log('📄 Now attempting to add metadata in separate transaction...');
+            // Wait briefly if MPL is still loading (race condition guard)
+            if (window.MPL_READY === false) {
+                await new Promise(r => setTimeout(r, 500));
+            }
+
             const metadataInstruction = createMetadataInstruction(
                 metadataAccount,
                 mintKeypair.publicKey,

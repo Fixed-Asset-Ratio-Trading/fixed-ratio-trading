@@ -231,6 +231,63 @@
             grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
             gap: 20px;
         }
+
+        /* New: Scrollable listbox for pools */
+        .pool-listbox {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            overflow-y: auto;
+            /* Show ~5 items, each ~52px tall incl. borders/margins */
+            max-height: 270px;
+        }
+        .pool-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        .pool-item:last-child { border-bottom: none; }
+        .pool-item:hover { background: #f8fafc; }
+        .pool-item.selected { background: #eef2ff; }
+        .pool-item .pair {
+            font-size: 18px; /* larger font for token pairs */
+            font-weight: 700;
+            color: #1f2937;
+            margin-right: 12px;
+        }
+        .pool-item .ratio {
+            font-size: 13px;
+            color: #6b7280;
+            white-space: nowrap;
+        }
+        .pool-action-bar {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            margin-top: 12px;
+        }
+        .pool-action-bar .action-btn {
+            background: #9ca3af;
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: not-allowed;
+            transition: all 0.2s ease;
+        }
+        .pool-action-bar .action-btn.active {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            cursor: pointer;
+        }
+        .pool-action-bar .action-btn.active.swap {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }
         
         .pool-card {
             background: white;
@@ -640,27 +697,17 @@
                 </div>
             </div>
             
-            <div class="status-card volume">
-                <h3>💰 Liquidity Overview</h3>
-                <div class="status-item">
-                    <span class="status-label">Total Value Locked</span>
-                    <span class="status-value" id="total-tvl">0 tokens</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Total Swaps</span>
-                    <span class="status-value" id="total-swaps">--</span>
-                </div>
-                <div class="status-item">
-                    <span class="status-label">Avg Pool Size</span>
-                    <span class="status-value" id="avg-pool-size">-- tokens</span>
-                </div>
-            </div>
+            
             
             <div class="status-card fees">
                 <h3>📊 Fee Structure Overview</h3>
                 <div class="status-item" title="Contract fees are fixed SOL amounts collected for operational costs">
                     <span class="status-label">Contract Fees (SOL) 💰</span>
                     <span class="status-value" id="total-fees">0 SOL</span>
+                </div>
+                <div class="status-item" title="Aggregate SOL fees recorded by all pools (on-chain)">
+                    <span class="status-label">Pools Fees (SOL)</span>
+                    <span class="status-value" id="pool-fees-sol">-- SOL</span>
                 </div>
                 <div class="status-item" title="Pool fees are percentage-based on traded tokens (0-0.5%)">
                     <span class="status-label">Avg Pool Fee Rate 📈</span>
@@ -764,18 +811,19 @@
         
         <div class="pools-section">
             <div class="section-header">
-                <h2 class="section-title">🏊‍♂️ Individual Pools</h2>
-                <div>
-                    <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
-                    <button class="refresh-btn" onclick="forceRefreshPools()" style="margin-left: 10px; background: #f59e0b;">🔍 Debug Pools</button>
-                </div>
+                <h2 class="section-title">🏊‍♂️ Pools</h2>
             </div>
-            
+
+            <!-- New: Scrollable listbox and action bar -->
             <div id="pools-container">
                 <div class="loading">
                     <h3>🔍 Scanning for pools...</h3>
                     <p>Searching the blockchain for Fixed Ratio Trading pools</p>
                 </div>
+            </div>
+            <div class="pool-action-bar">
+                <button id="pool-liquidity-btn" class="action-btn" onclick="goLiquiditySelected()">Liquidity</button>
+                <button id="pool-swap-btn" class="action-btn swap" onclick="goSwapSelected()">Swap</button>
             </div>
         </div>
         
@@ -785,10 +833,68 @@
         </div>
     </div>
 
+    <!-- Diagnostics: Former state.json view (hidden dropdown at bottom) -->
+    <div style="max-width: 1400px; margin: 10px auto 30px auto;">
+        <div id="json-state-section" style="
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #6b7280;
+            overflow: hidden;
+            display: block;
+        ">
+            <div style="padding: 16px; cursor: pointer; background: #f8f9fa; border-bottom: 1px solid #e5e7eb; display:flex; align-items:center; gap:10px;" onclick="toggleJsonStateDetails()">
+                <h3 style="margin: 0; color: #333;">🧰 Diagnostics: Live JSON (former state.json)</h3>
+                <span id="json-state-expand-indicator" style="margin-left: auto; font-size: 20px;">▼</span>
+            </div>
+            <div id="json-state-details" style="display: none; padding: 16px;">
+                <div style="display:flex; justify-content:flex-end; margin-bottom:8px; gap:8px;">
+                    <button class="retry-btn" onclick="refreshJsonState()">🔄 Refresh JSON</button>
+                    <button class="retry-btn" onclick="copyJsonState()">📋 Copy JSON</button>
+                </div>
+                <pre id="json-state-content" style="white-space: pre-wrap; word-break: break-word; background:#0b1020; color:#e5e7eb; padding: 12px; border-radius: 8px; max-height: 400px; overflow:auto; font-size:12px;">
+Loading...
+                </pre>
+            </div>
+        </div>
+    </div>
+
     <script src="libs/solana-web3.min.js"></script>
     <script src="config.js"></script>
     <script src="data-service.js"></script>
     <script src="utils.js?v=1753358100"></script>
     <script src="dashboard.js?v=1753358120"></script>
+    <script>
+    // Diagnostics: Build exact former state.json using RPC
+    async function buildLiveStateJson() {
+        try {
+            if (!window.TradingDataService || !window.CONFIG) return { error: 'Service not ready' };
+            return await window.TradingDataService.loadStateJsonExact();
+        } catch (e) {
+            return { error: e?.message || String(e) };
+        }
+    }
+    async function refreshJsonState() {
+        const el = document.getElementById('json-state-content');
+        el.textContent = 'Loading...';
+        const json = await buildLiveStateJson();
+        el.textContent = JSON.stringify(json, null, 2);
+    }
+    function copyJsonState() {
+        const el = document.getElementById('json-state-content');
+        const text = el.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+            console.log('📋 Diagnostics JSON copied');
+        });
+    }
+    function toggleJsonStateDetails() {
+        const details = document.getElementById('json-state-details');
+        const indicator = document.getElementById('json-state-expand-indicator');
+        const isHidden = details.style.display === 'none';
+        details.style.display = isHidden ? 'block' : 'none';
+        indicator.textContent = isHidden ? '▲' : '▼';
+        if (isHidden) refreshJsonState();
+    }
+    </script>
 </body>
 </html> 

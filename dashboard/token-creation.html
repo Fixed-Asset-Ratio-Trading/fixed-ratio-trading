@@ -430,6 +430,7 @@
             const mod = await import(src);
             if (mod?.createCreateMetadataAccountV3Instruction) {
               window.MPL = { createCreateMetadataAccountV3Instruction: mod.createCreateMetadataAccountV3Instruction };
+              window.MPL_READY = true;
               console.log('✅ Metaplex Token Metadata builder loaded from', src);
               return;
             }
@@ -439,6 +440,7 @@
         }
         console.warn('⚠️ Metaplex Token Metadata builder unavailable - metadata creation will be skipped');
         window.MPL = null;
+        window.MPL_READY = false;
       }
       loadMPL();
     </script>

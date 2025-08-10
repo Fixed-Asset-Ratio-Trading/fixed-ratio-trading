@@ -80,8 +80,8 @@ async function initializeDashboard() {
         await window.TradingDataService.initialize(window.CONFIG, connection);
         console.log('✅ TradingDataService initialized with RPC connection');
         
-        // Load initial state using centralized service (will try state.json first, then RPC fallback)
-        const initialState = await window.TradingDataService.loadAllData('auto');
+        // Load initial state using centralized service (RPC only)
+        const initialState = await window.TradingDataService.loadAllData('rpc');
         if (initialState.pools.length > 0) {
             pools = initialState.pools;
             console.log(`📁 Pre-loaded ${pools.length} pools via TradingDataService`);
@@ -415,8 +415,10 @@ async function refreshData() {
     console.log('🔄 Refreshing dashboard data...');
     
     const refreshBtn = document.querySelector('.refresh-btn');
-    refreshBtn.disabled = true;
-    refreshBtn.textContent = '🔄 Refreshing...';
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = '🔄 Refreshing...';
+    }
     
     try {
         // Clear any existing errors
@@ -442,15 +444,15 @@ async function refreshData() {
         // Render pools
         renderPools();
         
-        // Phase 2.3: Refresh treasury and system state data via centralized service
+        // Phase 2.3: Refresh treasury and system state data via centralized service (RPC only)
         try {
-            const refreshedState = await window.TradingDataService.loadAllData('auto');
-            if (refreshedState.mainTreasuryState) {
+            const refreshedState = await window.TradingDataService.loadAllData('rpc');
+            if (refreshedState.mainTreasuryState !== undefined) {
                 mainTreasuryState = refreshedState.mainTreasuryState;
                 updateTreasuryStateDisplay();
                 console.log('🏛️ Treasury state refreshed via TradingDataService');
             }
-            if (refreshedState.systemState) {
+            if (refreshedState.systemState !== undefined) {
                 systemState = refreshedState.systemState;
                 updateSystemStateDisplay();
                 console.log('⚙️ System state refreshed via TradingDataService');
@@ -468,8 +470,10 @@ async function refreshData() {
         console.error('❌ Error refreshing dashboard:', error);
         showError('Error refreshing data: ' + error.message);
     } finally {
-        refreshBtn.disabled = false;
-        refreshBtn.textContent = '🔄 Refresh';
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = '🔄 Refresh';
+        }
     }
 }
 
@@ -525,6 +529,23 @@ async function scanForPools() {
             onChainPools = poolResults.filter(pool => pool !== null);
             
             console.log(`✅ Successfully parsed ${onChainPools.length} on-chain pools`);
+            // Enrich with token decimals so centralized display has required fields
+            if (onChainPools.length > 0 && window.TokenDisplayUtils?.getTokenDecimals) {
+                await Promise.all(onChainPools.map(async (pool) => {
+                    try {
+                        const [decA, decB] = await Promise.all([
+                            window.TokenDisplayUtils.getTokenDecimals(pool.tokenAMint, connection),
+                            window.TokenDisplayUtils.getTokenDecimals(pool.tokenBMint, connection)
+                        ]);
+                        pool.ratioADecimal = decA;
+                        pool.ratioBDecimal = decB;
+                        pool.ratioAActual = (pool.ratioANumerator || pool.ratio_a_numerator || 0) / Math.pow(10, decA);
+                        pool.ratioBActual = (pool.ratioBDenominator || pool.ratio_b_denominator || 0) / Math.pow(10, decB);
+                    } catch (e) {
+                        console.warn('⚠️ Failed to enrich pool with decimals:', pool.address, e?.message);
+                    }
+                }));
+            }
         } catch (error) {
             console.warn('⚠️ Error scanning on-chain pools (this is normal if program not deployed):', error);
         }
@@ -581,34 +602,10 @@ async function scanForPools() {
             console.log('🎯 Using on-chain data only (ignoring other sources)');
         }
         
-        // Merge on-chain data with state.json decimal information
+        // Use on-chain pools only; no state.json merge
         if (onChainPools.length > 0) {
-            // Create a map of pools from state.json by address for quick lookup
-            const statePoolsMap = new Map();
-            pools.forEach(pool => {
-                statePoolsMap.set(pool.address, pool);
-            });
-            
-            // Merge on-chain data with decimal information from state.json
-            pools = onChainPools.map(onChainPool => {
-                const statePool = statePoolsMap.get(onChainPool.address);
-                if (statePool) {
-                    // Merge: Use on-chain data but preserve decimal info from state.json
-                    return {
-                        ...onChainPool,
-                        ratioADecimal: statePool.ratioADecimal,
-                        ratioAActual: statePool.ratioAActual,
-                        ratioBDecimal: statePool.ratioBDecimal,
-                        ratioBActual: statePool.ratioBActual,
-                        dataSource: 'rpc+state'
-                    };
-                } else {
-                    // On-chain pool not in state.json
-                    return onChainPool;
-                }
-            });
-            
-            console.log(`✅ Loaded ${pools.length} pools from RPC (merged with state.json decimal data)`);
+            pools = onChainPools;
+            console.log(`✅ Loaded ${pools.length} pools from RPC`);
         } else {
             // Fallback to sessionStorage only if no on-chain data
             pools = localPools;
@@ -778,40 +775,36 @@ function updateSummaryStats() {
     const activePools = pools.filter(pool => !pool.isPaused && !pool.swapsPaused).length;
     const pausedPools = pools.filter(pool => pool.isPaused || pool.swapsPaused).length;
     
-    const totalTVL = pools.reduce((sum, pool) => sum + pool.tokenALiquidity + pool.tokenBLiquidity, 0);
-    const avgPoolSize = totalPools > 0 ? Math.floor(totalTVL / totalPools) : 0;
-    
-    const totalFeesSOL = pools.reduce((sum, pool) => sum + pool.collectedSolFees, 0);
-    const avgSwapFee = totalPools > 0 ? 
-        Math.floor(pools.reduce((sum, pool) => sum + pool.swapFeeBasisPoints, 0) / totalPools) : 0;
-    
-    // Phase 2.3: Use treasury state data when available for more accurate statistics
-    let totalSwaps = '--';
-    let treasuryPoolCount = totalPools;
-    let treasuryFeesSOL = totalFeesSOL;
-    
-    if (mainTreasuryState) {
-        totalSwaps = mainTreasuryState.regular_swap_count || '--';
-        treasuryPoolCount = mainTreasuryState.pool_creation_count || totalPools;
-        const treasuryTotalSOL = (
-            (mainTreasuryState.total_liquidity_fees || 0) +
-            (mainTreasuryState.total_regular_swap_fees || 0) +
-            (mainTreasuryState.total_swap_contract_fees || 0)
-        ) / 1000000000;
-        treasuryFeesSOL = treasuryTotalSOL;
-    }
-    
     // Update DOM elements
-    document.getElementById('total-pools').textContent = treasuryPoolCount;
+    document.getElementById('total-pools').textContent = totalPools;
     document.getElementById('active-pools').textContent = activePools;
     document.getElementById('paused-pools').textContent = pausedPools;
-    document.getElementById('total-tvl').textContent = `${totalTVL.toLocaleString()} tokens`;
-    document.getElementById('avg-pool-size').textContent = `${avgPoolSize.toLocaleString()} tokens`;
-    document.getElementById('total-fees').textContent = mainTreasuryState ? 
-        `${treasuryFeesSOL.toFixed(4)} SOL` : 
-        `${(totalFeesSOL / 1000000000).toFixed(4)} SOL`;
-    document.getElementById('avg-swap-fee').textContent = `${avgSwapFee} bps`;
-    document.getElementById('total-swaps').textContent = totalSwaps;
+    const feesEl = document.getElementById('total-fees');
+    const avgFeeEl = document.getElementById('avg-swap-fee');
+    const poolFeesEl = document.getElementById('pool-fees-sol');
+    // Contract fees from treasury (lamports → SOL)
+    if (feesEl) {
+        if (mainTreasuryState) {
+            const lamports = 
+                (mainTreasuryState.total_pool_creation_fees||0) +
+                (mainTreasuryState.total_liquidity_fees||0) +
+                (mainTreasuryState.total_regular_swap_fees||0) +
+                (mainTreasuryState.total_swap_contract_fees||0);
+            feesEl.textContent = `${(lamports/1_000_000_000).toFixed(4)} SOL`;
+        } else {
+            feesEl.textContent = '--';
+        }
+    }
+    // Aggregate pool-side SOL fees if available on pools
+    if (poolFeesEl) {
+        try {
+            const sumLamports = pools.reduce((sum, p) => sum + (p.collectedLiquidityFees||0) + (p.collectedSwapContractFees||0) + (p.totalSolFeesCollected||0), 0);
+            poolFeesEl.textContent = `${(sumLamports/1_000_000_000).toFixed(4)} SOL`;
+        } catch (_) {
+            poolFeesEl.textContent = '-- SOL';
+        }
+    }
+    if (avgFeeEl) avgFeeEl.textContent = '--';
     
     // Phase 2.3: Add system status indicator
     updateSystemStatusIndicator();
@@ -822,9 +815,9 @@ function updateSummaryStats() {
  */
 function renderPools() {
     const container = document.getElementById('pools-container');
-    
+
+    // Build listbox instead of grid
     if (pools.length === 0) {
-        // Check if program is deployed to show appropriate message
         connection.getAccountInfo(new solanaWeb3.PublicKey(CONFIG.programId))
             .then(programAccount => {
                 if (!programAccount) {
@@ -832,8 +825,6 @@ function renderPools() {
                         <div class="loading">
                             <h3>🚧 Program Not Deployed</h3>
                             <p>The Fixed Ratio Trading program is not deployed on this testnet.</p>
-                            <p>Run <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">./scripts/deploy_local.sh</code> to deploy the program.</p>
-                            <p>Or check the <a href="../LOCAL_TEST_DEPLOYMENT_GUIDE.md" target="_blank">deployment guide</a> for detailed instructions.</p>
                         </div>
                     `;
                 } else {
@@ -841,34 +832,46 @@ function renderPools() {
                         <div class="loading">
                             <h3>📭 No pools found</h3>
                             <p>No Fixed Ratio Trading pools detected on this network.</p>
-                            <p><a href="#" onclick="createSamplePools()">Create sample pools</a> for testing.</p>
                         </div>
                     `;
                 }
             })
-            .catch(error => {
-                console.warn('Could not check program status:', error);
+            .catch(() => {
                 container.innerHTML = `
                     <div class="loading">
                         <h3>📭 No pools found</h3>
                         <p>No Fixed Ratio Trading pools detected on this network.</p>
-                        <p><a href="#" onclick="createSamplePools()">Create sample pools</a> for testing.</p>
                     </div>
                 `;
             });
+        // Disable action bar when no pools
+        setSelectedPool(null);
         return;
     }
-    
-    const poolsGrid = document.createElement('div');
-    poolsGrid.className = 'pools-grid';
-    
+
+    const list = document.createElement('div');
+    list.className = 'pool-listbox';
+
     pools.forEach(pool => {
-        const poolCard = createPoolCard(pool);
-        poolsGrid.appendChild(poolCard);
+        const displayInfo = window.TokenDisplayUtils?.getCentralizedDisplayInfo(pool);
+        const pairName = displayInfo ? displayInfo.pairName : `${pool.tokenASymbol}/${pool.tokenBSymbol}`;
+        const ratioText = displayInfo ? displayInfo.ratioDisplay : '1:1';
+
+        const item = document.createElement('div');
+        item.className = 'pool-item';
+        item.onclick = () => setSelectedPool(pool.address);
+        item.dataset.address = pool.address;
+        item.innerHTML = `
+            <div class="pair">${pairName}</div>
+            <div class="ratio">ratio ${ratioText}</div>
+        `;
+        list.appendChild(item);
     });
-    
+
     container.innerHTML = '';
-    container.appendChild(poolsGrid);
+    container.appendChild(list);
+    // Preserve selection if any
+    if (window._selectedPoolAddress) highlightSelectedItem(window._selectedPoolAddress);
 }
 
 /**
@@ -1185,6 +1188,47 @@ function swapTokens(poolAddress) {
     
     // Navigate to swap page with pool ID in URL for direct access and bookmarking
     window.location.href = `swap.html?pool=${poolAddress}`;
+}
+
+// Listbox selection helpers
+function setSelectedPool(address) {
+    window._selectedPoolAddress = address || null;
+    const liqBtn = document.getElementById('pool-liquidity-btn');
+    const swapBtn = document.getElementById('pool-swap-btn');
+    if (!liqBtn || !swapBtn) return;
+    if (address) {
+        liqBtn.classList.add('active');
+        swapBtn.classList.add('active');
+        liqBtn.disabled = false;
+        swapBtn.disabled = false;
+        liqBtn.style.cursor = 'pointer';
+        swapBtn.style.cursor = 'pointer';
+        highlightSelectedItem(address);
+    } else {
+        liqBtn.classList.remove('active');
+        swapBtn.classList.remove('active');
+        liqBtn.disabled = true;
+        swapBtn.disabled = true;
+        liqBtn.style.cursor = 'not-allowed';
+        swapBtn.style.cursor = 'not-allowed';
+        highlightSelectedItem('');
+    }
+}
+
+function highlightSelectedItem(address) {
+    document.querySelectorAll('.pool-item').forEach(el => {
+        el.classList.toggle('selected', el.dataset.address === address);
+    });
+}
+
+function goLiquiditySelected() {
+    if (!window._selectedPoolAddress) return;
+    addLiquidity(window._selectedPoolAddress);
+}
+
+function goSwapSelected() {
+    if (!window._selectedPoolAddress) return;
+    swapTokens(window._selectedPoolAddress);
 }
 
 /**
