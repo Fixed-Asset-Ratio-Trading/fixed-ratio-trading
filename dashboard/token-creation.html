@@ -396,6 +396,25 @@
     </div>
 
     <!-- Scripts - Using local libraries (no internet required) -->
+    <!-- Favicon to avoid 404 in console -->
+    <link rel="icon" href="images/TS Token image.png" type="image/png" />
+
+    <!-- Suppress noisy bigint-buffer warning in browser (harmless fallback) -->
+    <script>
+      (function () {
+        const originalWarn = console.warn;
+        console.warn = function (...args) {
+          try {
+            const first = args && args[0] ? String(args[0]) : '';
+            if (typeof first === 'string' && first.includes('bigint: Failed to load bindings')) {
+              return; // ignore this benign warning
+            }
+          } catch (e) { /* no-op */ }
+          return originalWarn.apply(console, args);
+        };
+      })();
+    </script>
+
     <script src="libs/solana-web3.min.js"></script>
     <script src="libs/spl-token.min.js"></script>
     <!-- Load Metaplex Token Metadata instruction builder via ESM and expose to window -->
