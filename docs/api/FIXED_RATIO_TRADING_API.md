@@ -2,8 +2,8 @@
 
 **Version:** 1.0  
 **Date:** Aug 5, 2025  
-**DevNet Program ID:** `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn` 
-**TestNet Program ID:** `9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7` 
+**LocalNet Program ID:** `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn` 
+**DevNet Program ID:** `9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7` 
 **MainNet Program ID:** `quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD`
 **Support:** support@davincicodes.net
 
@@ -28,13 +28,14 @@ Location: src/constants.rs (lines 40, 51, 70, 294)
 ## Table of Contents
 1. [Overview](#overview)
 2. [Important Notes](#important-notes)
-3. [System Management](#system-management)
-4. [Pool Management](#pool-management)
-5. [Liquidity Operations](#liquidity-operations)
-6. [Swap Operations](#swap-operations)
-7. [Treasury Operations](#treasury-operations)
-8. [Error Codes](#error-codes)
-9. [Types and Structures](#types-and-structures)
+3. [Localnet & ngrok Setup](#localnet--ngrok-setup)
+4. [System Management](#system-management)
+5. [Pool Management](#pool-management)
+6. [Liquidity Operations](#liquidity-operations)
+7. [Swap Operations](#swap-operations)
+8. [Treasury Operations](#treasury-operations)
+9. [Error Codes](#error-codes)
+10. [Types and Structures](#types-and-structures)
 
 ---
 
@@ -75,6 +76,37 @@ The Fixed Ratio Trading Contract is a Solana smart contract that enables creatio
    - **Token normalization ≠ ratio normalization**: Contract auto-normalizes tokens but NOT ratios
    - **Always use `normalize_pool_config()`** before calling `process_pool_initialize`
    - **Wrong ratios are permanent** - no fix possible, results in lost SOL (1.15+ SOL per mistake)
+
+---
+
+## Localnet & ngrok Setup
+
+Use these endpoints for local development, derived from `shared-config.json`:
+
+- **Localnet RPC (HTTP)**: `http://192.168.2.88:8899`
+- **Localnet WebSocket (WS)**: `ws://192.168.2.88:8900`
+- **Local Program ID**: `4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn`
+
+For testing from outside your LAN (including Backpack), use the public ngrok endpoint:
+- **Public Localnet RPC (HTTPS via ngrok)**: `https://fixed.ngrok.app`
+
+### Backpack Wallet Recommendation (Testing via ngrok)
+
+Backpack supports custom RPC endpoints and works well against a local validator exposed through ngrok.
+
+Steps:
+1. Open Backpack → Settings → Networks
+2. Add a network (or edit Localnet) and set the RPC to: `https://fixed.ngrok.app`
+3. Switch to that network and test transactions against the contract
+
+Optional reference values from `shared-config.json`
+
+### Localnet Test Wallet (Funds for Development)
+
+- **Address**: `5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t`
+- **Private Key**: `26uwjawj1t3SQz1NzgQZ4TEQyBUdsH7xVLXLpaf4zXU9bqe9Gx1i18YY2d58RrGgo3WZesWqN3d6WZXD4wBH617r`
+
+WARNING: This key is for LOCALNET development only. Do NOT use it on public networks (Devnet/Testnet/Mainnet).
 
 ---
 
