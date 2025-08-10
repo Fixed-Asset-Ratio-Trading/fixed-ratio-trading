@@ -6,7 +6,6 @@
 let connection = null;
 let wallet = null;
 let isConnected = false;
-let createdTokens = [];
 
 // Metaplex Token Metadata Program ID - loaded from config
 let TOKEN_METADATA_PROGRAM_ID = null;
@@ -454,8 +453,7 @@ async function createSampleToken() {
         const tokenInfo = await createSPLToken(sampleData);
         
         // Store created token
-        createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        // Persisting token info to localStorage is removed. Metadata is stored on-chain via Metaplex.
         
         showStatus('success', `🎉 Sample token "${sampleData.name}" created successfully! 
         💰 ${sampleData.supply.toLocaleString()} ${sampleData.symbol} tokens minted to your wallet
@@ -502,8 +500,7 @@ async function createMicroSampleToken() {
         const tokenInfo = await createSPLToken(microSampleData);
         
         // Store created token
-        createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        // Persisting token info to localStorage is removed. Metadata is stored on-chain via Metaplex.
         
         showStatus('success', `🎉 Micro sample token "${microSampleData.name}" created successfully! 
         💰 ${microSampleData.supply.toLocaleString()} ${microSampleData.symbol} tokens minted to your wallet
@@ -551,8 +548,7 @@ async function createLargeSampleToken() {
         const tokenInfo = await createSPLToken(largeSampleData);
         
         // Store created token
-        createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        // Persisting token info to localStorage is removed. Metadata is stored on-chain via Metaplex.
         
         showStatus('success', `🎉 Large sample token "${largeSampleData.name}" created successfully! 
         💰 ${largeSampleData.supply.toLocaleString()} ${largeSampleData.symbol} tokens minted to your wallet
@@ -596,8 +592,7 @@ async function handleTokenCreation(event) {
         const tokenInfo = await createSPLToken(formData);
         
         // Store created token
-        createdTokens.push(tokenInfo);
-        localStorage.setItem('createdTokens', JSON.stringify(createdTokens));
+        // Persisting token info to localStorage is removed. Metadata is stored on-chain via Metaplex.
         
         // Clear form
         clearForm();
@@ -959,201 +954,11 @@ function showStatus(type, message) {
 /**
  * Load tokens from wallet and populate dropdowns
  */
-async function loadWalletTokens() {
-    try {
-        if (!isConnected || !wallet) {
-            console.log('🔌 Wallet not connected, skipping token loading');
-            return;
-        }
 
-        console.log('🔍 Loading tokens from wallet...');
-        
-        // Get all token accounts for the wallet
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-            wallet.publicKey,
-            { programId: new solanaWeb3.PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') }
-        );
 
-        console.log(`📊 Found ${tokenAccounts.value.length} token accounts`);
 
-        // Filter out accounts with zero balance and get token info
-        const tokens = [];
-        for (const account of tokenAccounts.value) {
-            const accountInfo = account.account.data.parsed.info;
-            const balance = accountInfo.tokenAmount.uiAmount;
-            
-            if (balance > 0) {
-                const mint = accountInfo.mint;
-                const decimals = accountInfo.tokenAmount.decimals;
-                
-                // Try to get token info from localStorage first
-                let tokenInfo = getTokenInfoFromStorage(mint);
-                
-                if (!tokenInfo) {
-                    // If not in localStorage, create a basic entry
-                    tokenInfo = {
-                        mint: mint,
-                        name: `Token ${mint.slice(0, 4)}...${mint.slice(-4)}`,
-                        symbol: `TKN${mint.slice(0, 4)}`,
-                        decimals: decimals,
-                        balance: balance
-                    };
-                } else {
-                    // Add balance to existing token info
-                    tokenInfo = { ...tokenInfo, balance: balance };
-                }
-                
-                tokens.push(tokenInfo);
-            }
-        }
 
-        console.log(`💎 Found ${tokens.length} tokens with balance > 0`);
 
-        // Populate all dropdowns
-        populateTokenDropdown('sample-token-select', tokens);
-        populateTokenDropdown('micro-token-select', tokens);
-        populateTokenDropdown('large-token-select', tokens);
 
-    } catch (error) {
-        console.error('❌ Error loading wallet tokens:', error);
-        showStatus('error', 'Failed to load tokens from wallet');
-    }
-}
 
-/**
- * Populate a token dropdown with wallet tokens
- */
-function populateTokenDropdown(selectId, tokens) {
-    const select = document.getElementById(selectId);
-    if (!select) {
-        console.warn(`⚠️ Dropdown ${selectId} not found`);
-        return;
-    }
 
-    // Clear existing options except the first one
-    while (select.children.length > 1) {
-        select.removeChild(select.lastChild);
-    }
-
-    // Add token options
-    tokens.forEach(token => {
-        const option = document.createElement('option');
-        option.value = token.mint;
-        option.textContent = `${token.symbol} - ${token.name} (${token.balance} balance)`;
-        option.dataset.tokenInfo = JSON.stringify(token);
-        select.appendChild(option);
-    });
-
-    console.log(`✅ Populated ${selectId} with ${tokens.length} tokens`);
-}
-
-/**
- * Get token info from localStorage
- */
-function getTokenInfoFromStorage(mint) {
-    try {
-        const storedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
-        return storedTokens.find(t => t.mint === mint) || null;
-    } catch (error) {
-        console.warn('⚠️ Error reading token info from storage:', error);
-        return null;
-    }
-}
-
-/**
- * Add selected token to localStorage
- */
-async function addSelectedTokenToStorage() {
-    const select = document.getElementById('sample-token-select');
-    await addTokenToStorage(select, 'TS');
-}
-
-/**
- * Add selected micro token to localStorage
- */
-async function addSelectedMicroTokenToStorage() {
-    const select = document.getElementById('micro-token-select');
-    await addTokenToStorage(select, 'MST');
-}
-
-/**
- * Add selected large token to localStorage
- */
-async function addSelectedLargeTokenToStorage() {
-    const select = document.getElementById('large-token-select');
-    await addTokenToStorage(select, 'LTS');
-}
-
-/**
- * Add token to localStorage with specified symbol
- */
-async function addTokenToStorage(select, defaultSymbol) {
-    try {
-        if (!select || select.value === '') {
-            showStatus('error', 'Please select a token first');
-            return;
-        }
-
-        const selectedOption = select.options[select.selectedIndex];
-        const tokenInfo = JSON.parse(selectedOption.dataset.tokenInfo);
-        
-        // Prompt user for symbol (with default)
-        const symbol = prompt(`Enter symbol for ${tokenInfo.name} (default: ${defaultSymbol}):`, defaultSymbol);
-        
-        if (!symbol) {
-            showStatus('info', 'Token addition cancelled');
-            return;
-        }
-
-        // Store in localStorage using createdTokens format
-        const storedTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
-        
-        // Check if token already exists and update it, otherwise add new
-        const existingIndex = storedTokens.findIndex(t => t.mint === tokenInfo.mint);
-        const tokenEntry = {
-            mint: tokenInfo.mint,
-            name: tokenInfo.name,
-            symbol: symbol,
-            decimals: tokenInfo.decimals,
-            createdAt: new Date().toISOString()
-        };
-        
-        if (existingIndex !== -1) {
-            storedTokens[existingIndex] = { ...storedTokens[existingIndex], ...tokenEntry };
-        } else {
-            storedTokens.push(tokenEntry);
-        }
-        
-        localStorage.setItem('createdTokens', JSON.stringify(storedTokens));
-        
-        showStatus('success', `✅ Added ${tokenInfo.name} (${symbol}) to localStorage`);
-        console.log(`💾 Stored token info: ${tokenInfo.name} (${symbol}) - ${tokenInfo.mint}`);
-        
-        // Refresh dropdowns to show updated info
-        await loadWalletTokens();
-        
-    } catch (error) {
-        console.error('❌ Error adding token to storage:', error);
-        showStatus('error', 'Failed to add token to storage');
-    }
-}
-
-// Initialize token dropdowns when wallet connects
-document.addEventListener('DOMContentLoaded', () => {
-    // Load tokens when wallet connects
-    if (typeof handleWalletConnected === 'function') {
-        const originalHandleWalletConnected = handleWalletConnected;
-        handleWalletConnected = async () => {
-            await originalHandleWalletConnected();
-            await loadWalletTokens();
-        };
-    }
-});
-
-// Export functions for global access
-window.addSelectedTokenToStorage = addSelectedTokenToStorage;
-window.addSelectedMicroTokenToStorage = addSelectedMicroTokenToStorage;
-window.addSelectedLargeTokenToStorage = addSelectedLargeTokenToStorage;
-window.loadWalletTokens = loadWalletTokens;
-
-console.log('💎 Token dropdown functionality loaded successfully');

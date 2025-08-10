@@ -244,7 +244,7 @@ async function loadPoolInformation() {
 // parsePoolState function removed - now using centralized TradingDataService.parsePoolState()
 
 /**
- * Try to get token symbols from localStorage, Metaplex metadata, or use defaults
+ * Try to get token symbols from Metaplex metadata, or use mint prefix as fallback
  */
 async function getTokenSymbols(tokenAMint, tokenBMint) {
     try {
@@ -265,30 +265,21 @@ async function getTokenSymbols(tokenAMint, tokenBMint) {
     } catch (error) {
         console.warn('❌ Error getting token symbols:', error);
         return {
-            tokenA: `TOKEN-${tokenAMint.slice(0, 4)}`,
-            tokenB: `TOKEN-${tokenBMint.slice(0, 4)}`
+            tokenA: `${tokenAMint.slice(0, 4)}`,
+            tokenB: `${tokenBMint.slice(0, 4)}`
         };
     }
 }
 
 /**
- * Get token symbol from localStorage, Metaplex, or default
+ * Get token symbol from Metaplex, or default to first 4 chars of mint
  */
 async function getTokenSymbol(tokenMint, tokenLabel) {
     try {
-        // Check localStorage first
-        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
-        const localToken = createdTokens.find(t => t.mint === tokenMint);
-        
-        if (localToken?.symbol) {
-            console.log(`✅ Found token ${tokenLabel} symbol in localStorage: ${localToken.symbol}`);
-            return localToken.symbol;
-        }
-        
         // Try Metaplex metadata (if available)
-        if (typeof queryTokenMetadata === 'function') {
+        if (window.TokenDisplayUtils?.queryTokenMetadata) {
             console.log(`🔍 Querying Metaplex metadata for token ${tokenLabel}: ${tokenMint}`);
-            const metadataAccount = await queryTokenMetadata(tokenMint);
+            const metadataAccount = await window.TokenDisplayUtils.queryTokenMetadata(tokenMint, connection);
             
             if (metadataAccount?.symbol) {
                 console.log(`✅ Found token ${tokenLabel} symbol in Metaplex: ${metadataAccount.symbol}`);
@@ -297,13 +288,13 @@ async function getTokenSymbol(tokenMint, tokenLabel) {
         }
         
         // Fallback to default
-        const defaultSymbol = `TOKEN-${tokenMint.slice(0, 4)}`;
+        const defaultSymbol = `${tokenMint.slice(0, 4)}`;
         console.log(`⚠️ Using default symbol for token ${tokenLabel}: ${defaultSymbol}`);
         return defaultSymbol;
         
     } catch (error) {
         console.warn(`❌ Error getting symbol for token ${tokenLabel}:`, error);
-        return `TOKEN-${tokenMint.slice(0, 4)}`;
+        return `${tokenMint.slice(0, 4)}`;
     }
 }
 

@@ -262,7 +262,7 @@ async function loadUserTokens() {
                     mint: mintAddress,
                     balance: parseFloat(accountInfo.tokenAmount.uiAmount),
                     decimals: accountInfo.tokenAmount.decimals,
-                    symbol: `TOKEN-${mintAddress.slice(0, 4)}`, // Default symbol
+                    symbol: `${mintAddress.slice(0, 4)}`, // Default symbol fallback: first 4 chars of mint
                     name: `Token ${mintAddress.slice(0, 8)}...`, // Default name
                     tokenAccount: tokenAccount.pubkey.toString()
                 };
@@ -298,17 +298,6 @@ async function loadUserTokens() {
  */
 async function tryFetchTokenMetadata(tokenInfo) {
     try {
-        // Check if this is a token we created (stored in localStorage)
-        const createdTokens = JSON.parse(localStorage.getItem('createdTokens') || '[]');
-        const createdToken = createdTokens.find(t => t.mint === tokenInfo.mint);
-        
-        if (createdToken) {
-            tokenInfo.symbol = createdToken.symbol;
-            tokenInfo.name = createdToken.name;
-            console.log(`✅ Found token metadata in localStorage: ${tokenInfo.symbol} (${tokenInfo.name})`);
-            return;
-        }
-        
         // Try to fetch metadata from Metaplex Token Metadata Program
         console.log(`🔍 Querying Metaplex metadata for token ${tokenInfo.mint}`);
         const metadataAccount = await queryMetaplexMetadata(tokenInfo.mint);

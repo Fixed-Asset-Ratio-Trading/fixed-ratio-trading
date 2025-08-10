@@ -10,10 +10,10 @@
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {
-    "tokenMetadataProgramId": "HK2G5hbxGU1iE7VbcT5qoWWkNX9AYpwrXKSi3WCg5YzZ",
-    "candyMachineProgramId": "EzqzGLSEmahbgjTpei6ZfLarjNVFyDJbv6CpTxJFC2Rz",
-    "auctionHouseProgramId": "9kTpk4N2GdCahXkAaV2gxvjH9UeKVktfrPXTTDaKce8P",
-    "lastUpdated": "2025-08-09",
+    "tokenMetadataProgramId": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
+    "candyMachineProgramId": "cndy3Z4yapfJBmL3ShUp5exZKqR3z33thTzeNMm2gRZ",
+    "auctionHouseProgramId": "hausS13jsjafwWwGqZTUQRmWyvyxn9EQpqMwV1PBBmk",
+    "lastUpdated": "2025-08-10",
     "deploymentType": "remote",
     "remoteRpcUrl": "http://192.168.2.88:8899"
   },

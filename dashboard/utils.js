@@ -1117,6 +1117,85 @@ function getCentralizedDisplayInfo(pool) {
     };
 }
 
+/**
+ * Query Metaplex Token Metadata for a mint. Uses provided connection or creates one to the configured RPC.
+ * Returns { name, symbol } or null if not found.
+ */
+async function queryTokenMetadata(tokenMintAddress, rpcConnection = null) {
+    try {
+        if (!tokenMintAddress) {
+            throw new Error('Token mint address is required');
+        }
+
+        const metaplexCfg = window.TRADING_CONFIG?.metaplex;
+        if (!metaplexCfg?.tokenMetadataProgramId) {
+            console.warn('⚠️ Metaplex not configured; cannot fetch token metadata');
+            return null;
+        }
+
+        const programId = new solanaWeb3.PublicKey(metaplexCfg.tokenMetadataProgramId);
+
+        // Create a temporary connection if one was not supplied
+        let conn = rpcConnection;
+        if (!conn) {
+            const rpcUrl = metaplexCfg.remoteRpcUrl || window.TRADING_CONFIG?.solana?.rpcUrl || window.CONFIG?.rpcUrl;
+            const connectionConfig = {
+                commitment: (window.TRADING_CONFIG?.solana?.commitment || window.CONFIG?.commitment || 'confirmed'),
+                disableRetryOnRateLimit: true
+            };
+            conn = new solanaWeb3.Connection(rpcUrl, connectionConfig);
+        }
+
+        const tokenMint = new solanaWeb3.PublicKey(tokenMintAddress);
+        const seeds = [
+            new TextEncoder().encode('metadata'),
+            programId.toBuffer(),
+            tokenMint.toBuffer()
+        ];
+        const [metadataAccount] = solanaWeb3.PublicKey.findProgramAddressSync(seeds, programId);
+
+        const accountInfo = await conn.getAccountInfo(metadataAccount);
+        if (!accountInfo || !accountInfo.data) {
+            return null;
+        }
+
+        // Robust parse supporting Buffer or Uint8Array
+        const data = accountInfo.data;
+        let offset = 0;
+
+        const skip = (n) => { offset += n; };
+        const readU32LE = () => {
+            if (typeof data.readUInt32LE === 'function') {
+                const value = data.readUInt32LE(offset);
+                offset += 4;
+                return value;
+            }
+            const view = new DataView(data.buffer, data.byteOffset + offset, 4);
+            const value = view.getUint32(0, true);
+            offset += 4;
+            return value;
+        };
+        const readString = (len) => {
+            const slice = (typeof data.slice === 'function') ? data.slice(offset, offset + len) : data.subarray(offset, offset + len);
+            offset += len;
+            return new TextDecoder('utf-8').decode(slice).replace(/\0/g, '').trim();
+        };
+
+        // Metaplex Metadata layout (simplified):
+        // key(1) | updateAuth(32) | mint(32) | nameLen(4) | name | symbolLen(4) | symbol | ...
+        skip(1 + 32 + 32);
+        const nameLen = readU32LE();
+        const name = readString(nameLen);
+        const symbolLen = readU32LE();
+        const symbol = readString(symbolLen);
+
+        return { name, symbol };
+    } catch (error) {
+        console.warn(`❌ Error querying token metadata for ${tokenMintAddress}:`, error);
+        return null;
+    }
+}
+
 // Make functions available globally for use in other dashboard files
 if (typeof window !== 'undefined') {
     window.TokenDisplayUtils = {
@@ -1149,7 +1228,9 @@ if (typeof window !== 'undefined') {
         getCentralizedPairName,
         getCentralizedRatioText,
         getCentralizedRatioDisplay,
-        getCentralizedDisplayInfo
+            getCentralizedDisplayInfo,
+            // Metaplex metadata helper
+            queryTokenMetadata
     };
 }
 

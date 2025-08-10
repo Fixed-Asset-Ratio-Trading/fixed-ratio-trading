@@ -1,10 +1,10 @@
 {
   "program_id": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
   "version": "0.15.1051",
-  "previous_version": "0.15.1050",
+  "previous_version": "0.15.1051",
   "rpc_url": "http://192.168.2.88:8899",
   "wallet_address": "3mmceA2hn5Vis7UsziTh258iFdKuPAfXnQnmnocc653f",
-  "deployment_timestamp": "2025-08-09T13:14:46Z",
+  "deployment_timestamp": "2025-08-10T09:04:43Z",
   "deployment_type": "remote",
   "program_data_address": "2FXQ9r1d1bdhdUVTh735CeUEBEhQbZvCoTfdoyFVyrqD",
   "program_size": "503736",
