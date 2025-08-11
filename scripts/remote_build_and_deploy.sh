@@ -668,33 +668,7 @@ EOF
 
 echo -e "${GREEN}✅ Deployment information saved to deployment_info.json${NC}"
 
-# Generate program state data for dashboard
-echo ""
-echo "======================================================"
-echo -e "${BLUE}📊 GENERATING PROGRAM STATE DATA FOR DASHBOARD${NC}"
-echo "======================================================"
 
-# Check if Node.js is available
-if command -v node >/dev/null 2>&1; then
-    echo -e "${BLUE}🔍 Querying program state data...${NC}"
-    
-    # Set environment variables for the query script
-    export SOLANA_RPC_URL="$RPC_URL"
-    export PROGRAM_ID="$PROGRAM_ID"
-    export SOLANA_ENVIRONMENT="remote"
-    
-    # Run the state query script
-    if node "$PROJECT_ROOT/scripts/query_program_state.js"; then
-        echo -e "${GREEN}✅ Program state data generated successfully${NC}"
-        echo -e "${BLUE}📁 State file: $PROJECT_ROOT/dashboard/state.json${NC}"
-    else
-        echo -e "${YELLOW}⚠️ Warning: Failed to generate program state data${NC}"
-        echo -e "${YELLOW}   Dashboard will start with empty state${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠️ Warning: Node.js not available, skipping state data generation${NC}"
-    echo -e "${YELLOW}   Install Node.js to enable automatic state data generation${NC}"
-fi
 
 # Final status
 echo ""

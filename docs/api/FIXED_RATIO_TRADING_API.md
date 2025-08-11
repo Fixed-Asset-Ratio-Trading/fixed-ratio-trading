@@ -422,6 +422,132 @@ const penaltyActive = treasuryInfo.lastWithdrawalTimestamp > now;
 
 ---
 
+### `process_system_get_version`
+
+Returns the contract version and metadata via program logs. This is a read-only utility that emits human-readable lines such as the contract name and semantic version.
+
+**Authority:** Public (read-only)
+
+**Fee:** None (when using simulation)
+
+**Compute Units:** ~5,000 CUs (very low)
+
+#### Parameters
+```rust
+program_id: &Pubkey
+accounts: &[AccountInfo]   // No accounts required
+```
+
+#### Instruction Data
+- Discriminator: `14` (unit enum variant `GetVersion`)
+- Serialization: 1 byte only (`[14]`)
+
+#### Account Structure
+| Index | Account | Type | Description |
+|------:|---------|------|-------------|
+| — | — | — | No accounts required |
+
+#### Returns (via logs)
+The program logs these lines (parse client-side):
+- `=== SMART CONTRACT VERSION ===`
+- `Contract Name: <name>`
+- `Contract Version: <semver>`
+
+Example implementation reference:
+```startLine:404:endLine:411:src/processors/system.rs
+/// # Returns
+/// * `ProgramResult` - Logs comprehensive version information
+pub fn process_system_get_version(_accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("=== SMART CONTRACT VERSION ===");
+    msg!("Contract Name: {}", env!("CARGO_PKG_NAME"));
+    // ... more logs including Contract Version
+}
+```
+
+#### How to Call (On-Chain submission)
+Submitting on-chain requires a funded fee payer (will incur standard network fees). For most apps, prefer the free simulation approach below.
+
+```javascript
+import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+
+const PROGRAM_ID = new PublicKey('...');
+const connection = new Connection(RPC_URL, 'confirmed');
+
+// 1-byte discriminator for unit enum variant GetVersion
+const data = new Uint8Array([14]);
+const ix = new TransactionInstruction({ keys: [], programId: PROGRAM_ID, data });
+
+const tx = new Transaction().add(ix);
+tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+tx.feePayer = wallet.publicKey; // funded signer
+// sign and send...
+```
+
+#### Free Retrieval via Simulation (Recommended)
+You can retrieve version info at zero cost by simulating a signed transaction and parsing logs, without submitting it on-chain. This works on localnet/devnet and most RPCs.
+
+Key points:
+- Use an ephemeral keypair as fee payer
+- Sign the transaction (some RPCs require a valid signature even for simulation)
+- Use `sigVerify: false` and `replaceRecentBlockhash: true` to avoid payer existence checks
+- If the RPC still returns `AccountNotFound`, request a tiny airdrop to the ephemeral key on localnet/devnet, then retry simulation
+
+```javascript
+import { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } from '@solana/web3.js';
+
+async function getContractVersionFree(connection, programId) {
+  const PROGRAM_ID = new PublicKey(programId);
+  const kp = Keypair.generate(); // ephemeral fee payer
+
+  const data = new Uint8Array([14]); // GetVersion
+  const ix = new TransactionInstruction({ keys: [], programId: PROGRAM_ID, data });
+
+  const { blockhash } = await connection.getLatestBlockhash();
+  const tx = new Transaction().add(ix);
+  tx.recentBlockhash = blockhash;
+  tx.feePayer = kp.publicKey;
+  tx.sign(kp);
+
+  const simOptions = { sigVerify: false, replaceRecentBlockhash: true, commitment: 'confirmed' };
+
+  async function simulate() {
+    try {
+      return await connection.simulateTransaction(tx, simOptions);
+    } catch (_) {
+      return await connection.simulateTransaction(tx);
+    }
+  }
+
+  let res = await simulate();
+  const needsAirdrop = !!res?.value?.err && JSON.stringify(res.value.err).includes('AccountNotFound');
+
+  if (needsAirdrop) {
+    try {
+      const sig = await connection.requestAirdrop(kp.publicKey, 1_000_000); // 0.001 SOL (local/dev only)
+      const bh = await connection.getLatestBlockhash();
+      await connection.confirmTransaction({ signature: sig, ...bh }, 'confirmed');
+      res = await simulate();
+    } catch {
+      // If faucet is unavailable (e.g., mainnet), proceed without airdrop
+    }
+  }
+
+  const logs = res?.value?.logs || [];
+  const line = logs.find(l => l.includes('Contract Version:')) || '';
+  const m = line.match(/Contract Version:\s*([0-9.]+)/);
+  return m ? m[1] : null;
+}
+```
+
+#### Error Conditions & Troubleshooting
+| Error | Condition | Resolution |
+|------|-----------|------------|
+| `AccountNotFound` | Ephemeral payer doesn't exist and RPC enforces account checks | Use `sigVerify:false`, `replaceRecentBlockhash:true`; on localnet/devnet request small airdrop and retry |
+| No version in logs | RPC succeeded but logs lacked version string | Ensure program is deployed and up to date; confirm discriminator `14` |
+| Simulation forbidden | RPC disallows simulation without funded payer | Use a funded dev wallet as payer for simulation, or submit on-chain |
+
+---
+
 ## Pool Management
 
 Functions for creating and managing trading pools.

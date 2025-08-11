@@ -247,28 +247,55 @@ async function fetchContractVersion() {
         updateVersionStatus('loading', 'Calling smart contract...', 'Loading...');
         
         try {
-            // ⚠️ SECURITY WARNING: HARDCODED PRIVATE KEY - FOR LOCAL DEVELOPMENT ONLY!
-            // 🚨 CRITICAL: This hardcoded private key MUST BE REMOVED for testnet or mainnet deployment!
-            // 📝 TODO: For production deployments, implement secure version fetching:
-            //    - Use environment variables for sensitive keys
-            //    - Implement backend API endpoint to call smart contract
-            //    - Use wallet adapter for user-authorized transactions
-            //    - Consider caching version in deployment metadata
-            // 🔒 This approach works locally but is NOT SECURE for production environments
-            const keypairData = [31,156,218,245,68,165,3,62,206,54,214,88,64,225,237,59,19,211,64,100,126,148,89,251,23,112,23,70,0,122,157,157,41,47,96,14,115,0,133,175,206,115,174,213,130,117,129,155,71,106,105,140,181,131,45,134,163,13,59,104,69,175,176,2];
-            const privateKey = new Uint8Array(keypairData);
-            const keypair = solanaWeb3.Keypair.fromSecretKey(privateKey);
+            // Use an ephemeral, randomly generated keypair for simulation only
+            // No SOL is required since we are not submitting the transaction on-chain
+            const keypair = solanaWeb3.Keypair.generate();
+            console.log('🔑 Using ephemeral keypair for simulation:', keypair.publicKey.toString());
             
-            console.log('🔑 Using hardcoded keypair for signing (LOCAL DEV ONLY):', keypair.publicKey.toString());
-            
-            // Create signed transaction (this is what works!)
+            // Create signed transaction for simulation
             const signedTransaction = new solanaWeb3.Transaction().add(instruction);
             signedTransaction.recentBlockhash = blockhash;
             signedTransaction.feePayer = keypair.publicKey;
             signedTransaction.sign(keypair);
             
-            // Simulate the signed transaction
-            result = await connection.simulateTransaction(signedTransaction);
+            // Try simulation without signature verification to avoid requiring an existing payer
+            // If RPC supports it, this prevents AccountNotFound for the ephemeral fee payer
+            const simOptions = { sigVerify: false, replaceRecentBlockhash: true, commitment: CONFIG.commitment || 'confirmed' };
+            try {
+                result = await connection.simulateTransaction(signedTransaction, simOptions);
+            } catch (simErr) {
+                console.log('ℹ️ simulateTransaction with options failed, retrying default:', simErr?.message || simErr);
+                result = await connection.simulateTransaction(signedTransaction);
+            }
+
+            // If the fee payer account doesn't exist, request a tiny airdrop and retry once
+            const isAccountNotFound = (res) => {
+                try {
+                    if (!res) return false;
+                    if (res.value && res.value.err) {
+                        const errStr = JSON.stringify(res.value.err);
+                        return errStr && errStr.includes('AccountNotFound');
+                    }
+                } catch (_) { /* ignore */ }
+                return false;
+            };
+            if (isAccountNotFound(result)) {
+                console.log('💧 Fee payer account not found. Requesting small airdrop for ephemeral keypair and retrying simulation...');
+                try {
+                    const airdropSig = await connection.requestAirdrop(keypair.publicKey, 1_000_000); // 0.001 SOL
+                    if (airdropSig) {
+                        await connection.confirmTransaction({ signature: airdropSig, ...(await connection.getLatestBlockhash()) }, CONFIG.commitment || 'confirmed');
+                    }
+                    // Retry simulation after airdrop
+                    try {
+                        result = await connection.simulateTransaction(signedTransaction, simOptions);
+                    } catch (_) {
+                        result = await connection.simulateTransaction(signedTransaction);
+                    }
+                } catch (airdropErr) {
+                    console.log('⚠️ Airdrop attempt failed or unavailable on this cluster:', airdropErr?.message || airdropErr);
+                }
+            }
             
             console.log('📋 Smart contract simulation result:');
             console.log('  Error:', result?.value?.err);
