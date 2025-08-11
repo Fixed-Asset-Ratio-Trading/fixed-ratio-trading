@@ -28,15 +28,40 @@
         }
         
         .header {
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             margin-bottom: 30px;
             border-bottom: 2px solid #e0e0e0;
             padding-bottom: 20px;
         }
         
-        .header h1 {
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+        }
+        
+        .header-title {
             color: #333;
             font-size: 2.5em;
+            font-weight: bold;
+        }
+        
+        .header-center {
+            text-align: center;
+            flex-grow: 1;
+        }
+        
+        .page-title {
+            color: #333;
+            font-size: 2.2em;
             margin-bottom: 10px;
         }
         
@@ -476,8 +501,14 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔄 Swap Tokens</h1>
-            <p class="subtitle">Exchange tokens in the pool at fixed ratios</p>
+            <div class="header-left">
+                <img src="images/Fixed_Ratio_Trading_Logo.jpeg" alt="Fixed Ratio Trading Logo" class="logo">
+                <div class="header-title">Fixed Ratio Trading</div>
+            </div>
+            <div class="header-center">
+                <h1 class="page-title">Swap Tokens</h1>
+                <p class="subtitle">Exchange tokens in the pool at fixed ratios</p>
+            </div>
             <div class="nav-buttons">
                 <button class="nav-btn secondary" onclick="goBackToDashboard()">
                     ← Back to Dashboard

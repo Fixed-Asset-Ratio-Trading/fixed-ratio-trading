@@ -421,17 +421,8 @@ window.retryVersionFetch = retryVersionFetch;
 function updateTitle() {
     const titleElement = document.querySelector('.header h1');
     if (titleElement) {
-        if (contractVersion) {
-            // Only show version if we successfully got it from the contract
-            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard v${contractVersion}`;
-            console.log(`✅ Title updated with contract version: ${contractVersion}`);
-        } else {
-            // No version from contract - show this indicates a problem
-            titleElement.textContent = `🏊‍♂️ Fixed Ratio Trading Dashboard [VERSION ERROR]`;
-            console.warn(`⚠️ No version displayed - contract version call failed`);
-        }
-    } else {
-        console.error('❌ Could not find title element to update');
+        // Always show plain page title without emoji or version
+        titleElement.textContent = 'Dashboard';
     }
 }
 
