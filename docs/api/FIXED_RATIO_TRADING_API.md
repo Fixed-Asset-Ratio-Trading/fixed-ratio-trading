@@ -1577,28 +1577,567 @@ Internal validation operations use context codes for error reporting:
 
 ## Types and Structures
 
-### Pool State
+### Complete PDA Data Structures
+
+This section provides comprehensive documentation of all Program Derived Account (PDA) data structures for developers building external integrations without importing the contract source code.
+
+#### Important Notes for External Developers
+
+**🔢 Basis Points Storage Format:**
+- All token amounts and ratios are stored in **basis points** (smallest token units)
+- External applications must convert between display units and basis points
+- Example: 1.5 USDC (6 decimals) = 1,500,000 basis points
+- Example: 0.001 BTC (8 decimals) = 100,000 basis points
+- Example: 1.0 SOL (9 decimals) = 1,000,000,000 basis points
+
+**📦 Serialization Format:**
+- All structures use Borsh serialization
+- Account data can be deserialized directly using Borsh libraries
+- Field order matches the structure definition exactly
+
+**🏗️ Account Space Requirements:**
+- PoolState: 597 bytes
+- SystemState: 10 bytes
+- MainTreasuryState: 128 bytes
+
+---
+
+### PoolState Structure
+
+The main pool configuration and runtime data structure. Contains all information needed to interact with a trading pool.
+
 ```rust
 pub struct PoolState {
-    pub owner: Pubkey,
-    pub token_a_mint: Pubkey,
-    pub token_b_mint: Pubkey,
-    pub token_a_vault: Pubkey,
-    pub token_b_vault: Pubkey,
-    pub lp_token_a_mint: Pubkey,
-    pub lp_token_b_mint: Pubkey,
-    pub ratio_a_numerator: u64,
-    pub ratio_b_denominator: u64,
-    pub total_token_a_liquidity: u64,
-    pub total_token_b_liquidity: u64,
-    pub flags: u8,
-    pub contract_liquidity_fee: u64,
-    pub swap_contract_fee: u64,
-    // ... additional fields
+    // === CORE POOL CONFIGURATION ===
+    /// Pool owner (can be delegated for owner-only operations)
+    pub owner: Pubkey,                      // 32 bytes
+    
+    /// Token A mint address (lexicographically smaller)
+    pub token_a_mint: Pubkey,               // 32 bytes
+    
+    /// Token B mint address (lexicographically larger)  
+    pub token_b_mint: Pubkey,               // 32 bytes
+    
+    /// Token A vault PDA (holds deposited Token A)
+    pub token_a_vault: Pubkey,              // 32 bytes
+    
+    /// Token B vault PDA (holds deposited Token B)
+    pub token_b_vault: Pubkey,              // 32 bytes
+    
+    /// LP Token A mint PDA (minted for Token A deposits)
+    pub lp_token_a_mint: Pubkey,            // 32 bytes
+    
+    /// LP Token B mint PDA (minted for Token B deposits)
+    pub lp_token_b_mint: Pubkey,            // 32 bytes
+    
+    // === FIXED EXCHANGE RATIOS (BASIS POINTS) ===
+    /// Token A ratio numerator in basis points
+    /// Example: For "1.0 SOL = 160.0 USDT", this = 1,000,000,000 (1.0 * 10^9)
+    pub ratio_a_numerator: u64,             // 8 bytes
+    
+    /// Token B ratio denominator in basis points  
+    /// Example: For "1.0 SOL = 160.0 USDT", this = 160,000,000 (160.0 * 10^6)
+    pub ratio_b_denominator: u64,           // 8 bytes
+    
+    // === LIQUIDITY TRACKING (BASIS POINTS) ===
+    /// Total Token A deposited in pool (basis points)
+    pub total_token_a_liquidity: u64,       // 8 bytes
+    
+    /// Total Token B deposited in pool (basis points)
+    pub total_token_b_liquidity: u64,       // 8 bytes
+    
+    // === PDA BUMP SEEDS ===
+    pub pool_authority_bump_seed: u8,       // 1 byte
+    pub token_a_vault_bump_seed: u8,        // 1 byte
+    pub token_b_vault_bump_seed: u8,        // 1 byte
+    pub lp_token_a_mint_bump_seed: u8,      // 1 byte
+    pub lp_token_b_mint_bump_seed: u8,      // 1 byte
+    
+    // === POOL STATE FLAGS (BITWISE) ===
+    /// Pool state flags using bitwise operations:
+    /// - Bit 0 (1): One-to-many ratio configuration
+    /// - Bit 1 (2): Liquidity operations paused
+    /// - Bit 2 (4): Swap operations paused
+    /// - Bit 3 (8): Withdrawal protection active
+    /// - Bit 4 (16): Single LP token mode (future)
+    /// - Bit 5 (32): Swap for owners only
+    pub flags: u8,                          // 1 byte
+    
+    // === CONFIGURABLE CONTRACT FEES ===
+    /// Contract fee for liquidity operations (lamports)
+    pub contract_liquidity_fee: u64,        // 8 bytes
+    
+    /// Contract fee for swap operations (lamports)
+    pub swap_contract_fee: u64,             // 8 bytes
+    
+    // === TOKEN FEE COLLECTION TRACKING ===
+    pub collected_fees_token_a: u64,        // 8 bytes
+    pub collected_fees_token_b: u64,        // 8 bytes
+    pub total_fees_withdrawn_token_a: u64,  // 8 bytes
+    pub total_fees_withdrawn_token_b: u64,  // 8 bytes
+    
+    // === SOL FEE TRACKING ===
+    /// SOL fees from liquidity operations (accumulated locally)
+    pub collected_liquidity_fees: u64,      // 8 bytes
+    
+    /// SOL fees from swap operations (accumulated locally)
+    pub collected_swap_contract_fees: u64,  // 8 bytes
+    
+    /// Total SOL fees collected since pool creation (lifetime)
+    pub total_sol_fees_collected: u64,      // 8 bytes
+    
+    // === CONSOLIDATION MANAGEMENT ===
+    /// Unix timestamp of last fee consolidation (0 if never)
+    pub last_consolidation_timestamp: i64,  // 8 bytes
+    
+    /// Total number of consolidations performed
+    pub total_consolidations: u64,          // 8 bytes
+    
+    /// Total SOL fees transferred to treasury via consolidation
+    pub total_fees_consolidated: u64,       // 8 bytes
+    
+    // === POOL-SPECIFIC LIMITS ===
+    /// Maximum swap amount (0 = no limit)
+    pub max_swap_amount: u64,               // 8 bytes
+    
+    /// Minimum swap amount 
+    pub min_swap_amount: u64,               // 8 bytes
+    
+    /// Maximum single deposit amount (0 = no limit)
+    pub max_deposit_amount: u64,            // 8 bytes
+    
+    /// Minimum deposit amount
+    pub min_deposit_amount: u64,            // 8 bytes
+    
+    /// Maximum single withdrawal amount (0 = no limit)
+    pub max_withdrawal_amount: u64,         // 8 bytes
+    
+    /// Minimum withdrawal amount
+    pub min_withdrawal_amount: u64,         // 8 bytes
+    
+    // === RESERVED SPACE ===
+    /// Reserved for future features (32 bytes)
+    pub _reserved: [u64; 4],                // 32 bytes
+}
+
+// Total Size: 597 bytes
+```
+
+#### Pool State Flag Interpretations
+
+```rust
+// Flag checking methods (for external implementations)
+pub fn one_to_many_ratio(&self) -> bool { self.flags & 1 != 0 }
+pub fn liquidity_paused(&self) -> bool { self.flags & 2 != 0 }
+pub fn swaps_paused(&self) -> bool { self.flags & 4 != 0 }
+pub fn withdrawal_protection_active(&self) -> bool { self.flags & 8 != 0 }
+pub fn only_lp_token_a_for_both(&self) -> bool { self.flags & 16 != 0 }
+pub fn swap_for_owners_only(&self) -> bool { self.flags & 32 != 0 }
+```
+
+#### Pool State Calculations
+
+```rust
+// Pending SOL fees awaiting consolidation
+pub fn pending_sol_fees(&self) -> u64 {
+    self.total_sol_fees_collected - self.total_fees_consolidated
+}
+
+// Available balance for consolidation (respecting rent exemption)
+pub fn calculate_available_for_consolidation(
+    &self,
+    current_account_balance: u64,
+    rent_exempt_minimum: u64,
+) -> u64 {
+    let pending_fees = self.pending_sol_fees();
+    let available_above_rent_exempt = current_account_balance.saturating_sub(rent_exempt_minimum);
+    std::cmp::min(available_above_rent_exempt, pending_fees)
 }
 ```
 
-### PDA Seeds
+---
+
+### SystemState Structure
+
+Global system state controlling all contract operations. Used for emergency pause/unpause functionality.
+
+```rust
+pub struct SystemState {
+    /// Global pause state - when true, all operations blocked except unpause
+    pub is_paused: bool,                    // 1 byte
+    
+    /// Unix timestamp when system was paused
+    pub pause_timestamp: i64,               // 8 bytes
+    
+    /// Pause reason code for efficient storage:
+    /// - 0: No pause active (default state)
+    /// - 1: Emergency security issue
+    /// - 2: Scheduled maintenance  
+    /// - 3: Contract upgrade
+    /// - 4: Regulatory compliance
+    /// - 5: Infrastructure issue
+    /// - 6: Economic emergency
+    /// - 15: Fee consolidation operations
+    /// - Other: Custom reasons
+    pub pause_reason_code: u8,              // 1 byte
+}
+
+// Total Size: 10 bytes
+```
+
+#### System State Usage
+
+```rust
+// Check if system operations are allowed
+if !system_state.is_paused {
+    // System is operational - check individual pool states
+} else {
+    // System is paused - only read operations allowed
+    // Check pause_reason_code for specific reason
+}
+```
+
+---
+
+### MainTreasuryState Structure
+
+Central treasury collecting all protocol fees with comprehensive tracking and rate limiting.
+
+```rust
+pub struct MainTreasuryState {
+    // === BALANCE TRACKING ===
+    /// Current SOL balance (synced with account.lamports())
+    pub total_balance: u64,                 // 8 bytes
+    
+    /// Rent-exempt minimum balance requirement
+    pub rent_exempt_minimum: u64,           // 8 bytes
+    
+    /// Total SOL withdrawn by authority over time
+    pub total_withdrawn: u64,               // 8 bytes
+    
+    // === OPERATION COUNTERS ===
+    /// Number of pools created
+    pub pool_creation_count: u64,           // 8 bytes
+    
+    /// Number of liquidity operations (deposits/withdrawals)
+    pub liquidity_operation_count: u64,     // 8 bytes
+    
+    /// Number of regular swap operations
+    pub regular_swap_count: u64,            // 8 bytes
+    
+    /// Number of treasury withdrawals performed
+    pub treasury_withdrawal_count: u64,     // 8 bytes
+    
+    /// Number of failed operations for analytics
+    pub failed_operation_count: u64,        // 8 bytes
+    
+    // === FEE TOTALS ===
+    /// Total SOL from pool creation fees
+    pub total_pool_creation_fees: u64,      // 8 bytes
+    
+    /// Total SOL from liquidity operation fees
+    pub total_liquidity_fees: u64,          // 8 bytes
+    
+    /// Total SOL from regular swap fees
+    pub total_regular_swap_fees: u64,       // 8 bytes
+    
+    /// Total SOL from swap contract fees
+    pub total_swap_contract_fees: u64,      // 8 bytes
+    
+    // === TIMESTAMPS ===
+    /// Last treasury update timestamp
+    pub last_update_timestamp: i64,         // 8 bytes
+    
+    /// Last withdrawal timestamp (for rate limiting)
+    pub last_withdrawal_timestamp: i64,     // 8 bytes
+    
+    // === CONSOLIDATION TRACKING ===
+    /// Number of consolidation operations performed
+    pub total_consolidations_performed: u64, // 8 bytes
+    
+    // === DONATION TRACKING ===
+    /// Number of voluntary donations received
+    pub donation_count: u64,                // 8 bytes
+    
+    /// Total SOL donated to protocol
+    pub total_donations: u64,               // 8 bytes
+}
+
+// Total Size: 128 bytes
+```
+
+#### Treasury State Calculations
+
+```rust
+// Available balance for withdrawal (above rent exempt minimum)
+pub fn available_for_withdrawal(&self) -> u64 {
+    if self.total_balance > self.rent_exempt_minimum {
+        self.total_balance - self.rent_exempt_minimum
+    } else {
+        0
+    }
+}
+
+// Total fees collected across all categories
+pub fn total_fees_collected(&self) -> u64 {
+    self.total_pool_creation_fees +
+    self.total_liquidity_fees +
+    self.total_regular_swap_fees
+}
+
+// Check if withdrawal is blocked by restart penalty
+pub fn is_blocked_by_restart_penalty(&self, current_timestamp: i64) -> bool {
+    self.last_withdrawal_timestamp > current_timestamp
+}
+
+// Calculate current hourly withdrawal rate limit (dynamic)
+pub fn calculate_current_hourly_rate_limit(&self) -> u64 {
+    let available_balance = self.available_for_withdrawal();
+    let mut current_rate = 10_000_000_000; // 10 SOL/hour base rate
+    
+    // Scale up by 10x when 48-hour drain time would be exceeded
+    while available_balance > (48 * current_rate) {
+        current_rate = current_rate.saturating_mul(10);
+        if current_rate == 0 || current_rate == u64::MAX { break; }
+    }
+    
+    current_rate
+}
+```
+
+---
+
+### PDA Seeds Reference
+
+For deriving Program Derived Addresses:
+
+```rust
+// System State PDA
+let (system_state_pda, _) = Pubkey::find_program_address(
+    &[b"system_state"], 
+    &PROGRAM_ID
+);
+
+// Main Treasury PDA  
+let (main_treasury_pda, _) = Pubkey::find_program_address(
+    &[b"main_treasury"], 
+    &PROGRAM_ID
+);
+
+// Pool State PDA (tokens must be in lexicographic order)
+let (pool_state_pda, _) = Pubkey::find_program_address(
+    &[
+        b"pool_state_v2", 
+        token_a_mint.as_ref(),
+        token_b_mint.as_ref(), 
+        &ratio_a_numerator.to_le_bytes(),
+        &ratio_b_denominator.to_le_bytes()
+    ], 
+    &PROGRAM_ID
+);
+
+// Token Vault PDAs
+let (token_a_vault_pda, _) = Pubkey::find_program_address(
+    &[b"token_a_vault", pool_state_pda.as_ref()], 
+    &PROGRAM_ID
+);
+
+let (token_b_vault_pda, _) = Pubkey::find_program_address(
+    &[b"token_b_vault", pool_state_pda.as_ref()], 
+    &PROGRAM_ID
+);
+
+// LP Token Mint PDAs
+let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+    &[b"lp_token_a_mint", pool_state_pda.as_ref()], 
+    &PROGRAM_ID
+);
+
+let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+    &[b"lp_token_b_mint", pool_state_pda.as_ref()], 
+    &PROGRAM_ID
+);
+```
+
+---
+
+### Data Access Examples
+
+#### Reading Pool State
+
+```javascript
+// JavaScript example using @solana/web3.js
+import { Connection, PublicKey } from '@solana/web3.js';
+import { deserialize } from 'borsh';
+
+// Define the PoolState schema for Borsh
+const PoolStateSchema = {
+    struct: {
+        owner: { array: { type: 'u8', len: 32 } },
+        token_a_mint: { array: { type: 'u8', len: 32 } },
+        token_b_mint: { array: { type: 'u8', len: 32 } },
+        token_a_vault: { array: { type: 'u8', len: 32 } },
+        token_b_vault: { array: { type: 'u8', len: 32 } },
+        lp_token_a_mint: { array: { type: 'u8', len: 32 } },
+        lp_token_b_mint: { array: { type: 'u8', len: 32 } },
+        ratio_a_numerator: 'u64',
+        ratio_b_denominator: 'u64',
+        total_token_a_liquidity: 'u64',
+        total_token_b_liquidity: 'u64',
+        // ... add remaining fields as needed
+        flags: 'u8',
+        // ... complete schema
+    }
+};
+
+async function getPoolState(connection, poolStatePDA) {
+    const accountInfo = await connection.getAccountInfo(poolStatePDA);
+    if (!accountInfo) {
+        throw new Error('Pool state account not found');
+    }
+    
+    const poolState = deserialize(PoolStateSchema, accountInfo.data);
+    
+    // Convert basis points to display values
+    const tokenADecimals = 9; // Fetch from token A mint
+    const tokenBDecimals = 6; // Fetch from token B mint
+    
+    const displayRatioA = poolState.ratio_a_numerator / Math.pow(10, tokenADecimals);
+    const displayRatioB = poolState.ratio_b_denominator / Math.pow(10, tokenBDecimals);
+    
+    console.log(`Exchange Rate: ${displayRatioA} Token A = ${displayRatioB} Token B`);
+    
+    // Check pool flags
+    const liquidityPaused = (poolState.flags & 2) !== 0;
+    const swapsPaused = (poolState.flags & 4) !== 0;
+    
+    return { ...poolState, liquidityPaused, swapsPaused };
+}
+```
+
+#### Reading System State
+
+```javascript
+// System state is much simpler
+const SystemStateSchema = {
+    struct: {
+        is_paused: 'bool',
+        pause_timestamp: 'i64', 
+        pause_reason_code: 'u8'
+    }
+};
+
+async function getSystemState(connection, systemStatePDA) {
+    const accountInfo = await connection.getAccountInfo(systemStatePDA);
+    if (!accountInfo) {
+        throw new Error('System state account not found');
+    }
+    
+    const systemState = deserialize(SystemStateSchema, accountInfo.data);
+    
+    if (systemState.is_paused) {
+        console.log(`System paused since ${new Date(systemState.pause_timestamp * 1000)}`);
+        console.log(`Reason code: ${systemState.pause_reason_code}`);
+    }
+    
+    return systemState;
+}
+```
+
+#### Reading Treasury State
+
+```javascript
+const TreasuryStateSchema = {
+    struct: {
+        total_balance: 'u64',
+        rent_exempt_minimum: 'u64',
+        total_withdrawn: 'u64',
+        pool_creation_count: 'u64',
+        liquidity_operation_count: 'u64',
+        regular_swap_count: 'u64',
+        treasury_withdrawal_count: 'u64',
+        failed_operation_count: 'u64',
+        total_pool_creation_fees: 'u64',
+        total_liquidity_fees: 'u64',
+        total_regular_swap_fees: 'u64',
+        total_swap_contract_fees: 'u64',
+        last_update_timestamp: 'i64',
+        last_withdrawal_timestamp: 'i64',
+        total_consolidations_performed: 'u64',
+        donation_count: 'u64',
+        total_donations: 'u64'
+    }
+};
+
+async function getTreasuryState(connection, treasuryPDA) {
+    const accountInfo = await connection.getAccountInfo(treasuryPDA);
+    if (!accountInfo) {
+        throw new Error('Treasury state account not found');
+    }
+    
+    const treasuryState = deserialize(TreasuryStateSchema, accountInfo.data);
+    
+    // Calculate analytics
+    const availableForWithdrawal = treasuryState.total_balance - treasuryState.rent_exempt_minimum;
+    const totalFees = treasuryState.total_pool_creation_fees + 
+                     treasuryState.total_liquidity_fees + 
+                     treasuryState.total_regular_swap_fees;
+    
+    console.log(`Available: ${availableForWithdrawal / 1e9} SOL`);
+    console.log(`Total Fees: ${totalFees / 1e9} SOL`);
+    
+    // Check withdrawal penalty status
+    const currentTime = Math.floor(Date.now() / 1000);
+    const penaltyActive = treasuryState.last_withdrawal_timestamp > currentTime;
+    
+    return { ...treasuryState, availableForWithdrawal, totalFees, penaltyActive };
+}
+```
+
+#### Rust Examples
+
+```rust
+use borsh::BorshDeserialize;
+use solana_program::pubkey::Pubkey;
+
+// Example: Reading pool state in Rust
+async fn read_pool_state(
+    rpc_client: &RpcClient, 
+    pool_pda: &Pubkey
+) -> Result<PoolState, Box<dyn std::error::Error>> {
+    let account = rpc_client.get_account(pool_pda)?;
+    let pool_state = PoolState::try_from_slice(&account.data)?;
+    
+    // Calculate pending fees
+    let pending_fees = pool_state.pending_sol_fees();
+    println!("Pending SOL fees: {} lamports", pending_fees);
+    
+    // Check flags
+    println!("Liquidity paused: {}", pool_state.liquidity_paused());
+    println!("Swaps paused: {}", pool_state.swaps_paused());
+    
+    Ok(pool_state)
+}
+
+// Example: Reading system state in Rust  
+async fn read_system_state(
+    rpc_client: &RpcClient,
+    system_pda: &Pubkey
+) -> Result<SystemState, Box<dyn std::error::Error>> {
+    let account = rpc_client.get_account(system_pda)?;
+    let system_state = SystemState::try_from_slice(&account.data)?;
+    
+    if system_state.is_paused {
+        println!("System is paused (reason: {})", system_state.pause_reason_code);
+    }
+    
+    Ok(system_state)
+}
+```
+
+---
+
+### Legacy PDA Seeds (For Reference)
 - **System State:** `[b"system_state"]`
 - **Main Treasury:** `[b"main_treasury"]`
 - **Pool State:** `[b"pool_state_v2", token_a_mint, token_b_mint, ratio_a_bytes, ratio_b_bytes]`
