@@ -27,15 +27,16 @@ Location: src/constants.rs (lines 40, 51, 70, 294)
 
 ## Table of Contents
 1. [Overview](#overview)
-2. [Important Notes](#important-notes)
-3. [Localnet & ngrok Setup](#localnet--ngrok-setup)
-4. [System Management](#system-management)
-5. [Pool Management](#pool-management)
-6. [Liquidity Operations](#liquidity-operations)
-7. [Swap Operations](#swap-operations)
-8. [Treasury Operations](#treasury-operations)
-9. [Error Codes](#error-codes)
-10. [Types and Structures](#types-and-structures)
+2. [Important: .NET Developer Requirements](#important-net-developer-requirements)
+3. [Important Notes](#important-notes)
+4. [Localnet & ngrok Setup](#localnet--ngrok-setup)
+5. [System Management](#system-management)
+6. [Pool Management](#pool-management)
+7. [Liquidity Operations](#liquidity-operations)
+8. [Swap Operations](#swap-operations)
+9. [Treasury Operations](#treasury-operations)
+10. [Error Codes](#error-codes)
+11. [Types and Structures](#types-and-structures)
 
 ---
 
@@ -50,6 +51,20 @@ The Fixed Ratio Trading Contract is a Solana smart contract that enables creatio
 - Emergency pause mechanisms
 - Treasury management
 - Owner-only swap restrictions
+
+---
+
+## Important: .NET Developer Requirements
+
+⚠️ **If you are developing in .NET/C#**, please read the [Solana Transaction Building Guide](SOLANA_TRANSACTION_BUILDING_GUIDE.md) **BEFORE** implementing transaction logic.
+
+This guide covers critical requirements for:
+- Avoiding Solnet transaction serialization issues
+- Building reliable raw RPC transactions
+- Proper instruction formatting for the Fixed Ratio Trading contract
+- Testing and validation procedures
+
+**Key Point**: The standard Solnet `TransactionBuilder` can produce malformed transactions that fail with deserialization errors. Use the raw RPC approach documented in the guide for production applications.
 
 ---
 
