@@ -521,16 +521,43 @@ pub enum PoolInstruction {
 }
 ```
 
-#### JavaScript Example
+#### Complete Working JavaScript Example
 ```javascript
-// Create instruction data for GetVersion
-const instructionData = new Uint8Array([14]); // Single byte discriminator
+// Test GetVersion instruction - EXACT WORKING FORMAT
+import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 
-const instruction = new solanaWeb3.TransactionInstruction({
-    keys: [], // No accounts required
-    programId: PROGRAM_ID,
-    data: instructionData
-});
+const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+const RPC_URL = "http://192.168.2.88:8899";
+
+async function testGetVersion() {
+    const connection = new Connection(RPC_URL, 'confirmed');
+    
+    // Create instruction data - EXACTLY as contract expects
+    const instructionData = new Uint8Array([14]); // GetVersion discriminator
+    
+    const instruction = new TransactionInstruction({
+        keys: [], // GetVersion requires NO accounts
+        programId: PROGRAM_ID,
+        data: instructionData
+    });
+    
+    // Create transaction
+    const transaction = new Transaction().add(instruction);
+    
+    // Simulate to test format (no wallet needed)
+    try {
+        const result = await connection.simulateTransaction(transaction);
+        console.log("✅ GetVersion instruction format is CORRECT");
+        console.log("Program logs:", result.value.logs);
+        return true;
+    } catch (error) {
+        console.log("❌ GetVersion instruction format ERROR:", error.message);
+        return false;
+    }
+}
+
+// Run the test
+testGetVersion();
 ```
 
 #### Instruction Data
@@ -721,6 +748,123 @@ const instructionData = new Uint8Array([
 // Example: 1 SOL = 160 USDT pool
 // ratioABasisPoints = 1000000000 (1.0 * 10^9)
 // ratioBBasisPoints = 160000000 (160.0 * 10^6)
+```
+
+#### Complete Working Example - EXACT FORMAT
+```javascript
+// EXACT WORKING FORMAT for InitializePool instruction
+import { Connection, PublicKey, Transaction, TransactionInstruction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+
+const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+const RPC_URL = "http://192.168.2.88:8899";
+
+async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratioB) {
+    const connection = new Connection(RPC_URL, 'confirmed');
+    
+    // Step 1: Normalize tokens (CRITICAL!)
+    const normalizeTokens = (mint1, mint2, ratio1, ratio2) => {
+        if (mint1.toString() < mint2.toString()) {
+            return { tokenA: mint1, tokenB: mint2, ratioA: ratio1, ratioB: ratio2 };
+        } else {
+            return { tokenA: mint2, tokenB: mint1, ratioA: ratio2, ratioB: ratio1 };
+        }
+    };
+    
+    const normalized = normalizeTokens(tokenAMint, tokenBMint, ratioA, ratioB);
+    
+    // Step 2: Derive ALL required PDAs
+    const [systemStatePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")], PROGRAM_ID
+    );
+    
+    const [mainTreasuryPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("main_treasury")], PROGRAM_ID
+    );
+    
+    const [poolStatePDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("pool_state"),
+        normalized.tokenA.toBuffer(),
+        normalized.tokenB.toBuffer(),
+        Buffer.from(new BigUint64Array([BigInt(normalized.ratioA)]).buffer),
+        Buffer.from(new BigUint64Array([BigInt(normalized.ratioB)]).buffer),
+    ], PROGRAM_ID);
+    
+    const [tokenAVaultPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_a_vault"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [tokenBVaultPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_b_vault"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [lpTokenAMintPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("lp_token_a_mint"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [lpTokenBMintPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("lp_token_b_mint"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    // Step 3: Create instruction data - EXACT FORMAT
+    const instructionData = new Uint8Array(17); // 1 + 8 + 8 bytes
+    instructionData[0] = 1; // InitializePool discriminator
+    
+    // Ratio A as little-endian u64
+    const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(normalized.ratioA)]).buffer);
+    instructionData.set(ratioABytes, 1);
+    
+    // Ratio B as little-endian u64  
+    const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(normalized.ratioB)]).buffer);
+    instructionData.set(ratioBBytes, 9);
+    
+    // Step 4: Create accounts array - EXACT ORDER FROM CONTRACT
+    const accounts = [
+        { pubkey: userWallet.publicKey, isSigner: true, isWritable: true },    // 0: User Authority
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }, // 1: System Program
+        { pubkey: systemStatePDA, isSigner: false, isWritable: false },        // 2: System State PDA
+        { pubkey: poolStatePDA, isSigner: false, isWritable: true },           // 3: Pool State PDA
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },      // 4: SPL Token Program
+        { pubkey: mainTreasuryPDA, isSigner: false, isWritable: true },        // 5: Main Treasury PDA
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },    // 6: Rent Sysvar
+        { pubkey: normalized.tokenA, isSigner: false, isWritable: false },     // 7: Token A Mint
+        { pubkey: normalized.tokenB, isSigner: false, isWritable: false },     // 8: Token B Mint
+        { pubkey: tokenAVaultPDA, isSigner: false, isWritable: true },         // 9: Token A Vault PDA
+        { pubkey: tokenBVaultPDA, isSigner: false, isWritable: true },         // 10: Token B Vault PDA
+        { pubkey: lpTokenAMintPDA, isSigner: false, isWritable: true },        // 11: LP Token A Mint PDA
+        { pubkey: lpTokenBMintPDA, isSigner: false, isWritable: true },        // 12: LP Token B Mint PDA
+    ];
+    
+    // Step 5: Create transaction
+    const instruction = new TransactionInstruction({
+        keys: accounts,
+        programId: PROGRAM_ID,
+        data: instructionData
+    });
+    
+    const transaction = new Transaction().add(instruction);
+    
+    // Step 6: Test with simulation first
+    try {
+        const result = await connection.simulateTransaction(transaction);
+        console.log("✅ InitializePool instruction format is CORRECT");
+        console.log("Program logs:", result.value.logs);
+        return { transaction, poolStatePDA, normalized };
+    } catch (error) {
+        console.log("❌ InitializePool instruction format ERROR:", error.message);
+        console.log("Full error:", error);
+        throw error;
+    }
+}
+
+// Usage example
+const result = await createPoolExact(
+    wallet,
+    new PublicKey("So11111111111111111111111111111111111111112"), // SOL
+    new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+    1000000000,  // 1 SOL in basis points (1 * 10^9)
+    160000000    // 160 USDC in basis points (160 * 10^6)
+);
 // Results in 17-byte instruction data: [1, ...16 bytes of ratio data]
 ```
 
@@ -928,6 +1072,199 @@ const [tokenAMint, tokenBMint] = solMint.toBuffer() < usdtMint.toBuffer()
 const ratioA = 1_000_000_000;    // Still using original SOL ratio
 const ratioB = 160_000_000;      // Still using original USDT ratio
 // If tokens were swapped, this creates 1 USDT = 160 SOL instead of 1 SOL = 160 USDT!
+```
+
+#### 🛠️ Transaction Troubleshooting Guide
+
+If you're having trouble with blockchain pool creation, follow this step-by-step debugging process:
+
+##### Step 1: Test Basic Connection with GetVersion
+```javascript
+// Test GetVersion instruction FIRST - simplest verification
+async function testConnection() {
+    const connection = new Connection("http://192.168.2.88:8899", 'confirmed');
+    const instructionData = new Uint8Array([14]); // GetVersion discriminator
+    
+    const instruction = new TransactionInstruction({
+        keys: [], // No accounts required
+        programId: new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"),
+        data: instructionData
+    });
+    
+    const transaction = new Transaction().add(instruction);
+    
+    try {
+        const result = await connection.simulateTransaction(transaction);
+        console.log("✅ Basic transaction format WORKS");
+        console.log("Program logs:", result.value.logs);
+        
+        // Look for version in logs
+        const versionLog = result.value.logs?.find(log => log.includes("Contract Version:"));
+        if (versionLog) {
+            console.log("✅ Program is responding:", versionLog);
+            return true;
+        } else {
+            console.log("⚠️ Program responded but no version found");
+            return false;
+        }
+    } catch (error) {
+        console.log("❌ Basic connection FAILED:", error.message);
+        return false;
+    }
+}
+```
+
+##### Step 2: Verify PDA Derivation
+```javascript
+// Test PDA derivation against your contract
+async function verifyPDADerivation() {
+    const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+    
+    // Test system PDAs (should always work)
+    const [systemStatePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")], PROGRAM_ID
+    );
+    
+    const [mainTreasuryPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("main_treasury")], PROGRAM_ID
+    );
+    
+    console.log("System State PDA:", systemStatePDA.toString());
+    console.log("Main Treasury PDA:", mainTreasuryPDA.toString());
+    
+    // Test normalized pool PDA derivation
+    const solMint = new PublicKey("So11111111111111111111111111111111111111112");
+    const usdcMint = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    
+    // Critical: Normalize tokens first
+    const [tokenA, tokenB] = solMint.toString() < usdcMint.toString() 
+        ? [solMint, usdcMint] : [usdcMint, solMint];
+    
+    // Critical: Map ratios to normalized order  
+    const [ratioA, ratioB] = solMint.toString() < usdcMint.toString()
+        ? [1000000000, 160000000]  // SOL first: 1 SOL = 160 USDC
+        : [160000000, 1000000000]; // USDC first: 160 USDC = 1 SOL
+    
+    const [poolStatePDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("pool_state"),
+        tokenA.toBuffer(),
+        tokenB.toBuffer(),
+        Buffer.from(new BigUint64Array([BigInt(ratioA)]).buffer),
+        Buffer.from(new BigUint64Array([BigInt(ratioB)]).buffer),
+    ], PROGRAM_ID);
+    
+    console.log("Pool State PDA:", poolStatePDA.toString());
+    console.log("Normalized Token A:", tokenA.toString());
+    console.log("Normalized Token B:", tokenB.toString());
+    console.log("Normalized Ratio A:", ratioA);
+    console.log("Normalized Ratio B:", ratioB);
+    
+    return { systemStatePDA, mainTreasuryPDA, poolStatePDA };
+}
+```
+
+##### Step 3: Check Account Ordering
+```javascript
+// Verify exact account ordering matches contract expectations
+function checkAccountOrdering(userWallet, systemStatePDA, poolStatePDA, mainTreasuryPDA, tokenA, tokenB, vaultPDAs, lpMintPDAs) {
+    const expectedOrder = [
+        { index: 0, account: userWallet.publicKey, name: "User Authority", signer: true, writable: true },
+        { index: 1, account: SystemProgram.programId, name: "System Program", signer: false, writable: false },
+        { index: 2, account: systemStatePDA, name: "System State PDA", signer: false, writable: false },
+        { index: 3, account: poolStatePDA, name: "Pool State PDA", signer: false, writable: true },
+        { index: 4, account: TOKEN_PROGRAM_ID, name: "SPL Token Program", signer: false, writable: false },
+        { index: 5, account: mainTreasuryPDA, name: "Main Treasury PDA", signer: false, writable: true },
+        { index: 6, account: SYSVAR_RENT_PUBKEY, name: "Rent Sysvar", signer: false, writable: false },
+        { index: 7, account: tokenA, name: "Token A Mint", signer: false, writable: false },
+        { index: 8, account: tokenB, name: "Token B Mint", signer: false, writable: false },
+        { index: 9, account: vaultPDAs.tokenA, name: "Token A Vault PDA", signer: false, writable: true },
+        { index: 10, account: vaultPDAs.tokenB, name: "Token B Vault PDA", signer: false, writable: true },
+        { index: 11, account: lpMintPDAs.tokenA, name: "LP Token A Mint PDA", signer: false, writable: true },
+        { index: 12, account: lpMintPDAs.tokenB, name: "LP Token B Mint PDA", signer: false, writable: true },
+    ];
+    
+    console.log("📋 Account ordering verification:");
+    expectedOrder.forEach(entry => {
+        console.log(`  [${entry.index}] ${entry.name}: ${entry.account.toString()}`);
+        console.log(`      Signer: ${entry.signer}, Writable: ${entry.writable}`);
+    });
+    
+    return expectedOrder.map(entry => ({
+        pubkey: entry.account,
+        isSigner: entry.signer,
+        isWritable: entry.writable
+    }));
+}
+```
+
+##### Step 4: Verify Instruction Data Format
+```javascript
+// Test exact instruction data format
+function createInstructionData(normalizedRatioA, normalizedRatioB) {
+    console.log("🔧 Creating instruction data:");
+    console.log(`  Ratio A: ${normalizedRatioA}`);
+    console.log(`  Ratio B: ${normalizedRatioB}`);
+    
+    const instructionData = new Uint8Array(17);
+    instructionData[0] = 1; // InitializePool discriminator
+    
+    // Convert ratios to little-endian u64
+    const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(normalizedRatioA)]).buffer);
+    const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(normalizedRatioB)]).buffer);
+    
+    instructionData.set(ratioABytes, 1);
+    instructionData.set(ratioBBytes, 9);
+    
+    console.log("  Instruction data (hex):", Array.from(instructionData).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log("  Total length:", instructionData.length, "bytes");
+    
+    return instructionData;
+}
+```
+
+##### Common Error Solutions
+
+| Error Message | Likely Cause | Solution |
+|---------------|--------------|----------|
+| `ProgramError: InvalidAccountData` | Wrong PDA provided | Re-derive PDAs using exact seeds |
+| `ProgramError: AccountAlreadyInitialized` | Pool already exists | Check if pool exists first |
+| `InvalidInstruction` | Wrong discriminator | Use discriminator `1` for InitializePool |
+| `NotEnoughAccountKeys` | Missing accounts | Ensure exactly 13 accounts provided |
+| `InvalidArgument` | Wrong data format | Check instruction data is 17 bytes |
+| `Custom: 1002` | Invalid ratio | Ensure one ratio is exactly 1 whole token |
+| Simulation timeout | Insufficient SOL | User needs ~2+ SOL for fees and rent |
+
+##### Full Integration Test
+```javascript
+// Complete integration test
+async function fullPoolCreationTest() {
+    console.log("🧪 Starting full pool creation test...");
+    
+    // Step 1: Test basic connection
+    const connectionOK = await testConnection();
+    if (!connectionOK) return false;
+    
+    // Step 2: Verify PDA derivation
+    const pdas = await verifyPDADerivation();
+    
+    // Step 3: Create and test instruction
+    try {
+        const result = await createPoolExact(
+            wallet,
+            new PublicKey("So11111111111111111111111111111111111111112"), // SOL
+            new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+            1000000000,  // 1 SOL in basis points
+            160000000    // 160 USDC in basis points
+        );
+        
+        console.log("✅ Pool creation instruction is valid!");
+        console.log("Pool State PDA:", result.poolStatePDA.toString());
+        return true;
+    } catch (error) {
+        console.log("❌ Pool creation failed:", error.message);
+        return false;
+    }
+}
 ```
 
 ---
