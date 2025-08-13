@@ -197,6 +197,76 @@ function getDonationComputeUnits(donationAmountLamports) {
 
 ---
 
+## Instruction Reference
+
+### Complete Instruction Discriminators
+
+The Fixed Ratio Trading contract uses Borsh serialization with enum discriminators. Each instruction begins with a single-byte discriminator followed by the instruction-specific data.
+
+| Discriminator | Instruction | Data Size | Total Size | Description |
+|---------------|-------------|-----------|------------|-------------|
+| `0` | `InitializeProgram` | 0 bytes | 1 byte | Initialize system state and treasury |
+| `1` | `InitializePool` | 16 bytes | 17 bytes | Create new trading pool |
+| `2` | `Deposit` | 40 bytes | 41 bytes | Add liquidity to pool |
+| `3` | `Withdraw` | 40 bytes | 41 bytes | Remove liquidity from pool |
+| `4` | `Swap` | 48 bytes | 49 bytes | Execute token swap |
+| `5` | `GetPoolStatePDA` | 40 bytes | 41 bytes | Get pool PDA address |
+| `6` | `GetTokenVaultPDAs` | 32 bytes | 33 bytes | Get vault PDA addresses |
+| `7` | `GetPoolInfo` | 0 bytes | 1 byte | Get pool information |
+| `8` | `GetPoolPauseStatus` | 0 bytes | 1 byte | Get pause status |
+| `9` | `GetLiquidityInfo` | 0 bytes | 1 byte | Get liquidity information |
+| `10` | `GetFeeInfo` | 0 bytes | 1 byte | Get fee information |
+| `11` | `GetPoolSolBalance` | 0 bytes | 1 byte | Get pool SOL balance |
+| `12` | `PauseSystem` | 1 byte | 2 bytes | Pause entire system |
+| `13` | `UnpauseSystem` | 0 bytes | 1 byte | Unpause entire system |
+| `14` | `GetVersion` | 0 bytes | 1 byte | Get contract version |
+| `15` | `WithdrawTreasuryFees` | 8 bytes | 9 bytes | Withdraw treasury fees |
+| `16` | `GetTreasuryInfo` | 0 bytes | 1 byte | Get treasury information |
+| `17` | `ConsolidatePoolFees` | 1 byte | 2 bytes | Consolidate pool fees |
+| `18` | `GetConsolidationStatus` | 1 byte | 2 bytes | Get consolidation status |
+| `19` | `PausePool` | 1 byte | 2 bytes | Pause pool operations |
+| `20` | `UnpausePool` | 1 byte | 2 bytes | Unpause pool operations |
+| `21` | `SetSwapOwnerOnly` | 33 bytes | 34 bytes | Set swap owner restrictions |
+| `22` | `UpdatePoolFees` | 17 bytes | 18 bytes | Update pool fee structure |
+| `23` | `DonateSol` | Variable | Variable | Donate SOL to treasury |
+
+### Common Instruction Patterns
+
+#### Basic Structure
+```rust
+// All instructions follow this pattern
+pub struct InstructionData {
+    discriminator: u8,        // Single byte identifying the instruction
+    // ... instruction-specific fields
+}
+```
+
+#### Size Calculations
+- **Pubkey fields**: 32 bytes each
+- **u64 fields**: 8 bytes each (little-endian)
+- **u8 fields**: 1 byte each
+- **String fields**: Variable length (length prefix + UTF-8 bytes)
+
+#### Serialization Examples
+```javascript
+// u64 to bytes (little-endian)
+const u64ToBytes = (value) => new Uint8Array(new BigUint64Array([BigInt(value)]).buffer);
+
+// Pubkey to bytes
+const pubkeyToBytes = (pubkey) => pubkey.toBuffer();
+
+// String to bytes (for DonateSol message)
+const stringToBytes = (str) => {
+    const encoder = new TextEncoder();
+    const strBytes = encoder.encode(str);
+    const lengthBytes = new Uint8Array(4); // u32 length prefix
+    new DataView(lengthBytes.buffer).setUint32(0, strBytes.length, true); // little-endian
+    return new Uint8Array([...lengthBytes, ...strBytes]);
+};
+```
+
+---
+
 ## System Management
 
 Functions for system-wide operations and program initialization.
@@ -438,6 +508,31 @@ program_id: &Pubkey
 accounts: &[AccountInfo]   // No accounts required
 ```
 
+#### Instruction Format
+
+**Discriminator:** `14` (single byte)  
+**Total Data Length:** 1 byte  
+**Serialization:** Borsh format (unit enum)
+
+```rust
+// Instruction structure (unit variant)
+pub enum PoolInstruction {
+    GetVersion, // Discriminator: 14 (no additional data)
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for GetVersion
+const instructionData = new Uint8Array([14]); // Single byte discriminator
+
+const instruction = new solanaWeb3.TransactionInstruction({
+    keys: [], // No accounts required
+    programId: PROGRAM_ID,
+    data: instructionData
+});
+```
+
 #### Instruction Data
 - Discriminator: `14` (unit enum variant `GetVersion`)
 - Serialization: 1 byte only (`[14]`)
@@ -594,6 +689,40 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 **Authority:** Any user  
 **Fee:** 1.15 SOL registration fee (REGISTRATION_FEE constant)  
 **Compute Units:** 500,000 CUs maximum (Dashboard tested for security compatibility)
+
+#### Instruction Format
+
+**Discriminator:** `1` (single byte)  
+**Total Data Length:** 17 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct InitializePoolInstruction {
+    discriminator: u8,           // 1 byte: value = 1
+    ratio_a_numerator: u64,      // 8 bytes: Token A ratio in basis points (little-endian)
+    ratio_b_denominator: u64,    // 8 bytes: Token B ratio in basis points (little-endian)
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for InitializePool
+const discriminator = new Uint8Array([1]); // InitializePool discriminator
+const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioABasisPoints)]).buffer);
+const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer);
+
+const instructionData = new Uint8Array([
+    ...discriminator,    // 1 byte
+    ...ratioABytes,      // 8 bytes (u64 little-endian)
+    ...ratioBBytes       // 8 bytes (u64 little-endian)
+]);
+
+// Example: 1 SOL = 160 USDT pool
+// ratioABasisPoints = 1000000000 (1.0 * 10^9)
+// ratioBBasisPoints = 160000000 (160.0 * 10^6)
+// Results in 17-byte instruction data: [1, ...16 bytes of ratio data]
+```
 
 #### Parameters
 ```rust
@@ -899,6 +1028,39 @@ Adds liquidity to a pool by depositing a single token type and minting correspon
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 310,000 CUs maximum (Dashboard: min observed 249K; set 310K for safety margin)
 
+#### Instruction Format
+
+**Discriminator:** `2` (single byte)  
+**Total Data Length:** 41 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct DepositInstruction {
+    discriminator: u8,           // 1 byte: value = 2
+    deposit_token_mint: Pubkey,  // 32 bytes: Token mint to deposit
+    amount: u64,                 // 8 bytes: Amount in basis points (little-endian)
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for Deposit
+const instructionData = new Uint8Array(41); // 1 + 32 + 8 bytes
+instructionData[0] = 2; // Deposit discriminator
+
+// Copy token mint bytes (32 bytes)
+depositTokenMint.toBytes().forEach((byte, index) => {
+    instructionData[1 + index] = byte;
+});
+
+// Copy amount bytes (8 bytes, u64 little-endian)
+const amountBytes = new Uint8Array(new BigUint64Array([BigInt(amountBasisPoints)]).buffer);
+amountBytes.forEach((byte, index) => {
+    instructionData[33 + index] = byte;
+});
+```
+
 #### Parameters
 ```rust
 program_id: &Pubkey
@@ -968,6 +1130,39 @@ If you deposited 100 SOL and received 100 Token A LP tokens:
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 290,000 CUs maximum (Dashboard: min observed 227K; set 290K for safety margin)
 
+#### Instruction Format
+
+**Discriminator:** `3` (single byte)  
+**Total Data Length:** 41 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct WithdrawInstruction {
+    discriminator: u8,            // 1 byte: value = 3
+    withdraw_token_mint: Pubkey,  // 32 bytes: Token mint to receive
+    lp_amount_to_burn: u64,       // 8 bytes: LP tokens to burn (little-endian)
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for Withdraw
+const instructionData = new Uint8Array(41); // 1 + 32 + 8 bytes
+instructionData[0] = 3; // Withdraw discriminator
+
+// Copy withdraw token mint bytes (32 bytes)
+withdrawTokenMint.toBytes().forEach((byte, index) => {
+    instructionData[1 + index] = byte;
+});
+
+// Copy LP amount bytes (8 bytes, u64 little-endian)
+const lpAmountBytes = new Uint8Array(new BigUint64Array([BigInt(lpAmountLamports)]).buffer);
+lpAmountBytes.forEach((byte, index) => {
+    instructionData[33 + index] = byte;
+});
+```
+
 #### Parameters
 ```rust
 program_id: &Pubkey
@@ -1030,6 +1225,36 @@ Example: Pool ratio 1 SOL = 160 USDT
 **Authority:** Any user (unless owner-only mode)  
 **Fee:** 0.00002715 SOL (SWAP_CONTRACT_FEE constant)  
 **Compute Units:** 250,000 CUs maximum (Dashboard: tested 202K works; set to 250K to allow for fee changes and variability)
+
+#### Instruction Format
+
+**Discriminator:** `4` (single byte)  
+**Total Data Length:** 49 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct SwapInstruction {
+    discriminator: u8,           // 1 byte: value = 4
+    input_token_mint: Pubkey,    // 32 bytes: Input token mint
+    amount_in: u64,              // 8 bytes: Input amount in basis points (little-endian)
+    expected_amount_out: u64,    // 8 bytes: Expected output for slippage protection (little-endian)
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for Swap
+const instructionData = new Uint8Array([
+    4, // Swap discriminator (single byte)
+    ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
+    ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer), // amount_in (u64 little-endian)
+    ...new Uint8Array(new BigUint64Array([BigInt(expectedAmountOut)]).buffer)  // expected_amount_out (u64 little-endian)
+]);
+
+// Total: 1 + 32 + 8 + 8 = 49 bytes
+console.log('Swap instruction data length:', instructionData.length);
+```
 
 #### Parameters
 ```rust
