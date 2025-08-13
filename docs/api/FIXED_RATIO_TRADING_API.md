@@ -2132,57 +2132,226 @@ pub fn calculate_current_hourly_rate_limit(&self) -> u64 {
 
 ---
 
-### PDA Seeds Reference
+## Account Derivation Requirements
 
-For deriving Program Derived Addresses:
+### 🔐 Critical PDA Security Model
+
+The Fixed Ratio Trading program uses a **strict PDA validation model** where **ALL** Program Derived Addresses must be derived correctly and match expected values. The contract will reject transactions with incorrect PDAs to prevent security vulnerabilities and address manipulation attacks.
+
+### 🧮 Account Derivation Algorithm
+
+#### Step 1: Token Normalization (Critical!)
+
+Before deriving any pool-related PDAs, tokens **MUST** be normalized to prevent liquidity fragmentation:
 
 ```rust
-// System State PDA
-let (system_state_pda, _) = Pubkey::find_program_address(
+// CRITICAL: Always normalize tokens to lexicographic order
+let (token_a_mint, token_b_mint) = if input_token_1 < input_token_2 {
+    (input_token_1, input_token_2)  // Already in correct order
+} else {
+    (input_token_2, input_token_1)  // Swap to correct order
+};
+
+// CRITICAL: Map ratios to normalized token order
+let (ratio_a_numerator, ratio_b_denominator) = if input_token_1 < input_token_2 {
+    (input_ratio_1, input_ratio_2)  // Ratios match token order
+} else {
+    (input_ratio_2, input_ratio_1)  // Swap ratios to match swapped tokens
+};
+```
+
+#### Step 2: System PDAs (No Dependencies)
+
+```rust
+// System State PDA - Global pause control
+let (system_state_pda, system_state_bump) = Pubkey::find_program_address(
     &[b"system_state"], 
     &PROGRAM_ID
 );
 
-// Main Treasury PDA  
-let (main_treasury_pda, _) = Pubkey::find_program_address(
+// Main Treasury PDA - Fee collection and withdrawal
+let (main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(
     &[b"main_treasury"], 
     &PROGRAM_ID
 );
+```
 
-// Pool State PDA (tokens must be in lexicographic order)
-let (pool_state_pda, _) = Pubkey::find_program_address(
+#### Step 3: Pool State PDA (Depends on Normalized Inputs)
+
+```rust
+// Pool State PDA - Must use NORMALIZED tokens and ratios
+let (pool_state_pda, pool_state_bump) = Pubkey::find_program_address(
     &[
-        b"pool_state_v2", 
-        token_a_mint.as_ref(),
-        token_b_mint.as_ref(), 
-        &ratio_a_numerator.to_le_bytes(),
-        &ratio_b_denominator.to_le_bytes()
+        b"pool_state",  // ⚠️ NOT "pool_state_v2" - this is the correct seed
+        token_a_mint.as_ref(),         // 32 bytes - NORMALIZED token A
+        token_b_mint.as_ref(),         // 32 bytes - NORMALIZED token B  
+        &ratio_a_numerator.to_le_bytes(),    // 8 bytes - little-endian u64
+        &ratio_b_denominator.to_le_bytes(),  // 8 bytes - little-endian u64
     ], 
     &PROGRAM_ID
 );
+```
 
-// Token Vault PDAs
-let (token_a_vault_pda, _) = Pubkey::find_program_address(
+#### Step 4: Pool Infrastructure PDAs (Depend on Pool State)
+
+```rust
+// Token Vault PDAs - Secure token storage controlled by pool
+let (token_a_vault_pda, token_a_vault_bump) = Pubkey::find_program_address(
     &[b"token_a_vault", pool_state_pda.as_ref()], 
     &PROGRAM_ID
 );
 
-let (token_b_vault_pda, _) = Pubkey::find_program_address(
+let (token_b_vault_pda, token_b_vault_bump) = Pubkey::find_program_address(
     &[b"token_b_vault", pool_state_pda.as_ref()], 
     &PROGRAM_ID
 );
 
-// LP Token Mint PDAs
-let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+// LP Token Mint PDAs - Liquidity provider token mints
+let (lp_token_a_mint_pda, lp_token_a_mint_bump) = Pubkey::find_program_address(
     &[b"lp_token_a_mint", pool_state_pda.as_ref()], 
     &PROGRAM_ID
 );
 
-let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+let (lp_token_b_mint_pda, lp_token_b_mint_bump) = Pubkey::find_program_address(
     &[b"lp_token_b_mint", pool_state_pda.as_ref()], 
     &PROGRAM_ID
 );
 ```
+
+### 🛡️ PDA Validation Security
+
+#### Critical Security Checks
+
+1. **Pool State PDA Validation**: Contract verifies the provided pool state PDA matches the expected derived address
+2. **Vault PDA Validation**: All vault PDAs must derive correctly from the pool state PDA
+3. **LP Mint PDA Validation**: LP token mint PDAs must derive correctly from the pool state PDA
+4. **System PDA Validation**: System state and treasury PDAs must match expected addresses
+
+#### Common Derivation Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `InvalidAccountData` | Wrong PDA provided | Re-derive using correct seeds |
+| `AccountAlreadyInitialized` | Pool already exists | Check if pool exists before creation |
+| Wrong token order | Tokens not normalized | Apply lexicographic ordering |
+| Wrong ratio mapping | Ratios don't match normalized tokens | Map ratios to normalized token order |
+
+### 📝 Complete Derivation Example
+
+```javascript
+// Complete JavaScript example for pool creation
+import { PublicKey } from '@solana/web3.js';
+
+const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+
+function deriveAllPoolPDAs(inputTokenMint1, inputTokenMint2, inputRatio1, inputRatio2) {
+    // Step 1: Normalize tokens to lexicographic order
+    const normalizeTokens = (mint1, mint2, ratio1, ratio2) => {
+        if (mint1.toString() < mint2.toString()) {
+            return {
+                tokenA: mint1, tokenB: mint2,
+                ratioA: ratio1, ratioB: ratio2
+            };
+        } else {
+            return {
+                tokenA: mint2, tokenB: mint1,
+                ratioA: ratio2, ratioB: ratio1
+            };
+        }
+    };
+
+    const normalized = normalizeTokens(inputTokenMint1, inputTokenMint2, inputRatio1, inputRatio2);
+    
+    // Step 2: System PDAs (same for all pools)
+    const [systemStatePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")], PROGRAM_ID
+    );
+    
+    const [mainTreasuryPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("main_treasury")], PROGRAM_ID  
+    );
+    
+    // Step 3: Pool State PDA
+    const [poolStatePDA] = PublicKey.findProgramAddressSync([
+        Buffer.from("pool_state"),
+        normalized.tokenA.toBuffer(),
+        normalized.tokenB.toBuffer(),
+        Buffer.from(new BigUint64Array([BigInt(normalized.ratioA)]).buffer),
+        Buffer.from(new BigUint64Array([BigInt(normalized.ratioB)]).buffer),
+    ], PROGRAM_ID);
+    
+    // Step 4: Pool Infrastructure PDAs
+    const [tokenAVaultPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_a_vault"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [tokenBVaultPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_b_vault"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [lpTokenAMintPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("lp_token_a_mint"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+    
+    const [lpTokenBMintPDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("lp_token_b_mint"), poolStatePDA.toBuffer()], PROGRAM_ID
+    );
+
+    return {
+        // System PDAs
+        systemStatePDA,
+        mainTreasuryPDA,
+        
+        // Pool PDAs  
+        poolStatePDA,
+        tokenAVaultPDA,
+        tokenBVaultPDA,
+        lpTokenAMintPDA,
+        lpTokenBMintPDA,
+        
+        // Normalized values for verification
+        normalizedTokenA: normalized.tokenA,
+        normalizedTokenB: normalized.tokenB,
+        normalizedRatioA: normalized.ratioA,
+        normalizedRatioB: normalized.ratioB
+    };
+}
+
+// Usage example
+const result = deriveAllPoolPDAs(
+    new PublicKey("So11111111111111111111111111111111111111112"), // SOL
+    new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
+    1,     // 1 SOL
+    160    // = 160 USDC (at some price point)
+);
+
+console.log("All required PDAs:", result);
+```
+
+### 🔄 Bump Seeds and Signing
+
+When the contract needs to sign on behalf of PDAs (e.g., minting LP tokens), it uses the bump seeds:
+
+```rust
+// Example: Pool state PDA signing for LP token minting
+let pool_state_signer_seeds = &[
+    b"pool_state",
+    token_a_mint.as_ref(),
+    token_b_mint.as_ref(), 
+    &ratio_a_numerator.to_le_bytes(),
+    &ratio_b_denominator.to_le_bytes(),
+    &[pool_state_bump],  // Bump seed for signing
+];
+```
+
+### ⚠️ Critical Requirements Summary
+
+1. **Token Normalization is Mandatory**: Always sort tokens lexicographically before derivation
+2. **Ratio Mapping is Required**: Map ratios to match normalized token order  
+3. **All PDAs Must Match**: Contract validates every PDA against expected derived address
+4. **Seed Precision Matters**: Use exact seed strings (`"pool_state"` not `"pool_state_v2"`)
+5. **Little-Endian Encoding**: Use `to_le_bytes()` for u64 values in seeds
+6. **No Shortcuts Allowed**: Every PDA must be derived following the exact algorithm
 
 ---
 
