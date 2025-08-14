@@ -92,6 +92,13 @@ This guide covers critical requirements for:
    - **Always use `normalize_pool_config()`** before calling `process_pool_initialize`
    - **Wrong ratios are permanent** - no fix possible, results in lost SOL (1.15+ SOL per mistake)
 
+5. **⚠️ Transaction Building Requirements**
+   - **Instruction Data Format**: Use single-byte discriminator `[1]` (17 bytes total for InitializePool)
+   - **Token Ordering**: Must use lexicographic byte comparison (same as Rust Pubkey::cmp)
+   - **Basis Points**: Convert user ratios using `amount * Math.pow(10, decimals)`
+   - **Account Structure**: Must include exactly 13 accounts in documented order
+   - **Solnet Issues**: Known transaction serialization bugs - use raw RPC for complex transactions
+
 ---
 
 ## Localnet & ngrok Setup
@@ -827,6 +834,104 @@ async function getContractVersionFree(connection, programId) {
 | `AccountNotFound` | Ephemeral payer doesn't exist and RPC enforces account checks | Use `sigVerify:false`, `replaceRecentBlockhash:true`; on localnet/devnet request small airdrop and retry |
 | No version in logs | RPC succeeded but logs lacked version string | Ensure program is deployed and up to date; confirm discriminator `14` |
 | Simulation forbidden | RPC disallows simulation without funded payer | Use a funded dev wallet as payer for simulation, or submit on-chain |
+
+---
+
+## 🔧 Working Pool Creation Implementation Guide
+
+**⚠️ Critical**: The C# stress test service was getting transaction serialization errors. The working implementation is in `C:\Users\Davinci\code\fixed-ratio-trading\dashboard\pool-creation.js`. Key fixes needed:
+
+### 1. Correct Instruction Data Format
+
+**❌ Wrong (C# API was doing this):**
+```csharp
+// Using 4-byte discriminator
+var data = new PoolInitializeInstructionData
+{
+    Discriminator = 4, // WRONG - this is 4 bytes in Borsh
+    RatioANumerator = poolConfig.RatioANumerator,
+    RatioBDenominator = poolConfig.RatioBDenominator
+};
+```
+
+**✅ Correct:**
+```javascript
+// Single-byte discriminator (17 bytes total)
+const discriminator = new Uint8Array([1]); // Single byte for InitializePool
+const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioABasisPoints)]).buffer);
+const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer);
+const instructionData = concatUint8Arrays([discriminator, ratioABytes, ratioBBytes]);
+```
+
+### 2. Token Ordering (Critical Fix)
+
+**❌ Wrong (String comparison):**
+```csharp
+// This doesn't match Rust Pubkey comparison
+if (tokenAMint.ToString().CompareTo(tokenBMint.ToString()) > 0)
+```
+
+**✅ Correct (Byte comparison):**
+```javascript
+// Use byte-level comparison (same as Rust Pubkey::cmp)
+const primaryTokenBytes = primaryTokenMint.toBytes();
+const baseTokenBytes = baseTokenMint.toBytes();
+let primaryIsLessThanBase = false;
+for (let i = 0; i < 32; i++) {
+    if (primaryTokenBytes[i] < baseTokenBytes[i]) {
+        primaryIsLessThanBase = true;
+        break;
+    } else if (primaryTokenBytes[i] > baseTokenBytes[i]) {
+        primaryIsLessThanBase = false;
+        break;
+    }
+}
+const tokenAMint = primaryIsLessThanBase ? primaryTokenMint : baseTokenMint;
+const tokenBMint = primaryIsLessThanBase ? baseTokenMint : primaryTokenMint;
+```
+
+### 3. Basis Points Conversion
+
+**✅ Correct conversion using token decimals:**
+```javascript
+const displayToBasisPoints = (amount, decimals) => {
+    return Math.floor(amount * Math.pow(10, decimals));
+};
+
+// Get token decimals from mint accounts
+const normalizedTokenADecimals = await getTokenDecimals(tokenAMint.toString(), connection);
+const normalizedTokenBDecimals = await getTokenDecimals(tokenBMint.toString(), connection);
+
+// Convert to basis points
+finalRatioABasisPoints = displayToBasisPoints(tokenADisplay, normalizedTokenADecimals);
+finalRatioBBasisPoints = displayToBasisPoints(tokenBDisplay, normalizedTokenBDecimals);
+```
+
+### 4. Avoiding Solnet Transaction Issues
+
+**✅ Use raw transaction building:**
+```javascript
+// Build transaction manually instead of using Solnet's complex builders
+const transaction = new solanaWeb3.Transaction()
+    .add(computeBudgetInstruction)
+    .add(createPoolInstruction);
+
+// Get fresh blockhash and send directly
+const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+transaction.recentBlockhash = blockhash;
+transaction.feePayer = wallet.publicKey;
+const signedTx = await wallet.signTransaction(transaction);
+const signature = await connection.sendRawTransaction(signedTx.serialize());
+```
+
+### 5. Successful Pool Creation Result
+
+When implemented correctly, you should see:
+- ✅ Airdrop funding works (1.5 SOL sufficient)
+- ✅ Token mints created successfully  
+- ✅ Pool transaction submitted without serialization errors
+- ✅ Pool appears in dashboard
+- ✅ Pool ID, token addresses, and transaction signature returned
 
 ---
 
