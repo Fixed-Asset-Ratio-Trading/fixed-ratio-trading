@@ -32,11 +32,13 @@ Location: src/constants.rs (lines 40, 51, 70, 294)
 4. [Localnet & ngrok Setup](#localnet--ngrok-setup)
 5. [System Management](#system-management)
 6. [Pool Management](#pool-management)
-7. [Liquidity Operations](#liquidity-operations)
-8. [Swap Operations](#swap-operations)
-9. [Treasury Operations](#treasury-operations)
-10. [Error Codes](#error-codes)
-11. [Types and Structures](#types-and-structures)
+7. [🚨 Critical Pool Creation Issue: Decimal Precision Mistakes](#-critical-pool-creation-issue-decimal-precision-mistakes)
+8. [Error Analysis & Troubleshooting](#error-analysis--troubleshooting)
+9. [Liquidity Operations](#liquidity-operations)
+10. [Swap Operations](#swap-operations)
+11. [Treasury Operations](#treasury-operations)
+12. [Error Codes](#error-codes)
+13. [Types and Structures](#types-and-structures)
 
 ---
 
@@ -1537,6 +1539,450 @@ async function fullPoolCreationTest() {
     }
 }
 ```
+
+---
+
+## 🚨 Critical Pool Creation Issue: Decimal Precision Mistakes
+
+### The #1 Most Expensive Pool Creation Bug
+
+**Problem:** The most common and costly mistake when creating pools is incorrect basis points calculation when tokens have different decimal precisions. This results in completely wrong exchange ratios and pool creation failures.
+
+#### Real-World Debug Example
+
+```
+🔍 The New Error Analysis
+The new error "Error processing Instruction 1: Program failed to complete" suggests that:
+- Instruction 0: Compute Budget instruction (likely succeeded)  
+- Instruction 1: Pool creation instruction (failed)
+
+Debug Output:
+The problem is that we have Token A with 9 decimals and Token B with 6 decimals, 
+but we're sending the same ratio values (1000:1000). This is wrong!
+
+Token A: 9 decimals (was reordered to be first lexicographically)
+Token B: 6 decimals  
+Decimals difference: |9 - 6| = 3
+Needs inversion: True (because token order changed)
+
+❌ WRONG calculation:
+ratioBDenominator = ratioWholeNumber = 1000  
+ratioANumerator = Math.Pow(10, 3) = 1000
+
+The issue is that we're using ratioWholeNumber (1000) but we should be using basis points!
+```
+
+#### ❌ Common Developer Mistake
+
+```javascript
+// ❌ WRONG - This is what developers typically do:
+const tokenA = { mint: "So11111111111111111111111111111112", decimals: 9 };  // SOL
+const tokenB = { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 };  // USDC
+const ratioWholeNumber = 160; // Want 1 SOL = 160 USDC
+
+// ❌ WRONG: Using same value for both sides
+const ratioANumerator = ratioWholeNumber;     // 160 ❌ 
+const ratioBDenominator = ratioWholeNumber;   // 160 ❌
+
+// This sends wrong basis points to smart contract:
+// ratioANumerator: 160 (should be 1,000,000,000)
+// ratioBDenominator: 160 (should be 160,000,000)
+```
+
+**Result:** Pool creation fails or creates pool with wrong ratio like "160 SOL = 160 USDC" instead of "1 SOL = 160 USDC"
+
+#### ✅ Correct Implementation
+
+```javascript
+/**
+ * ✅ CORRECT: Convert display amounts to basis points using each token's decimals
+ */
+function displayToBasisPoints(displayAmount, decimals) {
+    if (displayAmount === 0) return 0;
+    if (displayAmount === null || displayAmount === undefined) return 0;
+    
+    const basisPoints = Math.round(displayAmount * Math.pow(10, decimals));
+    console.log(`Converting ${displayAmount} display units × 10^${decimals} = ${basisPoints} basis points`);
+    return basisPoints;
+}
+
+// ✅ CORRECT: Example for 1 SOL = 160 USDC
+const tokenA = { mint: "So11111111111111111111111111111112", decimals: 9 };  // SOL
+const tokenB = { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 };  // USDC
+
+// For ratio "1 SOL = 160 USDC":
+const tokenADisplay = 1.0;    // 1 SOL
+const tokenBDisplay = 160.0;  // 160 USDC
+
+// Convert each using its own decimal precision
+const ratioANumerator = displayToBasisPoints(tokenADisplay, tokenA.decimals);    // 1,000,000,000
+const ratioBDenominator = displayToBasisPoints(tokenBDisplay, tokenB.decimals);  // 160,000,000
+
+console.log(`Correct basis points: ${ratioANumerator} : ${ratioBDenominator}`);
+// Output: Correct basis points: 1000000000 : 160000000
+```
+
+#### Complete Working Implementation with Token Normalization
+
+```javascript
+/**
+ * ✅ COMPLETE CORRECT IMPLEMENTATION
+ * Handles token normalization AND proper decimal conversion
+ */
+async function createPoolCorrect(userTokenA, userTokenB, exchangeRatio) {
+    // Step 1: Fetch token decimals from chain
+    const tokenADecimals = await getTokenDecimals(userTokenA.mint);
+    const tokenBDecimals = await getTokenDecimals(userTokenB.mint);
+    
+    console.log(`Token decimals: ${userTokenA.symbol}=${tokenADecimals}, ${userTokenB.symbol}=${tokenBDecimals}`);
+    
+    // Step 2: Convert token strings to PublicKey for comparison
+    const tokenAMint = new solanaWeb3.PublicKey(userTokenA.mint);
+    const tokenBMint = new solanaWeb3.PublicKey(userTokenB.mint);
+    
+    // Step 3: Normalize tokens lexicographically (like smart contract does)
+    const { normalizedTokenA, normalizedTokenB, tokensWereSwapped } = normalizeTokenOrder(
+        tokenAMint, tokenBMint, tokenADecimals, tokenBDecimals
+    );
+    
+    // Step 4: Calculate display amounts based on user's desired ratio
+    // User wants: "1 userTokenA = exchangeRatio userTokenB"
+    let tokenADisplayAmount, tokenBDisplayAmount;
+    
+    if (tokensWereSwapped) {
+        // User's TokenA became normalized TokenB, User's TokenB became normalized TokenA
+        // Convert "1 userTokenA = X userTokenB" to "X normalizedTokenA = 1 normalizedTokenB"
+        tokenADisplayAmount = exchangeRatio;  // X units of user's TokenB (now normalized TokenA)
+        tokenBDisplayAmount = 1.0;            // 1 unit of user's TokenA (now normalized TokenB)
+    } else {
+        // Tokens kept original order
+        // "1 userTokenA = X userTokenB" stays as "1 normalizedTokenA = X normalizedTokenB"  
+        tokenADisplayAmount = 1.0;            // 1 unit of user's TokenA (still normalized TokenA)
+        tokenBDisplayAmount = exchangeRatio;  // X units of user's TokenB (still normalized TokenB)
+    }
+    
+    // Step 5: Convert to basis points using NORMALIZED token decimals
+    const ratioANumerator = displayToBasisPoints(tokenADisplayAmount, normalizedTokenA.decimals);
+    const ratioBDenominator = displayToBasisPoints(tokenBDisplayAmount, normalizedTokenB.decimals);
+    
+    console.log(`Final basis points: ${ratioANumerator} : ${ratioBDenominator}`);
+    
+    // Step 6: Verify the math is correct
+    console.log(`Verification: ${ratioANumerator / Math.pow(10, normalizedTokenA.decimals)} : ${ratioBDenominator / Math.pow(10, normalizedTokenB.decimals)}`);
+    
+    return {
+        tokenAMint: normalizedTokenA.mint,
+        tokenBMint: normalizedTokenB.mint,
+        ratioANumerator,
+        ratioBDenominator
+    };
+}
+
+function normalizeTokenOrder(mintA, mintB, decimalsA, decimalsB) {
+    // Lexicographic comparison (byte-wise, like Rust PublicKey::cmp)
+    const bytesA = mintA.toBytes();
+    const bytesB = mintB.toBytes();
+    
+    let aLessThanB = false;
+    for (let i = 0; i < 32; i++) {
+        if (bytesA[i] < bytesB[i]) { aLessThanB = true; break; }
+        if (bytesA[i] > bytesB[i]) { aLessThanB = false; break; }
+    }
+    
+    if (aLessThanB) {
+        return {
+            normalizedTokenA: { mint: mintA, decimals: decimalsA },
+            normalizedTokenB: { mint: mintB, decimals: decimalsB },
+            tokensWereSwapped: false
+        };
+    } else {
+        return {
+            normalizedTokenA: { mint: mintB, decimals: decimalsB },
+            normalizedTokenB: { mint: mintA, decimals: decimalsA },
+            tokensWereSwapped: true
+        };
+    }
+}
+```
+
+#### Specific Examples by Decimal Combinations
+
+**🔹 Example 1: SOL (9 decimals) + USDC (6 decimals) = 1:160**
+
+```javascript
+// Want: 1 SOL = 160 USDC
+const solDecimals = 9;
+const usdcDecimals = 6;
+
+// ✅ CORRECT:
+const ratioANumerator = 1.0 * Math.pow(10, solDecimals);     // 1,000,000,000
+const ratioBDenominator = 160.0 * Math.pow(10, usdcDecimals); // 160,000,000
+
+// Result: Pool correctly prices 1 SOL = 160 USDC
+```
+
+**🔹 Example 2: BTC (8 decimals) + ETH (18 decimals) = 1:15**
+
+```javascript
+// Want: 1 BTC = 15 ETH  
+const btcDecimals = 8;
+const ethDecimals = 18;
+
+// ✅ CORRECT:
+const ratioANumerator = 1.0 * Math.pow(10, btcDecimals);     // 100,000,000
+const ratioBDenominator = 15.0 * Math.pow(10, ethDecimals);  // 15,000,000,000,000,000,000
+
+// Result: Pool correctly prices 1 BTC = 15 ETH
+```
+
+**🔹 Example 3: Custom Token (6 decimals) + SOL (9 decimals) = 1000:1**
+
+```javascript
+// Want: 1000 CustomToken = 1 SOL
+const customTokenDecimals = 6; 
+const solDecimals = 9;
+
+// Express as "1 CustomToken = 0.001 SOL"
+// ✅ CORRECT:
+const ratioANumerator = 1.0 * Math.pow(10, customTokenDecimals);      // 1,000,000
+const ratioBDenominator = 0.001 * Math.pow(10, solDecimals);          // 1,000,000
+
+// Result: Pool correctly prices 1000 CustomToken = 1 SOL
+```
+
+#### Error Prevention Checklist
+
+**✅ Before Creating Any Pool:**
+
+1. **Fetch Actual Decimals**: Always get decimals from chain, never hardcode
+   ```javascript
+   const decimals = await getTokenDecimals(mintAddress);
+   ```
+
+2. **Understand Token Normalization**: Smart contract reorders tokens lexicographically
+   ```javascript
+   const normalized = normalizeTokenOrder(mintA, mintB);
+   ```
+
+3. **Use Correct Decimals for Each Token**: Each side uses its own token's decimals
+   ```javascript
+   const basisPointsA = displayAmount * Math.pow(10, tokenA.decimals);
+   const basisPointsB = displayAmount * Math.pow(10, tokenB.decimals);
+   ```
+
+4. **Verify Your Math**: Check the reverse calculation
+   ```javascript
+   const backToDisplay = basisPoints / Math.pow(10, decimals);
+   console.log(`${basisPoints} basis points = ${backToDisplay} display units`);
+   ```
+
+5. **Test with Different Decimal Combinations**: Don't just test same-decimal pairs
+
+#### Safe Pool Creation Utility
+
+```javascript
+/**
+ * Safe pool creation that prevents decimal precision mistakes
+ */
+async function createPoolSafe(tokenAMint, tokenBMint, displayRatio) {
+    // Validate inputs
+    if (!tokenAMint || !tokenBMint) {
+        throw new Error("Both token mints required");
+    }
+    
+    if (!displayRatio || displayRatio <= 0) {
+        throw new Error("Valid display ratio required");
+    }
+    
+    // Get decimals from chain
+    const [decimalsA, decimalsB] = await Promise.all([
+        getTokenDecimals(tokenAMint),
+        getTokenDecimals(tokenBMint)
+    ]);
+    
+    console.log(`Token decimals: A=${decimalsA}, B=${decimalsB}`);
+    
+    // Convert to basis points correctly
+    const ratioABasisPoints = 1.0 * Math.pow(10, decimalsA);
+    const ratioBBasisPoints = displayRatio * Math.pow(10, decimalsB);
+    
+    // Verify calculation
+    console.log(`Basis points: ${ratioABasisPoints} : ${ratioBBasisPoints}`);
+    console.log(`Verification: ${ratioABasisPoints / Math.pow(10, decimalsA)} : ${ratioBBasisPoints / Math.pow(10, decimalsB)}`);
+    
+    return { ratioABasisPoints, ratioBBasisPoints };
+}
+```
+
+**💰 Cost Impact:** This mistake typically costs 1.15+ SOL per failed pool creation attempt, so proper implementation is critical for production applications.
+
+---
+
+## Error Analysis & Troubleshooting
+
+### Transaction Instruction Failure Analysis
+
+Understanding multi-instruction transaction failures is crucial for debugging Fixed Ratio Trading operations. Most operations use multiple instructions that must all succeed atomically.
+
+#### Common Instruction Patterns
+
+**📋 Typical Transaction Structure:**
+```
+Instruction 0: Compute Budget (priority fee setting)
+Instruction 1: Main Program Operation (pool creation, swap, etc.)
+Instruction 2+: Additional operations (if applicable)
+```
+
+#### Instruction-Level Error Analysis
+
+When you see errors like `Error processing Instruction 1: Program failed to complete`, this indicates:
+
+- **Instruction 0**: Compute Budget instruction (usually succeeds)
+- **Instruction 1**: Your main operation (failed)
+- **Instruction 2+**: Not executed due to transaction atomicity
+
+**🔍 Common Causes of Instruction 1 Failures:**
+
+1. **Account Ordering Issues**
+   - Smart contract expects accounts in a specific order
+   - Misplaced signer accounts
+   - Incorrect PDA derivation order
+   - Token account vs mint account confusion
+
+2. **Missing Account Initialization**
+   - Associated token accounts not created
+   - PDA accounts not properly derived
+   - System program accounts missing
+   - Rent-exempt balance insufficient
+
+3. **Insufficient Account Permissions**
+   - Missing signer flags on required accounts
+   - Missing writable flags on accounts that need modification
+   - Authority mismatches
+   - Token account ownership issues
+
+4. **Program Logic Validation Failures**
+   - Custom error codes (see Error Codes section)
+   - Business logic constraints not met
+   - State validation failures
+   - Arithmetic constraints violated
+
+#### Debugging Transaction Failures
+
+**🔧 Step-by-Step Debugging Process:**
+
+1. **Identify the Failed Instruction**
+   ```
+   Error processing Instruction N: Program failed to complete
+   ```
+   This tells you which instruction in the transaction failed.
+
+2. **Check Account Ordering**
+   - Verify accounts match the exact order in API documentation
+   - Ensure all required accounts are present
+   - Validate PDA derivations match expected seeds
+
+3. **Validate Account States**
+   - Check if all token accounts exist and are initialized
+   - Verify sufficient balances for operations
+   - Ensure accounts have proper ownership
+
+4. **Review Permissions**
+   - Confirm signer accounts are marked as signers
+   - Verify writable accounts are marked as writable
+   - Check authority relationships
+
+5. **Test with Simpler Operations**
+   - Try view operations first to verify account setup
+   - Use smaller amounts to test validation logic
+   - Test with known working configurations
+
+#### Account Ordering Requirements
+
+**⚠️ Critical Account Order Rules:**
+
+1. **System Accounts Always First**
+   - System Program
+   - Token Program
+   - Associated Token Program (if used)
+   - Rent Sysvar (if needed)
+
+2. **Authority Accounts Next**
+   - Signer accounts
+   - Program authority PDAs
+   - Pool authority PDAs
+
+3. **Data Accounts Follow**
+   - Pool state PDAs
+   - System state PDAs
+   - Treasury state PDAs
+
+4. **Token Accounts Last**
+   - Token mint accounts
+   - Token vault accounts
+   - User token accounts
+   - LP token mint accounts
+
+#### Common Error Patterns and Solutions
+
+**🚨 "Program failed to complete" with no custom error:**
+
+- **Likely Cause**: Account ordering or missing accounts
+- **Solution**: Verify account list matches API documentation exactly
+- **Check**: All required accounts present and in correct order
+
+**🚨 Custom Error Codes (see Error Codes section):**
+
+- **Likely Cause**: Business logic validation failure
+- **Solution**: Check error code against Custom Error Codes table
+- **Action**: Address specific validation requirement
+
+**🚨 "Insufficient funds" or rent-related errors:**
+
+- **Likely Cause**: Account creation or rent exemption issues
+- **Solution**: Ensure sufficient SOL for rent and operations
+- **Check**: Account minimum balance requirements met
+
+**🚨 "Invalid account data" errors:**
+
+- **Likely Cause**: Account not initialized or wrong account type
+- **Solution**: Initialize missing accounts or verify account addresses
+- **Check**: PDA derivations and account existence
+
+#### Transaction Building Best Practices
+
+**✅ Recommended Practices:**
+
+1. **Use Raw RPC Approach**
+   - Standard transaction builders often produce malformed transactions
+   - Follow SOLANA_TRANSACTION_BUILDING_GUIDE.md for correct implementation
+   - Test transactions with simulation before submitting
+
+2. **Validate Before Submission**
+   - Check all account states before building transaction
+   - Verify sufficient balances and permissions
+   - Use view functions to validate pool states
+
+3. **Handle Errors Gracefully**
+   - Parse specific error codes for user feedback
+   - Implement retry logic for temporary failures
+   - Provide clear error messages to users
+
+4. **Test Incrementally**
+   - Start with simple operations
+   - Build up to complex multi-instruction transactions
+   - Use devnet for initial testing
+
+#### Error Code Reference Quick Lookup
+
+For immediate error code lookup, see the [Custom Error Codes](#custom-error-codes) section below. Common issues:
+
+- `1001`: Token pair configuration issues
+- `1002`: Ratio validation failures  
+- `1003`: Insufficient balance for operation
+- `1004`: Token account validation failures
+- `1023`: System paused (check system state)
+- `1007`: Pool paused (check pool flags)
 
 ---
 
