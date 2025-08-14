@@ -980,7 +980,7 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 
 **Authority:** Any user  
 **Fee:** 1.15 SOL registration fee (REGISTRATION_FEE constant)  
-**Compute Units:** 500,000 CUs maximum (Dashboard tested for security compatibility)
+**Compute Units:** 150,000 CUs maximum (observed ~91K; table-aligned)
 
 #### Instruction Format
 
@@ -1027,13 +1027,19 @@ const RPC_URL = "http://192.168.2.88:8899";
 async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratioB) {
     const connection = new Connection(RPC_URL, 'confirmed');
     
-    // Step 1: Normalize tokens (CRITICAL!)
+    // Step 1: Normalize tokens (CRITICAL! Use byte-wise lexicographic order like Rust Pubkey::cmp)
     const normalizeTokens = (mint1, mint2, ratio1, ratio2) => {
-        if (mint1.toString() < mint2.toString()) {
-            return { tokenA: mint1, tokenB: mint2, ratioA: ratio1, ratioB: ratio2 };
-        } else {
-            return { tokenA: mint2, tokenB: mint1, ratioA: ratio2, ratioB: ratio1 };
+        const a = mint1.toBytes();
+        const b = mint2.toBytes();
+        let aLessThanB = false;
+        for (let i = 0; i < 32; i++) {
+            if (a[i] < b[i]) { aLessThanB = true; break; }
+            if (a[i] > b[i]) { aLessThanB = false; break; }
         }
+        if (aLessThanB) {
+            return { tokenA: mint1, tokenB: mint2, ratioA: ratio1, ratioB: ratio2 };
+        }
+        return { tokenA: mint2, tokenB: mint1, ratioA: ratio2, ratioB: ratio1 };
     };
     
     const normalized = normalizeTokens(tokenAMint, tokenBMint, ratioA, ratioB);

@@ -116,6 +116,113 @@ Transaction Structure:
 └── Instructions (4 bytes): [1 instruction count] + [1 program index] + [0 accounts] + [1 data length] + [14 discriminator]
 ```
 
+### InitializePool (Discriminator: 1)
+
+Build the InitializePool instruction exactly as specified in the API documentation. This section summarizes the precise wire format and account ordering, and provides .NET-focused examples.
+
+**Instruction Data (exactly 17 bytes):**
+- Byte 0: discriminator = `1`
+- Bytes 1-8: `ratio_a_numerator` as u64 little-endian (basis points)
+- Bytes 9-16: `ratio_b_denominator` as u64 little-endian (basis points)
+
+```csharp
+// Build 17-byte instruction data for InitializePool in C#
+// Input ratios MUST already be in basis points (amount * 10^decimals)
+Span<byte> data = stackalloc byte[17];
+data[0] = 1; // InitializePool discriminator
+System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(data.Slice(1, 8), ratioANumeratorBasisPoints);
+System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(data.Slice(9, 8), ratioBDenominatorBasisPoints);
+
+byte[] instructionData = data.ToArray();
+```
+
+**Basis Points Conversion:**
+```csharp
+// Convert display amount to basis points using token decimals
+static ulong ToBasisPoints(double displayAmount, int decimals)
+{
+    // Use decimal for precision if needed; floor toward zero
+    var scale = Math.Pow(10, decimals);
+    var value = Math.Floor(displayAmount * scale);
+    return (ulong)value;
+}
+```
+
+**Token Ordering (lexicographic byte comparison):**
+The program normalizes token order using byte-wise lexicographic comparison identical to Rust `Pubkey::cmp`. Do NOT compare Base58 strings.
+
+```csharp
+static int CompareLex(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+{
+    for (int i = 0; i < 32; i++)
+    {
+        if (a[i] < b[i]) return -1;
+        if (a[i] > b[i]) return 1;
+    }
+    return 0;
+}
+
+// Example usage:
+byte[] tokenABytes = DecodeBase58(tokenAMintBase58);
+byte[] tokenBBytes = DecodeBase58(tokenBMintBase58);
+bool aLess = CompareLex(tokenABytes, tokenBBytes) < 0;
+
+// If not in lex order, swap tokens and swap ratio sides
+if (!aLess)
+{
+    (tokenAMintBase58, tokenBMintBase58) = (tokenBMintBase58, tokenAMintBase58);
+    (ratioANumeratorBasisPoints, ratioBDenominatorBasisPoints) = (ratioBDenominatorBasisPoints, ratioANumeratorBasisPoints);
+}
+```
+
+Equivalent JavaScript example:
+```javascript
+const a = tokenAMint.toBytes();
+const b = tokenBMint.toBytes();
+let aLessThanB = false;
+for (let i = 0; i < 32; i++) {
+  if (a[i] < b[i]) { aLessThanB = true; break; }
+  if (a[i] > b[i]) { aLessThanB = false; break; }
+}
+if (!aLessThanB) {
+  // swap token mints and ratio sides
+}
+```
+
+**Required Account Structure (exactly 13 accounts in this order):**
+| Index | Account | Type | Notes |
+|------:|---------|------|-------|
+| 0 | User Authority | Signer, Writable | Pool creator |
+| 1 | System Program | Readable | `11111111111111111111111111111111` |
+| 2 | System State PDA | Readable | Global state for pause validation |
+| 3 | Pool State PDA | Writable | Will be created |
+| 4 | SPL Token Program | Readable | Token program ID |
+| 5 | Main Treasury PDA | Writable | For 1.15 SOL fee collection |
+| 6 | Rent Sysvar | Readable | Rent calculations |
+| 7 | Token A Mint | Readable | Lexicographically smaller mint |
+| 8 | Token B Mint | Readable | Lexicographically larger mint |
+| 9 | Token A Vault PDA | Writable | Will be created |
+| 10 | Token B Vault PDA | Writable | Will be created |
+| 11 | LP Token A Mint PDA | Writable | Will be created |
+| 12 | LP Token B Mint PDA | Writable | Will be created |
+
+Note: All 6 PDAs must match expected derived addresses. If any PDA is wrong, the transaction fails.
+
+**JavaScript instruction data (reference):**
+```javascript
+const discriminator = new Uint8Array([1]);
+const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioANumeratorBasisPoints)]).buffer);
+const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBDenominatorBasisPoints)]).buffer);
+const instructionData = new Uint8Array([...discriminator, ...ratioABytes, ...ratioBBytes]); // 17 bytes
+```
+
+**Submission Strategy (avoid Solnet builder issues):**
+- Prefer raw RPC or manual transaction composition
+- Ensure a fresh recent blockhash
+- Sign with the fee payer; submit using `sendRawTransaction`
+
+For full working examples, see the API doc’s “Working Pool Creation Implementation Guide”.
+
 ## 🔍 Validation Checklist
 
 ### Transaction Format Validation
