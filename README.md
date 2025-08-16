@@ -180,8 +180,8 @@ cargo test
 # Deploy to local validator
 solana program deploy target/deploy/fixed_ratio_trading.so
 
-# Start the trading dashboard
-cd dashboard && python3 -m http.server 8000
+# Start the trading UI (if applicable)
+cd html && python3 -m http.server 8000
 ```
 
 ---
@@ -333,12 +333,12 @@ fixed-ratio-trading/
 │   ├── utils/                   # Utility functions and validation
 │   └── lib.rs                   # Program entry point and instruction dispatch
 ├── tests/                       # Comprehensive test suite (200+ tests)
-├── dashboard/                   # Web interface for testing and interaction
+├── html/                        # Web interface for testing and interaction
 ├── docs/                        # Documentation suite
 │   ├── api/                     # Developer API documentation
 │   ├── security/                # Security procedures and governance
 │   ├── FRT/                     # Fixed Ratio Trading specific docs
-│   ├── dashboard/               # Dashboard documentation
+│   ├── dashboard/               # UI documentation
 │   ├── deploy/                  # Deployment guides
 │   └── tests/                   # Testing documentation
 └── scripts/                     # Deployment and management scripts
@@ -364,7 +364,7 @@ solana-test-validator --reset \
 
 # 5. Deploy and test
 solana program deploy target/deploy/fixed_ratio_trading.so
-cd dashboard && python3 -m http.server 8000
+cd html && python3 -m http.server 8000
 ```
 
 ### **🤝 Contributing Guidelines**
@@ -408,7 +408,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ### **🚀 Deployment Guides**
 - [🔧 **Local Development Setup**](docs/tests/LOCAL_TEST_DEPLOYMENT_GUIDE.md) - Get started developing locally
 - [🌐 **Production Deployment**](docs/deploy/DEPLOYMENT_AUTHORITY_SETUP.md) - Deploy to mainnet securely
-- [📊 **Dashboard Configuration**](dashboard/README-Configuration.md) - Web interface setup
+- [📊 **Dashboard Configuration**](html/README-Configuration.md) - Web interface setup
 
 ---
 

@@ -224,12 +224,7 @@ if [ "$VALIDATOR_RESET" = true ]; then
             .metaplex.deploymentType = "remote" |
             .metaplex.remoteRpcUrl = "http://192.168.2.88:8899"' "$PROJECT_ROOT/shared-config.json" > "$TEMP_CONFIG"
         mv "$TEMP_CONFIG" "$PROJECT_ROOT/shared-config.json"
-        if [ -f "$PROJECT_ROOT/dashboard/shared-config.json" ]; then
-            cp "$PROJECT_ROOT/shared-config.json" "$PROJECT_ROOT/dashboard/shared-config.json"
-            echo -e "${GREEN}✅ Updated both main and dashboard shared-config.json files${NC}"
-        else
-            echo -e "${GREEN}✅ Updated main shared-config.json file${NC}"
-        fi
+        echo -e "${GREEN}✅ Updated main shared-config.json file${NC}"
     else
         echo -e "${YELLOW}⚠️  Could not update shared-config.json (file not found or jq not available)${NC}"
         echo "   Please manually update Metaplex program IDs to canonical values."

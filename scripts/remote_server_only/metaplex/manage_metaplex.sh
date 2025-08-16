@@ -373,7 +373,6 @@ status_metaplex() {
 update_shared_config_with_program_id() {
     local program_id="$1"
     local config_file="$PROJECT_ROOT/shared-config.json"
-    local dashboard_config="$PROJECT_ROOT/dashboard/shared-config.json"
     
     print_status "$BLUE" "📝 Updating shared-config.json with new Token Metadata Program ID"
     
@@ -393,11 +392,7 @@ update_shared_config_with_program_id() {
             print_status "$GREEN" "✅ Updated shared-config.json using sed"
         fi
         
-        # Copy to dashboard directory
-        if [ -f "$config_file" ]; then
-            cp "$config_file" "$dashboard_config"
-            print_status "$GREEN" "✅ Copied updated config to dashboard directory"
-        fi
+        # UI no longer synced; only update shared-config.json
     else
         print_status "$RED" "❌ shared-config.json not found at $config_file"
     fi

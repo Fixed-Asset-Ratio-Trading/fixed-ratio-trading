@@ -14,7 +14,7 @@ The Metaplex programs provide token metadata functionality, allowing tokens to h
 
 - Always use the canonical Token Metadata Program ID: `metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s`.
 - Do NOT deploy a custom Token Metadata Program. Instead, preload the canonical binary at the canonical address when starting the validator using `--bpf-program`.
-- The `manage_metaplex.sh` script is updated to skip on-chain deployment of Token Metadata and to write the canonical ID into `shared-config.json` and `dashboard/shared-config.json`.
+- The `manage_metaplex.sh` script is updated to skip on-chain deployment of Token Metadata and to write the canonical ID into `shared-config.json` only.
 - Ensure your validator start command includes:
 
   ```bash
@@ -99,7 +99,7 @@ You can also manage Metaplex manually:
 
 1. **Downloads**: Dumps the Token Metadata binary from mainnet to `.metaplex/programs/mpl_token_metadata.so` (once).
 2. **Preloading (Required)**: The validator must be started with `--bpf-program` to preload the Token Metadata binary at the canonical ID.
-3. **Config Writes**: `manage_metaplex.sh` writes the canonical ID into `shared-config.json` and `dashboard/shared-config.json`.
+3. **Config Writes**: `manage_metaplex.sh` writes the canonical ID into `shared-config.json` only.
 4. **Status**: Status checks verify accessibility and print the configured program IDs.
 
 ## 🐛 **Troubleshooting**
@@ -150,6 +150,6 @@ curl -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"me
 
 ## 🔗 **Related Files**
 
-- `/dashboard/token-creation.js` - Token creation with metadata
+  (dashboard UI paths have been removed from this repo)
 - `/scripts/remote_build_and_deploy.sh` - Main deployment script
 - `/.gitignore` - Excludes `.metaplex/` directory 
