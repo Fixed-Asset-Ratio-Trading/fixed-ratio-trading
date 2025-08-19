@@ -103,6 +103,194 @@ This guide covers critical requirements for:
 
 ---
 
+## Authoritative PDA Seed Rules and Instruction Account Orders
+
+This section is a concise, single-source reference for all PDA derivations and required account orders per instruction. If you see “invalid account data for instruction”, verify your PDAs and account order here first.
+
+### PDA Seed Rules
+
+- System State PDA:
+  - Seeds: `[b"system_state"]`
+  - Derivation: `Pubkey::find_program_address([SYSTEM_STATE_SEED_PREFIX], program_id)`
+
+- Main Treasury PDA:
+  - Seeds: `[b"main_treasury"]`
+  - Derivation: `Pubkey::find_program_address([MAIN_TREASURY_SEED_PREFIX], program_id)`
+
+- Pool State PDA:
+  - Seeds: `[b"pool_state", token_a_mint, token_b_mint, ratio_a_numerator.to_le_bytes(), ratio_b_denominator.to_le_bytes()]`
+  - Token normalization: order mints lexicographically to get `(token_a_mint, token_b_mint)`
+  - Ratio mapping (canonicalization):
+    - If `multiple_token_mint < base_token_mint` → `(ratio_a, ratio_b) = (multiple_per_base, 1)`
+    - Else → `(ratio_a, ratio_b) = (1, multiple_per_base)`
+
+- Token A Vault PDA:
+  - Seeds: `[b"token_a_vault", pool_state_pda]`
+
+- Token B Vault PDA:
+  - Seeds: `[b"token_b_vault", pool_state_pda]`
+
+- LP Token A Mint PDA:
+  - Seeds: `[b"lp_token_a_mint", pool_state_pda]`
+
+- LP Token B Mint PDA:
+  - Seeds: `[b"lp_token_b_mint", pool_state_pda]`
+
+All u64 values in seeds use little-endian encoding (`to_le_bytes`). The program validates provided accounts against these exact derivations.
+
+### Instruction Account Orders (by index)
+
+The following lists reflect the on-chain handlers and are validated in code. Indexes are zero-based.
+
+- InitializeProgram (6 accounts)
+  - [0] Program Authority Signer (upgrade authority, signer, writable)
+  - [1] System Program
+  - [2] Rent Sysvar
+  - [3] System State PDA (writable)
+  - [4] Main Treasury PDA (writable)
+  - [5] Program Data Account (BPF Upgradeable Loader ProgramData)
+
+- InitializePool (13 accounts)
+  - [0] User Authority Signer (signer)
+  - [1] System Program
+  - [2] System State PDA
+  - [3] Pool State PDA (writable)
+  - [4] SPL Token Program
+  - [5] Main Treasury PDA (writable)
+  - [6] Rent Sysvar
+  - [7] Token A Mint Account (readable)
+  - [8] Token B Mint Account (readable)
+  - [9] Token A Vault PDA (writable)
+  - [10] Token B Vault PDA (writable)
+  - [11] LP Token A Mint PDA (writable)
+  - [12] LP Token B Mint PDA (writable)
+
+- Deposit (11 accounts)
+  - [0] User Authority Signer (signer)
+  - [1] System Program
+  - [2] System State PDA
+  - [3] Pool State PDA
+  - [4] SPL Token Program
+  - [5] Token A Vault PDA
+  - [6] Token B Vault PDA
+  - [7] User Input Token Account
+  - [8] User Output LP Token Account
+  - [9] LP Token A Mint PDA
+  - [10] LP Token B Mint PDA
+
+- Withdraw (11 accounts)
+  - [0] User Authority Signer (signer)
+  - [1] System Program
+  - [2] System State PDA
+  - [3] Pool State PDA
+  - [4] SPL Token Program
+  - [5] Token A Vault PDA
+  - [6] Token B Vault PDA
+  - [7] User Input LP Token Account
+  - [8] User Output Token Account
+  - [9] LP Token A Mint PDA
+  - [10] LP Token B Mint PDA
+
+- Swap (11 accounts)
+  - [0] User Authority Signer (signer)
+  - [1] System Program
+  - [2] System State PDA
+  - [3] Pool State PDA
+  - [4] SPL Token Program
+  - [5] Token A Vault PDA
+  - [6] Token B Vault PDA
+  - [7] User Input Token Account
+  - [8] User Output Token Account
+  - [9] Input Mint Account (must match user input token account mint)
+  - [10] Output Mint Account (must match user output token account mint)
+
+- SetSwapOwnerOnly (4 accounts)
+  - [0] Contract Owner Signer (program upgrade authority)
+  - [1] System State PDA
+  - [2] Pool State PDA (writable)
+  - [3] Program Data Account (ProgramData)
+
+- UpdatePoolFees (4 accounts)
+  - [0] Program Authority Signer (program upgrade authority)
+  - [1] System State PDA
+  - [2] Pool State PDA (writable)
+  - [3] Program Data Account (ProgramData)
+
+- PauseSystem (3 accounts)
+  - [0] System Authority Signer (program upgrade authority)
+  - [1] System State PDA (writable)
+  - [2] Program Data Account (ProgramData)
+
+- UnpauseSystem (4 accounts)
+  - [0] System Authority Signer (program upgrade authority)
+  - [1] System State PDA (writable)
+  - [2] Main Treasury PDA (writable)
+  - [3] Program Data Account (ProgramData)
+
+- WithdrawTreasuryFees (6 accounts)
+  - [0] System Authority Signer (program upgrade authority)
+  - [1] Main Treasury PDA (writable)
+  - [2] Rent Sysvar
+  - [3] Destination Account (writable)
+  - [4] System State PDA
+  - [5] Program Data Account (ProgramData)
+
+- DonateSol (4 accounts)
+  - [0] Donor Account (signer, writable)
+  - [1] Main Treasury PDA (writable)
+  - [2] System State PDA
+  - [3] System Program
+
+### View / Debug Instructions
+
+These are read-only or utility calls that help you derive/verify addresses and inspect state:
+
+- GetPoolStatePDA (no accounts)
+  - Inputs: `multiple_token_mint`, `base_token_mint`, `multiple_per_base`
+  - Logs: normalized token mints, normalized ratio, derived pool state PDA and bump
+
+- GetTokenVaultPDAs (no accounts)
+  - Inputs: `pool_state_pda`
+  - Logs: derived Token A/B vault PDAs and bumps
+
+- GetPoolInfo (4 accounts)
+  - [0] Placeholder, [1] Placeholder, [2] Pool State PDA, [3] Placeholder (SPL Token Program)
+  - Logs: owner, all PDAs (vaults, LP mints), ratios, and bump seeds
+
+- GetPoolPauseStatus (1 account)
+  - [0] Pool State PDA
+
+- GetLiquidityInfo (1 account)
+  - [0] Pool State PDA
+
+- GetFeeInfo (1 account)
+  - [0] Pool State PDA
+
+- GetPoolSolBalance (1 account)
+  - [0] Pool State PDA
+
+- GetVersion (no accounts)
+
+### Quick PDA/Account Mismatch Checklist
+
+- Re-derive PDAs using the exact seeds above and your program ID.
+- Ensure token mints are lexicographically ordered before seeding pool PDAs.
+- Ensure ratios are mapped to little-endian bytes as described.
+- Verify account order and count precisely matches the lists above.
+- For swaps, include the two mint accounts at indexes [9] and [10].
+
+### One-shot comparison (logs) to diagnose “invalid account data”
+
+To compare your provided accounts to the canonical PDAs without code changes:
+
+1) Call `GetPoolStatePDA(multiple_token_mint, base_token_mint, multiple_per_base)` to log the pool state PDA and normalized inputs.
+2) Call `GetTokenVaultPDAs(pool_state_pda)` to log the expected vault PDAs.
+3) Call `GetPoolInfo([_, _, pool_state_pda, _])` to log all PDAs and bump seeds from on-chain state.
+
+Comparing these logs with your transaction’s accounts will surface any PDA or ordering mismatches immediately.
+
+---
+
 ## Localnet & ngrok Setup
 
 Use these endpoints for local development, derived from `shared-config.json`:
