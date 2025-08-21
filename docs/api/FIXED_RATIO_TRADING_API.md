@@ -2456,6 +2456,32 @@ Example: Pool ratio 1 SOL = 160 USDT
 - **Authority Validation**: Owner-only mode support for custom fee structures
 - **Pause Compliance**: Respects system-wide and pool-specific pause states
 
+**Critical: Dust Handling and Expected Amount Requirements**
+
+⚠️ **IMPORTANT**: The `expected_amount_out` parameter must be **EXACT** - not a minimum acceptable amount.
+
+**Dust Rounding Behavior:**
+When swapping between tokens with different decimal precisions, the contract **rounds down** any fractional amounts that cannot be represented in the output token's precision. This prevents creation of dust amounts.
+
+**Example - Dust Elimination:**
+```
+Pool: 1:1 ratio between Token A (9 decimals) and Token B (0 decimals)
+- Input: 0.999999999 Token A (999,999,999 basis points)
+- Calculation: 999,999,999 × 1 ÷ 1 = 999,999,999 
+- Token B precision: 0 decimals (1 basis point = 1 whole token)
+- Result: 999,999,999 ÷ 1,000,000,000 = 0.999... → rounds down to 0
+- Output: 0 Token B (dust eliminated)
+```
+
+**Key Points:**
+1. **Exact Match Required**: The swap will fail if `expected_amount_out` doesn't exactly match the calculated output
+2. **No Dust Creation**: Fractional amounts below the output token's smallest unit are discarded
+3. **User Protection**: Always calculate expected output considering decimal differences and rounding
+4. **Precision Loss**: When swapping from high-precision to low-precision tokens, fractional amounts are lost
+
+**Best Practice:**
+Always use the contract's calculation logic to determine the exact output amount before submitting a swap. Consider token decimal differences and ensure your input amount will result in a meaningful output after rounding.
+
 **Trading Flow:**
 1. User specifies input token and amount
 2. Contract calculates exact output using fixed ratio
@@ -2480,7 +2506,7 @@ pub struct SwapInstruction {
     discriminator: u8,           // 1 byte: value = 4
     input_token_mint: Pubkey,    // 32 bytes: Input token mint
     amount_in: u64,              // 8 bytes: Input amount in basis points (little-endian)
-    expected_amount_out: u64,    // 8 bytes: Expected output for slippage protection (little-endian)
+    expected_amount_out: u64,    // 8 bytes: EXACT expected output - must match calculated amount (little-endian)
 }
 ```
 
@@ -2502,7 +2528,7 @@ console.log('Swap instruction data length:', instructionData.length);
 ```rust
 program_id: &Pubkey
 amount_in: u64              // Input amount in basis points
-expected_amount_out: u64    // Expected output (slippage protection)
+expected_amount_out: u64    // EXACT expected output (must match calculated amount precisely)
 accounts: &[AccountInfo; 11]
 ```
 
