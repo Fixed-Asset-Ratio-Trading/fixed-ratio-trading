@@ -2482,6 +2482,14 @@ Pool: 1:1 ratio between Token A (9 decimals) and Token B (0 decimals)
 **Best Practice:**
 Always use the contract's calculation logic to determine the exact output amount before submitting a swap. Consider token decimal differences and ensure your input amount will result in a meaningful output after rounding.
 
+**📚 Calculation Guide:**
+For detailed examples and step-by-step instructions on calculating exact swap amounts for any pool configuration, see [SWAP_CALCULATION_GUIDE.md](SWAP_CALCULATION_GUIDE.md). This guide includes:
+- Complete calculation formulas for all pool types
+- JavaScript implementation examples
+- Handling different token decimal combinations
+- Common pitfalls and edge cases
+- Testing strategies for your calculations
+
 **Trading Flow:**
 1. User specifies input token and amount
 2. Contract calculates exact output using fixed ratio
