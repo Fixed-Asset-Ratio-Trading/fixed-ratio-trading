@@ -166,30 +166,30 @@ The following lists reflect the on-chain handlers and are validated in code. Ind
   - [12] LP Token B Mint PDA (writable)
 
 - Deposit (11 accounts)
-  - [0] User Authority Signer (signer)
+  - [0] User Authority Signer (signer, writable)
   - [1] System Program
   - [2] System State PDA
-  - [3] Pool State PDA
+  - [3] Pool State PDA (writable) ⚠️ CRITICAL: Must be writable for fee tracking
   - [4] SPL Token Program
-  - [5] Token A Vault PDA
-  - [6] Token B Vault PDA
-  - [7] User Input Token Account
-  - [8] User Output LP Token Account
-  - [9] LP Token A Mint PDA
-  - [10] LP Token B Mint PDA
+  - [5] Token A Vault PDA (writable)
+  - [6] Token B Vault PDA (writable)
+  - [7] User Input Token Account (writable)
+  - [8] User Output LP Token Account (writable)
+  - [9] LP Token A Mint PDA (writable)
+  - [10] LP Token B Mint PDA (writable)
 
 - Withdraw (11 accounts)
-  - [0] User Authority Signer (signer)
+  - [0] User Authority Signer (signer, writable)
   - [1] System Program
   - [2] System State PDA
-  - [3] Pool State PDA
+  - [3] Pool State PDA (writable) ⚠️ CRITICAL: Must be writable for fee tracking
   - [4] SPL Token Program
-  - [5] Token A Vault PDA
-  - [6] Token B Vault PDA
-  - [7] User Input LP Token Account
-  - [8] User Output Token Account
-  - [9] LP Token A Mint PDA
-  - [10] LP Token B Mint PDA
+  - [5] Token A Vault PDA (writable)
+  - [6] Token B Vault PDA (writable)
+  - [7] User Input LP Token Account (writable)
+  - [8] User Output Token Account (writable)
+  - [9] LP Token A Mint PDA (writable)
+  - [10] LP Token B Mint PDA (writable)
 
 - Swap (11 accounts)
   - [0] User Authority Signer (signer, writable)
@@ -2270,6 +2270,9 @@ Adds liquidity to a pool by depositing a single token type and minting correspon
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 310,000 CUs maximum (Dashboard: min observed 249K; set 310K for safety margin)
 
+⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
+The Pool State PDA **MUST** be marked as writable in your transaction. This is required for fee tracking updates and will cause Error 1033 (FeeValidationFailed) if marked as ReadOnly.
+
 #### Instruction Format
 
 **Discriminator:** `2` (single byte)  
@@ -2371,6 +2374,9 @@ If you deposited 100 SOL and received 100 Token A LP tokens:
 **Authority:** LP token holder  
 **Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 290,000 CUs maximum (Dashboard: min observed 227K; set 290K for safety margin)
+
+⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
+The Pool State PDA **MUST** be marked as writable in your transaction. This is required for fee tracking updates and will cause Error 1033 (FeeValidationFailed) if marked as ReadOnly.
 
 #### Instruction Format
 
