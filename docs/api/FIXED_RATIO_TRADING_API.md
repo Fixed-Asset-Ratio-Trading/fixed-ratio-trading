@@ -3010,7 +3010,7 @@ The contract uses standardized error codes for programmatic error handling. All 
 |------|------------|-------------|
 | 1031 | `InsufficientFeeBalance` | Insufficient fee balance for operation |
 | 1032 | `FeeCollectionFailed` | Fee collection operation failed |
-| 1033 | `FeeValidationFailed` | Fee validation failed (0x409) |
+| 1033 | `FeeValidationFailed` | Fee validation failed (0x409) - See detailed explanation below |
 | 1034 | `TreasuryValidationFailed` | Treasury validation failed |
 | 1035 | `InvalidSystemStatePDA` | Invalid system state PDA |
 | 1036 | `InvalidSystemStateDeserialization` | System state deserialization failed |
@@ -3047,6 +3047,50 @@ The contract uses standardized error codes for programmatic error handling. All 
 | 3001 | `StrictRatioViolation` | Strict 1:1 LP token ratio violation |
 | 4001 | `MissingUserLPTokenAccount` | User LP token account not found |
 
+### Detailed Error Explanations
+
+#### Error 1033: FeeValidationFailed (0x409) - Common Confusion
+
+**The Problem:** Users often see "✅ Fee payment validation passed" in logs but then encounter `FeeValidationFailed` error. This seems contradictory but is actually expected behavior.
+
+**Why This Happens:**
+Fee validation occurs in multiple phases AFTER the initial payment validation:
+
+1. **Phase 1: Payment Validation** ✅ 
+   - Checks if user has sufficient SOL balance
+   - Validates fee amount is correct
+   - **Success Message:** "✅ Fee payment validation passed"
+
+2. **Phase 2: Account Validation** ❌ (Common failure point)
+   - Validates pool state account is writable
+   - **Failure:** "Pool state account is not writable - cannot update fee tracking fields"
+
+3. **Phase 3: System Clock Access** ❌ (Rare failure point)
+   - Retrieves current timestamp for fee tracking
+   - **Failure:** "Failed to get system clock"
+
+4. **Phase 4: Fee Counter Updates** ❌ (Overflow protection)
+   - Updates pool's fee counters with overflow protection
+   - **Failure:** "Liquidity fee counter overflow" or "Swap contract fee counter overflow"
+
+5. **Phase 5: State Serialization** ❌ (Account size issues)
+   - Saves updated pool state back to account
+   - **Failure:** "Pool state account too small for serialized data"
+
+**Common Causes & Solutions:**
+
+| Cause | Solution |
+|-------|----------|
+| **Pool state account not writable** | Ensure pool state PDA is marked as writable in transaction |
+| **Account size insufficient** | Pool state account may be corrupted or undersized |
+| **Fee counter overflow** | Pool has collected maximum possible fees (very rare) |
+| **System clock unavailable** | Network/validator issue - retry transaction |
+
+**Debugging Steps:**
+1. Check transaction logs for the specific failure reason after "Fee payment validation passed"
+2. Verify all accounts in transaction are properly marked as writable where required
+3. Ensure pool state account has sufficient space (typically 1000+ bytes)
+4. If overflow errors occur, the pool may need fee consolidation
 
 ### System Pause Reason Codes
 
