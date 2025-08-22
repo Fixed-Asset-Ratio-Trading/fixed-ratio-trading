@@ -192,15 +192,15 @@ The following lists reflect the on-chain handlers and are validated in code. Ind
   - [10] LP Token B Mint PDA
 
 - Swap (11 accounts)
-  - [0] User Authority Signer (signer)
+  - [0] User Authority Signer (signer, writable)
   - [1] System Program
   - [2] System State PDA
-  - [3] Pool State PDA
+  - [3] Pool State PDA (writable) ⚠️ CRITICAL: Must be writable for fee tracking
   - [4] SPL Token Program
-  - [5] Token A Vault PDA
-  - [6] Token B Vault PDA
-  - [7] User Input Token Account
-  - [8] User Output Token Account
+  - [5] Token A Vault PDA (writable)
+  - [6] Token B Vault PDA (writable)
+  - [7] User Input Token Account (writable)
+  - [8] User Output Token Account (writable)
   - [9] Input Mint Account (must match user input token account mint)
   - [10] Output Mint Account (must match user output token account mint)
 
@@ -2501,6 +2501,9 @@ For detailed examples and step-by-step instructions on calculating exact swap am
 **Authority:** Any user (unless owner-only mode)  
 **Fee:** 0.00002715 SOL (SWAP_CONTRACT_FEE constant)  
 **Compute Units:** 250,000 CUs maximum (Dashboard: tested 202K works; set to 250K to allow for fee changes and variability)
+
+⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
+The Pool State PDA **MUST** be marked as writable in your transaction. This is the #1 cause of Error 1033 (FeeValidationFailed). The contract needs to update fee tracking fields in the pool state during swap execution.
 
 #### Instruction Format
 
