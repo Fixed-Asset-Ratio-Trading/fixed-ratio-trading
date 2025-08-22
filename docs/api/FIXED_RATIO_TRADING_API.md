@@ -2980,6 +2980,7 @@ let regular_swap_fees_consolidated = (pool_state.collected_swap_contract_fees as
 
 The contract uses standardized error codes for programmatic error handling. All custom errors are returned as `ProgramError::Custom(code)`.
 
+#### Core Pool Errors (1001-1019)
 | Code | Error Type | Description |
 |------|------------|-------------|
 | 1001 | `InvalidTokenPair` | Invalid token pair configuration |
@@ -2991,13 +2992,61 @@ The contract uses standardized error codes for programmatic error handling. All 
 | 1007 | `PoolPaused` | Pool operations are currently paused |
 | 1012 | `Unauthorized` | Unauthorized operation |
 | 1019 | `ArithmeticOverflow` | Arithmetic overflow error |
+
+#### System Control Errors (1023-1030)
+| Code | Error Type | Description |
+|------|------------|-------------|
 | 1023 | `SystemPaused` | System is paused - all operations blocked except unpause |
 | 1024 | `SystemAlreadyPaused` | System is already paused |
 | 1025 | `SystemNotPaused` | System is not paused |
 | 1026 | `UnauthorizedAccess` | Unauthorized access to system controls |
 | 1027 | `PoolSwapsPaused` | Pool swaps are currently paused by owner |
+| 1028 | `SwapAccessRestricted` | Swap access restricted (owner-only mode) |
 | 1029 | `PoolSwapsAlreadyPaused` | Pool swaps are already paused |
 | 1030 | `PoolSwapsNotPaused` | Pool swaps are not currently paused |
+
+#### Fee and Treasury Errors (1031-1046)
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 1031 | `InsufficientFeeBalance` | Insufficient fee balance for operation |
+| 1032 | `FeeCollectionFailed` | Fee collection operation failed |
+| 1033 | `FeeValidationFailed` | Fee validation failed (0x409) |
+| 1034 | `TreasuryValidationFailed` | Treasury validation failed |
+| 1035 | `InvalidSystemStatePDA` | Invalid system state PDA |
+| 1036 | `InvalidSystemStateDeserialization` | System state deserialization failed |
+| 1042 | `UnauthorizedFeeUpdate` | Unauthorized fee update operation |
+| 1043 | `InvalidFeeUpdateFlags` | Invalid fee update flags |
+| 1044 | `InvalidLiquidityFee` | Invalid liquidity fee amount |
+| 1045 | `InvalidSwapFee` | Invalid swap fee amount |
+| 1046 | `FeeUpdateValidationFailed` | Fee update validation failed |
+
+#### Consolidation Errors (1037-1041)
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 1037 | `ConsolidationFailed` | Pool fee consolidation failed |
+| 1038 | `InvalidConsolidationBatch` | Invalid consolidation batch configuration |
+| 1039 | `PoolNotEligibleForConsolidation` | Pool not eligible for consolidation |
+| 1040 | `ConsolidationRaceCondition` | Consolidation race condition detected |
+| 1041 | `NoPoolsEligibleForConsolidation` | No pools eligible for consolidation |
+
+#### Calculation and Validation Errors (1047-1049)
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 1047 | `AmountMismatch` | Calculated amount doesn't match expected (0x417) |
+| 1048 | `UnsafeRatioValues` | Unsafe ratio values exceed maximum safe limit |
+| 1049 | `UnsupportedRatioType` | Unsupported ratio type for pool creation |
+
+#### Additional Pool State Errors (1035)
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 1035 | `PoolLiquidityPaused` | Pool liquidity operations are paused |
+
+#### Custom Implementation Errors (3000+)
+| Code | Error Type | Description |
+|------|------------|-------------|
+| 3001 | `StrictRatioViolation` | Strict 1:1 LP token ratio violation |
+| 4001 | `MissingUserLPTokenAccount` | User LP token account not found |
+
 
 ### System Pause Reason Codes
 
