@@ -971,6 +971,77 @@ Key points:
 - Use `sigVerify: false` and `replaceRecentBlockhash: true` to avoid payer existence checks
 - If the RPC still returns `AccountNotFound`, request a tiny airdrop to the ephemeral key on localnet/devnet, then retry simulation
 
+## 🚨 CRITICAL: GetVersion Simulation Requirements
+
+### Required Parameters
+The GetVersion instruction requires these specific simulation parameters:
+
+```javascript
+const simOptions = {
+    sigVerify: false,
+    replaceRecentBlockhash: true,
+    commitment: 'confirmed',  // REQUIRED - other commitments may not work
+    encoding: 'base64'
+};
+```
+
+**⚠️ WARNING**: Omitting `commitment: 'confirmed'` will result in empty logs and failed version retrieval.
+
+### Account Funding Requirement
+
+**IMPORTANT**: The GetVersion instruction requires a funded fee payer to execute properly:
+- **Unfunded Account**: Returns `AccountNotFound` error with empty logs
+- **Funded Account**: Returns program logs with version information
+
+#### Recommended Approach:
+1. Try simulation with ephemeral keypair
+2. If `AccountNotFound`, request airdrop (localnet/devnet only)
+3. Confirm airdrop transaction
+4. Retry simulation with funded account
+
+```javascript
+// Request airdrop if AccountNotFound
+if (result.value.err && JSON.stringify(result.value.err).includes('AccountNotFound')) {
+    const airdropSig = await connection.requestAirdrop(keypair.publicKey, 1_000_000);
+    await connection.confirmTransaction({
+        signature: airdropSig,
+        ...(await connection.getLatestBlockhash())
+    }, 'confirmed');
+    // Retry simulation
+}
+```
+
+### Successful GetVersion Response
+
+When properly executed, GetVersion returns these program logs:
+
+```json
+{
+  "err": null,
+  "logs": [
+    "Program 4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn invoke [1]",
+    "Program log: === SMART CONTRACT VERSION ===",
+    "Program log: Contract Name: fixed-ratio-trading",
+    "Program log: Contract Version: 0.15.1054",  // ← Parse this line
+    "Program log: Contract Description: Fixed Ratio Trading Smart Contract for Solana",
+    "Program log: ==============================="
+  ]
+}
+```
+
+**Version Extraction**: Look for the log containing `"Contract Version: X.X.X"` and extract using regex: `/Contract Version:\s*([0-9\.]+)/`
+
+## Troubleshooting GetVersion
+
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| Empty logs (`"logs": []`) | Missing `commitment: 'confirmed'` | Add commitment parameter |
+| `AccountNotFound` error | Unfunded fee payer | Request airdrop and retry |
+| No version in logs | Wrong instruction format | Verify discriminator is `[14]` |
+| Transaction fails | Network issues | Check RPC connection |
+
+These documentation improvements prevent hours of debugging by clearly stating the funded account requirement and commitment parameter necessity.
+
 ```javascript
 import { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } from '@solana/web3.js';
 
