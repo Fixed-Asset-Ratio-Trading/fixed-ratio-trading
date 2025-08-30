@@ -137,8 +137,10 @@ pub fn process_system_initialize(
         &[system_state_seeds_with_bump],
     )?;
 
-    // Create system state data
-    let system_state_data = SystemState::new();
+    // Create system state data with default admin authority
+    let default_admin_authority = crate::constants::DEFAULT_ADMIN_AUTHORITY.parse::<Pubkey>()
+        .expect("Invalid default admin authority pubkey");
+    let system_state_data = SystemState::new(default_admin_authority);
     
     // Serialize system state to account
     let serialized_system_state = system_state_data.try_to_vec()?;
@@ -228,14 +230,17 @@ pub fn process_system_pause(
     let system_state_pda = &accounts[1];                    // Index 1: System State PDA
     let program_data_account = &accounts[2];                 // Index 2: Program Data Account
     
-    // ✅ SECURITY: Signer validation handled by validate_program_upgrade_authority()
-    // The validate_program_upgrade_authority() function includes comprehensive
-    // signer checks as part of its authority validation process.
+    // ✅ SECURITY: Validate writable accounts
     validate_writable(system_state_pda, "System state PDA")?;
     
-    // ✅ AUTHORITY VALIDATION: Use program upgrade authority
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
+    // ✅ AUTHORITY VALIDATION: Use admin authority with upgrade authority fallback
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        system_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     
     // Deserialize system state
     let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
@@ -319,15 +324,18 @@ pub fn process_system_unpause(
     let main_treasury_pda = &accounts[2];                   // Index 2: Main Treasury PDA
     let program_data_account = &accounts[3];                 // Index 3: Program Data Account
     
-    // ✅ SECURITY: Signer validation handled by validate_program_upgrade_authority()
-    // The validate_program_upgrade_authority() function includes comprehensive
-    // signer checks as part of its authority validation process.
+    // ✅ SECURITY: Validate writable accounts
     validate_writable(system_state_pda, "System state PDA")?;
     validate_writable(main_treasury_pda, "Main treasury PDA")?;
     
-    // ✅ AUTHORITY VALIDATION: Use program upgrade authority
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
+    // ✅ AUTHORITY VALIDATION: Use admin authority with upgrade authority fallback
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        system_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     
     // ✅ TREASURY PDA VALIDATION: Verify main treasury PDA
     let (expected_main_treasury, _treasury_bump) = Pubkey::find_program_address(
@@ -416,3 +424,126 @@ pub fn process_system_get_version(_accounts: &[AccountInfo]) -> ProgramResult {
     
     Ok(())
 }
+
+/// **ADMIN AUTHORITY MANAGEMENT**: Process admin authority change with automatic completion
+/// 
+/// This unified function handles both initiation and completion of admin changes:
+/// 1. If no change is pending or different admin proposed: starts 72-hour timer
+/// 2. If 72+ hours have passed and pending admin differs from current: completes change
+/// 3. If same admin as current is proposed: acts as cancellation (clears pending)
+/// 
+/// # Arguments
+/// * `program_id` - The program ID for PDA validation
+/// * `new_admin` - The proposed new admin authority pubkey
+/// * `accounts` - Array of accounts in the following order:
+///   - [0] Current Admin Authority (signer) - Must be current admin
+///   - [1] System State PDA (writable) - To store/update admin state
+///   - [2] Program Data Account (readable) - For upgrade authority fallback during migration
+/// 
+/// # Returns
+/// * `ProgramResult` - Success or error
+pub fn process_admin_change(
+    program_id: &Pubkey,
+    new_admin: Pubkey,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("🔄 PROCESSING ADMIN AUTHORITY CHANGE");
+    msg!("====================================");
+    msg!("Proposed admin: {}", new_admin);
+    
+    // Extract accounts
+    let current_admin_signer = &accounts[0];
+    let system_state_pda = &accounts[1];
+    let program_data_account = &accounts[2];
+    
+    // Validate system state PDA
+    let (expected_system_state, _) = Pubkey::find_program_address(
+        &[crate::constants::SYSTEM_STATE_SEED_PREFIX],
+        program_id,
+    );
+    if *system_state_pda.key != expected_system_state {
+        msg!("❌ Invalid system state PDA. Expected: {}, Got: {}", 
+             expected_system_state, system_state_pda.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Load system state
+    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    
+    // Validate current admin authority (with fallback to upgrade authority during migration)
+    let is_current_admin = system_state.is_admin(current_admin_signer.key);
+    let is_upgrade_authority = if !is_current_admin {
+        // Fallback to upgrade authority validation for migration period
+        use crate::utils::program_authority::validate_program_upgrade_authority;
+        validate_program_upgrade_authority(program_id, program_data_account, current_admin_signer).is_ok()
+    } else {
+        false
+    };
+    
+    if !is_current_admin && !is_upgrade_authority {
+        msg!("❌ UNAUTHORIZED: Caller is not the current admin authority or upgrade authority");
+        msg!("   Current admin: {}", system_state.admin_authority);
+        msg!("   Provided signer: {}", current_admin_signer.key);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // Require signer
+    if !current_admin_signer.is_signer {
+        msg!("❌ Current admin must sign the transaction");
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    
+    // Get current timestamp
+    let current_timestamp = Clock::get()?.unix_timestamp;
+    
+    // Process the admin change
+    match system_state.process_admin_change(new_admin, current_timestamp) {
+        Ok(result) => {
+            // Save updated system state
+            let serialized_data = system_state.try_to_vec()?;
+            system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
+            
+            // Log the result
+            match result {
+                crate::state::AdminChangeResult::Initiated { new_admin, previous_pending } => {
+                    msg!("✅ ADMIN CHANGE INITIATED");
+                    msg!("   New pending admin: {}", new_admin);
+                    msg!("   Timelock duration: {} hours", SystemState::ADMIN_CHANGE_TIMELOCK / 3600);
+                    msg!("   Completion available after: {} (timestamp)", current_timestamp + SystemState::ADMIN_CHANGE_TIMELOCK);
+                    if let Some(prev) = previous_pending {
+                        msg!("   Previous pending admin replaced: {}", prev);
+                        msg!("   ⚠️  Timer reset due to different admin proposed");
+                    }
+                },
+                crate::state::AdminChangeResult::Completed { old_admin, new_admin } => {
+                    msg!("🎉 ADMIN CHANGE COMPLETED!");
+                    msg!("   Previous admin: {}", old_admin);
+                    msg!("   New admin: {}", new_admin);
+                    msg!("   All admin operations now require new admin signature");
+                },
+                crate::state::AdminChangeResult::Cancelled => {
+                    msg!("🚫 ADMIN CHANGE CANCELLED");
+                    msg!("   Pending change cleared (same admin as current proposed)");
+                    msg!("   Current admin remains: {}", system_state.admin_authority);
+                },
+                crate::state::AdminChangeResult::NoChange => {
+                    msg!("ℹ️ NO CHANGE NEEDED");
+                    msg!("   Proposed admin same as current admin: {}", system_state.admin_authority);
+                },
+                crate::state::AdminChangeResult::Pending { pending_admin, remaining_seconds } => {
+                    msg!("⏰ ADMIN CHANGE PENDING");
+                    msg!("   Pending admin: {}", pending_admin);
+                    msg!("   Time remaining: {} seconds ({} hours)", remaining_seconds, remaining_seconds / 3600);
+                    msg!("   Same admin proposed again - no timer reset");
+                },
+            }
+            
+            Ok(())
+        },
+        Err(error_msg) => {
+            msg!("❌ Admin change processing failed: {}", error_msg);
+            Err(ProgramError::InvalidInstructionData)
+        }
+    }
+}
+

@@ -673,9 +673,14 @@ pub fn process_pool_pause(
     // Validate system is not paused (allow authority operations during system pause)
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    // Validate Program Upgrade Authority
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, program_authority_signer)?;
+    // Validate Admin Authority
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        program_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     
     // Load and validate pool state
     let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
@@ -750,9 +755,14 @@ pub fn process_pool_unpause(
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    // Validate Program Upgrade Authority
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, program_authority_signer)?;
+    // Validate Admin Authority
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        program_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     
     // Load and validate pool state
     let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
@@ -851,9 +861,15 @@ pub fn process_pool_update_fees(
     
     msg!("⏳ Step 2/4: Validating program authority");
     
-    // ✅ PROGRAM AUTHORITY VALIDATION: Ensure caller is the program upgrade authority
-    validate_program_authority(program_authority_signer, program_data_account, program_id)?;
-    msg!("✅ Program authority validation passed");
+    // ✅ ADMIN AUTHORITY VALIDATION: Ensure caller is the admin authority
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        program_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
+    msg!("✅ Admin authority validation passed");
     
     msg!("⏳ Step 3/4: Validating fee update parameters");
     
@@ -929,169 +945,7 @@ pub fn process_pool_update_fees(
     Ok(())
 }
 
-/// Validates that the caller is the program upgrade authority
-/// 
-/// # Arguments
-/// * `program_authority_signer` - The account claiming to be the program authority
-/// * `program_data_account` - The program data account for validation
-/// * `program_id` - The program ID
-/// 
-/// # Returns
-/// * `ProgramResult` - Success or error
-fn validate_program_authority(
-    program_authority_signer: &AccountInfo,
-    program_data_account: &AccountInfo,
-    program_id: &Pubkey,
-) -> ProgramResult {
-    // ✅ SIGNER VALIDATION: Ensure the authority signed the transaction
-    if !program_authority_signer.is_signer {
-        msg!("❌ Program authority must sign the transaction");
-        return Err(PoolError::UnauthorizedFeeUpdate.into());
-    }
-    
-    // ✅ PROGRAM DATA ACCOUNT VALIDATION: Derive the expected program data account
-    let (expected_program_data_key, _bump) = Pubkey::find_program_address(
-        &[program_id.as_ref()],
-        &solana_program::bpf_loader_upgradeable::id()
-    );
-    
-    // Validate that the provided account matches the expected program data account
-    if *program_data_account.key != expected_program_data_key {
-        msg!("❌ Invalid program data account provided");
-        msg!("   Expected: {}", expected_program_data_key);
-        msg!("   Provided: {}", program_data_account.key);
-        return Err(PoolError::UnauthorizedFeeUpdate.into());
-    }
-    
-    // ✅ PROGRAM DATA ACCOUNT OWNER VALIDATION: Ensure it's owned by the BPF loader
-    if program_data_account.owner != &solana_program::bpf_loader_upgradeable::id() {
-        msg!("❌ Program data account not owned by BPF loader upgradeable");
-        msg!("   Expected owner: {}", solana_program::bpf_loader_upgradeable::id());
-        msg!("   Actual owner: {}", program_data_account.owner);
-        
-        // 🧪 SPECIAL HANDLING FOR TEST ENVIRONMENT
-        // In test environment, the program data account may not exist or may be owned by System Program
-        // We'll allow this case if the account is empty (doesn't exist) and the signer is valid
-        if program_data_account.owner == &solana_program::system_program::id() && 
-           program_data_account.data_len() == 0 {
-            msg!("🧪 TEST ENVIRONMENT: Program data account doesn't exist, validating signer only");
-            if program_authority_signer.is_signer {
-                msg!("✅ Test environment validation passed - signer is valid");
-                return Ok(());
-            } else {
-                msg!("❌ Test environment validation failed - no valid signer");
-                return Err(PoolError::UnauthorizedFeeUpdate.into());
-            }
-        }
-        
-        return Err(PoolError::UnauthorizedFeeUpdate.into());
-    }
-    
-    // ✅ PROGRAM DATA DESERIALIZATION: Parse the program data account
-    let account_data = program_data_account.try_borrow_data()
-        .map_err(|_| {
-            msg!("❌ Failed to borrow program data account data");
-            PoolError::UnauthorizedFeeUpdate
-        })?;
-    
-    // Check minimum size (header is at least 16 bytes: 4 + 1 + 32 + 8 = 45 bytes with Option<Pubkey>)
-    if account_data.len() < 45 {
-        msg!("❌ Program data account too small: {} bytes", account_data.len());
-        return Err(PoolError::UnauthorizedFeeUpdate.into());
-    }
-    
-    // Parse the program data account header manually
-    let program_data = parse_program_data_account(&account_data)?;
-    
-    // ✅ ACCOUNT TYPE VALIDATION: Ensure this is a ProgramData account (type = 3)
-    if program_data.account_type != 3 {
-        msg!("❌ Invalid program data account type: {}", program_data.account_type);
-        msg!("   Expected: 3 (ProgramData)");
-        return Err(PoolError::UnauthorizedFeeUpdate.into());
-    }
-    
-    // ✅ UPGRADE AUTHORITY VALIDATION: Check if the signer matches the upgrade authority
-    match program_data.upgrade_authority {
-        Some(upgrade_authority) => {
-            if upgrade_authority != *program_authority_signer.key {
-                msg!("❌ Unauthorized fee update: Signer is not the upgrade authority");
-                msg!("   Upgrade authority: {}", upgrade_authority);
-                msg!("   Provided signer: {}", program_authority_signer.key);
-                return Err(PoolError::UnauthorizedFeeUpdate.into());
-            }
-            msg!("✅ Program upgrade authority validation passed");
-            msg!("   Upgrade authority: {}", upgrade_authority);
-        },
-        None => {
-            msg!("❌ Program is frozen (no upgrade authority)");
-            msg!("   Cannot update fees on a frozen program");
-            return Err(PoolError::UnauthorizedFeeUpdate.into());
-        }
-    }
-    
-    msg!("✅ Program authority validation completed successfully");
-    Ok(())
-}
 
-/// Manually parse the program data account header
-/// 
-/// This function manually parses the BPF Loader Upgradeable program data account
-/// to extract the account type, upgrade authority, and slot information.
-fn parse_program_data_account(data: &[u8]) -> Result<ProgramDataAccount, PoolError> {
-    use std::convert::TryInto;
-    
-    if data.len() < 45 {
-        msg!("❌ Program data account too small for parsing: {} bytes", data.len());
-        return Err(PoolError::UnauthorizedFeeUpdate);
-    }
-    
-    // Parse account type (4 bytes, little endian)
-    let account_type = u32::from_le_bytes(
-        data[0..4].try_into()
-            .map_err(|_| {
-                msg!("❌ Failed to parse account type");
-                PoolError::UnauthorizedFeeUpdate
-            })?
-    );
-    
-    // Parse upgrade authority option flag (1 byte)
-    let has_upgrade_authority = data[4] != 0;
-    
-    let upgrade_authority = if has_upgrade_authority {
-        // Parse upgrade authority pubkey (32 bytes)
-        let authority_bytes = data[5..37].try_into()
-            .map_err(|_| {
-                msg!("❌ Failed to parse upgrade authority");
-                PoolError::UnauthorizedFeeUpdate
-            })?;
-        Some(Pubkey::new_from_array(authority_bytes))
-    } else {
-        None
-    };
-    
-    // Parse slot (8 bytes, little endian)
-    let slot_start = if has_upgrade_authority { 37 } else { 5 };
-    let slot_end = slot_start + 8;
-    
-    if data.len() < slot_end {
-        msg!("❌ Program data account too small for slot parsing");
-        return Err(PoolError::UnauthorizedFeeUpdate);
-    }
-    
-    let slot = u64::from_le_bytes(
-        data[slot_start..slot_end].try_into()
-            .map_err(|_| {
-                msg!("❌ Failed to parse slot");
-                PoolError::UnauthorizedFeeUpdate
-            })?
-    );
-    
-    Ok(ProgramDataAccount {
-        account_type,
-        upgrade_authority,
-        slot,
-    })
-}
 
 /// Validates the fee update flags
 /// 

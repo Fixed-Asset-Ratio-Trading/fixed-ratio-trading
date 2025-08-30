@@ -4,6 +4,7 @@
 //! These utilities are organized by functionality and provide common operations
 //! for validation, serialization, and fee validation.
 
+pub mod admin_validation;
 pub mod fee_validation;
 pub mod input_validation;
 pub mod program_authority;
@@ -13,6 +14,7 @@ pub mod token_validation;
 pub mod validation;
 
 // Re-export commonly used items for convenience
+pub use admin_validation::*;
 pub use fee_validation::*;
 pub use input_validation::*;
 pub use program_authority::*;

@@ -94,8 +94,14 @@ pub fn process_treasury_withdraw_fees(
     // ✅ AUTHORITY VALIDATION: Use secure system pause validation
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, system_authority_signer)?;
+    // ✅ ADMIN AUTHORITY VALIDATION: Use admin authority with upgrade authority fallback
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        system_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     msg!("✅ Authority validation passed: {}", system_authority_signer.key);
     
     // Load main treasury state with robust error handling for production environments

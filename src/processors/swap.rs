@@ -802,9 +802,14 @@ pub fn process_swap_set_owner_only<'a>(
     
     
     
-    // Validate that the caller is the program upgrade authority
-    use crate::utils::program_authority::validate_program_upgrade_authority;
-    validate_program_upgrade_authority(program_id, program_data_account, contract_owner_signer)?;
+    // Validate that the caller is the admin authority
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        contract_owner_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
     
     
     

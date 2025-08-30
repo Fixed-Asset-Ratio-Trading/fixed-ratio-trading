@@ -420,4 +420,28 @@ pub enum PoolInstruction {
         message: String,
     },
     
+    /// **ADMIN AUTHORITY MANAGEMENT**: Process admin authority change with automatic completion
+    /// 
+    /// This unified instruction handles both initiation and completion of admin changes:
+    /// 1. If no change is pending or different admin proposed: starts 72-hour timer
+    /// 2. If 72+ hours have passed and pending admin differs from current: completes change  
+    /// 3. If same admin as current is proposed: acts as cancellation (clears pending)
+    /// 
+    /// # Security Features:
+    /// - 72-hour timelock prevents immediate hostile takeover
+    /// - Different admin proposed within 72 hours resets timer
+    /// - Same admin proposed acts as cancellation
+    /// - Automatic completion when timelock satisfied
+    /// 
+    /// # Arguments:
+    /// - `new_admin`: The proposed new admin authority pubkey
+    /// 
+    /// # Account Order:
+    /// - [0] Current Admin Authority (signer) - Must be current admin
+    /// - [1] System State PDA (writable) - To store/update admin state
+    /// - [2] Program Data Account (readable) - For upgrade authority fallback during migration
+    ProcessAdminChange {
+        new_admin: Pubkey,
+    },
+    
 } 

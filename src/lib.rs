@@ -154,6 +154,7 @@ use crate::processors::{
         process_system_pause,
         process_system_unpause,
         process_system_get_version,
+        process_admin_change,
     },
     utilities::{
         get_pool_state_pda,
@@ -341,6 +342,13 @@ pub fn process_instruction<'a>(
         } => {
             validate_account_count(accounts, DONATE_SOL_ACCOUNTS, "DonateSol")?;
             process_treasury_donate_sol(program_id, amount, message, accounts)
+        },
+        
+        PoolInstruction::ProcessAdminChange {
+            new_admin,
+        } => {
+            validate_account_count(accounts, PROCESS_ADMIN_CHANGE_ACCOUNTS, "ProcessAdminChange")?;
+            process_admin_change(program_id, new_admin, accounts)
         },
     }
 }
