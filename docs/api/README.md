@@ -4,7 +4,7 @@ Welcome to the Fixed Ratio Trading Contract API documentation. This directory co
 
 ## 📚 Documentation Structure
 
-### 1. [FIXED_RATIO_TRADING_API.md](./FIXED_RATIO_TRADING_API.md)
+### 1. [A_FIXED_RATIO_TRADING_API.md](./A_FIXED_RATIO_TRADING_API.md)
 **Main API Reference**  
 Complete documentation of all contract functions, parameters, account structures, and error codes. Start here for detailed information about each instruction.
 
@@ -24,11 +24,55 @@ JavaScript/TypeScript examples showing how to:
 - Handle transactions
 - Convert values to basis points
 
+### 4. [EXACT_POOL_CREATION_TRANSACTION_STRUCTURE.md](./EXACT_POOL_CREATION_TRANSACTION_STRUCTURE.md)
+**Pool Creation Guide**  
+Detailed breakdown of the exact transaction structure for creating pools:
+- Account ordering and validation
+- PDA derivation examples
+- Step-by-step creation process
+- Common pitfalls and solutions
+
+### 5. [EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md](./EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md)
+**JavaScript Token Calculation Guide**  
+Comprehensive guide for calculating expected token amounts in JavaScript/TypeScript:
+- Swap calculation formulas
+- Basis points conversion utilities
+- Error handling examples
+- Integration patterns
+
+### 6. [EXPECTED_TOKENS_GUIDE_CSHARP.md](./EXPECTED_TOKENS_GUIDE_CSHARP.md)
+**C# Token Calculation Guide**  
+Complete guide for calculating expected token amounts in C#:
+- Swap calculation implementations
+- Decimal precision handling
+- BigInteger usage examples
+- .NET integration patterns
+
+### 7. [SWAP_CALCULATION_GUIDE.md](./SWAP_CALCULATION_GUIDE.md)
+**Swap Mathematics Reference**  
+Mathematical foundation for swap calculations:
+- Formula derivations
+- Basis points arithmetic
+- Precision considerations
+- Edge case handling
+
+### 8. [SOLANA_TRANSACTION_BUILDING_GUIDE.md](./SOLANA_TRANSACTION_BUILDING_GUIDE.md)
+**Transaction Construction Guide**  
+Step-by-step guide for building Solana transactions:
+- Account preparation
+- Instruction serialization
+- Transaction signing
+- Error handling
+
 ## 🚀 Getting Started
 
 1. **Read the main API documentation** to understand available functions
 2. **Use the quick reference** for rapid lookups during development
 3. **Copy from instruction examples** to accelerate your integration
+4. **Follow the pool creation guide** for exact transaction structures
+5. **Use language-specific calculation guides** for your development stack
+6. **Reference the swap calculation guide** for mathematical foundations
+7. **Follow the transaction building guide** for proper Solana integration
 
 ## 🔑 Key Information
 
@@ -102,8 +146,9 @@ Contact us for:
 
 ## 🔄 Version History
 
+- **v1.1** (August 30, 2025): Updated documentation structure with new guides and renamed main API file
 - **v1.0** (Aug 5, 2025): Initial API documentation with realistic CU scaling
-- Contract version: 0.14.1040
+- Contract version: 0.15.1054
 
 ---
 
