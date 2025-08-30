@@ -1,7 +1,7 @@
 # Process Consolidate Pool Fees - Testing Requirements
 
 **Version:** 1.0  
-**Date:** December 2024  
+**Date:** August 14, 2025  
 **Function:** `process_consolidate_pool_fees` in `src/processors/consolidation.rs`  
 **Status:** Testing Requirements Specification
 

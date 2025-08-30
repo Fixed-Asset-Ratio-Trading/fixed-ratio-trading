@@ -1,7 +1,7 @@
 # Security Monitoring Off-Chain Application - Design Document
 
 **Version:** 1.0  
-**Date:** Aug 4, 2025  
+**Date:** August 14, 2025  
 **Status:** Design Phase  
 
 ## Executive Summary
