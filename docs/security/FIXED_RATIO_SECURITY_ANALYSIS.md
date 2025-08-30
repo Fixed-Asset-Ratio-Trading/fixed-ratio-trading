@@ -21,6 +21,8 @@ After comprehensive analysis of the Fixed Ratio Trading system for the specific 
 - **Dust Accumulation**: Minor precision loss due to integer division (acknowledged by user)
 - **Upgrade Authority Powers**: Limited but present administrative controls
 - **Economic Attacks**: Theoretical but impractical due to fixed ratios
+- **Future Deposits**: New deposits remain possible (mint new LP) unless liquidity is paused; does not change the ratio but changes liquidity availability and can refill a depleted side
+- **Operational Liquidity Risk**: One vault can be depleted if most swaps flow in one direction; this blocks further swaps in that direction until liquidity is replenished
 
 ---
 
@@ -247,10 +249,10 @@ The system correctly handles dust by using floor division, ensuring the pool nev
 - No mechanism to drain Token B without equivalent Token A
 - Swap calculations enforce exact ratio compliance
 
-#### ✅ **LP Token Elimination**
-- Burned LP tokens cannot be recreated
-- Pool PDA maintains mint authority but no LP tokens exist
-- No liquidity operations possible after burning
+#### ✅ **LP Token Implications**
+- Burning destroys those specific LP tokens; future deposits can still mint new LP tokens
+- Withdrawals require LP tokens; with none outstanding, withdrawals are impossible until someone deposits and receives new LP
+- To prevent any future liquidity changes, the pool owner should enable liquidity pause on the pool
 
 ### **Attack Scenarios Tested**:
 
