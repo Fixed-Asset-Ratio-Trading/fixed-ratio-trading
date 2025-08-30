@@ -86,7 +86,7 @@ Pool C: 10 SOL = 1000 USDC
 - **Not Allowed**: Ratios where both sides are non-integers or neither side equals 1 (e.g., `234.34:10.3434`, `2:3.5`, `0.5:250`).
 - **Normalization Reminder**: Token order is normalized before storage. Ensure your final, normalized ratio keeps one side exactly 1 using `normalize_pool_config()` from the SDK.
 
-See `docs/api/FIXED_RATIO_TRADING_API.md` under `process_pool_initialize` for details and examples.
+See `docs/api/A_FIXED_RATIO_TRADING_API.md` under `process_pool_initialize` for details and examples.
 
 ### **💎 LP Token Innovation**
 **Dual LP Token System** - Each side of the pool gets separate LP tokens:
@@ -389,7 +389,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📚 **Documentation & Resources**
 
 ### **📖 API Documentation**
-- [📋 **Fixed Ratio Trading API**](docs/api/FIXED_RATIO_TRADING_API.md) - Complete developer API reference
+- [📋 **Fixed Ratio Trading API**](docs/api/A_FIXED_RATIO_TRADING_API.md) - Complete developer API reference
 - [⚡ **Quick Reference Guide**](docs/api/QUICK_REFERENCE.md) - Developer cheat sheet with function summaries
 - [💻 **Instruction Examples**](docs/api/INSTRUCTION_EXAMPLES.md) - JavaScript/TypeScript code examples
 - [📚 **API Documentation Suite**](docs/api/README.md) - Overview of all API documentation

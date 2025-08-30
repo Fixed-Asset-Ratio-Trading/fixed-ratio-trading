@@ -341,7 +341,7 @@ var transaction = new TransactionBuilder()
 
 ## 🔗 Related Resources
 
-- [Fixed Ratio Trading API Documentation](../api/FIXED_RATIO_TRADING_API.md)
+- [Fixed Ratio Trading API Documentation](../api/A_FIXED_RATIO_TRADING_API.md)
 - [Solana Transaction Format Specification](https://docs.solana.com/developing/programming-model/transactions)
 - [RPC API Reference](https://docs.solana.com/api/http)
 
