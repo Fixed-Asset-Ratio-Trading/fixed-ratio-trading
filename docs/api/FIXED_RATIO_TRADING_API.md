@@ -39,6 +39,7 @@ Location: src/constants.rs (lines 40, 51, 70, 294)
 11. [Treasury Operations](#treasury-operations)
 12. [Error Codes](#error-codes)
 13. [Types and Structures](#types-and-structures)
+14. [📚 Developer Calculation Guides](#-developer-calculation-guides)
 
 ---
 
@@ -2559,13 +2560,32 @@ Pool: 1:1 ratio between Token A (9 decimals) and Token B (0 decimals)
 **Best Practice:**
 Always use the contract's calculation logic to determine the exact output amount before submitting a swap. Consider token decimal differences and ensure your input amount will result in a meaningful output after rounding.
 
-**📚 Calculation Guide:**
-For detailed examples and step-by-step instructions on calculating exact swap amounts for any pool configuration, see [SWAP_CALCULATION_GUIDE.md](SWAP_CALCULATION_GUIDE.md). This guide includes:
+**📚 Calculation Guides:**
+
+For detailed examples and step-by-step instructions on calculating exact swap amounts for any pool configuration, see our language-specific implementation guides:
+
+**C#/.NET Developers:**
+[EXPECTED_TOKENS_GUIDE_CSHARP.md](EXPECTED_TOKENS_GUIDE_CSHARP.md) - Complete C#/.NET implementation guide including:
+- FRTExpectedTokens class with all calculation methods
+- Overflow handling with BigInteger
+- Comprehensive examples and test cases
+- Integration patterns for smart contract calls
+- Debugging and troubleshooting techniques
+
+**JavaScript/TypeScript Developers:**
+[EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md](EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md) - Complete JavaScript/TypeScript implementation guide including:
+- TokenPairRatio class for all calculations
+- BigInt support for large number handling
+- Practical examples with real pool scenarios
+- Integration patterns for web applications
+- Testing strategies and validation methods
+
+**General Reference:**
+[SWAP_CALCULATION_GUIDE.md](SWAP_CALCULATION_GUIDE.md) - Language-agnostic mathematical foundation including:
 - Complete calculation formulas for all pool types
-- JavaScript implementation examples
-- Handling different token decimal combinations
+- Mathematical concepts and basis points explanation
 - Common pitfalls and edge cases
-- Testing strategies for your calculations
+- Cross-language validation strategies
 
 **Trading Flow:**
 1. User specifies input token and amount
@@ -3986,6 +4006,99 @@ async fn read_system_state(
 - **Pool State:** `[b"pool_state_v2", token_a_mint, token_b_mint, ratio_a_bytes, ratio_b_bytes]`
 - **Token Vaults:** `[b"token_a_vault", pool_state_key]` or `[b"token_b_vault", pool_state_key]`
 - **LP Mints:** `[b"lp_token_a_mint", pool_state_key]` or `[b"lp_token_b_mint", pool_state_key]`
+
+---
+
+## 📚 Developer Calculation Guides
+
+### Overview
+
+Fixed Ratio Trading requires precise mathematical calculations to determine expected token outputs. These guides provide comprehensive implementation details for different programming languages, ensuring your applications can accurately calculate swap amounts and integrate seamlessly with the smart contract.
+
+### Language-Specific Implementation Guides
+
+#### C#/.NET Developers
+**[EXPECTED_TOKENS_GUIDE_CSHARP.md](EXPECTED_TOKENS_GUIDE_CSHARP.md)**
+
+Complete C#/.NET implementation guide featuring:
+- **FRTExpectedTokens Class**: Ready-to-use static methods for all calculations
+- **Overflow Protection**: BigInteger implementation for handling large numbers
+- **Comprehensive Examples**: Real-world scenarios with step-by-step calculations
+- **Unit Testing**: Complete test suite with edge cases and validation
+- **Smart Contract Integration**: Best practices for transaction building
+- **Debugging Tools**: Helper methods and troubleshooting techniques
+
+Key Features:
+- Checked arithmetic with overflow detection
+- Minimum input calculation methods
+- Display/basis points conversion utilities
+- Extensive error handling and validation
+
+#### JavaScript/TypeScript Developers
+**[EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md](EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md)**
+
+Complete JavaScript/TypeScript implementation guide featuring:
+- **TokenPairRatio Class**: Object-oriented approach to ratio calculations
+- **BigInt Support**: Large number handling for precision-critical operations
+- **Factory Methods**: Easy creation from blockchain pool data
+- **Web Integration**: Patterns for browser and Node.js applications
+- **Async/Await Support**: Modern JavaScript patterns for blockchain interaction
+- **Debug Helpers**: Comprehensive logging and validation tools
+
+Key Features:
+- Math.floor() for consistent integer division
+- Display amount conversion methods
+- Pool data validation and error handling
+- Cross-browser compatibility considerations
+
+### Mathematical Foundation
+
+Both guides are built on the same mathematical foundation:
+
+**Core Formula:**
+```
+A→B Swaps: Output_B = (Input_A × Ratio_B) ÷ Ratio_A
+B→A Swaps: Output_A = (Input_B × Ratio_A) ÷ Ratio_B
+```
+
+**Key Principles:**
+- All calculations use basis points (smallest token units)
+- Integer division with truncation (no rounding up)
+- Deterministic results matching smart contract logic
+- Zero slippage with exact output amounts
+
+### Integration Requirements
+
+**Critical:** The smart contract requires the `expected_amount_out` parameter to **exactly match** the calculated output. Any mismatch results in transaction failure with error code `0x417` (AMOUNT_MISMATCH).
+
+**Best Practices:**
+1. Always use the provided calculation classes/functions
+2. Never implement calculations manually
+3. Test with various decimal combinations
+4. Validate minimum input amounts to prevent dust
+5. Handle overflow scenarios appropriately
+6. Log calculations during debugging
+
+### Quick Start
+
+**C#/.NET:**
+```csharp
+ulong expectedOutput = FRTExpectedTokens.Calculate(
+    inputBasisPoints, tokenADecimals, tokenBDecimals, 
+    ratioA, ratioB, isAToB);
+```
+
+**JavaScript/TypeScript:**
+```javascript
+const tokenPair = TokenPairRatio.fromPoolData(poolData);
+const expectedOutput = tokenPair.SwapAToB(inputAmount);
+```
+
+### Additional Resources
+
+- **[SWAP_CALCULATION_GUIDE.md](SWAP_CALCULATION_GUIDE.md)**: Language-agnostic mathematical reference
+- **Error Codes Section**: Complete list of calculation-related error codes
+- **Pool Management Section**: Understanding pool ratios and decimal configurations
 
 ---
 
