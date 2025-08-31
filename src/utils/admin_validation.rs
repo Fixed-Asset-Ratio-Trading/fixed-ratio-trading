@@ -53,8 +53,12 @@ pub fn validate_admin_authority(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Load system state
-    let system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    // Load system state (tolerant of trailing bytes in account data)
+    let system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize SystemState (admin validation): {:?}", e);
+            ProgramError::InvalidAccountData
+        })?;
     
     // Check if signer matches current admin authority
     if system_state.is_admin(admin_signer.key) {
