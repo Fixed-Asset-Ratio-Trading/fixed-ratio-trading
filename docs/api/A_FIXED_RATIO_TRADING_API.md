@@ -338,6 +338,7 @@ Each function has specific Compute Unit requirements for successful execution. T
 | `process_system_initialize` | 25,000 | 150,000 | 🟢 Low | One-time system setup |
 | `process_system_pause` | 10,000 | 150,000 | 🟢 Low | Emergency system halt |
 | `process_system_unpause` | 15,000 | 150,000 | 🟢 Low | System recovery with penalty |
+| `process_admin_change` | 15,000 | 150,000 | 🟢 Low | Admin authority management with 72h timelock |
 | `process_pool_initialize` | ~91,000 | 150,000 | 🟢 Low | Dashboard simulation observed ~90,688 CUs; max capped to 150K per policy |
 | `process_liquidity_deposit` | 249,000 | 310,000 | 🟡 Moderate | Dashboard tested min observed 249K; 310K set for safety margin. |
 | `process_liquidity_withdraw` | 227,000 | 290,000 | 🟡 Moderate | Dashboard tested min observed 227K; 290K set for safety margin. |
@@ -701,6 +702,193 @@ if (!systemState.isPaused) {
 const treasuryInfo = await getTreasuryInfo();
 const now = Date.now() / 1000;
 const penaltyActive = treasuryInfo.lastWithdrawalTimestamp > now;
+```
+
+---
+
+### `process_admin_change`
+
+Manages admin authority changes with a secure 72-hour timelock mechanism. This critical security function enables controlled transfer of administrative privileges while preventing hostile takeovers through mandatory waiting periods and automatic completion logic.
+
+**🔐 Security-First Admin Management:**
+- **72-Hour Timelock**: Mandatory waiting period prevents immediate hostile takeover
+- **Automatic Completion**: No separate "finalize" transaction needed after timelock expires
+- **Timer Reset Protection**: Different admin proposed within 72 hours resets the timer
+- **Cancellation Support**: Proposing current admin as new admin cancels pending changes
+- **Unified Interface**: Single function handles initiation, completion, and cancellation
+
+**🔄 State Machine Logic:**
+- **Initiation**: New admin proposed → starts 72-hour timer → pending state
+- **Completion**: 72+ hours elapsed + different admin → automatic completion
+- **Cancellation**: Current admin proposed as "new" admin → clears pending state
+- **Reset**: Different admin proposed during pending → resets timer to full 72 hours
+- **No-Op**: Same pending admin proposed again → returns pending status
+
+**📊 Admin Change Process Flow:**
+```
+Current Admin: Alice
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. Alice proposes Bob as new admin                              │
+│    → Starts 72-hour timer                                      │
+│    → State: Alice (current), Bob (pending)                     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2a. After 72+ hours: Alice calls with Bob again                │
+│     → Automatic completion                                      │
+│     → State: Bob (current), None (pending)                     │
+│                                                                 │
+│ 2b. Within 72 hours: Alice proposes Charlie                    │
+│     → Timer resets to full 72 hours                            │
+│     → State: Alice (current), Charlie (pending)                │
+│                                                                 │
+│ 2c. Within 72 hours: Alice proposes Alice                      │
+│     → Cancellation (clears pending)                            │
+│     → State: Alice (current), None (pending)                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**⚠️ Important Security Notes:**
+- **Authority Validation**: Only current admin or upgrade authority (during migration) can initiate changes
+- **PDA Security**: Validates system state PDA against expected derived address
+- **Atomic Operations**: All state changes are atomic (all-or-nothing)
+- **Persistent State**: Pending changes survive program restarts and cluster maintenance
+- **Audit Trail**: All changes logged with timestamps and authority information
+
+**Authority:** Current Admin Authority (or Program Upgrade Authority during migration)  
+**Effect:** Initiates, completes, or cancels admin authority changes  
+**Timelock:** 72 hours (259,200 seconds) mandatory waiting period  
+**Compute Units:** 15,000 CUs maximum
+
+#### Parameters
+```rust
+program_id: &Pubkey
+new_admin: Pubkey          // Proposed new admin authority
+accounts: &[AccountInfo; 3]
+```
+
+#### Account Structure
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Current Admin Authority | Signer, Writable | Must be current admin or upgrade authority |
+| 1 | System State PDA | Writable | System state to update with admin change info |
+| 2 | Program Data Account | Readable | Program data account for upgrade authority validation |
+
+#### Admin Change Results & Responses
+
+##### Successful Initiation
+```rust
+AdminChangeResult::Initiated { 
+    new_admin: Pubkey, 
+    previous_pending: Option<Pubkey> 
+}
+```
+- **Effect**: 72-hour timer started for proposed admin
+- **State**: `pending_admin_authority` set to new admin
+- **Timestamp**: `admin_change_timestamp` updated to current time
+- **Previous**: If another change was pending, it gets replaced
+
+##### Successful Completion
+```rust
+AdminChangeResult::Completed { 
+    old_admin: Pubkey, 
+    new_admin: Pubkey 
+}
+```
+- **Effect**: Admin authority transferred immediately
+- **State**: `admin_authority` updated, `pending_admin_authority` cleared
+- **Requirement**: 72+ hours must have elapsed since initiation
+
+##### Cancellation
+```rust
+AdminChangeResult::Cancelled
+```
+- **Effect**: Pending admin change cleared
+- **Trigger**: Current admin proposed as "new" admin
+- **State**: `pending_admin_authority` set to None
+
+##### No Change Needed
+```rust
+AdminChangeResult::NoChange
+```
+- **Effect**: No state modification
+- **Trigger**: Proposed admin is already current admin (no pending change)
+
+##### Still Pending
+```rust
+AdminChangeResult::Pending { 
+    pending_admin: Pubkey, 
+    remaining_seconds: i64 
+}
+```
+- **Effect**: No state change, returns remaining time
+- **Trigger**: Same pending admin proposed again before timelock expires
+
+#### Timelock Calculation
+```rust
+// Constants
+const ADMIN_CHANGE_TIMELOCK: i64 = 72 * 60 * 60; // 259,200 seconds
+
+// Remaining time calculation
+let elapsed = current_timestamp - admin_change_timestamp;
+let remaining = ADMIN_CHANGE_TIMELOCK - elapsed;
+
+// Ready when remaining <= 0
+```
+
+#### Security Validations
+1. **Authority Check**: Verifies signer is current admin or upgrade authority
+2. **PDA Validation**: Confirms system state PDA matches expected address
+3. **Signer Requirement**: Ensures proper cryptographic authorization
+4. **Account Writability**: Validates system state account is writable
+5. **Timestamp Integrity**: Uses on-chain clock for tamper-proof timing
+
+#### Error Conditions
+- **Unauthorized**: Calling account is not current admin or upgrade authority
+- **InvalidAccountData**: System state PDA validation failed
+- **AccountDataTooSmall**: System state account cannot store admin change data
+- **InvalidSystemStatePDA**: Provided PDA doesn't match expected derived address
+
+#### Integration Examples
+
+##### JavaScript/TypeScript
+```javascript
+// Initiate admin change
+const newAdminPubkey = new PublicKey("...");
+const instruction = createAdminChangeInstruction(
+    currentAdminKeypair.publicKey,
+    newAdminPubkey,
+    systemStatePDA,
+    programDataAccount,
+    PROGRAM_ID
+);
+
+// Check if change can be completed
+const systemState = await getSystemState(connection, systemStatePDA);
+if (systemState.pending_admin_authority) {
+    const elapsed = Date.now() / 1000 - systemState.admin_change_timestamp;
+    const remaining = (72 * 60 * 60) - elapsed;
+    
+    if (remaining <= 0) {
+        console.log("Admin change ready for completion");
+    } else {
+        console.log(`Admin change pending: ${remaining} seconds remaining`);
+    }
+}
+```
+
+##### Rust Client
+```rust
+// Check pending admin status
+let system_state = SystemState::from_account_data_unchecked(&account.data)?;
+let remaining_time = system_state.get_admin_change_remaining_time(current_timestamp);
+
+if remaining_time == 0 && system_state.pending_admin_authority.is_some() {
+    println!("Admin change ready for completion");
+} else if remaining_time > 0 {
+    println!("Admin change pending: {} seconds remaining", remaining_time);
+}
 ```
 
 ---
@@ -3291,7 +3479,7 @@ This section provides comprehensive documentation of all Program Derived Account
 
 **🏗️ Account Space Requirements:**
 - PoolState: 597 bytes
-- SystemState: 10 bytes
+- SystemState: 83 bytes ⚠️ **BREAKING CHANGE v0.16.x+**
 - MainTreasuryState: 128 bytes
 
 ---
@@ -3474,9 +3662,18 @@ pub struct SystemState {
     /// - 15: Fee consolidation operations
     /// - Other: Custom reasons
     pub pause_reason_code: u8,              // 1 byte
+    
+    /// ⚠️ **NEW IN v0.16.x+**: Admin authority for system operations
+    pub admin_authority: Pubkey,            // 32 bytes
+    
+    /// ⚠️ **NEW IN v0.16.x+**: Pending admin authority (with 72-hour timelock)
+    pub pending_admin_authority: Option<Pubkey>, // 33 bytes (1 + 32)
+    
+    /// ⚠️ **NEW IN v0.16.x+**: Timestamp when admin change was initiated
+    pub admin_change_timestamp: i64,        // 8 bytes
 }
 
-// Total Size: 10 bytes
+// Total Size: 83 bytes ⚠️ **BREAKING CHANGE from 10 bytes in v0.15.x**
 ```
 
 #### System State Usage
@@ -3490,6 +3687,53 @@ if !system_state.is_paused {
     // Check pause_reason_code for specific reason
 }
 ```
+
+#### ⚠️ **BREAKING CHANGE v0.16.x+**: Centralized Deserialization Methods
+
+**🚨 IMPORTANT**: Direct deserialization with `try_from_slice()` is **DEPRECATED** and will fail due to account size changes.
+
+##### Production Code (Recommended)
+```rust
+use solana_program::{account_info::AccountInfo, program_error::ProgramError, pubkey::Pubkey};
+
+// ✅ NEW: Centralized method with built-in security validation
+pub fn load_from_account(
+    account: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<SystemState, ProgramError>
+
+// Usage example:
+let system_state = SystemState::load_from_account(&system_state_account, &program_id)?;
+```
+
+**Features:**
+- ✅ **Tolerant deserialization** - Handles account size variations
+- ✅ **Automatic PDA validation** - Security built-in
+- ✅ **Future-proof** - Works with any SystemState size changes
+- ✅ **Single point of maintenance** - All changes in one place
+
+##### Test Code Only
+```rust
+// ⚠️ TEST ENVIRONMENTS ONLY - No PDA validation
+pub fn from_account_data_unchecked(data: &[u8]) -> Result<SystemState, ProgramError>
+
+// Usage example (tests only):
+let system_state = SystemState::from_account_data_unchecked(&account.data)?;
+```
+
+##### ❌ Deprecated (Will Fail in v0.16.x+)
+```rust
+// ❌ DEPRECATED: Will fail with "Not all bytes read" error
+let system_state = SystemState::try_from_slice(&account.data)?; // DON'T USE
+
+// ❌ DEPRECATED: Manual deserialization without validation  
+let system_state = SystemState::deserialize(&mut &account.data[..])?; // DON'T USE
+```
+
+**Migration Guide:**
+1. **Production code**: Replace `try_from_slice()` with `load_from_account()`
+2. **Test code**: Replace `try_from_slice()` with `from_account_data_unchecked()`
+3. **Update dependencies**: Ensure you're using v0.16.x+ of the contract
 
 ---
 
@@ -3881,12 +4125,15 @@ async function getPoolState(connection, poolStatePDA) {
 #### Reading System State
 
 ```javascript
-// System state is much simpler
+// ⚠️ **UPDATED FOR v0.16.x+**: System state with admin authority fields
 const SystemStateSchema = {
     struct: {
         is_paused: 'bool',
         pause_timestamp: 'i64', 
-        pause_reason_code: 'u8'
+        pause_reason_code: 'u8',
+        admin_authority: 'publicKey',           // NEW in v0.16.x+
+        pending_admin_authority: { option: 'publicKey' }, // NEW in v0.16.x+
+        admin_change_timestamp: 'i64'          // NEW in v0.16.x+
     }
 };
 
@@ -3982,20 +4229,27 @@ async fn read_pool_state(
     Ok(pool_state)
 }
 
-// Example: Reading system state in Rust  
+// ⚠️ **UPDATED FOR v0.16.x+**: Reading system state in Rust with new methods
 async fn read_system_state(
     rpc_client: &RpcClient,
-    system_pda: &Pubkey
+    system_pda: &Pubkey,
+    program_id: &Pubkey
 ) -> Result<SystemState, Box<dyn std::error::Error>> {
     let account = rpc_client.get_account(system_pda)?;
-    let system_state = SystemState::try_from_slice(&account.data)?;
+    
+    // ✅ NEW: Use tolerant deserialization for client code
+    let system_state = SystemState::from_account_data_unchecked(&account.data)?;
     
     if system_state.is_paused {
         println!("System is paused (reason: {})", system_state.pause_reason_code);
+        println!("Admin authority: {}", system_state.admin_authority);
     }
     
     Ok(system_state)
 }
+
+// ❌ DEPRECATED: Old method (will fail in v0.16.x+)
+// let system_state = SystemState::try_from_slice(&account.data)?; // DON'T USE
 ```
 
 ---

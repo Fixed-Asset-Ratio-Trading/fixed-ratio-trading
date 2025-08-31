@@ -1,5 +1,28 @@
 # Fixed Ratio Trading - Quick Reference Guide
 
+## ⚠️ **BREAKING CHANGES v0.16.x+**
+
+**🚨 IMPORTANT**: SystemState structure and deserialization methods have changed in v0.16.x+
+
+### What Changed
+- **SystemState size**: 10 bytes → 83 bytes (added admin authority fields)
+- **Deserialization**: `try_from_slice()` → `load_from_account()` or `from_account_data_unchecked()`
+- **New fields**: `admin_authority`, `pending_admin_authority`, `admin_change_timestamp`
+
+### Migration Required
+```rust
+// ❌ OLD (v15.x and below - will fail)
+let system_state = SystemState::try_from_slice(&account.data)?;
+
+// ✅ NEW (v0.16.x+ - production code)
+let system_state = SystemState::load_from_account(&account, &program_id)?;
+
+// ✅ NEW (v0.16.x+ - test/client code)
+let system_state = SystemState::from_account_data_unchecked(&account.data)?;
+```
+
+---
+
 ## 🚀 Quick Start
 
 ```javascript
@@ -17,18 +40,21 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | Function | Authority | Purpose |
 |----------|-----------|---------|
 | `process_system_initialize` | Program Authority | One-time setup |
-| `process_system_pause` | Program Authority | Emergency stop |
-| `process_system_unpause` | Program Authority | Resume operations |
+| `process_system_pause` | Admin Authority* | Emergency stop |
+| `process_system_unpause` | Admin Authority* | Resume operations |
+| `process_admin_change` | Admin Authority* | Change admin (72h timelock) |
+
+*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
 
 ### Pool Management
 | Function | Authority | Fee | Purpose |
 |----------|-----------|-----|---------|
 | `process_pool_initialize` | Any User | 1.15 SOL | Create pool |
-| `process_pool_pause` | Program Authority | - | Pause pool |
-| `process_pool_unpause` | Program Authority | - | Resume pool |
-| `process_pool_update_fees` | Program Authority* | - | Update fees |
+| `process_pool_pause` | Admin Authority* | - | Pause pool |
+| `process_pool_unpause` | Admin Authority* | - | Resume pool |
+| `process_pool_update_fees` | Admin Authority* | - | Update fees |
 
-*Contact support@davincicodes.net for fee modifications
+*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
 
 ### Liquidity Operations
 | Function | Authority | Default Fee | Purpose |
@@ -40,17 +66,20 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | Function | Authority | Default Fee | Purpose |
 |----------|-----------|-------------|---------|
 | `process_swap_execute` | Any User** | 0.00002715 SOL | Execute swap |
-| `process_swap_set_owner_only` | Program Authority | - | Restrict swaps |
+| `process_swap_set_owner_only` | Admin Authority* | - | Restrict swaps |
 
+*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
 **Unless owner-only mode is enabled
 
 ### Treasury Operations
 | Function | Authority | Purpose |
 |----------|-----------|---------|
-| `process_treasury_withdraw_fees` | Program Authority | Withdraw fees (dynamic rate limiting) |
+| `process_treasury_withdraw_fees` | Admin Authority* | Withdraw fees (dynamic rate limiting) |
 | `process_treasury_get_info` | Public | View treasury info |
 | `process_treasury_donate_sol` | Any User | Support development |
 | `process_consolidate_pool_fees` | Public | Collect pool fees |
+
+*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
 
 ## 🔑 Common PDA Derivations
 
@@ -126,10 +155,12 @@ const minOutput = expectedOutput * 0.99; // 1% slippage tolerance
 ## ⚠️ Important Notes
 
 1. **Basis Points**: All amounts must be in smallest unit
-2. **Authority**: Most admin functions require Program Upgrade Authority
+2. **Authority v0.16.x+**: Most admin functions use configurable Admin Authority (with upgrade authority fallback)
 3. **Fees**: Collected in SOL, configurable per pool
 4. **Pausing**: System pause overrides pool pause
 5. **Treasury**: Withdrawals subject to dynamic rate limiting
+6. **Breaking Changes**: v0.16.x+ requires new SystemState deserialization methods
+7. **Migration**: Update client code to use `load_from_account()` or `from_account_data_unchecked()`
 
 ## 📞 Support
 
