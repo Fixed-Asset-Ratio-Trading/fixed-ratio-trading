@@ -179,7 +179,7 @@ async fn get_system_state(
 ) -> Option<SystemState> {
     match banks_client.get_account(*system_state_account).await {
         Ok(Some(account)) => {
-            match SystemState::try_from_slice(&account.data) {
+            match SystemState::deserialize(&mut &account.data[..]) {
                 Ok(system_state) => Some(system_state),
                 Err(_) => None
             }

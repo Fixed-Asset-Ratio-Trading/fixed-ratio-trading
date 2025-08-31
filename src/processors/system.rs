@@ -262,8 +262,12 @@ pub fn process_system_pause(
         program_id,
     )?;
     
-    // Deserialize system state
-    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    // Deserialize system state (tolerant of trailing bytes in account data)
+    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize SystemState (pause): {:?}", e);
+            ProgramError::InvalidAccountData
+        })?;
     
     // Check if already paused
     if system_state.is_paused {
@@ -368,8 +372,12 @@ pub fn process_system_unpause(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Deserialize system state
-    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    // Deserialize system state (tolerant of trailing bytes in account data)
+    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize SystemState (unpause): {:?}", e);
+            ProgramError::InvalidAccountData
+        })?;
     
     // Check if already unpaused
     if !system_state.is_paused {
@@ -392,8 +400,12 @@ pub fn process_system_unpause(
     system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // **APPLY SYSTEM RESTART PENALTY**: Block treasury withdrawals for 3 days
-    // Load and update main treasury state with restart penalty
-    let mut main_treasury_state = MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow())?;
+    // Load and update main treasury state with restart penalty (tolerant deserialize)
+    let mut main_treasury_state = MainTreasuryState::deserialize(&mut &main_treasury_pda.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize MainTreasuryState (unpause penalty): {:?}", e);
+            ProgramError::InvalidAccountData
+        })?;
     
     // Apply the 71-hour restart penalty
     main_treasury_state.apply_system_restart_penalty(current_timestamp);
@@ -487,8 +499,12 @@ pub fn process_admin_change(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Load system state
-    let mut system_state = SystemState::try_from_slice(&system_state_pda.data.borrow())?;
+    // Load system state (tolerant of trailing bytes)
+    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize SystemState (admin change): {:?}", e);
+            ProgramError::InvalidAccountData
+        })?;
     
     // Validate current admin authority (with fallback to upgrade authority during migration)
     let is_current_admin = system_state.is_admin(current_admin_signer.key);

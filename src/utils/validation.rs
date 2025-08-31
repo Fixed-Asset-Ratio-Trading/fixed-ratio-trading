@@ -277,7 +277,7 @@ pub fn validate_system_not_paused_secure(
     }
     
     // Account has data, try to deserialize
-    let system_state = match SystemState::try_from_slice(&account_data) {
+    let system_state = match SystemState::deserialize(&mut &account_data[..]) {
         Ok(state) => {
             msg!("✅ SystemState deserialized successfully ({} bytes)", account_data.len());
             state
