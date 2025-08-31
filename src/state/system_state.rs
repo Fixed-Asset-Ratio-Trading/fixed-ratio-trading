@@ -79,27 +79,21 @@ pub struct SystemState {
     
     /// Timestamp when admin authority change was initiated (0 if no change pending)
     pub admin_change_timestamp: i64,
-    
-    /// **FUTURE EXPANSION RESERVED SPACE**
-    /// Reserved bytes for future features without breaking compatibility
-    /// Always initialize to zero and ignore during deserialization
-    pub _reserved: [u8; 128],
 }
 
 impl SystemState {
     /// Account space required for SystemState serialization
     /// 
-    /// **UPDATED CALCULATION WITH ADMIN AUTHORITY SYSTEM + RESERVED SPACE**:
+    /// **UPDATED CALCULATION WITH ADMIN AUTHORITY SYSTEM**:
     /// - is_paused: 1 byte (bool)
     /// - pause_timestamp: 8 bytes (i64)
     /// - pause_reason_code: 1 byte (u8)
     /// - admin_authority: 32 bytes (Pubkey)
     /// - pending_admin_authority: 33 bytes (Option<Pubkey> = 1 + 32)
     /// - admin_change_timestamp: 8 bytes (i64)
-    /// - _reserved: 128 bytes ([u8; 128])
     /// 
-    /// **TOTAL: 211 bytes**
-    pub const LEN: usize = 1 + 8 + 1 + 32 + 33 + 8 + 128;
+    /// **TOTAL: 83 bytes**
+    pub const LEN: usize = 1 + 8 + 1 + 32 + 33 + 8; // 83 bytes - exact calculation
     
     /// Creates a new SystemState in unpaused state with specified admin authority.
     /// 
@@ -116,7 +110,6 @@ impl SystemState {
             admin_authority,
             pending_admin_authority: None,
             admin_change_timestamp: 0,
-            _reserved: [0; 128], // Initialize reserved space to zero
         }
     }
     

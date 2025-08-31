@@ -642,7 +642,7 @@ pub async fn initialize_treasury_system(
             AccountMeta::new_readonly(program_data_address, false),                 // Index 5: Program Data Account (readable)
         ],
         data: fixed_ratio_trading::PoolInstruction::InitializeProgram {
-            // No fields needed - system authority comes from accounts[0]
+            admin_authority: system_authority.pubkey(), // Use system authority as admin
         }.try_to_vec().unwrap(),
     };
 
@@ -650,8 +650,16 @@ pub async fn initialize_treasury_system(
     transaction.sign(&[payer, system_authority], recent_blockhash);
     banks_client.process_transaction(transaction).await?;
     
-    debug_println!("✅ Treasury system initialized successfully");
-    debug_println!("   • SystemState PDA: {}", system_state_pda);
-    debug_println!("   • MainTreasury PDA: {}", main_treasury_pda);
+    // Verify SystemState account was properly initialized
+    if let Ok(Some(account)) = banks_client.get_account(system_state_pda).await {
+        debug_println!("✅ Treasury system initialized successfully");
+        debug_println!("   • SystemState PDA: {}", system_state_pda);
+        debug_println!("   • SystemState account size: {} bytes", account.data.len());
+        debug_println!("   • SystemState has data: {}", account.data.iter().any(|&b| b != 0));
+        debug_println!("   • MainTreasury PDA: {}", main_treasury_pda);
+    } else {
+        debug_println!("❌ WARNING: SystemState account not found after initialization");
+    }
+    
     Ok(())
 }

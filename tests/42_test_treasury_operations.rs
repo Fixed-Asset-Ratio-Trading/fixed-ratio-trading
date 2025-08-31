@@ -768,11 +768,7 @@ async fn test_treasury_withdrawal_comprehensive() -> TestResult {
         total_donations: 0,
     };
     
-    let system_state = SystemState {
-        is_paused: false,
-        pause_reason_code: 0,
-        pause_timestamp: 0,
-    };
+    let system_state = SystemState::new(Pubkey::new_unique()); // Create with test admin authority
     
     // Verify serialization works
     let _treasury_data = treasury_state.try_to_vec()

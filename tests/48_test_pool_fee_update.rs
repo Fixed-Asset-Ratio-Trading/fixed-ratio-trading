@@ -167,7 +167,7 @@ async fn test_update_liquidity_fee_only() -> TestResult {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -322,7 +322,7 @@ async fn test_update_swap_fee_only() -> TestResult {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -477,7 +477,7 @@ async fn test_update_both_fees() -> TestResult {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -634,7 +634,7 @@ async fn test_unauthorized_fee_update() -> TestResult {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -792,7 +792,7 @@ async fn test_invalid_fee_update_flags() -> TestResult {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -931,7 +931,7 @@ async fn test_update_fees_minimal() {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -1092,7 +1092,7 @@ async fn test_unauthorized_fee_update_minimal() {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -1271,7 +1271,7 @@ async fn test_invalid_fee_update_flags_minimal() {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -1441,7 +1441,7 @@ async fn test_update_both_fees_minimal() {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,
@@ -1611,7 +1611,7 @@ async fn test_update_liquidity_fee_only_minimal() {
         &program_id
     );
     
-    let system_state = SystemState::new(); // Creates unpaused state
+    let system_state = SystemState::new(upgrade_authority.pubkey()); // Creates unpaused state with upgrade authority as admin
     
     program_test.add_account(
         system_state_pda,

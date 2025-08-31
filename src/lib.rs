@@ -220,10 +220,10 @@ pub fn process_instruction<'a>(
 
     match instruction {
         PoolInstruction::InitializeProgram {
-            // No fields to extract - system authority comes from accounts[0]
+            admin_authority,
         } => {
             validate_account_count(accounts, INITIALIZE_PROGRAM_ACCOUNTS, "InitializeProgram")?;
-            process_system_initialize(program_id, accounts)
+            process_system_initialize(program_id, admin_authority, accounts)
         },
 
         PoolInstruction::InitializePool {

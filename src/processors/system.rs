@@ -34,6 +34,7 @@ use crate::{
 /// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
+/// * `admin_authority` - The pubkey that will become the admin authority
 /// * `accounts` - Array of accounts in program upgrade authority order (6 accounts minimum)
 /// 
 /// # Account Info
@@ -58,6 +59,7 @@ use crate::{
 /// - **GOVERNANCE READY**: Authority can be handed over to governance systems for decentralization
 pub fn process_system_initialize(
     program_id: &Pubkey,
+    admin_authority: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("🚀 INITIALIZING PROGRAM: Creating system infrastructure");
@@ -137,14 +139,32 @@ pub fn process_system_initialize(
         &[system_state_seeds_with_bump],
     )?;
 
-    // Create system state data with default admin authority
-    let default_admin_authority = crate::constants::DEFAULT_ADMIN_AUTHORITY.parse::<Pubkey>()
-        .expect("Invalid default admin authority pubkey");
-    let system_state_data = SystemState::new(default_admin_authority);
+    // Create system state data with the provided admin authority
+    // This allows configurable admin authority at initialization time
+    let system_state_data = SystemState::new(admin_authority);
     
-    // Serialize system state to account
+    // Serialize system state to account with robust error handling
     let serialized_system_state = system_state_data.try_to_vec()?;
-    system_state_pda.data.borrow_mut()[..serialized_system_state.len()].copy_from_slice(&serialized_system_state);
+    msg!("🔍 SystemState serialization: {} bytes to write into {} byte account", 
+         serialized_system_state.len(), system_state_pda.data_len());
+    
+    // Ensure account is large enough
+    if serialized_system_state.len() > system_state_pda.data_len() {
+        msg!("❌ SystemState data too large for account: {} > {}", 
+             serialized_system_state.len(), system_state_pda.data_len());
+        return Err(ProgramError::AccountDataTooSmall);
+    }
+    
+    // Clear the account first, then write data
+    {
+        let mut account_data = system_state_pda.data.borrow_mut();
+        // Zero out the entire account first
+        account_data.fill(0);
+        // Then write the actual data
+        account_data[..serialized_system_state.len()].copy_from_slice(&serialized_system_state);
+    }
+    
+    msg!("✅ SystemState written to account: {} bytes", serialized_system_state.len());
     
     // 🏦 Create main treasury PDA and account (Phase 3: Centralized Treasury)
     let main_treasury_rent = rent.minimum_balance(MainTreasuryState::get_packed_len());

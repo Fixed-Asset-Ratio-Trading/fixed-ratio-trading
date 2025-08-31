@@ -35,16 +35,18 @@ pub enum PoolInstruction {
     /// - All subsequent operations will assume these PDAs exist
     /// 
     /// # Arguments:
-    /// - System authority is provided via accounts[0] (must be signer)
-    /// - The signer's pubkey will control system-wide operations
+    /// - `admin_authority`: The pubkey that will become the admin authority
+    /// - System authority is provided via accounts[0] (must be signer, pays for account creation)
+    /// - The admin_authority will control system-wide operations
     ///   (pause/unpause system, withdraw treasury funds, etc.)
     /// 
     /// # Security:
     /// - Can only be called once (fails if SystemState already exists)
     /// - Creates all accounts as PDAs owned by the program
     /// - Sets up proper rent exemption for all accounts
+    /// - Admin authority is configurable and can be different from the deployer
     InitializeProgram {
-        // No fields needed - system authority comes from accounts[0]
+        admin_authority: Pubkey,
     },
 
     /// **RECOMMENDED**: Single-instruction pool initialization

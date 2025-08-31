@@ -854,6 +854,10 @@ pub async fn create_liquidity_test_foundation_with_fees(
         &system_authority,
     ).await?;
     
+    // Refresh blockhash to ensure system state is committed before pool creation
+    env.recent_blockhash = env.banks_client.get_latest_blockhash().await?;
+    debug_println!("🔄 Blockhash refreshed after system initialization");
+    
     // 7. BATCH OPERATION 3: Create pool (single operation)
     debug_println!("🏊 Creating pool...");
     let pool_config = crate::common::pool_helpers::create_pool_new_pattern(

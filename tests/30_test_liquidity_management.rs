@@ -302,7 +302,7 @@ async fn test_instruction_serialization() -> TestResult {
         // Test case 4: InitializeProgram instruction
         {
             PoolInstruction::InitializeProgram {
-                // No fields needed - system authority comes from accounts[0]
+                admin_authority: Pubkey::new_unique(), // Test admin authority
             }
         },
     ];
@@ -371,13 +371,13 @@ async fn test_instruction_serialization() -> TestResult {
             },
             (
                 PoolInstruction::InitializeProgram { 
-                    // No fields to compare
+                    admin_authority: orig_admin,
                 },
                 PoolInstruction::InitializeProgram { 
-                    // No fields to compare
+                    admin_authority: deser_admin,
                 }
             ) => {
-                // No fields to validate - structure match is sufficient
+                assert_eq!(orig_admin, deser_admin, "InitializeProgram admin_authority should match");
                 println!("   ✅ InitializeProgram instruction round-trip verified");
             },
             _ => {

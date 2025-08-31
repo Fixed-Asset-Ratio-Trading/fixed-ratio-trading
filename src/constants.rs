@@ -321,17 +321,5 @@ pub const TREASURY_RATE_SCALING_MULTIPLIER: u64 = 10;
 /// This creates a 3-day cooling-off period to prevent immediate fund drainage after system restart
 pub const TREASURY_SYSTEM_RESTART_PENALTY_SECONDS: i64 = 71 * 3600; // 71 hours in seconds
 
-//=============================================================================
-// ADMIN AUTHORITY CONFIGURATION
-//=============================================================================
 
-/// Default admin authority set during system initialization
-/// 
-/// This pubkey becomes the initial admin authority when the system is first initialized.
-/// It can later be changed to a multisig/governance PDA using the ProcessAdminChange instruction
-/// with a 72-hour timelock for security.
-/// 
-/// **Security Note**: This is the only hardcoded authority in the system. All admin operations
-/// require this key to sign transactions until admin authority is transferred to another account.
-pub const DEFAULT_ADMIN_AUTHORITY: &str = "6ytvYbjegFnBWLk9FsEoy1nwKwnTKcX5MxgX7PeGDHp2";
 
