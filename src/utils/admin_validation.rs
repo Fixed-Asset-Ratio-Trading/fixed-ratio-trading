@@ -3,7 +3,7 @@
 //! This module provides centralized admin authority validation for all admin operations.
 //! It handles the transition from upgrade authority to configurable admin authority.
 
-use borsh::BorshDeserialize;
+
 use solana_program::{
     account_info::AccountInfo,
     program_error::ProgramError,
@@ -53,12 +53,8 @@ pub fn validate_admin_authority(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Load system state (tolerant of trailing bytes in account data)
-    let system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
-        .map_err(|e| {
-            msg!("❌ Failed to deserialize SystemState (admin validation): {:?}", e);
-            ProgramError::InvalidAccountData
-        })?;
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    let system_state = SystemState::load_from_account(system_state_pda, program_id)?;
     
     // Check if signer matches current admin authority
     if system_state.is_admin(admin_signer.key) {

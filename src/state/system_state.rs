@@ -4,7 +4,12 @@
 //! managing system-wide operations like emergency pause/unpause.
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use solana_program::{
+    account_info::AccountInfo,
+    msg,
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
 
 /// Result of processing an admin authority change
 #[derive(Debug, Clone)]
@@ -129,6 +134,83 @@ impl SystemState {
         self.is_paused = false;
         self.pause_timestamp = 0;
         self.pause_reason_code = 0; // 0 = No pause active
+    }
+
+    /// **CENTRALIZED DESERIALIZATION** - Robust loading from account data
+    /// 
+    /// This method provides a single, reliable way to load SystemState from any account,
+    /// handling size variations gracefully and including security validation.
+    /// 
+    /// **Benefits:**
+    /// - Tolerant of account size changes (handles trailing bytes)
+    /// - Validates PDA security automatically
+    /// - Single point of maintenance for deserialization logic
+    /// - Prevents "Not all bytes read" errors
+    /// 
+    /// # Arguments
+    /// * `account` - The SystemState account to load from
+    /// * `program_id` - Program ID for PDA validation
+    /// 
+    /// # Returns
+    /// * `Result<SystemState, ProgramError>` - Loaded state or error
+    /// 
+    /// # Security
+    /// Validates that the account is the correct SystemState PDA before deserializing
+    pub fn load_from_account(
+        account: &AccountInfo,
+        program_id: &Pubkey,
+    ) -> Result<Self, ProgramError> {
+        // 🔒 SECURITY: Validate this is the correct SystemState PDA
+        let (expected_system_state_pda, _) = Pubkey::find_program_address(
+            &[crate::constants::SYSTEM_STATE_SEED_PREFIX], // b"system_state"
+            program_id,
+        );
+        
+        if *account.key != expected_system_state_pda {
+            msg!("🚨 SECURITY: Invalid SystemState PDA provided");
+            msg!("Expected: {}, Provided: {}", expected_system_state_pda, account.key);
+            return Err(ProgramError::InvalidAccountData);
+        }
+        
+        // 🔧 TOLERANT DESERIALIZATION: Handles account size variations
+        let account_data = account.data.borrow();
+        msg!("🔍 SystemState loading: account has {} bytes", account_data.len());
+        
+        // Handle empty/uninitialized accounts
+        if account_data.is_empty() {
+            msg!("❌ SystemState account is empty");
+            return Err(ProgramError::UninitializedAccount);
+        }
+        
+        // Deserialize with tolerance for trailing bytes
+        Self::deserialize(&mut &account_data[..])
+            .map_err(|e| {
+                msg!("❌ SystemState deserialization failed: {:?}", e);
+                ProgramError::InvalidAccountData
+            })
+    }
+
+    /// **TEST-FRIENDLY DESERIALIZATION** - For use in test environments only
+    /// 
+    /// This method provides tolerant deserialization without PDA validation,
+    /// suitable for test environments where account setup may vary.
+    /// 
+    /// **⚠️ WARNING: DO NOT USE IN PRODUCTION CODE**
+    /// This method skips security validation and should only be used in tests.
+    /// 
+    /// # Arguments
+    /// * `data` - Raw account data to deserialize
+    /// 
+    /// # Returns
+    /// * `Result<SystemState, ProgramError>` - Loaded state or error
+    pub fn from_account_data_unchecked(data: &[u8]) -> Result<Self, ProgramError> {
+        if data.is_empty() {
+            return Err(ProgramError::UninitializedAccount);
+        }
+        
+        // Tolerant deserialization for test environments
+        Self::deserialize(&mut &data[..])
+            .map_err(|_| ProgramError::InvalidAccountData)
     }
     
     /// **ADMIN AUTHORITY MANAGEMENT WITH 72-HOUR TIMELOCK**

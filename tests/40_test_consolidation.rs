@@ -1347,7 +1347,7 @@ async fn test_consolidation_with_system_pause_mode() -> TestResult {
     
     // Step 7: Verify system state
     let system_state = foundation.env.banks_client.get_account(system_state_pda).await?.unwrap();
-    let system_state: fixed_ratio_trading::state::SystemState = fixed_ratio_trading::state::SystemState::try_from_slice(&system_state.data)?;
+    let system_state: fixed_ratio_trading::state::SystemState = fixed_ratio_trading::state::SystemState::from_account_data_unchecked(&system_state.data)?;
     
     println!("System state after consolidation:");
     println!("  - System paused: {}", system_state.is_paused);

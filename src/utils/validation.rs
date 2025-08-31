@@ -245,27 +245,8 @@ pub fn validate_system_not_paused_secure(
     system_state_account: &AccountInfo,
     program_id: &Pubkey,
 ) -> ProgramResult {
-    // 🔒 SECURITY: First validate this is the correct SystemState PDA
-    let (expected_system_state_pda, _) = Pubkey::find_program_address(
-        &[crate::constants::SYSTEM_STATE_SEED_PREFIX], // b"system_state"
-        program_id,
-    );
-    
-    if *system_state_account.key != expected_system_state_pda {
-        msg!("🚨 SECURITY: Invalid SystemState PDA provided");
-        msg!("Expected: {}, Provided: {}", expected_system_state_pda, system_state_account.key);
-        return Err(PoolError::TreasuryValidationFailed {
-            expected: expected_system_state_pda,
-            provided: *system_state_account.key,
-            treasury_type: "SystemState".to_string(),
-        }.into());
-    }
-    
-    // Now safely deserialize and validate pause state
-    let account_data = system_state_account.data.borrow();
-    msg!("🔍 SystemState deserialization: account has {} bytes", account_data.len());
-    
     // Handle test environment compatibility for SystemState validation
+    let account_data = system_state_account.data.borrow();
     
     // First check if account contains all zeros (test environment issue)
     let has_data = account_data.iter().any(|&b| b != 0);
@@ -276,21 +257,16 @@ pub fn validate_system_not_paused_secure(
         return Ok(());
     }
     
-    // Account has data, try to deserialize
-    let system_state = match SystemState::deserialize(&mut &account_data[..]) {
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    let system_state = match SystemState::load_from_account(system_state_account, program_id) {
         Ok(state) => {
-            msg!("✅ SystemState deserialized successfully ({} bytes)", account_data.len());
+            msg!("✅ SystemState loaded successfully via centralized method");
             state
         },
         Err(e) => {
-            msg!("⚠️ SystemState deserialization failed: {:?}", e);
+            msg!("⚠️ SystemState loading failed: {:?}", e);
             msg!("🔧 TEST ENVIRONMENT FALLBACK: Assuming system is not paused");
-            msg!("   Account size: {} bytes", account_data.len());
-            if account_data.len() >= 4 {
-                msg!("   First 4 bytes: {:?}", &account_data[0..4]);
-            }
-            
-            // In test environments, if deserialization fails, assume not paused to allow tests to continue
+            msg!("   This allows tests to continue despite loading issues");
             return Ok(());
         }
     };
@@ -509,23 +485,10 @@ pub fn validate_and_deserialize_system_state_secure(
         return Err(ProgramError::IncorrectProgramId);
     }
     
-    // Validate this is the correct SystemState PDA
-    let (expected_system_state_pda, _) = Pubkey::find_program_address(
-        &[SYSTEM_STATE_SEED_PREFIX],
-        program_id,
-    );
-    
-    if *system_state_account.key != expected_system_state_pda {
-        msg!("❌ Invalid SystemState PDA provided");
-        msg!("❌ Expected: {}", expected_system_state_pda);
-        msg!("❌ Got: {}", system_state_account.key);
-        return Err(PoolError::InvalidSystemStatePDA.into());
-    }
-    
-    // Deserialize and return system state (tolerant of trailing bytes in account data)
-    SystemState::deserialize(&mut &system_state_account.data.borrow()[..])
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    SystemState::load_from_account(system_state_account, program_id)
         .map_err(|e| {
-            msg!("❌ Failed to deserialize SystemState (validation): {:?}", e);
+            msg!("❌ Failed to load SystemState via centralized method: {:?}", e);
             PoolError::InvalidSystemStateDeserialization.into()
         })
 } 

@@ -262,12 +262,8 @@ pub fn process_system_pause(
         program_id,
     )?;
     
-    // Deserialize system state (tolerant of trailing bytes in account data)
-    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
-        .map_err(|e| {
-            msg!("❌ Failed to deserialize SystemState (pause): {:?}", e);
-            ProgramError::InvalidAccountData
-        })?;
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    let mut system_state = SystemState::load_from_account(system_state_pda, program_id)?;
     
     // Check if already paused
     if system_state.is_paused {
@@ -372,12 +368,8 @@ pub fn process_system_unpause(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Deserialize system state (tolerant of trailing bytes in account data)
-    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
-        .map_err(|e| {
-            msg!("❌ Failed to deserialize SystemState (unpause): {:?}", e);
-            ProgramError::InvalidAccountData
-        })?;
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    let mut system_state = SystemState::load_from_account(system_state_pda, program_id)?;
     
     // Check if already unpaused
     if !system_state.is_paused {
@@ -499,12 +491,8 @@ pub fn process_admin_change(
         return Err(ProgramError::InvalidAccountData);
     }
     
-    // Load system state (tolerant of trailing bytes)
-    let mut system_state = SystemState::deserialize(&mut &system_state_pda.data.borrow()[..])
-        .map_err(|e| {
-            msg!("❌ Failed to deserialize SystemState (admin change): {:?}", e);
-            ProgramError::InvalidAccountData
-        })?;
+    // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
+    let mut system_state = SystemState::load_from_account(system_state_pda, program_id)?;
     
     // Validate current admin authority (with fallback to upgrade authority during migration)
     let is_current_admin = system_state.is_admin(current_admin_signer.key);

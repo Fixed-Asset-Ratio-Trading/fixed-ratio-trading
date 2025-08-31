@@ -267,7 +267,7 @@ async fn verify_system_paused(
         .ok_or("System state account not found")?;
     
     // Deserialize system state
-    let system_state = SystemState::try_from_slice(&account.data)?;
+    let system_state = SystemState::from_account_data_unchecked(&account.data)?;
     
     println!("📊 System State:");
     println!("   - Is paused: {}", system_state.is_paused);
@@ -665,7 +665,7 @@ async fn test_system_pause_state_updates() -> TestResult {
     let account = banks_client.get_account(system_state_pda).await?
         .ok_or("System state account not found")?;
     
-    let system_state = SystemState::try_from_slice(&account.data)?;
+    let system_state = SystemState::from_account_data_unchecked(&account.data)?;
     
     println!("\n📊 System State After Pause:");
     println!("   - Is paused: {}", system_state.is_paused);
@@ -1152,7 +1152,7 @@ async fn test_pause_already_paused_system() -> TestResult {
     // Record system state after first pause
     let system_state_account = banks_client.get_account(system_state_pda).await?
         .ok_or("SystemState account not found")?;
-    let initial_pause_state: SystemState = SystemState::try_from_slice(&system_state_account.data)?;
+    let initial_pause_state: SystemState = SystemState::from_account_data_unchecked(&system_state_account.data)?;
     
     println!("📊 Initial pause state recorded:");
     println!("   - Reason code: {}", initial_pause_state.pause_reason_code);
@@ -1207,7 +1207,7 @@ async fn test_pause_already_paused_system() -> TestResult {
     if VERIFY_STATE_UNCHANGED {
         let system_state_account = banks_client.get_account(system_state_pda).await?
             .ok_or("SystemState account not found")?;
-        let final_pause_state: SystemState = SystemState::try_from_slice(&system_state_account.data)?;
+        let final_pause_state: SystemState = SystemState::from_account_data_unchecked(&system_state_account.data)?;
         
         assert_eq!(
             initial_pause_state.pause_reason_code, final_pause_state.pause_reason_code,
@@ -1335,7 +1335,7 @@ async fn test_system_pause_different_reason_codes() -> TestResult {
         if VERIFY_REASON_CODE_STORAGE {
             let system_state_account = banks_client.get_account(system_state_pda).await?
                 .ok_or("SystemState account not found")?;
-            let system_state: SystemState = SystemState::try_from_slice(&system_state_account.data)?;
+            let system_state: SystemState = SystemState::from_account_data_unchecked(&system_state_account.data)?;
             
             assert_eq!(
                 system_state.pause_reason_code, reason_code,
@@ -1474,7 +1474,7 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
     // Additional SystemState PDA verification to reduce timeout issues
     let system_state_account = banks_client.get_account(system_state_pda).await?
         .ok_or("SystemState account not found - initialization may be incomplete")?;
-    let initial_pause_state: SystemState = SystemState::try_from_slice(&system_state_account.data)?;
+    let initial_pause_state: SystemState = SystemState::from_account_data_unchecked(&system_state_account.data)?;
     
     println!("📊 Initial pause state recorded:");
     println!("   - Reason code: {}", initial_pause_state.pause_reason_code);
@@ -1552,7 +1552,7 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
             
             let system_state_account = banks_client.get_account(system_state_pda).await?
                 .ok_or("SystemState account not found")?;
-            let current_pause_state: SystemState = SystemState::try_from_slice(&system_state_account.data)?;
+            let current_pause_state: SystemState = SystemState::from_account_data_unchecked(&system_state_account.data)?;
             
             assert_eq!(
                 initial_pause_state.pause_reason_code, current_pause_state.pause_reason_code,
@@ -1696,7 +1696,7 @@ async fn test_system_unpause_by_authority() -> TestResult {
     // Record treasury state before unpause
     let treasury_state_before = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        let state = MainTreasuryState::try_from_slice(&account.data)?;
+        let state = MainTreasuryState::deserialize(&mut &account.data[..])?;
         (state.last_withdrawal_timestamp, state.last_update_timestamp)
     };
     println!("\n📊 Treasury state before unpause:");
@@ -1740,7 +1740,7 @@ async fn test_system_unpause_by_authority() -> TestResult {
         println!("\n🔍 Step 4: Verifying treasury restart penalty...");
         let treasury_state_after = {
             let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-            let state = MainTreasuryState::try_from_slice(&account.data)?;
+            let state = MainTreasuryState::deserialize(&mut &account.data[..])?;
             state
         };
         
@@ -2006,7 +2006,7 @@ async fn test_system_unpause_state_updates() -> TestResult {
     // Record system state while paused
     let system_state_paused = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        SystemState::try_from_slice(&account.data)?
+        SystemState::from_account_data_unchecked(&account.data)?
     };
     
     println!("\n📊 System state while paused:");
@@ -2017,7 +2017,7 @@ async fn test_system_unpause_state_updates() -> TestResult {
     // Record treasury state before unpause
     let treasury_state_before = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     // Wait before unpause
@@ -2054,7 +2054,7 @@ async fn test_system_unpause_state_updates() -> TestResult {
     // Verify system state after unpause
     let system_state_unpaused = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        SystemState::try_from_slice(&account.data)?
+        SystemState::from_account_data_unchecked(&account.data)?
     };
     
     println!("\n📊 System state after unpause:");
@@ -2084,7 +2084,7 @@ async fn test_system_unpause_state_updates() -> TestResult {
         println!("\n🔍 Step 4: Verifying treasury state updates...");
         let treasury_state_after = {
             let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-            MainTreasuryState::try_from_slice(&account.data)?
+            MainTreasuryState::deserialize(&mut &account.data[..])?
         };
         
         // Check penalty applied
@@ -2346,7 +2346,7 @@ async fn test_system_unpause_applies_71_hour_penalty() -> TestResult {
     // Record initial treasury state
     let initial_treasury_state = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     println!("\n📊 Initial treasury state:");
     println!("   - Last withdrawal timestamp: {}", initial_treasury_state.last_withdrawal_timestamp);
@@ -2384,7 +2384,7 @@ async fn test_system_unpause_applies_71_hour_penalty() -> TestResult {
     // Get current time before unpause (approximation)
     let pre_unpause_time = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        let state = SystemState::try_from_slice(&account.data)?;
+        let state = SystemState::from_account_data_unchecked(&account.data)?;
         // Use pause timestamp as approximation of current time
         state.pause_timestamp
     };
@@ -2417,7 +2417,7 @@ async fn test_system_unpause_applies_71_hour_penalty() -> TestResult {
     // Verify treasury state after unpause
     let treasury_state_after = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     println!("\n📊 Treasury state after unpause:");
@@ -2542,7 +2542,7 @@ async fn test_last_withdrawal_timestamp_set_correctly() -> TestResult {
     // Record initial state
     let initial_treasury = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     if VERIFY_PREVIOUS_VALUE {
@@ -2603,7 +2603,7 @@ async fn test_last_withdrawal_timestamp_set_correctly() -> TestResult {
     // Check treasury state after unpause
     let treasury_after = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     println!("\n📊 Treasury state after unpause:");
@@ -2671,7 +2671,7 @@ async fn test_last_withdrawal_timestamp_set_correctly() -> TestResult {
         // Verify penalty is reapplied
         let treasury_second_cycle = {
             let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-            MainTreasuryState::try_from_slice(&account.data)?
+            MainTreasuryState::deserialize(&mut &account.data[..])?
         };
         
         let penalty = treasury_second_cycle.last_withdrawal_timestamp - treasury_second_cycle.last_update_timestamp;
@@ -2747,7 +2747,7 @@ async fn test_last_update_timestamp_updated() -> TestResult {
     // Get initial treasury state
     let initial_treasury = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     let initial_update_timestamp = initial_treasury.last_update_timestamp;
     
@@ -2776,7 +2776,7 @@ async fn test_last_update_timestamp_updated() -> TestResult {
     // Record pause timestamp
     let pause_timestamp = if COMPARE_WITH_PAUSE_TIME {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        let state = SystemState::try_from_slice(&account.data)?;
+        let state = SystemState::from_account_data_unchecked(&account.data)?;
         println!("📊 System paused at timestamp: {}", state.pause_timestamp);
         state.pause_timestamp
     } else {
@@ -2814,7 +2814,7 @@ async fn test_last_update_timestamp_updated() -> TestResult {
     // Get treasury state after unpause
     let treasury_after = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     println!("\n📊 Treasury after unpause:");
@@ -2978,7 +2978,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
     let treasury_data = &treasury_account.data;
     
     // Deserialize the state
-    let treasury_state = MainTreasuryState::try_from_slice(treasury_data)?;
+    let treasury_state = MainTreasuryState::deserialize(&mut &treasury_data[..])?;
     println!("✅ Treasury state successfully deserialized from account data");
     
     // Display the state
@@ -3011,7 +3011,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
         let serialized = treasury_state.try_to_vec()?;
         
         // Deserialize
-        let deserialized = MainTreasuryState::try_from_slice(&serialized)?;
+        let deserialized = MainTreasuryState::deserialize(&mut &serialized[..])?;
         
         // Verify all fields match
         assert_eq!(treasury_state.total_balance, deserialized.total_balance, "Balance mismatch");
@@ -3045,7 +3045,7 @@ async fn test_treasury_state_serialization_after_penalty() -> TestResult {
         
         // Verify state still serializes correctly
         let updated_account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        let updated_state = MainTreasuryState::try_from_slice(&updated_account.data)?;
+        let updated_state = MainTreasuryState::deserialize(&mut &updated_account.data[..])?;
         
         println!("✅ State still serializes correctly after additional operations");
         println!("   - New donation count: {}", updated_state.donation_count);
@@ -3169,7 +3169,7 @@ async fn test_log_messages_include_penalty_expiration() -> TestResult {
     // Get treasury state to verify penalty
     let treasury_state = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     println!("\n📊 Treasury penalty information:");
@@ -3284,7 +3284,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
     println!("\n📊 Initial state verification:");
     let initial_system_state = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        SystemState::try_from_slice(&account.data)?
+        SystemState::from_account_data_unchecked(&account.data)?
     };
     assert!(!initial_system_state.is_paused, "System should start unpaused");
     println!("✅ System is initially unpaused");
@@ -3346,7 +3346,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
     // Verify system is now unpaused
     let system_state_after_first_unpause = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        SystemState::try_from_slice(&account.data)?
+        SystemState::from_account_data_unchecked(&account.data)?
     };
     assert!(!system_state_after_first_unpause.is_paused, "System should be unpaused after first unpause");
     println!("✅ System successfully unpaused");
@@ -3354,7 +3354,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
     // Record treasury state after successful unpause
     let treasury_state_before = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        MainTreasuryState::try_from_slice(&account.data)?
+        MainTreasuryState::deserialize(&mut &account.data[..])?
     };
     
     // Attempt to unpause again (should fail)
@@ -3448,7 +3448,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
         // Check system state
         let system_state_after = {
             let account = banks_client.get_account(system_state_pda).await?.unwrap();
-            SystemState::try_from_slice(&account.data)?
+            SystemState::from_account_data_unchecked(&account.data)?
         };
         assert!(!system_state_after.is_paused, "System should remain unpaused");
         assert_eq!(system_state_after.pause_reason_code, 0, "Pause reason should be cleared");
@@ -3457,7 +3457,7 @@ async fn test_unpause_already_unpaused_system() -> TestResult {
         // Check treasury state
         let treasury_state_after = {
             let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-            MainTreasuryState::try_from_slice(&account.data)?
+            MainTreasuryState::deserialize(&mut &account.data[..])?
         };
         assert_eq!(
             treasury_state_after.last_withdrawal_timestamp,
@@ -3560,7 +3560,7 @@ async fn test_system_unpause_logs_pause_duration() -> TestResult {
     // Record pause timestamp
     let pause_timestamp = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        let state = SystemState::try_from_slice(&account.data)?;
+        let state = SystemState::from_account_data_unchecked(&account.data)?;
         println!("📊 System paused at timestamp: {}", state.pause_timestamp);
         state.pause_timestamp
     };
@@ -3608,7 +3608,7 @@ async fn test_system_unpause_logs_pause_duration() -> TestResult {
     // Get unpause timestamp from treasury state
     let unpause_timestamp = {
         let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-        let state = MainTreasuryState::try_from_slice(&account.data)?;
+        let state = MainTreasuryState::deserialize(&mut &account.data[..])?;
         state.last_update_timestamp
     };
     
@@ -3660,7 +3660,7 @@ async fn test_system_unpause_logs_pause_duration() -> TestResult {
     // Verify system is now unpaused
     let system_state_after = {
         let account = banks_client.get_account(system_state_pda).await?.unwrap();
-        SystemState::try_from_slice(&account.data)?
+        SystemState::from_account_data_unchecked(&account.data)?
     };
     assert!(!system_state_after.is_paused, "System should be unpaused");
     assert_eq!(system_state_after.pause_timestamp, 0, "Pause timestamp should be cleared");
@@ -3763,7 +3763,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         // Verify pause state
         let system_state_paused = {
             let account = banks_client.get_account(system_state_pda).await?.unwrap();
-            SystemState::try_from_slice(&account.data)?
+            SystemState::from_account_data_unchecked(&account.data)?
         };
         assert!(system_state_paused.is_paused, "System should be paused");
         assert_eq!(system_state_paused.pause_reason_code, reason_code, "Reason code should match");
@@ -3777,7 +3777,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         // Get treasury state before unpause
         let treasury_before = {
             let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-            MainTreasuryState::try_from_slice(&account.data)?
+            MainTreasuryState::deserialize(&mut &account.data[..])?
         };
         
         // Refresh blockhash
@@ -3808,7 +3808,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         // Verify unpause state
         let system_state_after = {
             let account = banks_client.get_account(system_state_pda).await?.unwrap();
-            SystemState::try_from_slice(&account.data)?
+            SystemState::from_account_data_unchecked(&account.data)?
         };
         
         if VERIFY_STATE_CLEARED {
@@ -3823,7 +3823,7 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
             println!("\n🔍 Step 4: Verifying restart penalty is applied...");
             let treasury_after = {
                 let account = banks_client.get_account(main_treasury_pda).await?.unwrap();
-                MainTreasuryState::try_from_slice(&account.data)?
+                MainTreasuryState::deserialize(&mut &account.data[..])?
             };
             
             // Verify penalty is applied
