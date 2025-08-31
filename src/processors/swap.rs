@@ -685,7 +685,7 @@ pub fn process_swap_execute<'a>(
 
 /// Manages swap access restrictions and delegates ownership control for a specific pool
 ///
-/// This function allows the contract owner (program upgrade authority) to enable or disable
+/// This function allows the contract owner (admin authority) to enable or disable
 /// swap access restrictions for a specific pool and delegate control to any specified entity.
 /// When enabled, only the designated owner can perform swap operations on that pool.
 ///
@@ -697,7 +697,7 @@ pub fn process_swap_execute<'a>(
 /// 
 /// This system provides maximum operational flexibility while maintaining security:
 /// 
-/// - **Flexible Delegation**: Program Upgrade Authority can delegate to any entity
+/// - **Flexible Delegation**: Admin Authority can delegate to any entity
 /// - **Specialized Controllers**: Enable specialized swap controllers for different use cases
 /// - **Complex Scenarios**: Support treasury management, automated strategies, multi-sig control
 /// - **Protocol Control**: Contract owner maintains oversight and ultimate control
@@ -728,13 +728,13 @@ pub fn process_swap_execute<'a>(
 /// * `enable_restriction` - True to enable owner-only mode, false to disable
 /// * `designated_owner` - The pubkey that will have swap control when restrictions are enabled
 /// * `accounts` - Array of account infos in the following order:
-///   - `accounts[0]` - Contract owner account (must be program upgrade authority and signer)
+///   - `accounts[0]` - Contract owner account (must be admin authority and signer)
 ///   - `accounts[1]` - System state PDA account (for system pause validation)
 ///   - `accounts[2]` - Pool state PDA account (writable for flag and ownership updates)
 ///   - `accounts[3]` - Program data account (for upgrade authority validation)
 ///
 /// # Account Requirements
-/// - **Contract Owner**: Must be signer and match the program upgrade authority
+/// - **Contract Owner**: Must be signer and match the admin authority
 /// - **System State**: Must be valid system state account for pause validation
 /// - **Pool State**: Must be writable for flag configuration updates
 /// - **Program Data**: Must be valid program data account for authority validation
@@ -790,7 +790,7 @@ pub fn process_swap_set_owner_only<'a>(
     msg!("===============================");
     msg!("📊 Action: {} swap owner-only restriction", if enable_restriction { "Enable" } else { "Disable" });
     
-    let contract_owner_signer = &accounts[0];     // Index 0: Contract Owner (Program Upgrade Authority)
+    let contract_owner_signer = &accounts[0];     // Index 0: Contract Owner (Admin Authority)
     let system_state_pda = &accounts[1];          // Index 1: System State PDA  
     let pool_state_pda = &accounts[2];            // Index 2: Pool State PDA
     let program_data_account = &accounts[3];      // Index 3: Program Data Account
@@ -828,7 +828,7 @@ pub fn process_swap_set_owner_only<'a>(
     }
     
     // 🎯 ENHANCED FLEXIBILITY: Assign pool ownership to designated entity
-    // This enables flexible delegation of swap control while maintaining Program Upgrade Authority
+    // This enables flexible delegation of swap control while maintaining Admin Authority
     // control over the ability to change restrictions and delegate ownership
     if enable_restriction {
         if pool_state_data.owner != designated_owner {

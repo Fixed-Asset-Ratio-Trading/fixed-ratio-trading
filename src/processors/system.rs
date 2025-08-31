@@ -209,7 +209,7 @@ pub fn process_system_initialize(
 /// Processes the PauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Pauses the entire system, blocking all operations except unpause.
-/// Only the system upgrade authority can execute this instruction. This provides
+/// Only the admin authority can execute this instruction. This provides
 /// emergency controls for the contract authority with system-wide pause
 /// taking precedence over all pool-specific pause states.
 /// 
@@ -220,7 +220,7 @@ pub fn process_system_initialize(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer
+/// 0. **System Authority Signer** (signer, writable) - Admin authority signer
 /// 1. **System State PDA** (writable) - System state PDA for pause
 /// 2. **Program Data Account** (readable) - Program data account for authority validation
 /// 
@@ -232,7 +232,7 @@ pub fn process_system_initialize(
 /// - **CLIENT INTEGRATION**: Extremely simplified client integration
 /// - **EMERGENCY CONTROLS**: System pause takes precedence over all pool pause states
 /// - **STORAGE OPTIMIZED**: Uses single byte code instead of string for efficiency
-/// - **AUTHORITY VALIDATION**: Uses program upgrade authority for maximum flexibility
+/// - **AUTHORITY VALIDATION**: Uses admin authority with upgrade authority fallback for maximum flexibility
 pub fn process_system_pause(
     program_id: &Pubkey,
     reason_code: u8,
@@ -296,7 +296,7 @@ pub fn process_system_pause(
 /// Processes the UnpauseSystem instruction with ultra-optimized account ordering.
 /// 
 /// Unpauses the entire system, allowing all operations to resume.
-/// Only the system upgrade authority can execute this instruction. This restores
+/// Only the admin authority can execute this instruction. This restores
 /// normal system operations while maintaining any pool-specific pause states
 /// that were previously set.
 /// 
@@ -309,7 +309,7 @@ pub fn process_system_pause(
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
-/// 0. **System Authority Signer** (signer, writable) - System upgrade authority signer
+/// 0. **System Authority Signer** (signer, writable) - Admin authority signer
 /// 1. **System State PDA** (writable) - System state PDA for unpause
 /// 2. **Main Treasury PDA** (writable) - Main treasury PDA for restart penalty application
 /// 3. **Program Data Account** (readable) - Program data account for authority validation
@@ -323,7 +323,7 @@ pub fn process_system_pause(
 /// - **POOL STATES**: Pool-specific pause states remain active if previously set
 /// - **RESTART PENALTY**: Treasury withdrawals blocked for 3 days after system restart
 /// - **STORAGE OPTIMIZED**: Works with optimized pause code system
-/// - **AUTHORITY VALIDATION**: Uses program upgrade authority for maximum flexibility
+/// - **AUTHORITY VALIDATION**: Uses admin authority with upgrade authority fallback for maximum flexibility
 pub fn process_system_unpause(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

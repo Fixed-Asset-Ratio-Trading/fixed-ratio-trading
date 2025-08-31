@@ -58,7 +58,7 @@ pub enum AdminChangeResult {
 /// 
 /// This state is separate from individual pool states and provides emergency
 /// controls that can override all pool operations when necessary.
-/// Only the program upgrade authority can perform system-wide operations.
+/// Only the admin authority (stored in this state) can perform system-wide operations.
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct SystemState {
     /// Global pause state - when true, all operations are blocked except unpause

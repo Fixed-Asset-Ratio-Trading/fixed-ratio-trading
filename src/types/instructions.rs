@@ -328,13 +328,13 @@ pub enum PoolInstruction {
     
     /// **SWAP ACCESS CONTROL**: Enable/disable restrictions and delegate ownership control
     /// 
-    /// This instruction allows the contract owner (program upgrade authority) to control
+    /// This instruction allows the contract owner (admin authority) to control
     /// swap access for a specific pool and delegate control to any specified entity.
     /// When enabled, only the designated owner can perform swap operations on that pool.
     /// 
     /// # Enhanced Flexibility:
-    /// - Program Upgrade Authority retains exclusive right to call this instruction
-    /// - Can delegate swap control to any authorized entity (not just Program Upgrade Authority)
+    /// - Admin Authority retains exclusive right to call this instruction
+    /// - Can delegate swap control to any authorized entity (not just Admin Authority)
     /// - Enables complex operational scenarios with specialized swap controllers
     /// - Maintains security through centralized authority validation
     /// 
@@ -346,16 +346,16 @@ pub enum PoolInstruction {
     /// - Maintains compatibility with standard AMM operation when disabled
     /// 
     /// # Security
-    /// - Only the Program Upgrade Authority can call this instruction
+    /// - Only the Admin Authority can call this instruction
     /// - Delegation does not transfer the ability to change restrictions
-    /// - Program Upgrade Authority maintains ultimate control over all pools
+    /// - Admin Authority maintains ultimate control over all pools
     /// 
     /// # Arguments:
     /// - `enable_restriction`: True to enable owner-only mode, false to disable
     /// - `designated_owner`: The pubkey that will have swap control when restrictions are enabled
     /// 
     /// # Account Order:
-    /// - [0] Contract Owner Signer (must be program upgrade authority)
+    /// - [0] Contract Owner Signer (must be admin authority)
     /// - [1] System State PDA (for system pause validation)
     /// - [2] Pool State PDA (writable, to update swap access flag and owner)
     /// - [3] Program Data Account (for upgrade authority validation)
@@ -385,7 +385,7 @@ pub enum PoolInstruction {
     /// - `new_swap_fee`: New swap fee in lamports (only used if swap flag is set)
     /// 
     /// # Account Order:
-    /// - [0] Program Authority Signer (must be program upgrade authority)
+    /// - [0] Program Authority Signer (must be admin authority)
     /// - [1] System State PDA (for system pause validation)
     /// - [2] Pool State PDA (writable, to update fee parameters)
     /// - [3] Program Data Account (for upgrade authority validation)
