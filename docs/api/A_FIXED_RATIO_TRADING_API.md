@@ -419,7 +419,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 
 | Discriminator | Instruction | Data Size | Total Size | Description |
 |---------------|-------------|-----------|------------|-------------|
-| `0` | `InitializeProgram` | 0 bytes | 1 byte | Initialize system state and treasury |
+| `0` | `InitializeProgram` | 32 bytes | 33 bytes | Initialize system state and treasury |
 | `1` | `InitializePool` | 16 bytes | 17 bytes | Create new trading pool |
 | `2` | `Deposit` | 40 bytes | 41 bytes | Add liquidity to pool |
 | `3` | `Withdraw` | 40 bytes | 41 bytes | Remove liquidity from pool |
@@ -443,6 +443,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 | `21` | `SetSwapOwnerOnly` | 33 bytes | 34 bytes | Set swap owner restrictions |
 | `22` | `UpdatePoolFees` | 17 bytes | 18 bytes | Update pool fee structure |
 | `23` | `DonateSol` | Variable | Variable | Donate SOL to treasury |
+| `24` | `ProcessAdminChange` | 32 bytes | 33 bytes | Change admin authority (72h timelock) |
 
 ### Common Instruction Patterns
 
@@ -489,6 +490,8 @@ Functions for system-wide operations and program initialization.
 
 Initializes the program's system state and main treasury. This is a one-time setup operation that creates the core infrastructure for the Fixed Ratio Trading system, including the main treasury that collects all protocol fees and the system state that tracks global configuration and pause status.
 
+The `admin_authority` parameter sets the account that will have control over system-wide operations such as pausing/unpausing the system and withdrawing treasury funds. This authority is separate from the program upgrade authority and can be configured to point to governance systems, multisigs, or other administrative structures.
+
 **Authority:** Program Upgrade Authority only  
 **One-time operation:** Can only be called once  
 **Compute Units:** 25,000 CUs maximum
@@ -496,6 +499,7 @@ Initializes the program's system state and main treasury. This is a one-time set
 #### Parameters
 ```rust
 program_id: &Pubkey    // Program ID
+admin_authority: Pubkey // Admin authority for system operations
 accounts: &[AccountInfo; 6]
 ```
 
@@ -512,6 +516,45 @@ accounts: &[AccountInfo; 6]
 #### Returns
 - Success: Program initialized with system state and treasury
 - Error: `AccountAlreadyInitialized` if already initialized
+
+#### Instruction Format
+
+**Discriminator:** `0` (single byte)  
+**Total Data Length:** 33 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct InitializeProgramInstruction {
+    discriminator: u8,        // 1 byte: value = 0
+    admin_authority: Pubkey,  // 32 bytes: Admin authority for system operations
+}
+```
+
+#### JavaScript Example
+
+```javascript
+// Create InitializeProgram instruction
+const adminAuthority = new PublicKey("6ytvYbjegFnBWLk9FsEoy1nwKwnTKcX5MxgX7PeGDHp2");
+
+const instructionData = Buffer.concat([
+    Buffer.from([0]),                    // Discriminator: 0
+    adminAuthority.toBuffer()            // Admin authority: 32 bytes
+]);
+
+const instruction = new TransactionInstruction({
+    keys: [
+        { pubkey: programAuthority, isSigner: true, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+        { pubkey: systemStatePDA, isSigner: false, isWritable: true },
+        { pubkey: mainTreasuryPDA, isSigner: false, isWritable: true },
+        { pubkey: programDataAccount, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data: instructionData,
+});
+```
 
 ---
 

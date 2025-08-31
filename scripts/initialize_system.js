@@ -8,6 +8,8 @@
  * - SystemState PDA (global pause controls and authority management)
  * - MainTreasury PDA (pool creation fee collection)
  * 
+ * The admin authority is set to: 6ytvYbjegFnBWLk9FsEoy1nwKwnTKcX5MxgX7PeGDHp2
+ * 
  * Usage:
  *   node scripts/initialize_system.js <PROGRAM_ID> [RPC_URL] [KEYPAIR_PATH]
  * 
@@ -129,7 +131,18 @@ async function initializeSystem() {
         // Create InitializeProgram instruction
         console.log('🚀 Creating system initialization transaction...');
         
-        const instructionData = new Uint8Array([0]); // InitializeProgram discriminator (single byte)
+        // Create admin authority (using the specified admin account)
+        // This admin will control system-wide operations like pause/unpause and treasury withdrawals
+        const adminAuthority = new PublicKey('6ytvYbjegFnBWLk9FsEoy1nwKwnTKcX5MxgX7PeGDHp2');
+        console.log(`🔑 Admin Authority: ${adminAuthority.toString()}`);
+        console.log(`   This account will control system-wide operations (pause/unpause, treasury withdrawals)`);
+        
+        // Create instruction data with admin authority
+        // Format: [discriminator: 1 byte] + [admin_authority: 32 bytes]
+        const instructionData = Buffer.concat([
+            Buffer.from([0]), // InitializeProgram discriminator (single byte)
+            adminAuthority.toBuffer() // Admin authority pubkey (32 bytes)
+        ]);
         
         const accounts = [
             { pubkey: authority.publicKey, isSigner: true, isWritable: true },        // 0: Program Authority

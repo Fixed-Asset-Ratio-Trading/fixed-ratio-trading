@@ -39,7 +39,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### System Management
 | Function | Authority | Purpose |
 |----------|-----------|---------|
-| `process_system_initialize` | Program Authority | One-time setup |
+| `process_system_initialize` | Program Authority | One-time setup (sets admin authority) |
 | `process_system_pause` | Admin Authority* | Emergency stop |
 | `process_system_unpause` | Admin Authority* | Resume operations |
 | `process_admin_change` | Admin Authority* | Change admin (72h timelock) |

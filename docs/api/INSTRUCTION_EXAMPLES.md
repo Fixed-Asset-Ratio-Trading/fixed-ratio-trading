@@ -22,32 +22,34 @@ const connection = new Connection("https://api.mainnet-beta.solana.com");
 ## Instruction Enum
 
 ```javascript
-// Define instruction types matching the contract
+// Define instruction types matching the contract (Borsh enum discriminators)
 const PoolInstruction = {
     // System Management
-    InitializeProgram: 0,
-    PauseSystem: 1,
-    UnpauseSystem: 2,
-    
-    // Pool Management
-    InitializePool: 3,
-    PausePool: 4,
-    UnpausePool: 5,
-    UpdatePoolFees: 6,
-    
-    // Liquidity Operations
-    Deposit: 7,
-    Withdraw: 8,
-    
-    // Swap Operations
-    Swap: 9,
-    SetSwapOwnerOnly: 10,
-    
-    // Treasury Operations
-    WithdrawTreasuryFees: 11,
-    GetTreasuryInfo: 12,
-    DonateSol: 13,
-    ConsolidatePoolFees: 14,
+    InitializeProgram: 0,        // InitializeProgram { admin_authority }
+    InitializePool: 1,           // InitializePool { ratio_a_numerator, ratio_b_denominator }
+    Deposit: 2,                  // Deposit { deposit_token_mint, amount }
+    Withdraw: 3,                 // Withdraw { withdraw_token_mint, lp_amount_to_burn }
+    Swap: 4,                     // Swap { input_token_mint, amount_in, expected_amount_out }
+    GetPoolStatePDA: 5,          // GetPoolStatePDA { multiple_token_mint, base_token_mint, multiple_per_base }
+    GetTokenVaultPDAs: 6,        // GetTokenVaultPDAs { pool_state_pda }
+    GetPoolInfo: 7,              // GetPoolInfo {}
+    GetPoolPauseStatus: 8,       // GetPoolPauseStatus {}
+    GetLiquidityInfo: 9,         // GetLiquidityInfo {}
+    GetFeeInfo: 10,              // GetFeeInfo {}
+    GetPoolSolBalance: 11,       // GetPoolSolBalance {}
+    PauseSystem: 12,             // PauseSystem { reason_code }
+    UnpauseSystem: 13,           // UnpauseSystem
+    GetVersion: 14,              // GetVersion
+    WithdrawTreasuryFees: 15,    // WithdrawTreasuryFees { amount }
+    GetTreasuryInfo: 16,         // GetTreasuryInfo {}
+    ConsolidatePoolFees: 17,     // ConsolidatePoolFees { pool_count }
+    GetConsolidationStatus: 18,  // GetConsolidationStatus { pool_count }
+    PausePool: 19,               // PausePool { reason_code }
+    UnpausePool: 20,             // UnpausePool { reason_code }
+    SetSwapOwnerOnly: 21,        // SetSwapOwnerOnly { enable_restriction, designated_owner }
+    UpdatePoolFees: 22,          // UpdatePoolFees { update_flags, new_liquidity_fee, new_swap_fee }
+    DonateSol: 23,               // DonateSol { amount, message }
+    ProcessAdminChange: 24,      // ProcessAdminChange { new_admin_authority }
 };
 ```
 
@@ -57,6 +59,7 @@ const PoolInstruction = {
 ```javascript
 async function createInitializeProgramInstruction(
     programAuthority: PublicKey,
+    adminAuthority: PublicKey, // Admin authority for system operations (pause/unpause, treasury withdrawals)
     programDataAccount: PublicKey
 ) {
     // Derive PDAs
@@ -70,9 +73,10 @@ async function createInitializeProgramInstruction(
         PROGRAM_ID
     );
     
-    // Serialize instruction data
-    const instructionData = Buffer.from([
-        PoolInstruction.InitializeProgram
+    // Serialize instruction data with admin authority
+    const instructionData = Buffer.concat([
+        Buffer.from([PoolInstruction.InitializeProgram]),
+        adminAuthority.toBuffer() // Admin authority pubkey (32 bytes)
     ]);
     
     return new TransactionInstruction({
