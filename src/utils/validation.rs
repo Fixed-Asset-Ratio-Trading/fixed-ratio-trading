@@ -522,7 +522,10 @@ pub fn validate_and_deserialize_system_state_secure(
         return Err(PoolError::InvalidSystemStatePDA.into());
     }
     
-    // Deserialize and return system state
-    SystemState::try_from_slice(&system_state_account.data.borrow())
-        .map_err(|_| PoolError::InvalidSystemStateDeserialization.into())
+    // Deserialize and return system state (tolerant of trailing bytes in account data)
+    SystemState::deserialize(&mut &system_state_account.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ Failed to deserialize SystemState (validation): {:?}", e);
+            PoolError::InvalidSystemStateDeserialization.into()
+        })
 } 
