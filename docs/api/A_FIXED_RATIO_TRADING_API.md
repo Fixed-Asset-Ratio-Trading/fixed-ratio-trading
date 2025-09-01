@@ -417,6 +417,28 @@ function getDonationComputeUnits(donationAmountLamports) {
 
 The Fixed Ratio Trading contract uses Borsh serialization with enum discriminators. Each instruction begins with a single-byte discriminator followed by the instruction-specific data.
 
+**Note:** Function names like `process_treasury_donate_sol` correspond to instruction enum variants (e.g., `DonateSol` with discriminator `23`).
+
+#### Function Name to Discriminator Mapping
+
+| Function Name | Instruction Enum | Discriminator |
+|---------------|------------------|---------------|
+| `process_treasury_donate_sol` | `DonateSol` | `23` |
+| `process_initialize_program` | `InitializeProgram` | `0` |
+| `process_initialize_pool` | `InitializePool` | `1` |
+| `process_deposit` | `Deposit` | `2` |
+| `process_withdraw` | `Withdraw` | `3` |
+| `process_swap` | `Swap` | `4` |
+| `process_pause_system` | `PauseSystem` | `12` |
+| `process_unpause_system` | `UnpauseSystem` | `13` |
+| `process_treasury_withdraw_fees` | `WithdrawTreasuryFees` | `15` |
+| `process_consolidate_pool_fees` | `ConsolidatePoolFees` | `17` |
+| `process_pause_pool` | `PausePool` | `19` |
+| `process_unpause_pool` | `UnpausePool` | `20` |
+| `process_set_swap_owner_only` | `SetSwapOwnerOnly` | `21` |
+| `process_update_pool_fees` | `UpdatePoolFees` | `22` |
+| `process_admin_change` | `ProcessAdminChange` | `24` |
+
 | Discriminator | Instruction | Data Size | Total Size | Description |
 |---------------|-------------|-----------|------------|-------------|
 | `0` | `InitializeProgram` | 32 bytes | 33 bytes | Initialize system state and treasury |
@@ -442,7 +464,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 | `20` | `UnpausePool` | 1 byte | 2 bytes | Unpause pool operations |
 | `21` | `SetSwapOwnerOnly` | 33 bytes | 34 bytes | Set swap owner restrictions |
 | `22` | `UpdatePoolFees` | 17 bytes | 18 bytes | Update pool fee structure |
-| `23` | `DonateSol` | Variable | Variable | Donate SOL to treasury |
+| `23` | `DonateSol` | 12+ bytes | 13+ bytes | Donate SOL to treasury (8 bytes amount + 4+ bytes message) |
 | `24` | `ProcessAdminChange` | 32 bytes | 33 bytes | Change admin authority (72h timelock) |
 
 ### Common Instruction Patterns
@@ -3170,9 +3192,12 @@ accounts: &[AccountInfo; 1]
 
 Accepts SOL donations to support development.
 
+**Instruction Discriminator:** `23` (DonateSol)  
 **Authority:** Any user  
 **Minimum:** 0.1 SOL (MIN_DONATION_AMOUNT constant)  
 **Compute Units:** Variable by donation amount (see CU Analysis below)
+
+**⚠️ CRITICAL PREREQUISITE:** The treasury system must be initialized first using `InitializeProgram` (discriminator `0`) before any donations can be made. This creates the required `SystemState` and `MainTreasury` PDAs.
 
 **Note:** Donations help accelerate development of new features including contract improvements and the governance system outlined in the Future Governance Contract Design. The faster we reach our financial goals, the faster we deliver new capabilities.
 
@@ -3183,6 +3208,130 @@ amount: u64         // Donation amount (lamports)
 message: String     // Optional message (max 200 chars)
 accounts: &[AccountInfo; 3]
 ```
+
+#### Instruction Data Structure
+```rust
+// Instruction structure for DonateSol (discriminator 23)
+pub struct DonateSolInstruction {
+    discriminator: u8,    // 1 byte: value = 23
+    amount: u64,          // 8 bytes: Donation amount in lamports (little-endian)
+    message: String,      // Variable: 4-byte length prefix + UTF-8 bytes
+}
+// Total size: 13+ bytes (1 + 8 + 4 + message_length)
+```
+
+#### Account Requirements
+
+The following accounts must be provided in this exact order:
+
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Donor Account | Signer, Writable | Account donating SOL (must have sufficient balance) |
+| 1 | Main Treasury PDA | Writable | Receives the donation (derived from `MAIN_TREASURY_SEED_PREFIX`) |
+| 2 | System State PDA | Readable | For pause validation (derived from `SYSTEM_STATE_SEED_PREFIX`) |
+| 3 | System Program | Readable | Solana system program (`11111111111111111111111111111112`) |
+
+#### PDA Derivation
+```javascript
+// Derive required PDAs
+const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
+
+const [mainTreasuryPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("main_treasury")],
+    PROGRAM_ID
+);
+
+const [systemStatePda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("system_state")],
+    PROGRAM_ID
+);
+```
+
+#### Checking System Initialization
+```javascript
+// Check if treasury system is initialized
+async function isSystemInitialized(connection, programId) {
+    const [systemStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")],
+        programId
+    );
+    
+    const [mainTreasuryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("main_treasury")],
+        programId
+    );
+    
+    try {
+        const systemStateAccount = await connection.getAccountInfo(systemStatePda);
+        const mainTreasuryAccount = await connection.getAccountInfo(mainTreasuryPda);
+        
+        return systemStateAccount !== null && mainTreasuryAccount !== null;
+    } catch (error) {
+        return false;
+    }
+}
+```
+
+#### JavaScript Example
+```javascript
+// Create instruction data for DonateSol
+const message = "Supporting development!";
+const messageBytes = new TextEncoder().encode(message);
+const messageLength = new Uint8Array(new Uint32Array([messageBytes.length]).buffer);
+
+const instructionData = new Uint8Array([
+    23,                                    // DonateSol discriminator
+    ...new Uint8Array(new BigUint64Array([BigInt(amountLamports)]).buffer), // amount (u64 little-endian)
+    ...messageLength,                      // message length (u32 little-endian)
+    ...messageBytes                        // message UTF-8 bytes
+]);
+
+// Create the instruction
+const instruction = new TransactionInstruction({
+    keys: [
+        { pubkey: donorAccount.publicKey, isSigner: true, isWritable: true },
+        { pubkey: mainTreasuryPda, isSigner: false, isWritable: true },
+        { pubkey: systemStatePda, isSigner: false, isWritable: false },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data: instructionData,
+});
+```
+
+#### Common Errors and Solutions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `invalid account data for instruction` | Treasury system not initialized | Call `InitializeProgram` (discriminator `0`) first |
+| `AccountNotFound` | Wrong PDA derivation | Use correct seeds: `"main_treasury"` and `"system_state"` |
+| `InvalidArgument` | Amount below minimum | Ensure donation ≥ 0.1 SOL (100,000,000 lamports) |
+| `InsufficientFunds` | Donor has insufficient balance | Check donor account has enough SOL + transaction fees |
+| `IncorrectProgramId` | Wrong system program | Use `11111111111111111111111111111112` |
+
+#### Troubleshooting Steps
+
+1. **Check System Initialization:**
+   ```javascript
+   const initialized = await isSystemInitialized(connection, PROGRAM_ID);
+   if (!initialized) {
+       console.log("❌ Treasury system not initialized. Call InitializeProgram first.");
+   }
+   ```
+
+2. **Verify PDA Addresses:**
+   ```javascript
+   console.log("Main Treasury PDA:", mainTreasuryPda.toString());
+   console.log("System State PDA:", systemStatePda.toString());
+   ```
+
+3. **Check Minimum Amount:**
+   ```javascript
+   const MIN_DONATION = 100_000_000; // 0.1 SOL in lamports
+   if (amountLamports < MIN_DONATION) {
+       console.log(`❌ Amount too small. Minimum: ${MIN_DONATION} lamports`);
+   }
+   ```
 
 #### Important
 - All donations are **non-refundable**
