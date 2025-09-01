@@ -9,39 +9,38 @@ Aug 8, 2025 5:18PM
 
 ## 🌟 **Revolutionary Use Cases**
 
-### 💰 **Micro-Denomination Trading**
-Transform expensive tokens into accessible micro-units, giving users the psychological satisfaction of owning large quantities:
+Fixed Ratio Trading enables innovative applications across DeFi, governance, and enterprise markets. For detailed implementation guides, see our [**Use Case Documentation**](docs/usecases/README.md).
 
+### 💰 **Micro-Denomination Trading** → [**Full Guide**](docs/usecases/MICRO_DENOMINATION_TRADING.md)
+Transform expensive tokens into accessible micro-units for better user psychology:
 - **100,000 Satoshis** instead of 0.001 BTC  
 - **1,000,000 Wei-ETH** instead of 0.001 ETH
 - **50,000 Micro-SOL** instead of 0.05 SOL
 
-*Perfect for retail investors who prefer owning "whole numbers" of tokens rather than decimals.*
+### 🏛️ **DAO-Value Token Linkage** → [**Full Guide**](docs/usecases/DAO_VALUE_TOKEN_LINKAGE.md)
+Revolutionary governance innovation linking DAO tokens to established value tokens:
+- **Liquid Governance**: Vote without losing exposure to preferred assets
+- **Bidirectional Value**: DAO success increases value token price and vice versa
+- **Community Bridging**: Unite separate token communities for mutual benefit
 
-### 🔄 **Token Upgrade & Migration Pools**
-Seamlessly migrate users from old tokens to new versions with guaranteed exchange rates:
-
-- **Old Token → New Token** at fixed ratios (e.g., 1 OLDCOIN = 1.5 NEWCOIN)
+### 🔄 **Token Migration & Upgrades** → [**Full Guide**](docs/usecases/TOKEN_MIGRATION_AND_UPGRADES.md)
+Seamlessly migrate users from old tokens to new versions with guaranteed rates:
 - **Protocol Upgrades** with predictable migration pricing
 - **Rebranding Events** with transparent token swaps
 - **Chain Migrations** with locked conversion rates
 
-### 🎯 **Liquidity at Your Price Point**
+### 🎯 **Target Price Liquidity** → [**Full Guide**](docs/usecases/TARGET_PRICE_LIQUIDITY.md)
 Set exact prices where you're willing to trade your assets:
+- **"I'll sell my 1 BTC at exactly $200,000"** - Guaranteed execution
+- **"I want to buy SOL at exactly $100"** - No slippage, no timing required
+- **Strategic Positioning** - Earn fees while waiting for target prices
 
-- **"I'll sell my 1 BTC at exactly 200,000 USDT"** - Create a 1:200,000 pool
-- **"I'll trade my 10 ETH at exactly 3,500 USDC each"** - Create a 1:3,500 pool  
-- **"I want to buy SOL at exactly $100"** - Create USDC:SOL pools at 100:1 ratio
-
-*No slippage. No surprise pricing. Just your exact target price.*
-
-### 🏦 **Institutional Fixed-Rate Trading**
-Enterprise-grade trading with guaranteed rates:
-
+### 🏦 **Institutional Fixed-Rate Trading** → [**Full Guide**](docs/usecases/INSTITUTIONAL_FIXED_RATE_TRADING.md)
+Enterprise-grade trading infrastructure with guaranteed rates:
 - **Treasury Management** with predictable exchange rates
 - **Payroll Systems** paying employees in different tokens at fixed rates  
-- **Business-to-Business** trading with contractual token exchange rates
-- **Stablecoin Arbitrage** with guaranteed conversion ratios
+- **B2B Trading** with contractual token exchange rates
+- **Compliance-Ready** audit trails and reporting
 
 ---
 
@@ -393,6 +392,14 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - [⚡ **Quick Reference Guide**](docs/api/QUICK_REFERENCE.md) - Developer cheat sheet with function summaries
 - [💻 **Instruction Examples**](docs/api/INSTRUCTION_EXAMPLES.md) - JavaScript/TypeScript code examples
 - [📚 **API Documentation Suite**](docs/api/README.md) - Overview of all API documentation
+
+### **🎯 Use Cases & Applications**
+- [🌟 **Use Case Documentation**](docs/usecases/README.md) - Comprehensive real-world application guides
+- [🏛️ **DAO-Value Token Linkage**](docs/usecases/DAO_VALUE_TOKEN_LINKAGE.md) - Revolutionary governance innovation
+- [💰 **Micro-Denomination Trading**](docs/usecases/MICRO_DENOMINATION_TRADING.md) - User experience transformation
+- [🔄 **Token Migrations**](docs/usecases/TOKEN_MIGRATION_AND_UPGRADES.md) - Seamless protocol upgrades
+- [🎯 **Target Price Liquidity**](docs/usecases/TARGET_PRICE_LIQUIDITY.md) - Advanced trading strategies
+- [🏢 **Institutional Trading**](docs/usecases/INSTITUTIONAL_FIXED_RATE_TRADING.md) - Enterprise solutions
 
 ### **🔒 Security & Governance**
 - [🚨 **Emergency Procedures**](docs/security/EMERGENCY_PROCEDURES_AND_KEY_MANAGEMENT_V1.md) - V1 emergency procedures and key management
