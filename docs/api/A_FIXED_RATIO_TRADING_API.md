@@ -432,7 +432,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 | `process_pause_system` | `PauseSystem` | `12` |
 | `process_unpause_system` | `UnpauseSystem` | `13` |
 | `process_treasury_withdraw_fees` | `WithdrawTreasuryFees` | `15` |
-| `process_consolidate_pool_fees` | `ConsolidatePoolFees` | `17` |
+| `process_consolidate_pool_fees` | `ConsolidatePoolFees` | `17` | ⚠️ Admin Authority Required |
 | `process_pause_pool` | `PausePool` | `19` |
 | `process_unpause_pool` | `UnpausePool` | `20` |
 | `process_set_swap_owner_only` | `SetSwapOwnerOnly` | `21` |
@@ -458,7 +458,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 | `14` | `GetVersion` | 0 bytes | 1 byte | Get contract version |
 | `15` | `WithdrawTreasuryFees` | 8 bytes | 9 bytes | Withdraw treasury fees |
 | `16` | `GetTreasuryInfo` | 0 bytes | 1 byte | Get treasury information |
-| `17` | `ConsolidatePoolFees` | 1 byte | 2 bytes | Consolidate pool fees |
+| `17` | `ConsolidatePoolFees` | 1 byte | 2 bytes | Consolidate pool fees (Admin Authority required) |
 | `18` | `GetConsolidationStatus` | 1 byte | 2 bytes | Get consolidation status |
 | `19` | `PausePool` | 1 byte | 2 bytes | Pause pool operations |
 | `20` | `UnpausePool` | 1 byte | 2 bytes | Unpause pool operations |
@@ -3373,7 +3373,8 @@ The significant CU difference suggests additional validation or spam protection 
 
 Consolidates SOL fees from multiple pools into the main treasury with flexible pause requirements and sophisticated rent protection. This is the **only mechanism** for moving accumulated protocol fees from individual pools to the central treasury. Features atomic operations, partial consolidation support, and comprehensive safety validations.
 
-**Authority:** None required (public function)  
+**⚠️ SECURITY UPDATE:** Admin Authority Required (was public function)  
+**Authority:** Admin Authority only (prevents unauthorized fee manipulation)  
 **Batch Size:** 1-20 pools per transaction  
 **Safety Features:** Rent-exempt protection, fee consistency validation, atomic operations
 
@@ -3388,15 +3389,17 @@ Consolidates SOL fees from multiple pools into the main treasury with flexible p
 ```rust
 program_id: &Pubkey
 pool_count: u8              // Number of pools to consolidate (1-20)
-accounts: &[AccountInfo]    // Variable length: 2 + pool_count
+accounts: &[AccountInfo]    // Variable length: 4 + pool_count
 ```
 
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | System State PDA | Readable | For pause status validation |
-| 1 | Main Treasury PDA | Writable | Receives consolidated fees |
-| 2+ | Pool State PDAs | Writable | Pools to consolidate (1-20 pools) |
+| 0 | Admin Authority Signer | Signer, Readable | Must be admin authority |
+| 1 | System State PDA | Readable | For pause status and admin validation |
+| 2 | Main Treasury PDA | Writable | Receives consolidated fees |
+| 3 | Program Data Account | Readable | For upgrade authority validation |
+| 4+ | Pool State PDAs | Writable | Pools to consolidate (1-20 pools) |
 
 #### Advanced Features
 
@@ -3435,8 +3438,10 @@ let regular_swap_fees_consolidated = (pool_state.collected_swap_contract_fees as
 - **Use Case**: Selective consolidation of specific pools
 
 #### Error Conditions
+- **⚠️ SECURITY**: Unauthorized access - caller must be admin authority
 - **Invalid pool count**: 0 or > 20 pools
-- **Insufficient accounts**: Account count ≠ (2 + pool_count)
+- **Insufficient accounts**: Account count ≠ (4 + pool_count)
+- **Admin validation**: Admin authority signature or PDA validation failure
 - **Rent protection**: Pool balance would fall below rent-exempt minimum
 - **Fee consistency**: Internal fee tracking validation failure
 - **Serialization**: Buffer serialization or account writing failure

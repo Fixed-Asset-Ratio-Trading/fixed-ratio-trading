@@ -36,9 +36,11 @@ use crate::{
 /// * `program_id` - The program ID for PDA validation
 /// * `pool_count` - Number of pools to consolidate (1-20)
 /// * `accounts` - Array of accounts in the following order:
-///   - [0] System State PDA (for pause validation)
-///   - [1] Main Treasury PDA (receives consolidated fees)
-///   - [2..2+pool_count] Pool State PDAs (pools to consolidate)
+///   - [0] Admin Authority Signer (must be admin authority)
+///   - [1] System State PDA (for pause validation and admin validation)
+///   - [2] Main Treasury PDA (receives consolidated fees)
+///   - [3] Program Data Account (for upgrade authority validation)
+///   - [4..4+pool_count] Pool State PDAs (pools to consolidate)
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -71,16 +73,29 @@ pub fn process_consolidate_pool_fees(
     }
     
     // Extract accounts
-    let system_state_pda = &accounts[0];
-    let main_treasury_pda = &accounts[1];
-    let pool_accounts = &accounts[2..2 + pool_count as usize];
+    let admin_authority_signer = &accounts[0];
+    let system_state_pda = &accounts[1];
+    let main_treasury_pda = &accounts[2];
+    let program_data_account = &accounts[3];
+    let pool_accounts = &accounts[4..4 + pool_count as usize];
     
     // Validate account count
-    let expected_accounts = 2 + pool_count as usize;
+    let expected_accounts = 4 + pool_count as usize;
     if accounts.len() != expected_accounts {
         msg!("❌ Expected {} accounts, got {}", expected_accounts, accounts.len());
         return Err(ProgramError::NotEnoughAccountKeys);
     }
+    
+    // ✅ SECURITY: Validate admin authority
+    msg!("🔐 Validating admin authority for consolidation operation");
+    use crate::utils::admin_validation::validate_admin_authority;
+    validate_admin_authority(
+        admin_authority_signer,
+        system_state_pda,
+        Some(program_data_account),
+        program_id,
+    )?;
+    msg!("✅ Admin authority validation passed");
     
     let current_timestamp = Clock::get()?.unix_timestamp;
     

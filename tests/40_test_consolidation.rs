@@ -111,14 +111,22 @@ async fn test_basic_consolidation_instruction() -> TestResult {
     // Step 2: Test consolidation instruction
     println!("💰 Testing consolidation instruction...");
     
+    // Get admin authority for consolidation
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    println!("🔑 Using admin authority: {}", admin_authority.pubkey());
+    
     let consolidate_instruction = PoolInstruction::ConsolidatePoolFees {
         pool_count: 1,
     };
     
     let accounts = vec![
-        AccountMeta::new(system_state_pda, false),
-        AccountMeta::new(main_treasury_pda, false),
-        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(admin_authority.pubkey(), true),  // Admin authority signer
+        AccountMeta::new_readonly(system_state_pda, false),        // System state PDA
+        AccountMeta::new(main_treasury_pda, false),                // Main treasury PDA
+        AccountMeta::new_readonly(fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id()), false), // Program data account
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false), // Pool state PDA
     ];
     
     let instruction = Instruction {
@@ -129,8 +137,8 @@ async fn test_basic_consolidation_instruction() -> TestResult {
     
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
-        Some(&foundation.env.payer.pubkey()),
-        &[&foundation.env.payer],
+        Some(&admin_authority.pubkey()),
+        &[&admin_authority],
         foundation.env.recent_blockhash,
     );
     
@@ -415,11 +423,18 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
         pool_count: 1,
     };
     
-    // Build accounts: [system_state, treasury, pool1]
+    // Get admin authority for consolidation
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    
+    // Build accounts: [admin_authority, system_state, treasury, program_data, pool1]
     let accounts = vec![
-        AccountMeta::new(system_state_pda, false),
-        AccountMeta::new(main_treasury_pda, false),
-        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(admin_authority.pubkey(), true),  // Admin authority signer
+        AccountMeta::new_readonly(system_state_pda, false),        // System state PDA
+        AccountMeta::new(main_treasury_pda, false),                // Main treasury PDA
+        AccountMeta::new_readonly(fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id()), false), // Program data account
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false), // Pool state PDA
     ];
     
     let instruction = Instruction {
@@ -430,8 +445,8 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
     
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
-        Some(&foundation.env.payer.pubkey()),
-        &[&foundation.env.payer],
+        Some(&admin_authority.pubkey()),
+        &[&admin_authority],
         foundation.env.recent_blockhash,
     );
     
