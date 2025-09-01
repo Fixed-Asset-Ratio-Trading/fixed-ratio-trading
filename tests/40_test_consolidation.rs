@@ -1089,10 +1089,18 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
         pool_count: 1,
     };
     
+    // Get admin authority for consolidation and program data address
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    let program_data_pda = fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id());
+    
     let accounts = vec![
-        AccountMeta::new(system_state_pda, false),
-        AccountMeta::new(main_treasury_pda, false),
-        AccountMeta::new(foundation.pool_config.pool_state_pda, false),
+        AccountMeta::new_readonly(admin_authority.pubkey(), true),   // Admin authority signer
+        AccountMeta::new_readonly(system_state_pda, false),          // System state PDA
+        AccountMeta::new(main_treasury_pda, false),                  // Main treasury PDA
+        AccountMeta::new_readonly(program_data_pda, false),          // Program data account
+        AccountMeta::new(foundation.pool_config.pool_state_pda, false), // Pool state PDA
     ];
     
     let instruction = Instruction {
@@ -1104,7 +1112,7 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
         Some(&foundation.env.payer.pubkey()),
-        &[&foundation.env.payer],
+        &[&foundation.env.payer, &admin_authority],
         foundation.env.recent_blockhash,
     );
     
@@ -1565,10 +1573,18 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
         pool_count: 1,
     };
     
+    // Include admin authority and program data for consolidation security
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    let program_data_pda = fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id());
+    
     let consolidation_accounts = vec![
-        AccountMeta::new(system_state_pda, false),
-        AccountMeta::new(main_treasury_pda, false),
-        AccountMeta::new(pool_state_pda, false),
+        AccountMeta::new_readonly(admin_authority.pubkey(), true), // Admin authority signer
+        AccountMeta::new_readonly(system_state_pda, false),        // System state PDA
+        AccountMeta::new(main_treasury_pda, false),                // Main treasury PDA
+        AccountMeta::new_readonly(program_data_pda, false),        // Program data account
+        AccountMeta::new(pool_state_pda, false),                   // Pool state PDA
     ];
     
     let consolidation_ix = Instruction {
@@ -1580,7 +1596,7 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
     let consolidation_transaction = Transaction::new_signed_with_payer(
         &[consolidation_ix],
         Some(&foundation.env.payer.pubkey()),
-        &[&foundation.env.payer],
+        &[&foundation.env.payer, &admin_authority],
         foundation.env.recent_blockhash,
     );
     
@@ -1644,7 +1660,7 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
     println!("✅ Complete consolidation logic verified!");
     
     Ok(())
-}
+} 
 
 /// Helper function to execute a deposit with a fixed amount for fee generation
 async fn execute_deposit_with_fixed_amount(
@@ -2003,10 +2019,17 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
         pool_count: NUM_POOLS as u8,
     };
     
-    // Build accounts: [system_state, treasury, pool1, pool2, ..., pool20]
+    // Build accounts: [admin_authority, system_state, treasury, program_data, pool1..poolN]
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    let program_data_pda = fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id());
+    
     let mut accounts = vec![
-        AccountMeta::new(system_state_pda, false),
+        AccountMeta::new_readonly(admin_authority.pubkey(), true),
+        AccountMeta::new_readonly(system_state_pda, false),
         AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new_readonly(program_data_pda, false),
     ];
     
     // 🔥 REAL MULTI-POOL CONSOLIDATION: Add all actual pool PDAs from Enhanced Foundation!
@@ -2019,7 +2042,7 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
         println!("   📦 Pool {}: {}", i, pda);
     }
     
-    assert_eq!(accounts.len(), 2 + NUM_POOLS, "Should have {} accounts (system + treasury + {} pools)", 2 + NUM_POOLS, NUM_POOLS);
+    assert_eq!(accounts.len(), 4 + NUM_POOLS, "Should have {} accounts (admin + system + treasury + program_data + {} pools)", 4 + NUM_POOLS, NUM_POOLS);
     
     let instruction = Instruction {
         program_id: fixed_ratio_trading::id(),
@@ -2032,7 +2055,7 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
         Some(&payer_pubkey),
-        &[&main_foundation.env.payer],
+        &[&main_foundation.env.payer, &admin_authority],
         main_foundation.env.recent_blockhash,
     );
     

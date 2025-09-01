@@ -851,10 +851,18 @@ pub async fn execute_consolidation_operation(
         pool_count: 1,
     };
     
+    // ⚠️ SECURITY UPDATE: Use admin authority + program data for consolidation
+    use crate::common::setup::create_test_program_authority_keypair;
+    let admin_authority = create_test_program_authority_keypair()
+        .expect("Should create test admin authority");
+    let program_data_pda = fixed_ratio_trading::utils::program_authority::get_program_data_address(&fixed_ratio_trading::id());
+    
     let accounts = vec![
-        solana_sdk::instruction::AccountMeta::new(system_state_pda, false),
-        solana_sdk::instruction::AccountMeta::new(main_treasury_pda, false),
-        solana_sdk::instruction::AccountMeta::new(*pool_pda, false),
+        solana_sdk::instruction::AccountMeta::new_readonly(admin_authority.pubkey(), true), // Admin authority signer
+        solana_sdk::instruction::AccountMeta::new_readonly(system_state_pda, false),        // System state PDA
+        solana_sdk::instruction::AccountMeta::new(main_treasury_pda, false),               // Main treasury PDA
+        solana_sdk::instruction::AccountMeta::new_readonly(program_data_pda, false),       // Program data account
+        solana_sdk::instruction::AccountMeta::new(*pool_pda, false),                       // Pool state PDA
     ];
     
     let instruction = solana_sdk::instruction::Instruction {
@@ -866,7 +874,7 @@ pub async fn execute_consolidation_operation(
     let transaction = solana_sdk::transaction::Transaction::new_signed_with_payer(
         &[instruction],
         Some(&env.payer.pubkey()),
-        &[&env.payer],
+        &[&env.payer, &admin_authority],
         env.recent_blockhash,
     );
     
