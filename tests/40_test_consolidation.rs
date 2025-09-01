@@ -137,8 +137,8 @@ async fn test_basic_consolidation_instruction() -> TestResult {
     
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
-        Some(&admin_authority.pubkey()),
-        &[&admin_authority],
+        Some(&foundation.env.payer.pubkey()),
+        &[&foundation.env.payer, &admin_authority],
         foundation.env.recent_blockhash,
     );
     
@@ -445,8 +445,8 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
     
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
-        Some(&admin_authority.pubkey()),
-        &[&admin_authority],
+        Some(&foundation.env.payer.pubkey()),
+        &[&foundation.env.payer, &admin_authority],
         foundation.env.recent_blockhash,
     );
     
@@ -1330,7 +1330,7 @@ async fn test_consolidation_with_system_pause_mode() -> TestResult {
     let transaction = Transaction::new_signed_with_payer(
         &[instruction],
         Some(&foundation.env.payer.pubkey()),
-        &[&foundation.env.payer],
+        &[&foundation.env.payer, &system_authority],
         foundation.env.recent_blockhash,
     );
     
