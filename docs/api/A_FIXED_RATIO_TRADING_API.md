@@ -206,30 +206,30 @@ The following lists reflect the on-chain handlers and are validated in code. Ind
   - [10] Output Mint Account (must match user output token account mint)
 
 - SetSwapOwnerOnly (4 accounts)
-  - [0] Contract Owner Signer (program upgrade authority)
+  - [0] Contract Owner Signer (admin authority)
   - [1] System State PDA
   - [2] Pool State PDA (writable)
   - [3] Program Data Account (ProgramData)
 
 - UpdatePoolFees (4 accounts)
-  - [0] Program Authority Signer (program upgrade authority)
+  - [0] Program Authority Signer (admin authority)
   - [1] System State PDA
   - [2] Pool State PDA (writable)
   - [3] Program Data Account (ProgramData)
 
 - PauseSystem (3 accounts)
-  - [0] System Authority Signer (program upgrade authority)
+  - [0] System Authority Signer (admin authority)
   - [1] System State PDA (writable)
   - [2] Program Data Account (ProgramData)
 
 - UnpauseSystem (4 accounts)
-  - [0] System Authority Signer (program upgrade authority)
+  - [0] System Authority Signer (admin authority)
   - [1] System State PDA (writable)
   - [2] Main Treasury PDA (writable)
   - [3] Program Data Account (ProgramData)
 
 - WithdrawTreasuryFees (6 accounts)
-  - [0] System Authority Signer (program upgrade authority)
+  - [0] System Authority Signer (admin authority)
   - [1] Main Treasury PDA (writable)
   - [2] Rent Sysvar
   - [3] Destination Account (writable)
@@ -514,7 +514,7 @@ Initializes the program's system state and main treasury. This is a one-time set
 
 The `admin_authority` parameter sets the account that will have control over system-wide operations such as pausing/unpausing the system and withdrawing treasury funds. This authority is separate from the program upgrade authority and can be configured to point to governance systems, multisigs, or other administrative structures.
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **One-time operation:** Can only be called once  
 **Compute Units:** 25,000 CUs maximum
 
@@ -594,18 +594,18 @@ Immediately pauses all system operations globally with comprehensive state track
 **📊 State Management & Tracking:**
 - **Reason Code Tracking**: Categorizes pause reasons for analysis and response protocols
 - **Timestamp Recording**: Precise Unix timestamp for duration calculations and audit logs  
-- **Authority Logging**: Records which upgrade authority initiated the pause
+- **Authority Logging**: Records which admin authority initiated the pause
 - **Validation Checks**: Prevents pausing already-paused system with descriptive errors
 - **Persistent State**: Pause state survives program restarts and cluster maintenance
 
 **🔒 Security & Authority Validation:**
-- **Program Upgrade Authority Required**: Only the program's upgrade authority can execute system pause
-- **Multi-Layer Validation**: Validates upgrade authority through program data account verification
+- **Admin Authority Required**: Only the program's admin authority can execute system pause
+- **Multi-Layer Validation**: Validates admin authority through program data account verification
 - **Signer Requirements**: Ensures proper cryptographic authorization
 - **PDA Security**: Validates system state PDA against expected derived address
 - **Atomic Operation**: Pause state update is atomic (all-or-nothing)
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Effect:** Blocks all operations except read-only functions  
 **Persistence:** Pause state survives restarts until explicitly unpaused  
 **Compute Units:** 10,000 CUs maximum
@@ -620,9 +620,9 @@ accounts: &[AccountInfo; 3]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | System Authority | Signer, Writable | Must be program upgrade authority |
+| 0 | System Authority | Signer, Writable | Must be admin authority |
 | 1 | System State PDA | Writable | System state to update with pause information |
-| 2 | Program Data Account | Readable | Program data account for upgrade authority validation |
+| 2 | Program Data Account | Readable | Program data account for admin authority validation |
 
 #### Pause Reason Codes & Use Cases
 | Code | Category | Description | Typical Scenario |
@@ -670,7 +670,7 @@ Resumes all system operations after a pause with comprehensive state restoration
 
 **📊 State Management & Audit Trail:**
 - **Pause Duration Calculation**: Measures total time system was paused for operational metrics
-- **Authority Logging**: Records which upgrade authority initiated the unpause
+- **Authority Logging**: Records which admin authority initiated the unpause
 - **Previous State Tracking**: Logs the original pause reason code for correlation
 - **Timestamp Recording**: Records unpause timestamp for audit compliance
 - **State Persistence**: Both system and treasury state changes persist through restarts
@@ -682,7 +682,7 @@ Resumes all system operations after a pause with comprehensive state restoration
 - **Read-Only Functions**: Continue working normally during and after unpause
 - **Client Integration**: Applications should check both system and pool pause states
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Effect:** Restores operations + applies 71-hour treasury withdrawal penalty  
 **Duration:** Pause duration calculated and logged for audit purposes  
 **Compute Units:** 15,000 CUs maximum
@@ -696,16 +696,16 @@ accounts: &[AccountInfo; 4]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | System Authority | Signer, Writable | Must be program upgrade authority |
+| 0 | System Authority | Signer, Writable | Must be admin authority |
 | 1 | System State PDA | Writable | System state to clear pause information |
 | 2 | Main Treasury PDA | Writable | Treasury state to apply 71-hour withdrawal penalty |
-| 3 | Program Data Account | Readable | Program data account for upgrade authority validation |
+| 3 | Program Data Account | Readable | Program data account for admin authority validation |
 
 #### Enhanced Account Validation
 Unlike most functions, `process_system_unpause` includes explicit account count validation:
 - **Explicit Length Check**: Verifies exactly 4 accounts provided (prevents index panics)
 - **Treasury PDA Validation**: Validates treasury PDA matches expected derived address
-- **Authority Verification**: Multi-step program upgrade authority validation
+- **Authority Verification**: Multi-step admin authority validation
 - **Writability Checks**: Ensures system state and treasury PDAs are writable
 - **Atomicity Guarantee**: All validations must pass before any state changes
 
@@ -740,7 +740,7 @@ treasury_state.apply_system_restart_penalty(current_timestamp);
 |-------|-----------|------------|
 | **SystemNotPaused** | System is already unpaused | Verify system state before calling |
 | **NotEnoughAccountKeys** | Less than 4 accounts provided | Ensure all 4 accounts included |
-| **Unauthorized** | Caller is not program upgrade authority | Use correct upgrade authority account |
+| **Unauthorized** | Caller is not admin authority | Use correct admin authority account |
 | **InvalidAccountData** | Treasury PDA validation failed | Verify treasury PDA derivation |
 | **AccountDataTooSmall** | State account too small for updates | Contact support (should not occur) |
 
@@ -815,7 +815,7 @@ Current Admin: Alice
 ```
 
 **⚠️ Important Security Notes:**
-- **Authority Validation**: Only current admin or upgrade authority (during migration) can initiate changes
+- **Authority Validation**: Only current admin authority (or upgrade authority during migration) can initiate changes
 - **PDA Security**: Validates system state PDA against expected derived address
 - **Atomic Operations**: All state changes are atomic (all-or-nothing)
 - **Persistent State**: Pending changes survive program restarts and cluster maintenance
@@ -836,9 +836,9 @@ accounts: &[AccountInfo; 3]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Current Admin Authority | Signer, Writable | Must be current admin or upgrade authority |
+| 0 | Current Admin Authority | Signer, Writable | Must be current admin authority (or upgrade authority during migration) |
 | 1 | System State PDA | Writable | System state to update with admin change info |
-| 2 | Program Data Account | Readable | Program data account for upgrade authority validation |
+| 2 | Program Data Account | Readable | Program data account for admin authority validation |
 
 #### Admin Change Results & Responses
 
@@ -903,14 +903,14 @@ let remaining = ADMIN_CHANGE_TIMELOCK - elapsed;
 ```
 
 #### Security Validations
-1. **Authority Check**: Verifies signer is current admin or upgrade authority
+1. **Authority Check**: Verifies signer is current admin authority (or upgrade authority during migration)
 2. **PDA Validation**: Confirms system state PDA matches expected address
 3. **Signer Requirement**: Ensures proper cryptographic authorization
 4. **Account Writability**: Validates system state account is writable
 5. **Timestamp Integrity**: Uses on-chain clock for tamper-proof timing
 
 #### Error Conditions
-- **Unauthorized**: Calling account is not current admin or upgrade authority
+- **Unauthorized**: Calling account is not current admin authority (or upgrade authority during migration)
 - **InvalidAccountData**: System state PDA validation failed
 - **AccountDataTooSmall**: System state account cannot store admin change data
 - **InvalidSystemStatePDA**: Provided PDA doesn't match expected derived address
@@ -2503,7 +2503,7 @@ For immediate error code lookup, see the [Custom Error Codes](#custom-error-code
 
 Pauses specific operations on a pool.
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Flags:** Can pause liquidity, swaps, or both
 
 #### Parameters
@@ -2524,7 +2524,7 @@ accounts: &[AccountInfo; 4]
 
 Resumes paused operations on a pool.
 
-**Authority:** Program Upgrade Authority only
+**Authority:** Admin Authority only
 
 #### Parameters
 ```rust
@@ -2539,7 +2539,7 @@ accounts: &[AccountInfo; 4]
 
 Updates fee configuration for a specific pool.
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Note:** Fee modification requests can be submitted to support@davincicodes.net and will be evaluated on a case-by-case basis.
 
 #### Parameters
@@ -2948,7 +2948,7 @@ Configures advanced access control for swap operations with flexible ownership d
 - **State Validation**: Ensures pool and system states are valid before modifications
 - **Atomic Updates**: All state changes committed atomically or fail completely
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Purpose:** Enables sophisticated operational models and custom business logic  
 **Effect:** Controls who can execute swaps on the pool
 
@@ -3107,7 +3107,7 @@ Functions for managing protocol treasury and fees.
 
 Withdraws collected protocol fees from the main treasury with advanced rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing dynamic rate limiting to prevent rapid fund drainage and ensure system stability.
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority only  
 **Restrictions:** Dynamic rate limiting with 60-minute rolling windows  
 **Compute Units:** 80,000 CUs maximum (complex validation logic)
 
@@ -3121,7 +3121,7 @@ accounts: &[AccountInfo; 6]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | System Authority | Signer, Writable | Must be program upgrade authority |
+| 0 | System Authority | Signer, Writable | Must be admin authority |
 | 1 | Main Treasury PDA | Writable | Treasury account to withdraw from |
 | 2 | Rent Sysvar | Readable | For rent-exempt minimum calculations |
 | 3 | Destination Account | Writable | Account to receive withdrawn SOL |
