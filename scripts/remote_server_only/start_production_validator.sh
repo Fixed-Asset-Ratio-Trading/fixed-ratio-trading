@@ -854,21 +854,13 @@ EOF
     # Create the SPL token
     echo -e "${YELLOW}🔨 Creating SPL token...${NC}"
     local TOKEN_MINT
+    # Note: --output json causes hanging in spl-token-cli 5.3.0, so we parse the standard output instead
+    # Extract token address from "Creating token [ADDRESS] under program [PROGRAM_ID]" line
     TOKEN_MINT=$(spl-token create-token \
         --fee-payer "$DEPLOY_AUTHORITY_KEYPAIR" \
         --mint-authority "$DEPLOY_AUTHORITY_ADDRESS" \
         --decimals $TEST_TOKEN_DECIMALS \
-        --url "$LOCAL_RPC_URL" \
-        --output json 2>/dev/null | jq -r '.commandOutput.address' 2>/dev/null)
-    
-    if [ -z "$TOKEN_MINT" ] || [ "$TOKEN_MINT" = "null" ]; then
-        # Fallback: try without json output
-        TOKEN_MINT=$(spl-token create-token \
-            --fee-payer "$DEPLOY_AUTHORITY_KEYPAIR" \
-            --mint-authority "$DEPLOY_AUTHORITY_ADDRESS" \
-            --decimals $TEST_TOKEN_DECIMALS \
-            --url "$LOCAL_RPC_URL" 2>/dev/null | grep "Creating token" | awk '{print $NF}' || true)
-    fi
+        --url "$LOCAL_RPC_URL" 2>/dev/null | grep "Creating token" | awk '{print $3}' || true)
     
     if [ -z "$TOKEN_MINT" ] || [ "$TOKEN_MINT" = "null" ]; then
         echo -e "${RED}❌ Failed to create SPL token${NC}"

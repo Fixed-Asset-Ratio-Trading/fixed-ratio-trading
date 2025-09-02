@@ -8,6 +8,7 @@
 # Solana keypair files - NEVER commit these!
 !deployment_info.json
 target/deploy/*-keypair.json
+scripts/keys/
 
 # Node.js (not needed for this Rust/Solana project)
 node_modules/
