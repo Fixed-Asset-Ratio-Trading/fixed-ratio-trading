@@ -141,7 +141,14 @@ pub fn process_system_initialize(
 
     // Create system state data with the provided admin authority
     // This allows configurable admin authority at initialization time
-    let system_state_data = SystemState::new(admin_authority);
+    let mut system_state_data = SystemState::new(admin_authority);
+    
+    // Set pending_admin_authority to current admin and admin_change_timestamp to current time
+    let current_timestamp = Clock::get()?.unix_timestamp;
+    system_state_data.pending_admin_authority = Some(admin_authority);
+    system_state_data.admin_change_timestamp = current_timestamp;
+    msg!("🔐 Admin authority initialization: pending_admin set to {} at timestamp {}", 
+         admin_authority, current_timestamp);
     
     // Serialize system state to account with robust error handling
     let serialized_system_state = system_state_data.try_to_vec()?;
