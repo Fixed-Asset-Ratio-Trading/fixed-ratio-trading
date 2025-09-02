@@ -3179,12 +3179,76 @@ program_id: &Pubkey
 accounts: &[AccountInfo; 1]
 ```
 
-#### Returns (via logs)
-- Total balance
-- Pool creation fees collected
-- Consolidated fees
-- Withdrawal statistics
-- Last operations timestamps
+#### Account Requirements
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Main Treasury PDA | Read-only | Treasury account to query information from |
+
+**Treasury PDA Derivation:**
+```rust
+let (main_treasury_pda, _) = Pubkey::find_program_address(
+    &[MAIN_TREASURY_SEED_PREFIX], // "main_treasury"
+    &program_id,
+);
+```
+
+#### Expected Result Format (via logs)
+
+The function returns comprehensive treasury information through structured log messages. Developers should parse these logs to extract treasury data:
+
+```
+📊 Getting real-time treasury information
+✅ Successfully loaded treasury state from account data
+
+🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):
+   Current Balance: {balance} lamports ({sol_balance} SOL)
+   Total Withdrawn: {withdrawn} lamports ({withdrawn_sol} SOL)
+
+📈 OPERATION STATISTICS:
+   Pool Creations: {count} (Total fees: {total_fees} lamports, Avg: {avg_fee})
+   Liquidity Operations: {count} (Total fees: {total_fees} lamports, Avg: {avg_fee})
+   Regular Swaps: {count} (Total fees: {total_fees} lamports, Avg: {avg_fee})
+   Treasury Withdrawals: {count} (Total: {total_withdrawn} lamports)
+   Consolidations: {count} (Last: {timestamp})
+   Donations: {count} (Total: {total_donations} lamports, {donations_sol} SOL)
+
+📊 ENHANCED ANALYTICS:
+   Total Successful Operations: {total_operations}
+   Failed Operations: {failed_count}
+   Success Rate: {success_rate}%
+   Total Fees Collected: {total_fees} lamports ({total_fees_sol} SOL)
+   Average Fee per Operation: {avg_fee} lamports
+
+⏰ TIMING INFORMATION:
+   Last Update: {timestamp}
+
+✅ TREASURY BENEFITS:
+   • Real-time data (no consolidation needed)
+   • Single source of truth
+   • No race conditions
+   • Simplified architecture
+```
+
+#### Parsing Guidelines for Developers
+
+1. **Balance Information**: Extract current balance and total withdrawn amounts from the "CENTRALIZED TREASURY INFORMATION" section
+2. **Operation Metrics**: Parse individual operation counts and fee totals from "OPERATION STATISTICS"
+3. **Analytics Data**: Get success rates and averages from "ENHANCED ANALYTICS"
+4. **Timestamp**: Extract last update timestamp from "TIMING INFORMATION"
+
+#### Error Handling
+
+If treasury state deserialization fails, the function creates a default state with current account balance:
+
+```
+⚠️ Warning: Failed to deserialize treasury state: {error}
+🔄 Creating default treasury state with current account balance
+
+📊 Default state created:
+   - Current balance: {balance} lamports
+   - Rent exempt minimum: 2039280 lamports
+   - All counters reset to 0 (data corruption detected)
+```
 
 ---
 
