@@ -232,23 +232,12 @@ impl SystemState {
     /// # Returns
     /// * `Ok(AdminChangeResult)` - Indicates what action was taken
     pub fn process_admin_change(&mut self, new_admin: Pubkey, timestamp: i64) -> Result<AdminChangeResult, String> {
-        // Case 1: Same as current admin - cancel any pending change
-        if new_admin == self.admin_authority {
-            if self.pending_admin_authority.is_some() {
-                self.pending_admin_authority = None;
-                self.admin_change_timestamp = 0;
-                return Ok(AdminChangeResult::Cancelled);
-            } else {
-                return Ok(AdminChangeResult::NoChange);
-            }
-        }
-        
-        // Case 2: Check if we can complete a pending change
+        // Check if we can complete a pending change (same pending admin after 72+ hours)
         if let Some(pending_admin) = self.pending_admin_authority {
             let time_elapsed = timestamp - self.admin_change_timestamp;
             
-            if time_elapsed >= Self::ADMIN_CHANGE_TIMELOCK {
-                // Timelock satisfied - complete the change if it's different from current
+            if pending_admin == new_admin && time_elapsed >= Self::ADMIN_CHANGE_TIMELOCK {
+                // Complete the change: same pending admin requested after timelock period
                 if pending_admin != self.admin_authority {
                     let old_admin = self.admin_authority;
                     self.admin_authority = pending_admin;
@@ -256,37 +245,43 @@ impl SystemState {
                     self.admin_change_timestamp = 0;
                     return Ok(AdminChangeResult::Completed { old_admin, new_admin: pending_admin });
                 } else {
-                    // Pending admin same as current - just clear pending
+                    // Pending admin same as current admin - just clear pending state
                     self.pending_admin_authority = None;
                     self.admin_change_timestamp = 0;
                     return Ok(AdminChangeResult::Cancelled);
                 }
             }
-            
-            // Timelock not satisfied yet - check if proposing different admin
-            if pending_admin != new_admin {
-                // Different admin proposed - reset timer
-                self.pending_admin_authority = Some(new_admin);
-                self.admin_change_timestamp = timestamp;
-                return Ok(AdminChangeResult::Initiated { 
-                    new_admin, 
-                    previous_pending: Some(pending_admin) 
-                });
-            } else {
-                // Same pending admin proposed again - no change
-                let remaining = Self::ADMIN_CHANGE_TIMELOCK - time_elapsed;
-                return Ok(AdminChangeResult::Pending { 
-                    pending_admin, 
-                    remaining_seconds: remaining 
-                });
-            }
-        } else {
-            // Case 3: No pending change - initiate new one
-            self.pending_admin_authority = Some(new_admin);
-            self.admin_change_timestamp = timestamp;
+        }
+        
+        // For all other cases: Set pending admin and reset timestamp
+        // This includes:
+        // - New admin change (no pending change)
+        // - Different admin than pending (reset timer)  
+        // - Same admin as current (still set pending state)
+        // - Same pending admin but < 72 hours (reset timer)
+        
+        let previous_pending = self.pending_admin_authority;
+        self.pending_admin_authority = Some(new_admin);
+        self.admin_change_timestamp = timestamp;
+        
+        if previous_pending.is_some() && previous_pending != Some(new_admin) {
+            // Different admin proposed - reset timer
+            return Ok(AdminChangeResult::Initiated { 
+                new_admin, 
+                previous_pending 
+            });
+        } else if previous_pending.is_none() {
+            // No previous pending change - initiate new one
             return Ok(AdminChangeResult::Initiated { 
                 new_admin, 
                 previous_pending: None 
+            });
+        } else {
+            // Same pending admin proposed again but < 72 hours - reset timer
+            let remaining = Self::ADMIN_CHANGE_TIMELOCK;
+            return Ok(AdminChangeResult::Pending { 
+                pending_admin: new_admin, 
+                remaining_seconds: remaining 
             });
         }
     }
