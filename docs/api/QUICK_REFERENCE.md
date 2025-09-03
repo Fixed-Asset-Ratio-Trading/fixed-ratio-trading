@@ -50,11 +50,16 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | Function | Authority | Fee | Purpose |
 |----------|-----------|-----|---------|
 | `process_pool_initialize` | Any User | 1.15 SOL | Create pool |
-| `process_pool_pause` | Admin Authority* | - | Pause pool |
-| `process_pool_unpause` | Admin Authority* | - | Resume pool |
-| `process_pool_update_fees` | Admin Authority* | - | Update fees |
+| `process_pool_pause` | Program Upgrade Authority | - | Pause pool operations (bitwise flags) |
+| `process_pool_unpause` | Program Upgrade Authority | - | Resume pool operations (bitwise flags) |
+| `process_pool_update_fees` | Program Upgrade Authority | - | Update fees |
 
-*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
+#### Pool Pause Flags
+| Flag | Value | Purpose |
+|------|-------|---------|
+| `PAUSE_FLAG_LIQUIDITY` | 1 | Pause deposits/withdrawals |
+| `PAUSE_FLAG_SWAPS` | 2 | Pause swap operations |
+| `PAUSE_FLAG_ALL` | 3 | Pause all operations (required for consolidation) |
 
 ### Liquidity Operations
 | Function | Authority | Default Fee | Purpose |
@@ -150,6 +155,30 @@ const requiredOtherToken = (depositAmount * ratioB) / ratioA;
 const inputAmount = 1_000_000_000; // 1 SOL
 const expectedOutput = (inputAmount * outputRatio) / inputRatio;
 const minOutput = expectedOutput * 0.99; // 1% slippage tolerance
+```
+
+### Pausing Pool Operations
+```javascript
+// Pause flag constants
+const PAUSE_FLAG_LIQUIDITY = 1;  // Pause deposits/withdrawals
+const PAUSE_FLAG_SWAPS = 2;      // Pause swaps
+const PAUSE_FLAG_ALL = 3;        // Pause all operations
+
+// Create pause instruction (requires Program Upgrade Authority)
+const pauseInstruction = createPausePoolInstruction(
+    programUpgradeAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL  // Pause all operations
+);
+
+// Create unpause instruction
+const unpauseInstruction = createUnpausePoolInstruction(
+    programUpgradeAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL  // Unpause all operations
+);
 ```
 
 ## ⚠️ Important Notes

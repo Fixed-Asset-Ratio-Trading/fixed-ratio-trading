@@ -2331,6 +2331,251 @@ async function createPoolSafe(tokenAMint, tokenBMint, displayRatio) {
 
 ---
 
+### `process_pool_pause`
+
+Pauses specific pool operations using bitwise flags with granular control over which operations to halt. This function provides pool-level pause control that operates independently of system-wide pause states, allowing administrators to selectively disable deposits/withdrawals or swaps while maintaining other pool functionality.
+
+**🎛️ Granular Operation Control:**
+- **PAUSE_FLAG_LIQUIDITY (1)**: Pause deposits and withdrawals only
+- **PAUSE_FLAG_SWAPS (2)**: Pause swap operations only  
+- **PAUSE_FLAG_ALL (3)**: Pause both liquidity and swap operations (required for consolidation eligibility)
+- **Bitwise Logic**: Flags can be combined using bitwise OR operations for flexible control
+
+**🔒 Security & Authority Requirements:**
+- **Program Upgrade Authority Required**: Only the program upgrade authority can pause individual pools
+- **System State Validation**: Validates system is not paused before allowing pool-specific pause operations
+- **Admin Authority Validation**: Multi-layer validation through program data account verification
+- **Idempotent Operation**: Pausing already paused operations does not cause errors
+
+**📊 State Management & Tracking:**
+- **Pool State Updates**: Modifies pool state flags to reflect pause status
+- **Operation Logging**: Records which specific operations were paused for audit trail
+- **Consolidation Eligibility**: Pools with both liquidity and swaps paused become eligible for fee consolidation
+- **Persistent State**: Pause state survives program restarts and cluster maintenance
+
+**Authority:** Program Upgrade Authority only  
+**Effect:** Blocks specified pool operations based on pause flags  
+**Persistence:** Pause state survives restarts until explicitly unpaused  
+**Compute Units:** 12,000 - 150,000 CUs
+
+#### Instruction Format
+
+**Discriminator:** `19` (single byte)  
+**Total Data Length:** 2 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct PausePoolInstruction {
+    discriminator: u8,    // 1 byte: value = 19
+    pause_flags: u8,      // 1 byte: bitwise flags for operations to pause
+}
+```
+
+#### Account Order
+
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Program Upgrade Authority | Signer, Writable | Must be program upgrade authority |
+| 1 | System State PDA | Readable | System state for pause validation |
+| 2 | Pool State PDA | Writable | Pool state to update with pause information |
+| 3 | Program Data Account | Readable | Program data account for authority validation |
+
+#### Pause Flag Constants
+
+```javascript
+// Pause flag constants (from src/constants.rs)
+const PAUSE_FLAG_LIQUIDITY = 1;  // 0b01 - Pause deposits/withdrawals
+const PAUSE_FLAG_SWAPS = 2;      // 0b10 - Pause swaps  
+const PAUSE_FLAG_ALL = 3;        // 0b11 - Pause both operations
+```
+
+#### JavaScript Example
+
+```javascript
+function createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    pauseFlags
+) {
+    const [systemStatePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")],
+        PROGRAM_ID
+    );
+    
+    const instructionData = Buffer.concat([
+        Buffer.from([19]),        // PausePool discriminator
+        Buffer.from([pauseFlags]) // Pause flags
+    ]);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: programDataAccount, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: instructionData,
+    });
+}
+
+// Usage examples:
+// Pause only liquidity operations
+const pauseLiquidityOnly = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_LIQUIDITY
+);
+
+// Pause only swaps
+const pauseSwapsOnly = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_SWAPS
+);
+
+// Pause all operations (required for consolidation)
+const pauseAllOperations = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL
+);
+```
+
+#### Error Conditions
+- **SystemPaused**: Cannot pause individual pools when system is paused
+- **Unauthorized**: Calling account is not the program upgrade authority
+- **InvalidAccountData**: Pool state PDA validation failed
+- **AccountDataTooSmall**: Pool state account cannot store pause information
+
+---
+
+### `process_pool_unpause`
+
+Unpauses specific pool operations using bitwise flags with granular control over which operations to restore. This function provides pool-level unpause control that operates independently of system-wide pause states, allowing administrators to selectively re-enable deposits/withdrawals or swaps with precise operational control.
+
+**🎛️ Granular Operation Control:**
+- **PAUSE_FLAG_LIQUIDITY (1)**: Unpause deposits and withdrawals only
+- **PAUSE_FLAG_SWAPS (2)**: Unpause swap operations only  
+- **PAUSE_FLAG_ALL (3)**: Unpause both liquidity and swap operations
+- **Bitwise Logic**: Flags can be combined using bitwise OR operations for flexible control
+
+**🔒 Security & Authority Requirements:**
+- **Program Upgrade Authority Required**: Only the program upgrade authority can unpause individual pools
+- **System State Validation**: Validates system is not paused before allowing pool-specific unpause operations
+- **Admin Authority Validation**: Multi-layer validation through program data account verification
+- **Idempotent Operation**: Unpausing already unpaused operations does not cause errors
+
+**📊 State Management & Tracking:**
+- **Pool State Updates**: Modifies pool state flags to reflect unpause status
+- **Operation Logging**: Records which specific operations were unpaused for audit trail
+- **Consolidation Impact**: Unpausing operations may affect consolidation eligibility status
+- **Persistent State**: Unpause state survives program restarts and cluster maintenance
+
+**⚠️ Important Behavioral Notes:**
+- **System Override**: Pool unpause only works when system is not paused (system pause overrides pool states)
+- **Independent Operation**: Pool unpause does NOT affect system-wide pause state
+- **Selective Control**: Can unpause specific operations while leaving others paused
+- **Client Integration**: Applications should check both system and pool pause states before operations
+
+**Authority:** Program Upgrade Authority only  
+**Effect:** Re-enables specified pool operations based on unpause flags  
+**Persistence:** Unpause state survives restarts until explicitly paused again  
+**Compute Units:** 12,000 - 150,000 CUs
+
+#### Instruction Format
+
+**Discriminator:** `20` (single byte)  
+**Total Data Length:** 2 bytes  
+**Serialization:** Borsh format
+
+```rust
+// Instruction structure
+pub struct UnpausePoolInstruction {
+    discriminator: u8,      // 1 byte: value = 20
+    unpause_flags: u8,      // 1 byte: bitwise flags for operations to unpause
+}
+```
+
+#### Account Order
+
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Program Upgrade Authority | Signer, Writable | Must be program upgrade authority |
+| 1 | System State PDA | Readable | System state for pause validation |
+| 2 | Pool State PDA | Writable | Pool state to update with unpause information |
+| 3 | Program Data Account | Readable | Program data account for authority validation |
+
+#### JavaScript Example
+
+```javascript
+function createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    unpauseFlags
+) {
+    const [systemStatePDA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("system_state")],
+        PROGRAM_ID
+    );
+    
+    const instructionData = Buffer.concat([
+        Buffer.from([20]),          // UnpausePool discriminator
+        Buffer.from([unpauseFlags]) // Unpause flags
+    ]);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: programDataAccount, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: instructionData,
+    });
+}
+
+// Usage examples:
+// Unpause only liquidity operations
+const unpauseLiquidityOnly = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_LIQUIDITY
+);
+
+// Unpause only swaps
+const unpauseSwapsOnly = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_SWAPS
+);
+
+// Unpause all operations
+const unpauseAllOperations = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL
+);
+```
+
+#### Error Conditions
+- **SystemPaused**: Cannot unpause individual pools when system is paused
+- **Unauthorized**: Calling account is not the program upgrade authority
+- **InvalidAccountData**: Pool state PDA validation failed
+- **AccountDataTooSmall**: Pool state account cannot store unpause information
+
+---
+
 ## Error Analysis & Troubleshooting
 
 ### Transaction Instruction Failure Analysis

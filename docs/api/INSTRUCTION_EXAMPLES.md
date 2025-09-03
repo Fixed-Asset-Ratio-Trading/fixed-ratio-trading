@@ -245,6 +245,123 @@ function createUpdatePoolFeesInstruction(
 }
 ```
 
+### Pause Pool Operations
+```javascript
+// Pause flag constants
+const PAUSE_FLAG_LIQUIDITY = 1;  // 0b01 - Pause deposits/withdrawals
+const PAUSE_FLAG_SWAPS = 2;      // 0b10 - Pause swaps  
+const PAUSE_FLAG_ALL = 3;        // 0b11 - Pause both operations
+
+function createPausePoolInstruction(
+    programAuthority: PublicKey,
+    poolStatePDA: PublicKey,
+    programDataAccount: PublicKey,
+    pauseFlags: number
+) {
+    const [systemStatePDA] = PublicKey.findProgramAddress(
+        [Buffer.from("system_state")],
+        PROGRAM_ID
+    );
+    
+    const instructionData = Buffer.concat([
+        Buffer.from([PoolInstruction.PausePool]),
+        Buffer.from([pauseFlags])
+    ]);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: programDataAccount, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: instructionData,
+    });
+}
+
+// Usage examples:
+// Pause only liquidity operations (deposits/withdrawals)
+const pauseLiquidityInstruction = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_LIQUIDITY
+);
+
+// Pause only swap operations
+const pauseSwapsInstruction = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_SWAPS
+);
+
+// Pause all operations (required for consolidation eligibility)
+const pauseAllInstruction = createPausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL
+);
+```
+
+### Unpause Pool Operations
+```javascript
+function createUnpausePoolInstruction(
+    programAuthority: PublicKey,
+    poolStatePDA: PublicKey,
+    programDataAccount: PublicKey,
+    unpauseFlags: number
+) {
+    const [systemStatePDA] = PublicKey.findProgramAddress(
+        [Buffer.from("system_state")],
+        PROGRAM_ID
+    );
+    
+    const instructionData = Buffer.concat([
+        Buffer.from([PoolInstruction.UnpausePool]),
+        Buffer.from([unpauseFlags])
+    ]);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: programDataAccount, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: instructionData,
+    });
+}
+
+// Usage examples:
+// Unpause only liquidity operations
+const unpauseLiquidityInstruction = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_LIQUIDITY
+);
+
+// Unpause only swap operations
+const unpauseSwapsInstruction = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_SWAPS
+);
+
+// Unpause all operations
+const unpauseAllInstruction = createUnpausePoolInstruction(
+    programAuthority,
+    poolStatePDA,
+    programDataAccount,
+    PAUSE_FLAG_ALL
+);
+```
+
 ## Liquidity Operations Examples
 
 ### Deposit Liquidity
