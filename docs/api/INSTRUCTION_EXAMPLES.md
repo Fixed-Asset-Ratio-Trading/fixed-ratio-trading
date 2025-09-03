@@ -247,6 +247,9 @@ function createUpdatePoolFeesInstruction(
 
 ### Pause Pool Operations
 ```javascript
+// Import Borsh for proper serialization
+import { serialize } from 'borsh';
+
 // Pause flag constants
 const PAUSE_FLAG_LIQUIDITY = 1;  // 0b01 - Pause deposits/withdrawals
 const PAUSE_FLAG_SWAPS = 2;      // 0b10 - Pause swaps  
@@ -263,16 +266,21 @@ function createPausePoolInstruction(
         PROGRAM_ID
     );
     
-    const instructionData = Buffer.concat([
-        Buffer.from([19]), // PausePool discriminator
-        Buffer.from([pauseFlags])
-    ]);
+    // Create PoolInstruction::PausePool using Borsh serialization
+    const pausePoolInstruction = {
+        pausePool: {
+            pause_flags: pauseFlags
+        }
+    };
+    
+    // Serialize using Borsh (matches working test implementation)
+    const instructionData = serialize(PoolInstructionSchema, pausePoolInstruction);
     
     return new TransactionInstruction({
         keys: [
             { pubkey: adminAuthority, isSigner: true, isWritable: true },
-            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
+            { pubkey: systemStatePDA, isSigner: false, isWritable: true },     // ⚠️ WRITABLE
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },       // ⚠️ WRITABLE
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -319,16 +327,21 @@ function createUnpausePoolInstruction(
         PROGRAM_ID
     );
     
-    const instructionData = Buffer.concat([
-        Buffer.from([20]), // UnpausePool discriminator
-        Buffer.from([unpauseFlags])
-    ]);
+    // Create PoolInstruction::UnpausePool using Borsh serialization
+    const unpausePoolInstruction = {
+        unpausePool: {
+            unpause_flags: unpauseFlags
+        }
+    };
+    
+    // Serialize using Borsh (matches working test implementation)
+    const instructionData = serialize(PoolInstructionSchema, unpausePoolInstruction);
     
     return new TransactionInstruction({
         keys: [
             { pubkey: adminAuthority, isSigner: true, isWritable: true },
-            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
+            { pubkey: systemStatePDA, isSigner: false, isWritable: true },     // ⚠️ WRITABLE
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },       // ⚠️ WRITABLE
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,

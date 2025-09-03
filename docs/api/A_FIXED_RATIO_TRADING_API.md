@@ -510,14 +510,14 @@ Each instruction requires accounts to be provided in a specific order. The follo
 
 **PausePool (Discriminator 19)**
 - [0] Admin Authority (Signer, Writable) - Must be admin authority (or program upgrade authority as fallback)
-- [1] System State PDA (Readable) - System state for pause validation
-- [2] Pool State PDA (Readable) - Pool state to read current pause state (⚠️ NOT writable - updated internally)
+- [1] System State PDA (Writable) - System state for pause validation
+- [2] Pool State PDA (Writable) - Pool state to update with pause information
 - [3] Program Data Account (Readable) - Program data account for authority validation
 
 **UnpausePool (Discriminator 20)**
 - [0] Admin Authority (Signer, Writable) - Must be admin authority (or program upgrade authority as fallback)  
-- [1] System State PDA (Readable) - System state for pause validation
-- [2] Pool State PDA (Readable) - Pool state to read current pause state (⚠️ NOT writable - updated internally)
+- [1] System State PDA (Writable) - System state for pause validation
+- [2] Pool State PDA (Writable) - Pool state to update with unpause information
 - [3] Program Data Account (Readable) - Program data account for authority validation
 
 **SetSwapOwnerOnly (Discriminator 21)**
@@ -527,11 +527,12 @@ Each instruction requires accounts to be provided in a specific order. The follo
 - [3] Program Data Account (Readable) - Program data account for authority validation
 
 **⚠️ Critical Notes:**
-- **Pool State PDA is READ-ONLY** for pause/unpause operations - the pool state is modified internally by the program, not by the client
+- **Pool State PDA is WRITABLE** for pause/unpause operations - the pool state is updated directly by the client transaction
+- **System State PDA is WRITABLE** for pause/unpause operations - system state may be updated during validation
 - **Pool State PDA is WRITABLE** for SetSwapOwnerOnly operations - it updates both flags and ownership
 - **Admin Authority** can be either the configured admin authority OR the program upgrade authority (fallback)
 - **Authority Validation** uses multi-layer validation through program data account verification
-- This is different from other pool management instructions where Pool State PDA may be writable
+- **Borsh Serialization** is used for all instruction data (not raw byte arrays)
 
 ---
 
@@ -2379,7 +2380,7 @@ Pauses specific pool operations using bitwise flags with granular control over w
 - **Idempotent Operation**: Pausing already paused operations does not cause errors
 
 **📊 State Management & Tracking:**
-- **Pool State Updates**: Modifies pool state flags to reflect pause status (handled internally by program)
+- **Pool State Updates**: Modifies pool state flags to reflect pause status
 - **Operation Logging**: Records which specific operations were paused for audit trail
 - **Consolidation Eligibility**: Pools with both liquidity and swaps paused become eligible for fee consolidation
 - **Persistent State**: Pause state survives program restarts and cluster maintenance
@@ -2392,14 +2393,13 @@ Pauses specific pool operations using bitwise flags with granular control over w
 #### Instruction Format
 
 **Discriminator:** `19` (single byte)  
-**Total Data Length:** 2 bytes  
+**Total Data Length:** Variable (Borsh serialization)  
 **Serialization:** Borsh format
 
 ```rust
-// Instruction structure
-pub struct PausePoolInstruction {
-    discriminator: u8,    // 1 byte: value = 19
-    pause_flags: u8,      // 1 byte: bitwise flags for operations to pause
+// Instruction structure (Borsh serialized)
+PoolInstruction::PausePool {
+    pause_flags: u8,      // Bitwise flags for operations to pause
 }
 ```
 
@@ -2408,8 +2408,8 @@ pub struct PausePoolInstruction {
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
 | 0 | Admin Authority | Signer, Writable | Must be admin authority (or program upgrade authority as fallback) |
-| 1 | System State PDA | Readable | System state for pause validation |
-| 2 | Pool State PDA | **Readable** | Pool state to read current pause state (⚠️ NOT writable - updated internally) |
+| 1 | System State PDA | Writable | System state for pause validation |
+| 2 | Pool State PDA | **Writable** | Pool state to update with pause information |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
 #### Pause Flag Constants
@@ -2424,6 +2424,9 @@ const PAUSE_FLAG_ALL = 3;        // 0b11 - Pause both operations
 #### JavaScript Example
 
 ```javascript
+// Import Borsh for proper serialization
+import { serialize } from 'borsh';
+
 function createPausePoolInstruction(
     adminAuthority,
     poolStatePDA,
@@ -2435,16 +2438,21 @@ function createPausePoolInstruction(
         PROGRAM_ID
     );
     
-    const instructionData = Buffer.concat([
-        Buffer.from([19]),        // PausePool discriminator
-        Buffer.from([pauseFlags]) // Pause flags
-    ]);
+    // Create PoolInstruction::PausePool using Borsh serialization
+    const pausePoolInstruction = {
+        pausePool: {
+            pause_flags: pauseFlags
+        }
+    };
+    
+    // Serialize using Borsh (matches working test implementation)
+    const instructionData = serialize(PoolInstructionSchema, pausePoolInstruction);
     
     return new TransactionInstruction({
         keys: [
             { pubkey: adminAuthority, isSigner: true, isWritable: true },
-            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
+            { pubkey: systemStatePDA, isSigner: false, isWritable: true },     // ⚠️ WRITABLE
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },       // ⚠️ WRITABLE
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -2503,7 +2511,7 @@ Unpauses specific pool operations using bitwise flags with granular control over
 - **Idempotent Operation**: Unpausing already unpaused operations does not cause errors
 
 **📊 State Management & Tracking:**
-- **Pool State Updates**: Modifies pool state flags to reflect unpause status (handled internally by program)
+- **Pool State Updates**: Modifies pool state flags to reflect unpause status
 - **Operation Logging**: Records which specific operations were unpaused for audit trail
 - **Consolidation Impact**: Unpausing operations may affect consolidation eligibility status
 - **Persistent State**: Unpause state survives program restarts and cluster maintenance
@@ -2522,14 +2530,13 @@ Unpauses specific pool operations using bitwise flags with granular control over
 #### Instruction Format
 
 **Discriminator:** `20` (single byte)  
-**Total Data Length:** 2 bytes  
+**Total Data Length:** Variable (Borsh serialization)  
 **Serialization:** Borsh format
 
 ```rust
-// Instruction structure
-pub struct UnpausePoolInstruction {
-    discriminator: u8,      // 1 byte: value = 20
-    unpause_flags: u8,      // 1 byte: bitwise flags for operations to unpause
+// Instruction structure (Borsh serialized)
+PoolInstruction::UnpausePool {
+    unpause_flags: u8,      // Bitwise flags for operations to unpause
 }
 ```
 
@@ -2538,13 +2545,16 @@ pub struct UnpausePoolInstruction {
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
 | 0 | Admin Authority | Signer, Writable | Must be admin authority (or program upgrade authority as fallback) |
-| 1 | System State PDA | Readable | System state for pause validation |
-| 2 | Pool State PDA | **Readable** | Pool state to read current pause state (⚠️ NOT writable - updated internally) |
+| 1 | System State PDA | Writable | System state for pause validation |
+| 2 | Pool State PDA | **Writable** | Pool state to update with unpause information |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
 #### JavaScript Example
 
 ```javascript
+// Import Borsh for proper serialization
+import { serialize } from 'borsh';
+
 function createUnpausePoolInstruction(
     adminAuthority,
     poolStatePDA,
@@ -2556,16 +2566,21 @@ function createUnpausePoolInstruction(
         PROGRAM_ID
     );
     
-    const instructionData = Buffer.concat([
-        Buffer.from([20]),          // UnpausePool discriminator
-        Buffer.from([unpauseFlags]) // Unpause flags
-    ]);
+    // Create PoolInstruction::UnpausePool using Borsh serialization
+    const unpausePoolInstruction = {
+        unpausePool: {
+            unpause_flags: unpauseFlags
+        }
+    };
+    
+    // Serialize using Borsh (matches working test implementation)
+    const instructionData = serialize(PoolInstructionSchema, unpausePoolInstruction);
     
     return new TransactionInstruction({
         keys: [
             { pubkey: adminAuthority, isSigner: true, isWritable: true },
-            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
+            { pubkey: systemStatePDA, isSigner: false, isWritable: true },     // ⚠️ WRITABLE
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },       // ⚠️ WRITABLE
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
