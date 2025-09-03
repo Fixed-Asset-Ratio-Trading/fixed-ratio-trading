@@ -50,9 +50,11 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | Function | Authority | Fee | Purpose |
 |----------|-----------|-----|---------|
 | `process_pool_initialize` | Any User | 1.15 SOL | Create pool |
-| `process_pool_pause` | Program Upgrade Authority | - | Pause pool operations (bitwise flags) |
-| `process_pool_unpause` | Program Upgrade Authority | - | Resume pool operations (bitwise flags) |
-| `process_pool_update_fees` | Program Upgrade Authority | - | Update fees |
+| `process_pool_pause` | Admin Authority* | - | Pause pool operations (bitwise flags) |
+| `process_pool_unpause` | Admin Authority* | - | Resume pool operations (bitwise flags) |
+| `process_pool_update_fees` | Admin Authority* | - | Update fees |
+
+*Admin Authority (with Program Upgrade Authority fallback)
 
 #### Pool Pause Flags
 | Flag | Value | Purpose |
@@ -164,9 +166,9 @@ const PAUSE_FLAG_LIQUIDITY = 1;  // Pause deposits/withdrawals
 const PAUSE_FLAG_SWAPS = 2;      // Pause swaps
 const PAUSE_FLAG_ALL = 3;        // Pause all operations
 
-// Create pause instruction (requires Program Upgrade Authority)
+// Create pause instruction (requires Admin Authority)
 const pauseInstruction = createPausePoolInstruction(
-    programUpgradeAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL  // Pause all operations
@@ -174,7 +176,7 @@ const pauseInstruction = createPausePoolInstruction(
 
 // Create unpause instruction
 const unpauseInstruction = createUnpausePoolInstruction(
-    programUpgradeAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL  // Unpause all operations

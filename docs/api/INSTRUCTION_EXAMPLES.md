@@ -253,7 +253,7 @@ const PAUSE_FLAG_SWAPS = 2;      // 0b10 - Pause swaps
 const PAUSE_FLAG_ALL = 3;        // 0b11 - Pause both operations
 
 function createPausePoolInstruction(
-    programAuthority: PublicKey,
+    adminAuthority: PublicKey,
     poolStatePDA: PublicKey,
     programDataAccount: PublicKey,
     pauseFlags: number
@@ -264,15 +264,15 @@ function createPausePoolInstruction(
     );
     
     const instructionData = Buffer.concat([
-        Buffer.from([PoolInstruction.PausePool]),
+        Buffer.from([19]), // PausePool discriminator
         Buffer.from([pauseFlags])
     ]);
     
     return new TransactionInstruction({
         keys: [
-            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: adminAuthority, isSigner: true, isWritable: true },
             { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -283,7 +283,7 @@ function createPausePoolInstruction(
 // Usage examples:
 // Pause only liquidity operations (deposits/withdrawals)
 const pauseLiquidityInstruction = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_LIQUIDITY
@@ -291,7 +291,7 @@ const pauseLiquidityInstruction = createPausePoolInstruction(
 
 // Pause only swap operations
 const pauseSwapsInstruction = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_SWAPS
@@ -299,7 +299,7 @@ const pauseSwapsInstruction = createPausePoolInstruction(
 
 // Pause all operations (required for consolidation eligibility)
 const pauseAllInstruction = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL
@@ -309,7 +309,7 @@ const pauseAllInstruction = createPausePoolInstruction(
 ### Unpause Pool Operations
 ```javascript
 function createUnpausePoolInstruction(
-    programAuthority: PublicKey,
+    adminAuthority: PublicKey,
     poolStatePDA: PublicKey,
     programDataAccount: PublicKey,
     unpauseFlags: number
@@ -320,15 +320,15 @@ function createUnpausePoolInstruction(
     );
     
     const instructionData = Buffer.concat([
-        Buffer.from([PoolInstruction.UnpausePool]),
+        Buffer.from([20]), // UnpausePool discriminator
         Buffer.from([unpauseFlags])
     ]);
     
     return new TransactionInstruction({
         keys: [
-            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: adminAuthority, isSigner: true, isWritable: true },
             { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -339,7 +339,7 @@ function createUnpausePoolInstruction(
 // Usage examples:
 // Unpause only liquidity operations
 const unpauseLiquidityInstruction = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_LIQUIDITY
@@ -347,7 +347,7 @@ const unpauseLiquidityInstruction = createUnpausePoolInstruction(
 
 // Unpause only swap operations
 const unpauseSwapsInstruction = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_SWAPS
@@ -355,7 +355,7 @@ const unpauseSwapsInstruction = createUnpausePoolInstruction(
 
 // Unpause all operations
 const unpauseAllInstruction = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL

@@ -502,6 +502,30 @@ const stringToBytes = (str) => {
 };
 ```
 
+### Instruction Account Orders
+
+Each instruction requires accounts to be provided in a specific order. The following table documents the account order for each instruction:
+
+#### Pool Management Instructions
+
+**PausePool (Discriminator 19)**
+- [0] Admin Authority (Signer, Writable) - Must be admin authority (or program upgrade authority as fallback)
+- [1] System State PDA (Readable) - System state for pause validation
+- [2] Pool State PDA (Readable) - Pool state to read current pause state (⚠️ NOT writable - updated internally)
+- [3] Program Data Account (Readable) - Program data account for authority validation
+
+**UnpausePool (Discriminator 20)**
+- [0] Admin Authority (Signer, Writable) - Must be admin authority (or program upgrade authority as fallback)  
+- [1] System State PDA (Readable) - System state for pause validation
+- [2] Pool State PDA (Readable) - Pool state to read current pause state (⚠️ NOT writable - updated internally)
+- [3] Program Data Account (Readable) - Program data account for authority validation
+
+**⚠️ Critical Notes:**
+- **Pool State PDA is READ-ONLY** for pause/unpause operations - the pool state is modified internally by the program, not by the client
+- **Admin Authority** can be either the configured admin authority OR the program upgrade authority (fallback)
+- **Authority Validation** uses multi-layer validation through program data account verification
+- This is different from other pool management instructions where Pool State PDA may be writable
+
 ---
 
 ## System Management
@@ -2342,18 +2366,18 @@ Pauses specific pool operations using bitwise flags with granular control over w
 - **Bitwise Logic**: Flags can be combined using bitwise OR operations for flexible control
 
 **🔒 Security & Authority Requirements:**
-- **Program Upgrade Authority Required**: Only the program upgrade authority can pause individual pools
+- **Admin Authority Required**: Only the admin authority (or program upgrade authority as fallback) can pause individual pools
 - **System State Validation**: Validates system is not paused before allowing pool-specific pause operations
-- **Admin Authority Validation**: Multi-layer validation through program data account verification
+- **Admin Authority Validation**: Multi-layer validation through program data account verification with upgrade authority fallback
 - **Idempotent Operation**: Pausing already paused operations does not cause errors
 
 **📊 State Management & Tracking:**
-- **Pool State Updates**: Modifies pool state flags to reflect pause status
+- **Pool State Updates**: Modifies pool state flags to reflect pause status (handled internally by program)
 - **Operation Logging**: Records which specific operations were paused for audit trail
 - **Consolidation Eligibility**: Pools with both liquidity and swaps paused become eligible for fee consolidation
 - **Persistent State**: Pause state survives program restarts and cluster maintenance
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority (with Program Upgrade Authority fallback)  
 **Effect:** Blocks specified pool operations based on pause flags  
 **Persistence:** Pause state survives restarts until explicitly unpaused  
 **Compute Units:** 12,000 - 150,000 CUs
@@ -2376,9 +2400,9 @@ pub struct PausePoolInstruction {
 
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Program Upgrade Authority | Signer, Writable | Must be program upgrade authority |
+| 0 | Admin Authority | Signer, Writable | Must be admin authority (or program upgrade authority as fallback) |
 | 1 | System State PDA | Readable | System state for pause validation |
-| 2 | Pool State PDA | Writable | Pool state to update with pause information |
+| 2 | Pool State PDA | **Readable** | Pool state to read current pause state (⚠️ NOT writable - updated internally) |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
 #### Pause Flag Constants
@@ -2394,7 +2418,7 @@ const PAUSE_FLAG_ALL = 3;        // 0b11 - Pause both operations
 
 ```javascript
 function createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     pauseFlags
@@ -2411,9 +2435,9 @@ function createPausePoolInstruction(
     
     return new TransactionInstruction({
         keys: [
-            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: adminAuthority, isSigner: true, isWritable: true },
             { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -2424,7 +2448,7 @@ function createPausePoolInstruction(
 // Usage examples:
 // Pause only liquidity operations
 const pauseLiquidityOnly = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_LIQUIDITY
@@ -2432,7 +2456,7 @@ const pauseLiquidityOnly = createPausePoolInstruction(
 
 // Pause only swaps
 const pauseSwapsOnly = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_SWAPS
@@ -2440,7 +2464,7 @@ const pauseSwapsOnly = createPausePoolInstruction(
 
 // Pause all operations (required for consolidation)
 const pauseAllOperations = createPausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL
@@ -2466,13 +2490,13 @@ Unpauses specific pool operations using bitwise flags with granular control over
 - **Bitwise Logic**: Flags can be combined using bitwise OR operations for flexible control
 
 **🔒 Security & Authority Requirements:**
-- **Program Upgrade Authority Required**: Only the program upgrade authority can unpause individual pools
+- **Admin Authority Required**: Only the admin authority (or program upgrade authority as fallback) can unpause individual pools
 - **System State Validation**: Validates system is not paused before allowing pool-specific unpause operations
-- **Admin Authority Validation**: Multi-layer validation through program data account verification
+- **Admin Authority Validation**: Multi-layer validation through program data account verification with upgrade authority fallback
 - **Idempotent Operation**: Unpausing already unpaused operations does not cause errors
 
 **📊 State Management & Tracking:**
-- **Pool State Updates**: Modifies pool state flags to reflect unpause status
+- **Pool State Updates**: Modifies pool state flags to reflect unpause status (handled internally by program)
 - **Operation Logging**: Records which specific operations were unpaused for audit trail
 - **Consolidation Impact**: Unpausing operations may affect consolidation eligibility status
 - **Persistent State**: Unpause state survives program restarts and cluster maintenance
@@ -2483,7 +2507,7 @@ Unpauses specific pool operations using bitwise flags with granular control over
 - **Selective Control**: Can unpause specific operations while leaving others paused
 - **Client Integration**: Applications should check both system and pool pause states before operations
 
-**Authority:** Program Upgrade Authority only  
+**Authority:** Admin Authority (with Program Upgrade Authority fallback)  
 **Effect:** Re-enables specified pool operations based on unpause flags  
 **Persistence:** Unpause state survives restarts until explicitly paused again  
 **Compute Units:** 12,000 - 150,000 CUs
@@ -2506,16 +2530,16 @@ pub struct UnpausePoolInstruction {
 
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Program Upgrade Authority | Signer, Writable | Must be program upgrade authority |
+| 0 | Admin Authority | Signer, Writable | Must be admin authority (or program upgrade authority as fallback) |
 | 1 | System State PDA | Readable | System state for pause validation |
-| 2 | Pool State PDA | Writable | Pool state to update with unpause information |
+| 2 | Pool State PDA | **Readable** | Pool state to read current pause state (⚠️ NOT writable - updated internally) |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
 #### JavaScript Example
 
 ```javascript
 function createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     unpauseFlags
@@ -2532,9 +2556,9 @@ function createUnpausePoolInstruction(
     
     return new TransactionInstruction({
         keys: [
-            { pubkey: programAuthority, isSigner: true, isWritable: true },
+            { pubkey: adminAuthority, isSigner: true, isWritable: true },
             { pubkey: systemStatePDA, isSigner: false, isWritable: false },
-            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: false }, // ⚠️ READ-ONLY
             { pubkey: programDataAccount, isSigner: false, isWritable: false },
         ],
         programId: PROGRAM_ID,
@@ -2545,7 +2569,7 @@ function createUnpausePoolInstruction(
 // Usage examples:
 // Unpause only liquidity operations
 const unpauseLiquidityOnly = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_LIQUIDITY
@@ -2553,7 +2577,7 @@ const unpauseLiquidityOnly = createUnpausePoolInstruction(
 
 // Unpause only swaps
 const unpauseSwapsOnly = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_SWAPS
@@ -2561,7 +2585,7 @@ const unpauseSwapsOnly = createUnpausePoolInstruction(
 
 // Unpause all operations
 const unpauseAllOperations = createUnpausePoolInstruction(
-    programAuthority,
+    adminAuthority,
     poolStatePDA,
     programDataAccount,
     PAUSE_FLAG_ALL
