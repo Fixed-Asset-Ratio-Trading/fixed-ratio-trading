@@ -75,7 +75,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | `process_swap_execute` | Any User** | 0.00002715 SOL | Execute swap |
 | `process_swap_set_owner_only` | Admin Authority* | - | Restrict swaps |
 
-*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
+*Admin Authority (with Program Upgrade Authority fallback)
 **Unless owner-only mode is enabled
 
 ### Treasury Operations

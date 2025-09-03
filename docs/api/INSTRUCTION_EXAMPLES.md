@@ -362,6 +362,59 @@ const unpauseAllInstruction = createUnpausePoolInstruction(
 );
 ```
 
+### Set Swap Owner Only
+```javascript
+function createSetSwapOwnerOnlyInstruction(
+    adminAuthority: PublicKey,
+    poolStatePDA: PublicKey,
+    programDataAccount: PublicKey,
+    enableRestriction: boolean,
+    designatedOwner: PublicKey
+) {
+    const [systemStatePDA] = PublicKey.findProgramAddress(
+        [Buffer.from("system_state")],
+        PROGRAM_ID
+    );
+    
+    // Serialize instruction data
+    const instructionData = Buffer.concat([
+        Buffer.from([21]), // SetSwapOwnerOnly discriminator
+        Buffer.from([enableRestriction ? 1 : 0]), // boolean as u8
+        designatedOwner.toBuffer() // Pubkey (32 bytes)
+    ]);
+    
+    return new TransactionInstruction({
+        keys: [
+            { pubkey: adminAuthority, isSigner: true, isWritable: false }, // ⚠️ READ-ONLY
+            { pubkey: systemStatePDA, isSigner: false, isWritable: false },
+            { pubkey: poolStatePDA, isSigner: false, isWritable: true },
+            { pubkey: programDataAccount, isSigner: false, isWritable: false },
+        ],
+        programId: PROGRAM_ID,
+        data: instructionData,
+    });
+}
+
+// Usage examples:
+// Enable owner-only restrictions with custom designated owner
+const enableOwnerOnlyInstruction = createSetSwapOwnerOnlyInstruction(
+    adminAuthority,
+    poolStatePDA,
+    programDataAccount,
+    true, // enable restriction
+    customContractPubkey // designated owner
+);
+
+// Disable owner-only restrictions (designated owner parameter ignored when disabling)
+const disableOwnerOnlyInstruction = createSetSwapOwnerOnlyInstruction(
+    adminAuthority,
+    poolStatePDA,
+    programDataAccount,
+    false, // disable restriction
+    PublicKey.default // ignored when disabling
+);
+```
+
 ## Liquidity Operations Examples
 
 ### Deposit Liquidity

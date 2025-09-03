@@ -206,7 +206,7 @@ The following lists reflect the on-chain handlers and are validated in code. Ind
   - [10] Output Mint Account (must match user output token account mint)
 
 - SetSwapOwnerOnly (4 accounts)
-  - [0] Contract Owner Signer (admin authority)
+  - [0] Admin Authority Signer (admin authority with program upgrade authority fallback)
   - [1] System State PDA
   - [2] Pool State PDA (writable)
   - [3] Program Data Account (ProgramData)
@@ -520,8 +520,15 @@ Each instruction requires accounts to be provided in a specific order. The follo
 - [2] Pool State PDA (Readable) - Pool state to read current pause state (⚠️ NOT writable - updated internally)
 - [3] Program Data Account (Readable) - Program data account for authority validation
 
+**SetSwapOwnerOnly (Discriminator 21)**
+- [0] Admin Authority (Signer, Readable) - Must be admin authority (or program upgrade authority as fallback)
+- [1] System State PDA (Readable) - System state for pause validation
+- [2] Pool State PDA (Writable) - Pool state to modify access restrictions and ownership
+- [3] Program Data Account (Readable) - Program data account for authority validation
+
 **⚠️ Critical Notes:**
 - **Pool State PDA is READ-ONLY** for pause/unpause operations - the pool state is modified internally by the program, not by the client
+- **Pool State PDA is WRITABLE** for SetSwapOwnerOnly operations - it updates both flags and ownership
 - **Admin Authority** can be either the configured admin authority OR the program upgrade authority (fallback)
 - **Authority Validation** uses multi-layer validation through program data account verification
 - This is different from other pool management instructions where Pool State PDA may be writable
@@ -3217,7 +3224,7 @@ Configures advanced access control for swap operations with flexible ownership d
 - **State Validation**: Ensures pool and system states are valid before modifications
 - **Atomic Updates**: All state changes committed atomically or fail completely
 
-**Authority:** Admin Authority only  
+**Authority:** Admin Authority (with Program Upgrade Authority fallback)  
 **Purpose:** Enables sophisticated operational models and custom business logic  
 **Effect:** Controls who can execute swaps on the pool
 
@@ -3234,7 +3241,7 @@ accounts: &[AccountInfo; 4]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Contract Owner | Signer, Writable | Must be program upgrade authority |
+| 0 | Admin Authority | Signer, **Readable** | Must be admin authority (or program upgrade authority as fallback) |
 | 1 | System State PDA | Readable | System state for pause validation |
 | 2 | Pool State PDA | Writable | Pool state to modify access restrictions |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
@@ -3242,7 +3249,7 @@ accounts: &[AccountInfo; 4]
 #### Operational Flow & State Changes
 
 **When Enabling Restrictions (`enable_restriction: true`):**
-1. **Authority Validation**: Verifies caller is program upgrade authority
+1. **Authority Validation**: Verifies caller is admin authority (or program upgrade authority as fallback)
 2. **System State Check**: Ensures system is not paused
 3. **Pool State Load**: Loads and validates pool configuration
 4. **Flag Update**: Sets `POOL_FLAG_SWAP_FOR_OWNERS_ONLY` in pool flags
@@ -3250,7 +3257,7 @@ accounts: &[AccountInfo; 4]
 6. **State Persistence**: Saves updated pool state atomically
 
 **When Disabling Restrictions (`enable_restriction: false`):**
-1. **Authority Validation**: Verifies caller is program upgrade authority
+1. **Authority Validation**: Verifies caller is admin authority (or program upgrade authority as fallback)
 2. **System State Check**: Ensures system is not paused
 3. **Pool State Load**: Loads and validates pool configuration
 4. **Flag Removal**: Clears `POOL_FLAG_SWAP_FOR_OWNERS_ONLY` from pool flags
@@ -3304,7 +3311,7 @@ await processSwapSetOwnerOnly(true, tradingBotAuthority);
 | Error | Condition | Resolution |
 |-------|-----------|------------|
 | **SystemPaused** | System operations are paused | Wait for system unpause |
-| **Unauthorized** | Caller is not program upgrade authority | Use correct upgrade authority |
+| **Unauthorized** | Caller is not admin authority or program upgrade authority | Use correct admin authority |
 | **InvalidAccountData** | Pool state PDA validation failed | Verify pool PDA derivation |
 | **AccountDataTooSmall** | Pool state account too small | Contact support (should not occur) |
 
