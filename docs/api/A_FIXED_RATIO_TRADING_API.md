@@ -2830,6 +2830,8 @@ accounts: &[AccountInfo; 4]
 
 Updates fee configuration for a specific pool.
 
+Important: These fees are fixed SOL fees charged in lamports (smallest SOL unit), not percentages of trade volume. Clients must pass absolute lamport values. No percentage-based fees are supported by this instruction.
+
 **Authority:** Admin Authority only  
 **Note:** Fee modification requests can be submitted to support@davincicodes.net and will be evaluated on a case-by-case basis.
 
@@ -2837,8 +2839,8 @@ Updates fee configuration for a specific pool.
 ```rust
 program_id: &Pubkey
 update_flags: u8           // Which fees to update
-new_liquidity_fee: u64     // New liquidity fee (lamports)
-new_swap_fee: u64          // New swap fee (lamports)
+new_liquidity_fee: u64     // New liquidity fee in lamports (fixed SOL fee per deposit/withdraw)
+new_swap_fee: u64          // New swap fee in lamports (fixed SOL fee per swap)
 accounts: &[AccountInfo; 4]
 ```
 
@@ -2847,9 +2849,15 @@ accounts: &[AccountInfo; 4]
 - `2` (FEE_UPDATE_FLAG_SWAP): Update swap fee only
 - `3` (FEE_UPDATE_FLAG_BOTH): Update both fees
 
-#### Fee Limits
-- **Liquidity Fee:** 0.0001 - 0.01 SOL (MIN_LIQUIDITY_FEE to MAX_LIQUIDITY_FEE constants)
-- **Swap Fee:** 0.00001 - 0.001 SOL (MIN_SWAP_FEE to MAX_SWAP_FEE constants)
+#### Fee Limits (enforced by contract)
+- Liquidity fee: 100,000 – 10,000,000 lamports (0.0001 – 0.01 SOL)
+  - Constants: `MIN_LIQUIDITY_FEE` = 100_000, `MAX_LIQUIDITY_FEE` = 10_000_000
+- Swap fee: 10,000 – 1,000,000 lamports (0.00001 – 0.001 SOL)
+  - Constants: `MIN_SWAP_FEE` = 10_000, `MAX_SWAP_FEE` = 1_000_000
+
+Notes:
+- Units are lamports. Convert SOL to lamports as needed (1 SOL = 1_000_000_000 lamports).
+- Fees are deducted from the caller's SOL balance and tracked in the pool state.
 
 ---
 
