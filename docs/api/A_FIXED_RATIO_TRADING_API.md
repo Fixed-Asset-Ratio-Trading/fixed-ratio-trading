@@ -4946,7 +4946,7 @@ async fn read_system_state(
 ### Legacy PDA Seeds (For Reference)
 - **System State:** `[b"system_state"]`
 - **Main Treasury:** `[b"main_treasury"]`
-- **Pool State:** `[b"pool_state_v2", token_a_mint, token_b_mint, ratio_a_bytes, ratio_b_bytes]`
+- **Pool State:** `[b"pool_state", token_a_mint, token_b_mint, ratio_a_bytes, ratio_b_bytes]`
 - **Token Vaults:** `[b"token_a_vault", pool_state_key]` or `[b"token_b_vault", pool_state_key]`
 - **LP Mints:** `[b"lp_token_a_mint", pool_state_key]` or `[b"lp_token_b_mint", pool_state_key]`
 

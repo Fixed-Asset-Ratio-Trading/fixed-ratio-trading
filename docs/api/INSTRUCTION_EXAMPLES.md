@@ -147,7 +147,7 @@ async function createInitializePoolInstruction(
     
     const [poolStatePDA] = PublicKey.findProgramAddress(
         [
-            Buffer.from("pool_state_v2"),
+            Buffer.from("pool_state"),
             mintA.toBuffer(),
             mintB.toBuffer(),
             ratioA.toArrayLike(Buffer, 'le', 8),
@@ -593,7 +593,7 @@ function derivePoolPDA(
     
     return PublicKey.findProgramAddressSync(
         [
-            Buffer.from("pool_state_v2"),
+            Buffer.from("pool_state"),
             mintA.toBuffer(),
             mintB.toBuffer(),
             ratioA.toArrayLike(Buffer, 'le', 8),

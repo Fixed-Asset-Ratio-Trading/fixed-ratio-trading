@@ -106,7 +106,7 @@ const [mainTreasuryPDA] = PublicKey.findProgramAddress(
 // Pool State
 const [poolStatePDA] = PublicKey.findProgramAddress(
     [
-        Buffer.from("pool_state_v2"),
+        Buffer.from("pool_state"),
         tokenAMint.toBuffer(),
         tokenBMint.toBuffer(),
         new BN(ratioA).toArrayLike(Buffer, 'le', 8),
