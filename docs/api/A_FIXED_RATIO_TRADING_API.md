@@ -3990,6 +3990,130 @@ The significant CU difference suggests additional validation or spam protection 
 
 Consolidates SOL fees from multiple pools into the main treasury with flexible pause requirements and sophisticated rent protection. This is the **only mechanism** for moving accumulated protocol fees from individual pools to the central treasury. Features atomic operations, partial consolidation support, and comprehensive safety validations.
 
+#### Parameters
+```rust
+program_id: &Pubkey
+pool_count: u8              // Number of pool state PDAs provided (1..=20)
+accounts: &[AccountInfo]    // Exactly 4 + pool_count accounts
+```
+
+#### Serialization & Wire Format
+- Send as the Borsh-serialized `PoolInstruction::ConsolidatePoolFees` enum variant.
+- Do not hardcode discriminators or craft raw byte arrays.
+- Use `try_to_vec()` in Rust or an equivalent Borsh enum serializer in JS/TS.
+
+#### Account Structure (order and mutability)
+| Index | Account | Signer | Writable | Description |
+|-------|---------|--------|----------|-------------|
+| 0 | Admin Authority (Program Upgrade Authority) | Yes | No | Must match program's upgrade authority |
+| 1 | System State PDA | No | No | Used for pause state and admin validation |
+| 2 | Main Treasury PDA | No | Yes | Receives consolidated SOL |
+| 3 | Program Data Account | No | No | BPF Loader Upgradeable program data for this program |
+| 4..(3 + pool_count) | Pool State PDA | No | Yes | Pool(s) to consolidate from |
+
+Exact account count required: `accounts.len() == 4 + pool_count`.
+
+#### Preconditions
+- System must be initialized; `System State PDA` must exist and be owned by this program.
+- `Program Data Account` must be derived via BPF Loader Upgradeable using seed `[program_id]` with loader `BPFLoaderUpgradeab1e11111111111111111111111`.
+- `Main Treasury PDA` must be valid and owned by this program.
+- `pool_count` limits: `1 <= pool_count <= 20` (`MAX_POOLS_PER_CONSOLIDATION_BATCH`).
+- Flexible pause requirement:
+  - If system is paused: all provided pools are eligible.
+  - If system is NOT paused: only pools with both `swaps_paused = true` AND `liquidity_paused = true` are eligible; others are skipped without error.
+
+#### Consolidation Behavior
+- Rent protection: Contract preserves each pool’s rent-exempt minimum; only transfers lamports above rent-exempt threshold.
+- Partial consolidation: If available lamports above rent are less than `pending fees`, transfers the available amount and proportionally reduces fee counters.
+- Accounting updates per pool:
+  - For full consolidation: resets fee counters and updates metadata (timestamp, consolidation count).
+  - For partial: subtracts consolidated portions from `collected_liquidity_fees` and `collected_swap_contract_fees`, increments totals and counters.
+- Treasury updates: Updates `MainTreasuryState` via `batch_consolidation`, synchronizes with actual account balance.
+
+#### Limits & Performance
+- `pool_count` range: 1..=20 (hard limit).
+- CU model: `Base_CUs ≈ 4,000 + pool_count × 5,000` (see table and formula above). Use up to 150K CU cap as policy.
+
+#### Error Conditions
+- `InvalidArgument`: when `pool_count == 0` or `pool_count > MAX_POOLS_PER_CONSOLIDATION_BATCH`.
+- `NotEnoughAccountKeys`: when `accounts.len() != 4 + pool_count`.
+- Unauthorized admin authority: admin validation fails (caller not upgrade authority).
+- Other pools may be skipped (not errored) if ineligible (e.g., not paused when system is active) or have no fees or insufficient lamports above rent; operation still succeeds for eligible pools.
+
+#### Example (Rust)
+```rust
+use solana_sdk::{instruction::{AccountMeta, Instruction}, pubkey::Pubkey};
+use fixed_ratio_trading::{self as frt, PoolInstruction};
+
+let program_id = frt::id();
+let pool_count: u8 = 2;
+
+// Derive program data account (BPF Loader Upgradeable)
+let (program_data_account, _bump) = Pubkey::find_program_address(
+    &[program_id.as_ref()],
+    &solana_program::bpf_loader_upgradeable::id(),
+);
+
+let ix = Instruction {
+    program_id,
+    accounts: vec![
+        AccountMeta::new_readonly(admin_authority, true),
+        AccountMeta::new_readonly(system_state_pda, false),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new_readonly(program_data_account, false),
+        AccountMeta::new(pool_state_pda_1, false),
+        AccountMeta::new(pool_state_pda_2, false),
+    ],
+    data: PoolInstruction::ConsolidatePoolFees { pool_count }.try_to_vec().unwrap(),
+};
+```
+
+#### Example (TypeScript) – Borsh enum serialization
+```ts
+import { PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { serialize } from 'borsh';
+
+class ConsolidatePoolFees { constructor(public pool_count: number) {} }
+class PoolInstructionEnum { constructor(public ConsolidatePoolFees?: ConsolidatePoolFees) {} }
+
+// Replace with generated schema from Rust
+const schema = new Map<any, any>([
+  [ConsolidatePoolFees, { kind: 'struct', fields: [['pool_count', 'u8']] }],
+  [PoolInstructionEnum, { kind: 'enum', field: 'enum', values: [['ConsolidatePoolFees', ConsolidatePoolFees]] }],
+]);
+
+export function buildConsolidateIx(args: {
+  programId: PublicKey;
+  adminAuthority: PublicKey; // signer
+  systemStatePda: PublicKey;
+  mainTreasuryPda: PublicKey;
+  poolStatePdas: PublicKey[]; // length 1..20
+}) {
+  const variant = new PoolInstructionEnum({ ConsolidatePoolFees: new ConsolidatePoolFees(args.poolStatePdas.length) });
+  const data = Buffer.from(serialize(schema as any, variant));
+
+  const [programDataAccount] = PublicKey.findProgramAddressSync(
+    [args.programId.toBuffer()],
+    new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'),
+  );
+
+  const keys = [
+    { pubkey: args.adminAuthority, isSigner: true, isWritable: false },
+    { pubkey: args.systemStatePda, isSigner: false, isWritable: false },
+    { pubkey: args.mainTreasuryPda, isSigner: false, isWritable: true },
+    { pubkey: programDataAccount, isSigner: false, isWritable: false },
+    ...args.poolStatePdas.map(p => ({ pubkey: p, isSigner: false, isWritable: true })),
+  ];
+
+  return new TransactionInstruction({ programId: args.programId, keys, data });
+}
+```
+
+#### Developer Notes
+- Provide only eligible pools when system is active (both swaps and liquidity paused) to avoid no-op processing.
+- Pools with `pending_sol_fees == 0` are skipped without error.
+- The contract preserves rent exemption; expect partial transfers if pool lamports are near rent threshold.
+
 **⚠️ SECURITY UPDATE:** Admin Authority Required (was public function)  
 **Authority:** Admin Authority only (prevents unauthorized fee manipulation)  
 **Batch Size:** 1-20 pools per transaction  
