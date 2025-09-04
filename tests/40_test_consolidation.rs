@@ -470,6 +470,8 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
     // Verify pool is still properly paused
     let pool_account = foundation.env.banks_client.get_account(foundation.pool_config.pool_state_pda).await?.unwrap();
     let pool_state: PoolState = PoolState::try_from_slice(&pool_account.data)?;
+    let pre_last_consolidation_ts = pool_state.last_consolidation_timestamp;
+    let pre_last_consolidation_ts = pool_state.last_consolidation_timestamp;
     
     assert!(pool_state.swaps_paused(), "Pool should still be paused");
     assert!(pool_state.liquidity_paused(), "Pool should still be paused");
@@ -1566,6 +1568,13 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
     println!("  - Treasury balance: {} lamports", pre_treasury_balance);
     println!("  - Pool balance: {} lamports", pre_pool_balance);
     
+    // Capture pre-consolidation last_consolidation_timestamp for recency checks
+    let pre_last_consolidation_ts = {
+        let pre_pool_account = foundation.env.banks_client.get_account(pool_state_pda).await?.unwrap();
+        let pre_pool_state: PoolState = PoolState::try_from_slice(&pre_pool_account.data)?;
+        pre_pool_state.last_consolidation_timestamp
+    };
+    
     // **STEP 7: Execute consolidation**
     println!("🔄 Step 7: Executing consolidation with real fees...");
     
@@ -1641,6 +1650,8 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
     println!("  - Pending SOL fees: {} lamports", final_pool_state.pending_sol_fees());
     println!("  - Total fees consolidated: {} lamports", final_pool_state.total_fees_consolidated);
     println!("  - Total consolidations: {}", final_pool_state.total_consolidations);
+    println!("  - Pre last consolidation ts: {}", pre_last_consolidation_ts);
+    println!("  - New last consolidation ts: {}", final_pool_state.last_consolidation_timestamp);
     
     // Pool should have reduced pending fees
     assert!(final_pool_state.pending_sol_fees() < actual_pending_fees,
@@ -1651,6 +1662,15 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
             "Pool should track consolidated fees");
     assert!(final_pool_state.total_consolidations > 0,
             "Pool should track consolidation count");
+    // Timestamp should be set and not regress; also not be in the future
+    assert!(final_pool_state.last_consolidation_timestamp > 0,
+            "Last consolidation timestamp must be non-zero");
+    assert!(final_pool_state.last_consolidation_timestamp >= pre_last_consolidation_ts,
+            "Last consolidation timestamp should not decrease");
+    let clock = foundation.env.banks_client.get_sysvar::<solana_program::clock::Clock>().await?;
+    let current_ts = clock.unix_timestamp;
+    assert!(final_pool_state.last_consolidation_timestamp <= current_ts,
+            "Last consolidation timestamp should not be in the future");
     
     println!("🎉 ALL CONSOLIDATION VERIFICATIONS PASSED!");
     println!("✅ Real fees generated: {} lamports", total_expected_fees);

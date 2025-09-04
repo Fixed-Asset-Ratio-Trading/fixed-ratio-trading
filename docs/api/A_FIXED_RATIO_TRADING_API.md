@@ -3671,6 +3671,11 @@ amount: u64    // Amount to withdraw in lamports (0 = withdraw all available)
 accounts: &[AccountInfo; 6]
 ```
 
+#### Serialization & Wire Format
+- Send as the Borsh-serialized `PoolInstruction::WithdrawTreasuryFees { amount }` enum variant.
+- Do not hardcode discriminators or craft raw byte arrays.
+- Use `try_to_vec()` in Rust or an equivalent Borsh enum serializer in JS/TS.
+
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
@@ -3680,6 +3685,14 @@ accounts: &[AccountInfo; 6]
 | 3 | Destination Account | Writable | Account to receive withdrawn SOL |
 | 4 | System State PDA | Readable | For pause validation and authority checks |
 | 5 | Program Data Account | Readable | Program data account for authority validation |
+
+Exact account order is required. The `Program Data Account` must be derived with BPF Loader Upgradeable using seeds `[program_id]`.
+
+#### Preconditions
+- System initialized: both `System State PDA` and `Main Treasury PDA` exist and are owned by the program.
+- Admin authority: caller must be the configured admin (program upgrade authority validation via program data account).
+- System not paused: withdrawals blocked while paused; upon unpause, a restart penalty window applies.
+- Rent protection: withdrawal is limited to lamports above rent-exempt minimum of the treasury account.
 
 #### Rate Limiting Implementation Details
 
@@ -3700,10 +3713,82 @@ treasury_state.validate_withdrawal_rate_limit(amount, current_timestamp)?;
 - **Window**: 60-minute rolling window (TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW constant)
 
 **Error Conditions:**
-- **Rate limit exceeded**: Shows time until next withdrawal allowed
-- **System restart penalty active**: Shows remaining penalty time
-- **Insufficient funds**: Requested amount exceeds available balance
-- **Invalid authority**: Caller is not program upgrade authority
+- Rate limit exceeded: logs next allowed time; returns an error (InvalidInstructionData)
+- System restart penalty active: logs remaining penalty time; returns an error (InvalidInstructionData)
+- Insufficient funds: withdrawal exceeds available above rent (InsufficientFunds)
+- Invalid authority: caller is not the admin authority (authority validation failure)
+- Invalid account data: incorrect treasury PDA or malformed treasury state
+
+#### Example (Rust)
+```rust
+use solana_sdk::{instruction::{AccountMeta, Instruction}, pubkey::Pubkey};
+use fixed_ratio_trading::{self as frt, PoolInstruction};
+
+let program_id = frt::id();
+let amount: u64 = 1_000_000_000; // 1 SOL
+
+// Derive Program Data (BPF Loader Upgradeable)
+let (program_data_account, _bump) = Pubkey::find_program_address(
+    &[program_id.as_ref()],
+    &solana_program::bpf_loader_upgradeable::id(),
+);
+
+let ix = Instruction {
+    program_id,
+    accounts: vec![
+        AccountMeta::new_readonly(admin_authority, true),
+        AccountMeta::new(main_treasury_pda, false),
+        AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false),
+        AccountMeta::new(destination_pubkey, false),
+        AccountMeta::new_readonly(system_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false),
+    ],
+    data: PoolInstruction::WithdrawTreasuryFees { amount }.try_to_vec().unwrap(),
+};
+```
+
+#### Example (TypeScript) – Borsh enum serialization
+```ts
+import { PublicKey, TransactionInstruction, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { serialize } from 'borsh';
+
+class WithdrawTreasuryFees { constructor(public amount: bigint) {} }
+class PoolInstructionEnum { constructor(public WithdrawTreasuryFees?: WithdrawTreasuryFees) {} }
+
+// Replace with generated schema from Rust
+const schema = new Map<any, any>([
+  [WithdrawTreasuryFees, { kind: 'struct', fields: [['amount', 'u64']] }],
+  [PoolInstructionEnum, { kind: 'enum', field: 'enum', values: [['WithdrawTreasuryFees', WithdrawTreasuryFees]] }],
+]);
+
+export function buildWithdrawIx(args: {
+  programId: PublicKey;
+  adminAuthority: PublicKey; // signer
+  mainTreasuryPda: PublicKey;
+  systemStatePda: PublicKey;
+  destination: PublicKey;
+  amountLamports: bigint; // 0 = withdraw all available
+}): TransactionInstruction {
+  const variant = new PoolInstructionEnum({ WithdrawTreasuryFees: new WithdrawTreasuryFees(args.amountLamports) });
+  const data = Buffer.from(serialize(schema as any, variant));
+
+  const [programDataAccount] = PublicKey.findProgramAddressSync(
+    [args.programId.toBuffer()],
+    new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'),
+  );
+
+  const keys = [
+    { pubkey: args.adminAuthority, isSigner: true, isWritable: false },
+    { pubkey: args.mainTreasuryPda, isSigner: false, isWritable: true },
+    { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+    { pubkey: args.destination, isSigner: false, isWritable: true },
+    { pubkey: args.systemStatePda, isSigner: false, isWritable: false },
+    { pubkey: programDataAccount, isSigner: false, isWritable: false },
+  ];
+
+  return new TransactionInstruction({ programId: args.programId, keys, data });
+}
+```
 
 #### Additional Security Features
 
