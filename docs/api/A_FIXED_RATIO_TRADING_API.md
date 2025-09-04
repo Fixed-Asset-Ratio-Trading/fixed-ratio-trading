@@ -3261,10 +3261,24 @@ accounts: &[AccountInfo; 4]
 | 2 | Pool State PDA | Writable | Pool state to modify access restrictions |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
+#### Mutability & Signer Flags (exact)
+- [0] Admin Authority: signer, read-only
+- [1] System State PDA: read-only
+- [2] Pool State PDA: writable
+- [3] Program Data Account: read-only
+
 #### Authorization
 - Only the protocol Admin Authority (program upgrade authority) may call this function.
 - Calls from the pool owner or any other signer are rejected. This is verified in tests.
 - System pause applies: operation is blocked while paused.
+
+#### Serialization & Wire Format
+- SetSwapOwnerOnly must be sent as the Borsh-serialized `PoolInstruction` enum variant.
+- Do not handcraft a byte array or hardcode a numeric discriminator.
+- Use `try_to_vec()` in Rust or an equivalent Borsh enum serializer in JS/TS.
+- The enum variant index is an internal detail and not a stable public API.
+
+Rust example (already uses `try_to_vec()` in the snippet below). For JS/TS guidance, see the example later in this section.
 
 #### Example (Rust) – building the instruction
 ```rust
@@ -3291,6 +3305,11 @@ let ix = Instruction {
     .unwrap(),
 };
 ```
+
+#### Preconditions (system initialization)
+- The system must be initialized before calling `SetSwapOwnerOnly`.
+- The System State PDA must exist and be owned by this program.
+- The Program Data Account must be the BPF Loader Upgradeable program data for this program, derivable via `[program_id]` per the loader’s rules (use `get_program_data_address(&program_id)`).
 
 #### Operational Flow & State Changes
 
@@ -3410,6 +3429,92 @@ await processSwapSetOwnerOnly(
 const swapProposal = await multiSig.proposeSwap(poolPDA, amount);
 const executedSwap = await multiSig.executeProposal(swapProposal, [sig1, sig2]);
 ```
+
+#### Designated Owner Rules
+- When enabling (`enable_restriction = true`), `designated_owner` must be a valid Pubkey; pool ownership is delegated to this key.
+- When disabling (`enable_restriction = false`), `designated_owner` is ignored.
+
+#### JS/TS client guidance: Borsh-serialize the enum variant
+- Do not construct `[discriminator, bool, pubkey]` manually; enum variant indices may change.
+- Use a Borsh schema that includes the `PoolInstruction` enum and serialize the `SetSwapOwnerOnly` variant.
+- Recommended: generate the schema from the Rust definitions (codegen) to avoid drift.
+
+Example (TypeScript) using `borsh` with a generated schema (pseudo-code):
+```ts
+import { serialize } from 'borsh';
+import { PublicKey, TransactionInstruction } from '@solana/web3.js';
+
+// These classes mirror the Rust types; schema should be generated from Rust.
+class SetSwapOwnerOnly {
+  enable_restriction: number; // u8 in borsh (0/1)
+  designated_owner: Uint8Array; // 32 bytes
+  constructor(fields: { enable_restriction: boolean; designated_owner: PublicKey }) {
+    this.enable_restriction = fields.enable_restriction ? 1 : 0;
+    this.designated_owner = fields.designated_owner.toBytes();
+  }
+}
+
+class PoolInstructionEnum {
+  // Discriminated union shape: { SetSwapOwnerOnly: SetSwapOwnerOnly }
+  SetSwapOwnerOnly?: SetSwapOwnerOnly;
+  constructor(fields: { SetSwapOwnerOnly: SetSwapOwnerOnly }) {
+    Object.assign(this, fields);
+  }
+}
+
+// IMPORTANT: Use a schema generated from Rust to ensure variant ordering matches.
+// Pseudo schema; replace with generated one.
+const schema = new Map<any, any>([
+  [SetSwapOwnerOnly, { kind: 'struct', fields: [
+    ['enable_restriction', 'u8'],
+    ['designated_owner', [32]],
+  ]}],
+  [PoolInstructionEnum, { kind: 'enum', field: 'enum', values: [
+    ['SetSwapOwnerOnly', SetSwapOwnerOnly],
+    // ...other variants defined by codegen
+  ]}],
+]);
+
+export function buildSetSwapOwnerOnlyIx(params: {
+  programId: PublicKey;
+  systemStatePda: PublicKey;
+  poolStatePda: PublicKey;
+  programData: PublicKey;
+  adminAuthority: PublicKey; // signer
+  enableRestriction: boolean;
+  designatedOwner: PublicKey;
+}): TransactionInstruction {
+  const variant = new PoolInstructionEnum({
+    SetSwapOwnerOnly: new SetSwapOwnerOnly({
+      enable_restriction: params.enableRestriction,
+      designated_owner: params.designatedOwner,
+    }),
+  });
+
+  const data = Buffer.from(serialize(schema as any, variant));
+
+  return new TransactionInstruction({
+    programId: params.programId,
+    keys: [
+      { pubkey: params.adminAuthority, isSigner: true, isWritable: false },
+      { pubkey: params.systemStatePda, isSigner: false, isWritable: false },
+      { pubkey: params.poolStatePda, isSigner: false, isWritable: true },
+      { pubkey: params.programData, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+```
+
+Notes:
+- The schema shown is illustrative; use generated schema to avoid variant index drift.
+- `enable_restriction` is serialized as `u8` (0 or 1) to match Borsh expectations for Rust `bool` in some toolchains. If your codegen emits `bool`, follow the emitted type.
+
+#### Legacy compatibility (pool schema version)
+- Only pools created with the current schema (v0.16.x+) support `SetSwapOwnerOnly`.
+- Legacy pools are incompatible (e.g., `PoolState` account length ~438 bytes). Current pools are ~597 bytes.
+- How to check: fetch the pool state account and inspect `account.data.length`.
+- If the length indicates a legacy layout, migration or creating a new pool is required before using this instruction.
 
 #### Important Implementation Notes
 
