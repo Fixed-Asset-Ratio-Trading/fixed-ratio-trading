@@ -244,15 +244,78 @@ fn perform_batch_consolidation(
         
         // **IMPORTANT: Partial consolidation tracking**
         // Since we may not consolidate all fees, we need to track what was actually consolidated
+        // Use integer math to avoid rounding drift. Ensure the two parts sum exactly to
+        // `available_for_consolidation` and do not exceed their respective collected counters.
+        let total_individual_pending: u64 = pool_state
+            .collected_liquidity_fees
+            .saturating_add(pool_state.collected_swap_contract_fees);
+
+        // Guard (should not happen since pool_fees > 0 above), but keep safe fallback.
+        if total_individual_pending == 0 {
+            msg!("ℹ️ Pool {} reports pending fees but individual counters are zero; skipping for safety", pool_account.key);
+            continue;
+        }
+
+        let a: u64 = available_for_consolidation;
+        let liq: u64 = pool_state.collected_liquidity_fees;
+        let swp: u64 = pool_state.collected_swap_contract_fees;
+        let s: u64 = total_individual_pending;
+
+        // Base proportional floors
+        let l_floor: u64 = ((a as u128 * liq as u128) / s as u128) as u64;
+        let r_floor: u64 = ((a as u128 * swp as u128) / s as u128) as u64;
+        let mut liquidity_fees_consolidated: u64 = l_floor;
+        let mut regular_swap_fees_consolidated: u64 = r_floor;
+
+        // Distribute the remainder deterministically to the side with larger fractional part
+        let mut remainder: u64 = a.saturating_sub(liquidity_fees_consolidated.saturating_add(regular_swap_fees_consolidated));
+        if remainder > 0 {
+            let l_mod: u128 = (a as u128 * liq as u128) % s as u128;
+            let r_mod: u128 = (a as u128 * swp as u128) % s as u128;
+
+            // First try to assign to the side with larger residual fraction, without exceeding available counters
+            if l_mod >= r_mod {
+                let capacity = liq.saturating_sub(liquidity_fees_consolidated);
+                let give = core::cmp::min(remainder, capacity);
+                liquidity_fees_consolidated = liquidity_fees_consolidated.saturating_add(give);
+                remainder -= give;
+            } else {
+                let capacity = swp.saturating_sub(regular_swap_fees_consolidated);
+                let give = core::cmp::min(remainder, capacity);
+                regular_swap_fees_consolidated = regular_swap_fees_consolidated.saturating_add(give);
+                remainder -= give;
+            }
+
+            // If 1 unit still remains (edge case due to capacity), give it to the other side within capacity
+            if remainder > 0 {
+                let capacity_l = liq.saturating_sub(liquidity_fees_consolidated);
+                let capacity_r = swp.saturating_sub(regular_swap_fees_consolidated);
+                if capacity_r >= remainder {
+                    regular_swap_fees_consolidated = regular_swap_fees_consolidated.saturating_add(remainder);
+                    remainder = 0;
+                } else if capacity_l >= remainder {
+                    liquidity_fees_consolidated = liquidity_fees_consolidated.saturating_add(remainder);
+                    remainder = 0;
+                } else {
+                    // Should not occur because a <= liq+swp, but keep safety
+                    let allocated = core::cmp::min(remainder, capacity_l);
+                    liquidity_fees_consolidated = liquidity_fees_consolidated.saturating_add(allocated);
+                    remainder -= allocated;
+                    if remainder > 0 {
+                        let allocated_r = core::cmp::min(remainder, capacity_r);
+                        regular_swap_fees_consolidated = regular_swap_fees_consolidated.saturating_add(allocated_r);
+                        remainder -= allocated_r;
+                    }
+                }
+            }
+        }
+
+        // For logging only
         let consolidation_ratio = if pool_fees > 0 {
-            available_for_consolidation as f64 / pool_fees as f64
+            a as f64 / pool_fees as f64
         } else {
             0.0
         };
-        
-        // Apply consolidation ratio to fee breakdown
-        let liquidity_fees_consolidated = (pool_state.collected_liquidity_fees as f64 * consolidation_ratio) as u64;
-        let regular_swap_fees_consolidated = (pool_state.collected_swap_contract_fees as f64 * consolidation_ratio) as u64;
         
         // Accumulate consolidated data
         consolidated_ops.liquidity_fees += liquidity_fees_consolidated;
