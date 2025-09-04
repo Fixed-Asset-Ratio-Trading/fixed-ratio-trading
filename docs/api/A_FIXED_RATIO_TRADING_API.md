@@ -3662,13 +3662,13 @@ Withdraws collected protocol fees from the main treasury with advanced rate limi
 
 **Authority:** Admin Authority only  
 **Restrictions:** Dynamic rate limiting with 60-minute rolling windows  
-**Compute Units:** 80,000 CUs maximum (complex validation logic)
+**Compute Units:** Allocate up to 150,000 CUs; observed minimum ~80,000 CUs
 
 #### Parameters
 ```rust
 program_id: &Pubkey
 amount: u64    // Amount to withdraw in lamports (0 = withdraw all available)
-accounts: &[AccountInfo; 6]
+accounts: &[AccountInfo]  // Provide exactly 6 accounts in the order below
 ```
 
 #### Serialization & Wire Format
@@ -3679,7 +3679,7 @@ accounts: &[AccountInfo; 6]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | System Authority | Signer, Writable | Must be admin authority |
+| 0 | System Authority | Signer (read-only) | Must be admin authority |
 | 1 | Main Treasury PDA | Writable | Treasury account to withdraw from |
 | 2 | Rent Sysvar | Readable | For rent-exempt minimum calculations |
 | 3 | Destination Account | Writable | Account to receive withdrawn SOL |
