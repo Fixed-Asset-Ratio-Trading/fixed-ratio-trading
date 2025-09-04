@@ -3249,17 +3249,48 @@ Configures advanced access control for swap operations with flexible ownership d
 ```rust
 program_id: &Pubkey
 enable_restriction: bool    // Enable/disable owner-only restrictions
-designated_owner: Pubkey    // Entity to delegate operational control to
+designated_owner: Pubkey    // Entity to delegate operational control to (ignored when disabling)
 accounts: &[AccountInfo; 4]
 ```
 
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Admin Authority | Signer, **Readable** | Must be admin authority (or program upgrade authority as fallback) |
+| 0 | Admin Authority | Signer, **Readable** | Must be admin authority (program upgrade authority) |
 | 1 | System State PDA | Readable | System state for pause validation |
 | 2 | Pool State PDA | Writable | Pool state to modify access restrictions |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
+
+#### Authorization
+- Only the protocol Admin Authority (program upgrade authority) may call this function.
+- Calls from the pool owner or any other signer are rejected. This is verified in tests.
+- System pause applies: operation is blocked while paused.
+
+#### Example (Rust) – building the instruction
+```rust
+use solana_sdk::{instruction::{AccountMeta, Instruction}, transaction::Transaction};
+use fixed_ratio_trading::{self as frt, utils::program_authority::get_program_data_address};
+
+let ix = Instruction {
+    program_id: frt::id(),
+    accounts: vec![
+        // 0. Admin Authority (Program Upgrade Authority)
+        AccountMeta::new_readonly(admin_authority_pubkey, true),
+        // 1. System State PDA
+        AccountMeta::new_readonly(system_state_pda, false),
+        // 2. Pool State PDA (writable)
+        AccountMeta::new(pool_state_pda, false),
+        // 3. Program Data Account
+        AccountMeta::new_readonly(get_program_data_address(&frt::id()), false),
+    ],
+    data: fixed_ratio_trading::PoolInstruction::SetSwapOwnerOnly {
+        enable_restriction: true,
+        designated_owner: delegated_owner,
+    }
+    .try_to_vec()
+    .unwrap(),
+};
+```
 
 #### Operational Flow & State Changes
 
@@ -3333,10 +3364,11 @@ await processSwapSetOwnerOnly(true, tradingBotAuthority);
 #### Post-Configuration Behavior
 
 **With Restrictions Enabled:**
-- `process_swap_execute` only accepts transactions signed by designated owner
+- `process_swap_execute` only accepts transactions signed by `pool_state.owner` (set to `designated_owner` at enable time)
 - Regular users receive authorization errors when attempting direct swaps
 - Designated owner can deploy any custom business logic contracts
 - Pool liquidity operations (`deposit`/`withdraw`) remain unrestricted
+- Admin Authority cannot bypass swap-time restrictions; it must delegate by setting ownership.
 
 **With Restrictions Disabled:**
 - All users can call `process_swap_execute` directly
