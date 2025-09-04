@@ -2859,6 +2859,123 @@ Notes:
 - Units are lamports. Convert SOL to lamports as needed (1 SOL = 1_000_000_000 lamports).
 - Fees are deducted from the caller's SOL balance and tracked in the pool state.
 
+#### Serialization & Wire Format
+- Send as the Borsh-serialized `PoolInstruction::UpdatePoolFees` enum variant.
+- Do not hardcode discriminators or craft raw byte arrays.
+- Use `try_to_vec()` in Rust or an equivalent Borsh enum serializer in JS/TS.
+
+#### Preconditions (system initialization)
+- System must be initialized (System State PDA exists and is owned by this program).
+- Program Data Account must be the BPF Loader Upgradeable program data account for this program: derive using seeds `[program_id]` with loader `BPFLoaderUpgradeable11111111111111111111111`.
+- Pool State PDA must be valid and owned by this program; it will be validated against the expected derived PDA using internal pool fields.
+
+#### Account Structure (order and mutability)
+| Index | Account | Signer | Writable | Description |
+|-------|---------|--------|----------|-------------|
+| 0 | Admin Authority (Program Upgrade Authority) | Yes | No | Must match program's upgrade authority |
+| 1 | System State PDA | No | No | For pause and authority validation |
+| 2 | Pool State PDA | No | Yes | Pool being updated |
+| 3 | Program Data Account | No | No | BPF Loader Upgradeable program data account |
+
+#### Error Conditions
+- Invalid flags: non-[1,2,3] → `InvalidFeeUpdateFlags` (code 1043 in tests)
+- Liquidity fee out of range → `InvalidLiquidityFee { fee, min, max }`
+- Swap fee out of range → `InvalidSwapFee { fee, min, max }`
+- Unauthorized caller → Admin authority validation failure
+- System paused → `SystemPaused`
+
+#### Example (Rust)
+```rust
+use solana_sdk::{instruction::{AccountMeta, Instruction}, pubkey::Pubkey};
+use fixed_ratio_trading::{self as frt, types::instructions::PoolInstruction};
+use frt::constants::{FEE_UPDATE_FLAG_LIQUIDITY, FEE_UPDATE_FLAG_SWAP};
+
+let program_id = frt::id();
+
+// Derive program data account (BPF Loader Upgradeable)
+let (program_data_account, _bump) = Pubkey::find_program_address(
+    &[program_id.as_ref()],
+    &solana_program::bpf_loader_upgradeable::id(),
+);
+
+let ix = Instruction {
+    program_id,
+    accounts: vec![
+        AccountMeta::new_readonly(admin_authority, true),
+        AccountMeta::new_readonly(system_state_pda, false),
+        AccountMeta::new(pool_state_pda, false),
+        AccountMeta::new_readonly(program_data_account, false),
+    ],
+    data: PoolInstruction::UpdatePoolFees {
+        update_flags: FEE_UPDATE_FLAG_LIQUIDITY | FEE_UPDATE_FLAG_SWAP, // 3
+        new_liquidity_fee: 200_000, // 0.0002 SOL
+        new_swap_fee: 20_000,       // 0.00002 SOL
+    }.try_to_vec().unwrap(),
+};
+```
+
+#### Example (TypeScript) – Borsh enum serialization
+```ts
+import { PublicKey, TransactionInstruction } from '@solana/web3.js';
+import { serialize } from 'borsh';
+
+// Pseudo-classes; prefer codegen from Rust to avoid drift
+class UpdatePoolFees { constructor(
+  public update_flags: number,      // u8
+  public new_liquidity_fee: bigint, // u64
+  public new_swap_fee: bigint,      // u64
+) {} }
+
+class PoolInstructionEnum { constructor(
+  public UpdatePoolFees?: UpdatePoolFees,
+) {} }
+
+// Replace with generated schema
+const schema = new Map<any, any>([
+  [UpdatePoolFees, { kind: 'struct', fields: [
+    ['update_flags', 'u8'],
+    ['new_liquidity_fee', 'u64'],
+    ['new_swap_fee', 'u64'],
+  ]}],
+  [PoolInstructionEnum, { kind: 'enum', field: 'enum', values: [
+    ['UpdatePoolFees', UpdatePoolFees],
+  ]}],
+]);
+
+export function buildUpdateFeesIx(args: {
+  programId: PublicKey;
+  adminAuthority: PublicKey; // signer
+  systemStatePda: PublicKey;
+  poolStatePda: PublicKey;
+}) {
+  const variant = new PoolInstructionEnum({
+    UpdatePoolFees: new UpdatePoolFees(
+      3,                 // both flags
+      200_000n,          // liquidity fee
+      20_000n,           // swap fee
+    ),
+  });
+  const data = Buffer.from(serialize(schema as any, variant));
+
+  // Derive program data account (BPF Loader Upgradeable)
+  const [programDataAccount] = PublicKey.findProgramAddressSync(
+    [args.programId.toBuffer()],
+    new PublicKey('BPFLoaderUpgradeab1e11111111111111111111111'),
+  );
+
+  return new TransactionInstruction({
+    programId: args.programId,
+    keys: [
+      { pubkey: args.adminAuthority, isSigner: true, isWritable: false },
+      { pubkey: args.systemStatePda, isSigner: false, isWritable: false },
+      { pubkey: args.poolStatePda, isSigner: false, isWritable: true },
+      { pubkey: programDataAccount, isSigner: false, isWritable: false },
+    ],
+    data,
+  });
+}
+```
+
 ---
 
 ## Liquidity Operations
