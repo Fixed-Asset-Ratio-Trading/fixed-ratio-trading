@@ -501,6 +501,10 @@ pub fn process_admin_change(
     // 🔧 CENTRALIZED DESERIALIZATION: Use robust loading method
     let mut system_state = SystemState::load_from_account(system_state_pda, program_id)?;
     
+    // ✅ SECURITY: Validate system is not paused - admin changes blocked during pause
+    crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
+    msg!("✅ System pause validation passed - admin changes allowed");
+    
     // Validate current admin authority (with fallback to upgrade authority during migration)
     let is_current_admin = system_state.is_admin(current_admin_signer.key);
     let is_upgrade_authority = if !is_current_admin {

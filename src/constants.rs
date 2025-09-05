@@ -295,6 +295,10 @@ pub const MIN_SWAP_FEE: u64 = 10_000; // 0.00001 SOL
 /// Prevents spam donations and ensures meaningful contributions
 pub const MIN_DONATION_AMOUNT: u64 = 100_000_000; // 0.1 SOL
 
+/// Minimum treasury withdrawal amount in lamports (0.01 SOL)
+/// Prevents micro-withdrawals and ensures meaningful treasury operations
+pub const MIN_TREASURY_WITHDRAWAL_AMOUNT: u64 = 10_000_000; // 0.01 SOL
+
 //=============================================================================
 // TREASURY WITHDRAWAL RATE LIMITING - DYNAMIC SCALING SYSTEM
 //=============================================================================

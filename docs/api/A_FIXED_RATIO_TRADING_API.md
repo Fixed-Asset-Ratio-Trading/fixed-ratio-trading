@@ -3658,16 +3658,16 @@ Functions for managing protocol treasury and fees.
 
 ### `process_treasury_withdraw_fees`
 
-Withdraws collected protocol fees from the main treasury with fixed cooldown rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing a fixed 60-minute cooldown after successful withdrawals to ensure system stability.
+Withdraws collected protocol fees from the main treasury with dynamic rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing dynamic hourly rate limits with a 60-minute cooldown only after successful withdrawals to ensure system stability.
 
 **Authority:** Admin Authority only  
-**Restrictions:** Fixed 60-minute cooldown after successful withdrawal (no cooldown on failed attempts)  
+**Restrictions:** Dynamic hourly rate limits with 60-minute cooldown only after successful withdrawals  
 **Compute Units:** Allocate up to 150,000 CUs; observed minimum ~80,000 CUs
 
 #### Parameters
 ```rust
 program_id: &Pubkey
-amount: u64    // Amount to withdraw in lamports (0 = withdraw all available)
+amount: u64    // Amount to withdraw in lamports (minimum 0.01 SOL, 0 = withdraw all available)
 accounts: &[AccountInfo]  // Provide exactly 6 accounts in the order below
 ```
 
@@ -3693,24 +3693,68 @@ Exact account order is required. The `Program Data Account` must be derived with
 - Admin authority: caller must be the configured admin (program upgrade authority validation via program data account).
 - System not paused: withdrawals blocked while paused; upon unpause, a restart penalty window applies.
 - Rent protection: withdrawal is limited to lamports above rent-exempt minimum of the treasury account.
+- Minimum amount: withdrawal amount must be at least 0.01 SOL (10,000,000 lamports) unless using amount = 0 for withdraw-all.
 
 #### Rate Limiting Implementation Details
 
-The contract enforces a fixed cooldown:
+The contract implements a sophisticated dynamic rate limiting system:
 
 ```rust
-// Fixed 60-minute cooldown after successful withdrawals only
+// Dynamic rate scaling based on treasury balance + cooldown only after success
+let current_hourly_limit = treasury_state.calculate_current_hourly_rate_limit();
 treasury_state.validate_withdrawal_rate_limit(amount, current_timestamp)?;
 ```
 
-**Cooldown Rules:**
-- **Cooldown Duration**: 60 minutes between successful withdrawals (TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW)
-- **No Added Penalty on Failures**: Failed attempts do not extend or add cooldown
-- **First Withdrawal**: Allowed immediately if no prior successful withdrawals
+**Rate Scaling Logic:**
+- **Base Rate**: 10 SOL/hour (TREASURY_BASE_HOURLY_RATE constant)
+- **Scaling Factor**: 10x multiplier per balance tier (TREASURY_RATE_SCALING_MULTIPLIER constant)
+- **Target**: Ensure complete treasury drainage possible within 48 hours maximum
+- **Cooldown (Non-Cumulative)**: 60-minute window starts only after a successful withdrawal. Failed attempts (amount > hourly limit or within cooldown) do not extend or reset the cooldown.
+
+**System Restart Penalty (71 hours):**
+- **Duration**: 71 hours after a system-wide unpause
+- **Effect**: Blocks all treasury withdrawals during this period
+- **Behavior**: Not cumulative; once 71 hours elapse, normal dynamic rate limiting resumes
+- **Precedence**: Penalty check occurs before rate/cooldown checks
+
+#### Dynamic Rate Calculation Example
+
+**Treasury with 27 SOL:**
+
+**Step 1: Available Balance Calculation**
+- Treasury balance: 27 SOL = 27,000,000,000 lamports
+- Rent-exempt minimum: ~2.04 SOL = 2,040,000,000 lamports (MainTreasuryState size)
+- **Available for withdrawal**: ~25 SOL = 25,000,000,000 lamports
+
+**Step 2: Hourly Rate Limit Calculation**
+```rust
+let available_balance = 25,000,000,000; // ~25 SOL
+let mut current_rate = 10,000,000,000;  // 10 SOL/hour (base rate)
+
+// Check if available_balance > (48 hours × current_rate)
+// 25,000,000,000 > (48 × 10,000,000,000)?
+// 25 SOL > 480 SOL? NO - rate stays at 10 SOL/hour
+```
+
+**Step 3: Scaling Tiers**
+
+| Treasury Balance | Available Balance | Hourly Rate Limit | Scaling Tier |
+|-----------------|-------------------|-------------------|--------------|
+| 27 SOL | ~25 SOL | **10 SOL/hour** | Tier 1 (Base) |
+| 500 SOL | ~498 SOL | **100 SOL/hour** | Tier 2 (10x) |
+| 5,000 SOL | ~4,998 SOL | **1,000 SOL/hour** | Tier 3 (100x) |
+
+**Step 4: Withdrawal Schedule Example**
+- **Hour 0**: Can withdraw up to 10 SOL ✅ (within limit)
+- **Wait 60 minutes** (cooldown after successful withdrawal)
+- **Hour 1**: Can withdraw up to 10 SOL ✅ (if balance allows)
+- **Hour 2**: Can withdraw remaining ~5 SOL ✅ (above rent-exempt minimum)
 
 **Error Conditions:**
-- Rate limit exceeded (cooldown active): logs next allowed time; returns InvalidInstructionData
+- Rate limit exceeded: withdrawal amount exceeds current hourly limit; returns InvalidInstructionData
+- Cooldown active: within 60 minutes of last successful withdrawal; returns InvalidInstructionData  
 - System restart penalty active: logs remaining penalty time; returns InvalidInstructionData
+- Below minimum amount: withdrawal less than 0.01 SOL (InvalidInstructionData)
 - Insufficient funds: withdrawal exceeds available above rent (InsufficientFunds)
 - Invalid authority: caller is not the admin authority (authority validation failure)
 - Invalid account data: incorrect treasury PDA or malformed treasury state
@@ -3794,10 +3838,10 @@ export function buildWithdrawIx(args: {
 - **Enforcement**: Blocks all withdrawals during penalty period
 
 **Flexible Withdrawal Options:**
-- **Partial Withdrawals**: Specify exact amount in lamports
-- **Full Withdrawal**: Use amount = 0 to withdraw all available funds
+- **Partial Withdrawals**: Specify exact amount in lamports (minimum 0.01 SOL)
+- **Full Withdrawal**: Use amount = 0 to withdraw all available funds (bypasses minimum)
 - **Balance Protection**: Automatically maintains rent-exempt minimum
-- **Real-time Validation**: Checks available balance before processing
+- **Real-time Validation**: Checks available balance and minimum amount before processing
 
 ---
 

@@ -32,6 +32,22 @@ use crate::{
 /// placeholder accounts that are not used in treasury operations. This provides
 /// maximum efficiency for treasury management operations with strict authority validation.
 /// 
+/// **Cooldown Behavior (Non-Cumulative):**
+/// - 60-minute cooldown starts only after a successful withdrawal
+/// - Failed attempts (too large or too soon) do not add or extend cooldown
+/// - System restart penalty (71 hours) blocks withdrawals before cooldown/rate checks
+/// 
+/// **Hourly Rate Limits by Treasury Balance:**
+/// - 27 SOL treasury → ~25 SOL available → **10 SOL/hour** (Tier 1 - Base)
+/// - 500 SOL treasury → ~498 SOL available → **100 SOL/hour** (Tier 2 - 10x)
+/// - 5,000 SOL treasury → ~4,998 SOL available → **1,000 SOL/hour** (Tier 3 - 100x)
+/// 
+/// **Scaling Tiers:**
+/// - Tier 1: ≤480 SOL available → 10 SOL/hour (base rate)
+/// - Tier 2: ≤4,800 SOL available → 100 SOL/hour (10x multiplier)
+/// - Tier 3: ≤48,000 SOL available → 1,000 SOL/hour (100x multiplier)
+/// - Each tier scales by 10x when 48-hour drain threshold is exceeded
+/// ======================================================================================
 /// # Arguments
 /// * `program_id` - The program ID for PDA derivation
 /// * `amount` - Amount to withdraw in lamports (0 = withdraw all available)
@@ -59,7 +75,7 @@ pub fn process_treasury_withdraw_fees(
     amount: u64,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
-    msg!("🏦 Processing treasury fee withdrawal: {} lamports", amount);
+    msg!("Treasury withdrawal: {} lamports", amount);
     
     // ✅ COMPUTE OPTIMIZATION: No account length verification
     // Solana runtime automatically fails with NotEnoughAccountKeys when accessing
@@ -102,17 +118,12 @@ pub fn process_treasury_withdraw_fees(
         Some(program_data_account),
         program_id,
     )?;
-    msg!("✅ Authority validation passed: {}", system_authority_signer.key);
     
     // Load main treasury state with robust error handling for production environments
     let mut main_treasury_state = match MainTreasuryState::try_from_slice(&main_treasury_pda.data.borrow()) {
-        Ok(state) => {
-            msg!("✅ Successfully loaded treasury state from account data");
-            state
-        },
+        Ok(state) => state,
         Err(e) => {
-            msg!("⚠️ Warning: Failed to deserialize treasury state: {:?}", e);
-            msg!("🔄 Creating default treasury state with current account balance");
+            msg!("Failed to deserialize treasury state: {:?}", e);
             
             // Create a default state with current account balance
             let current_balance = main_treasury_pda.lamports();
@@ -149,9 +160,15 @@ pub fn process_treasury_withdraw_fees(
         return Err(ProgramError::InsufficientFunds);
     }
     
+    // Validate minimum withdrawal amount (except for withdraw-all case)
+    if amount != 0 && withdrawal_amount < crate::constants::MIN_TREASURY_WITHDRAWAL_AMOUNT {
+        msg!("Amount {} below minimum {} (0.01 SOL)", 
+             withdrawal_amount, crate::constants::MIN_TREASURY_WITHDRAWAL_AMOUNT);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+    
     if withdrawal_amount > available_balance {
-        msg!("Requested amount {} exceeds available balance {}", 
-             withdrawal_amount, available_balance);
+        msg!("Amount {} exceeds available {}", withdrawal_amount, available_balance);
         return Err(ProgramError::InsufficientFunds);
     }
     
@@ -160,18 +177,17 @@ pub fn process_treasury_withdraw_fees(
     use solana_program::sysvar::Sysvar;
     
     let current_timestamp = match Clock::get() {
-        Ok(clock) => {
-            msg!("✅ Successfully retrieved current timestamp: {}", clock.unix_timestamp);
-            clock.unix_timestamp
-        },
+        Ok(clock) => clock.unix_timestamp,
         Err(e) => {
-            msg!("⚠️ Warning: Failed to get current timestamp: {:?}", e);
-            msg!("🔄 Using fallback timestamp (0) for rate limiting validation");
+            msg!("Failed to get timestamp: {:?}", e);
             0 // Fallback timestamp
         }
     };
     
-    // **RATE LIMITING VALIDATION (Fixed 60-minute cooldown after success)**
+    // **DYNAMIC RATE LIMITING VALIDATION**
+    // Enforce dynamic hourly withdrawal rate limiting with rolling 60-minute window
+    let current_hourly_limit = main_treasury_state.calculate_current_hourly_rate_limit();
+    
     if let Err(rate_limit_error) = main_treasury_state.validate_withdrawal_rate_limit(withdrawal_amount, current_timestamp) {
         msg!("🚫 WITHDRAWAL BLOCKED: {}", rate_limit_error);
         
@@ -186,17 +202,18 @@ pub fn process_treasury_withdraw_fees(
             msg!("   This 3-day cooling-off period prevents immediate fund drainage after system restart");
             msg!("   Penalty started when system was last re-enabled after being paused");
         } else {
-            // Fixed cooldown timing info
+            // Regular rate limiting
             let time_until_next = main_treasury_state.time_until_next_withdrawal_allowed(current_timestamp);
             if time_until_next > 0 {
-                msg!("⏰ Next withdrawal allowed in {} seconds ({} minutes)", 
-                    time_until_next, time_until_next / 60);
+                msg!("Next withdrawal in {} seconds", time_until_next);
             }
         }
         
         msg!("💡 Withdrawal Context:");
         msg!("   Available for withdrawal: {} lamports ({} SOL)", 
             available_balance, available_balance as f64 / 1_000_000_000.0);
+        msg!("   Current hourly limit: {} lamports ({} SOL)", 
+            current_hourly_limit, current_hourly_limit as f64 / 1_000_000_000.0);
         msg!("   Requested amount: {} lamports ({} SOL)",
             withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
         msg!("   Maximum withdrawable now: 0 lamports (0 SOL) - blocked by penalty/cooldown");
@@ -204,16 +221,7 @@ pub fn process_treasury_withdraw_fees(
         return Err(ProgramError::InvalidInstructionData);
     }
     
-    msg!("✅ Rate limiting validation passed (fixed 60-minute cooldown)");
-    msg!("💰 Treasury Withdrawal Details:");
-    msg!("   Current balance: {} lamports", current_balance);
-    msg!("   Rent-exempt minimum: {} lamports", rent_exempt_minimum);
-    msg!("   Available for withdrawal: {} lamports ({} SOL)", 
-        available_balance, available_balance as f64 / 1_000_000_000.0);
-    msg!("   Maximum withdrawable now: {} lamports ({} SOL)", 
-        available_balance, available_balance as f64 / 1_000_000_000.0);
-    msg!("   Withdrawing: {} lamports ({} SOL)", 
-        withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
+    msg!("Withdrawing: {} lamports", withdrawal_amount);
     
     // Transfer SOL from treasury to destination account
     **main_treasury_pda.try_borrow_mut_lamports()? -= withdrawal_amount;
@@ -226,10 +234,7 @@ pub fn process_treasury_withdraw_fees(
     
     // Serialize updated treasury state with robust error handling
     let serialized_data = match main_treasury_state.try_to_vec() {
-        Ok(data) => {
-            msg!("✅ Successfully serialized treasury state ({} bytes)", data.len());
-            data
-        },
+        Ok(data) => data,
         Err(e) => {
             msg!("🚨 Critical Error: Failed to serialize treasury state: {:?}", e);
             msg!("❌ Treasury withdrawal cannot proceed - serialization failure");
@@ -246,7 +251,6 @@ pub fn process_treasury_withdraw_fees(
     }
     
     account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    msg!("✅ Successfully updated treasury account data");
     
     msg!("✅ Treasury withdrawal completed successfully");
     msg!("   Amount withdrawn: {} lamports", withdrawal_amount);
