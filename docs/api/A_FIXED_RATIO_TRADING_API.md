@@ -3661,7 +3661,7 @@ Functions for managing protocol treasury and fees.
 Withdraws collected protocol fees from the main treasury with advanced rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing dynamic rate limiting to prevent rapid fund drainage and ensure system stability.
 
 **Authority:** Admin Authority only  
-**Restrictions:** Dynamic rate limiting with 60-minute rolling windows  
+**Restrictions:** Fixed 60-minute cooldown after successful withdrawal (no cooldown on failed attempts)  
 **Compute Units:** Allocate up to 150,000 CUs; observed minimum ~80,000 CUs
 
 #### Parameters
@@ -3696,25 +3696,21 @@ Exact account order is required. The `Program Data Account` must be derived with
 
 #### Rate Limiting Implementation Details
 
-The contract implements a sophisticated dynamic rate limiting system:
+The contract enforces a fixed cooldown:
 
 ```rust
-// Base rate scales automatically based on treasury balance
-let current_hourly_limit = treasury_state.calculate_current_hourly_rate_limit();
-
-// Rolling 60-minute window validation  
+// Fixed 60-minute cooldown after successful withdrawals only
 treasury_state.validate_withdrawal_rate_limit(amount, current_timestamp)?;
 ```
 
-**Rate Scaling Logic:**
-- **Base Rate**: 10 SOL/hour (TREASURY_BASE_HOURLY_RATE constant)
-- **Scaling Factor**: 10x multiplier per balance tier (TREASURY_RATE_SCALING_MULTIPLIER constant)
-- **Target**: Ensure complete treasury drainage possible within 48 hours maximum
-- **Window**: 60-minute rolling window (TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW constant)
+**Cooldown Rules:**
+- **Cooldown Duration**: 60 minutes between successful withdrawals (TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW)
+- **No Added Penalty on Failures**: Failed attempts do not extend or add cooldown
+- **First Withdrawal**: Allowed immediately if no prior successful withdrawals
 
 **Error Conditions:**
-- Rate limit exceeded: logs next allowed time; returns an error (InvalidInstructionData)
-- System restart penalty active: logs remaining penalty time; returns an error (InvalidInstructionData)
+- Rate limit exceeded (cooldown active): logs next allowed time; returns InvalidInstructionData
+- System restart penalty active: logs remaining penalty time; returns InvalidInstructionData
 - Insufficient funds: withdrawal exceeds available above rent (InsufficientFunds)
 - Invalid authority: caller is not the admin authority (authority validation failure)
 - Invalid account data: incorrect treasury PDA or malformed treasury state

@@ -171,10 +171,7 @@ pub fn process_treasury_withdraw_fees(
         }
     };
     
-    // **DYNAMIC RATE LIMITING VALIDATION**
-    // Enforce dynamic hourly withdrawal rate limiting with rolling 60-minute window
-    let current_hourly_limit = main_treasury_state.calculate_current_hourly_rate_limit();
-    
+    // **RATE LIMITING VALIDATION (Fixed 60-minute cooldown after success)**
     if let Err(rate_limit_error) = main_treasury_state.validate_withdrawal_rate_limit(withdrawal_amount, current_timestamp) {
         msg!("🚫 WITHDRAWAL BLOCKED: {}", rate_limit_error);
         
@@ -189,7 +186,7 @@ pub fn process_treasury_withdraw_fees(
             msg!("   This 3-day cooling-off period prevents immediate fund drainage after system restart");
             msg!("   Penalty started when system was last re-enabled after being paused");
         } else {
-            // Regular rate limiting
+            // Fixed cooldown timing info
             let time_until_next = main_treasury_state.time_until_next_withdrawal_allowed(current_timestamp);
             if time_until_next > 0 {
                 msg!("⏰ Next withdrawal allowed in {} seconds ({} minutes)", 
@@ -197,27 +194,16 @@ pub fn process_treasury_withdraw_fees(
             }
         }
         
-        msg!("💡 Dynamic Rate Limiting Details:");
+        msg!("💡 Withdrawal Context:");
         msg!("   Available for withdrawal: {} lamports ({} SOL)", 
             available_balance, available_balance as f64 / 1_000_000_000.0);
-        msg!("   Current hourly limit: {} lamports ({} SOL)", 
-            current_hourly_limit, current_hourly_limit as f64 / 1_000_000_000.0);
         msg!("   Requested amount: {} lamports ({} SOL)",
             withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
-        msg!("   Drain time at current rate: {} hours", 
-            if current_hourly_limit > 0 { available_balance / current_hourly_limit } else { 0 });
         msg!("   Last withdrawal: {} (timestamp)", main_treasury_state.last_withdrawal_timestamp);
-        msg!("   Base rate: {} SOL/hour, scales 10x every 48-hour threshold", 
-            crate::constants::TREASURY_BASE_HOURLY_RATE as f64 / 1_000_000_000.0);
         return Err(ProgramError::InvalidInstructionData);
     }
     
-    msg!("✅ Rate limiting validation passed");
-    msg!("📊 Dynamic Rate Limit Info:");
-    msg!("   Current hourly limit: {} lamports ({} SOL)", 
-        current_hourly_limit, current_hourly_limit as f64 / 1_000_000_000.0);
-    msg!("   Estimated drain time: {} hours", 
-        if current_hourly_limit > 0 { available_balance / current_hourly_limit } else { 0 });
+    msg!("✅ Rate limiting validation passed (fixed 60-minute cooldown)");
     msg!("💰 Treasury Withdrawal Details:");
     msg!("   Current balance: {} lamports", current_balance);
     msg!("   Rent-exempt minimum: {} lamports", rent_exempt_minimum);

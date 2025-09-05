@@ -81,7 +81,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### Treasury Operations
 | Function | Authority | Purpose |
 |----------|-----------|---------|
-| `process_treasury_withdraw_fees` | Admin Authority* | Withdraw fees (dynamic rate limiting) |
+| `process_treasury_withdraw_fees` | Admin Authority* | Withdraw fees (60-min cooldown after success) |
 | `process_treasury_get_info` | Public | View treasury info |
 | `process_treasury_donate_sol` | Any User | Support development |
 | `process_consolidate_pool_fees` | Admin Authority* | Collect pool fees (security update) |

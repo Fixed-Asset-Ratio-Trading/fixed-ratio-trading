@@ -352,11 +352,12 @@ impl MainTreasuryState {
         current_rate
     }
     
-    /// **RATE LIMITING: Check if withdrawal amount is within dynamic hourly rate limit**
+    /// **RATE LIMITING: Enforce fixed 60-minute cooldown after successful withdrawals**
     /// 
-    /// Validates that the requested withdrawal amount doesn't exceed the dynamically calculated
-    /// hourly rate limit using a rolling 60-minute window from the last withdrawal timestamp.
-    /// Also checks for system restart penalty that blocks withdrawals for 3 days after system restart.
+    /// Validates that at least a fixed cooldown window has elapsed since the last
+    /// successful withdrawal. If no successful withdrawals have occurred, the
+    /// operation is allowed. Also checks for system restart penalty that blocks
+    /// withdrawals for 3 days after system restart.
     /// 
     /// # Arguments
     /// * `withdrawal_amount` - Amount to be withdrawn in lamports
@@ -365,40 +366,29 @@ impl MainTreasuryState {
     /// # Returns
     /// * `Ok(())` - If withdrawal is within rate limit
     /// * `Err(&'static str)` - If withdrawal exceeds rate limit with error message
-    pub fn validate_withdrawal_rate_limit(&self, withdrawal_amount: u64, current_timestamp: i64) -> Result<(), &'static str> {
+    pub fn validate_withdrawal_rate_limit(&self, _withdrawal_amount: u64, current_timestamp: i64) -> Result<(), &'static str> {
         use crate::constants::TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW;
         
         // **FIRST CHECK: System restart penalty**
-        // This takes precedence over all other rate limiting
+        // This takes precedence over the fixed cooldown
         if self.is_blocked_by_restart_penalty(current_timestamp) {
             return Err("Withdrawal blocked: system restart penalty active (3-day cooling-off period)");
         }
         
-        // Calculate current dynamic rate limit based on available balance
-        let current_hourly_limit = self.calculate_current_hourly_rate_limit();
-        
-        // If this is the first withdrawal ever, check against current rate limit
+        // If this is the first withdrawal ever, allow immediately
         if self.last_withdrawal_timestamp == 0 {
-            if withdrawal_amount > current_hourly_limit {
-                return Err("Withdrawal amount exceeds current hourly rate limit");
-            }
             return Ok(());
         }
         
-        // Calculate time since last withdrawal
+        // Calculate time since last successful withdrawal
         let time_since_last_withdrawal = current_timestamp - self.last_withdrawal_timestamp;
         
-        // If more than 60 minutes have passed since last withdrawal, check against current rate limit
+        // Allow if cooldown window has elapsed; otherwise, block
         if time_since_last_withdrawal >= TREASURY_WITHDRAWAL_RATE_LIMIT_WINDOW {
-            if withdrawal_amount > current_hourly_limit {
-                return Err("Withdrawal amount exceeds current hourly rate limit");
-            }
-            return Ok(());
+            Ok(())
+        } else {
+            Err("Rate limit exceeded: withdrawals are limited to once per hour")
         }
-        
-        // Within 60-minute window: reject any withdrawal request
-        // This enforces the "1 withdrawal per hour" rule regardless of amount
-        Err("Rate limit exceeded: withdrawals are limited to once per hour")
     }
     
     /// **RATE LIMITING: Get time remaining until next withdrawal is allowed**

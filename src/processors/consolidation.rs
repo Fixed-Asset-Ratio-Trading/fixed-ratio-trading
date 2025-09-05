@@ -292,19 +292,16 @@ fn perform_batch_consolidation(
                 let capacity_r = swp.saturating_sub(regular_swap_fees_consolidated);
                 if capacity_r >= remainder {
                     regular_swap_fees_consolidated = regular_swap_fees_consolidated.saturating_add(remainder);
-                    remainder = 0;
                 } else if capacity_l >= remainder {
                     liquidity_fees_consolidated = liquidity_fees_consolidated.saturating_add(remainder);
-                    remainder = 0;
                 } else {
                     // Should not occur because a <= liq+swp, but keep safety
                     let allocated = core::cmp::min(remainder, capacity_l);
                     liquidity_fees_consolidated = liquidity_fees_consolidated.saturating_add(allocated);
-                    remainder -= allocated;
-                    if remainder > 0 {
-                        let allocated_r = core::cmp::min(remainder, capacity_r);
+                    let remaining_after_l = remainder - allocated;
+                    if remaining_after_l > 0 {
+                        let allocated_r = core::cmp::min(remaining_after_l, capacity_r);
                         regular_swap_fees_consolidated = regular_swap_fees_consolidated.saturating_add(allocated_r);
-                        remainder -= allocated_r;
                     }
                 }
             }
