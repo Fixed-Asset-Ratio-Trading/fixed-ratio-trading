@@ -118,7 +118,7 @@ Step-by-step guide for building Solana transactions:
 - Owner-only mode configuration
 
 ### Treasury Operations
-- Fee withdrawals (dynamic rate limiting)
+- Fee withdrawals (fixed 60-min cooldown after success)
 - View treasury information
 - Accept donations
 - Consolidate pool fees

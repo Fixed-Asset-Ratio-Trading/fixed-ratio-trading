@@ -1495,7 +1495,7 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 - **Token Vaults**: Creates secure PDA-controlled vaults for both tokens
 - **LP Token Mints**: Creates two separate LP token mints (Token A LP and Token B LP) 
 - **Security Validation**: Validates all provided PDAs match expected derived addresses
-- **Fee Collection**: Collects 1.15 SOL registration fee and updates treasury tracking
+- **Fee Collection**: Collects 1.15 SOL registration fee directly to main treasury (immediate tracking)
 
 **🔒 Advanced Security Features:**
 - **Token Normalization**: Automatically orders tokens lexicographically (Token A < Token B) for consistent addressing
@@ -1702,7 +1702,7 @@ accounts: &[AccountInfo; 13]
 | 2 | System State PDA | Readable | For pause validation |
 | 3 | Pool State PDA | Writable | Will be created |
 | 4 | SPL Token Program | Readable | Token program |
-| 5 | Main Treasury PDA | Writable | For fee collection |
+| 5 | Main Treasury PDA | Writable | For direct fee collection (pool creation) |
 | 6 | Rent Sysvar | Readable | Rent calculations |
 | 7 | Token A Mint | Readable | First token mint |
 | 8 | Token B Mint | Readable | Second token mint |
@@ -3658,7 +3658,7 @@ Functions for managing protocol treasury and fees.
 
 ### `process_treasury_withdraw_fees`
 
-Withdraws collected protocol fees from the main treasury with advanced rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing dynamic rate limiting to prevent rapid fund drainage and ensure system stability.
+Withdraws collected protocol fees from the main treasury with fixed cooldown rate limiting and security protections. Enables the protocol authority to withdraw accumulated fees from pool creation, liquidity operations, and swaps while implementing a fixed 60-minute cooldown after successful withdrawals to ensure system stability.
 
 **Authority:** Admin Authority only  
 **Restrictions:** Fixed 60-minute cooldown after successful withdrawal (no cooldown on failed attempts)  
@@ -3803,7 +3803,7 @@ export function buildWithdrawIx(args: {
 
 ### `process_treasury_get_info`
 
-Retrieves current treasury state information. Returns comprehensive treasury data including total balance, fee collection statistics, withdrawal history, and operational metrics. This read-only function provides transparency into protocol revenue and treasury status.
+Retrieves current treasury state information. Returns comprehensive treasury data including total balance, consolidated fee collection statistics, withdrawal history, and operational metrics. This read-only function provides transparency into protocol revenue and treasury status from both direct collection (pool creation) and consolidated fees (liquidity/swap operations).
 
 **Authority:** Public (read-only)
 
@@ -3834,7 +3834,7 @@ The function returns comprehensive treasury information through structured log m
 📊 Getting real-time treasury information
 ✅ Successfully loaded treasury state from account data
 
-🏦 CENTRALIZED TREASURY INFORMATION (REAL-TIME):
+🏦 TREASURY INFORMATION (DISTRIBUTED COLLECTION + CONSOLIDATION):
    Current Balance: {balance} lamports ({sol_balance} SOL)
    Total Withdrawn: {withdrawn} lamports ({withdrawn_sol} SOL)
 
@@ -3865,7 +3865,7 @@ The function returns comprehensive treasury information through structured log m
 
 #### Parsing Guidelines for Developers
 
-1. **Balance Information**: Extract current balance and total withdrawn amounts from the "CENTRALIZED TREASURY INFORMATION" section
+1. **Balance Information**: Extract current balance and total withdrawn amounts from the "TREASURY INFORMATION" section
 2. **Operation Metrics**: Parse individual operation counts and fee totals from "OPERATION STATISTICS"
 3. **Analytics Data**: Get success rates and averages from "ENHANCED ANALYTICS"
 4. **Timestamp**: Extract last update timestamp from "TIMING INFORMATION"
@@ -4901,7 +4901,7 @@ let (system_state_pda, system_state_bump) = Pubkey::find_program_address(
     &PROGRAM_ID
 );
 
-// Main Treasury PDA - Fee collection and withdrawal
+// Main Treasury PDA - Direct fee collection (pool creation) and consolidation target
 let (main_treasury_pda, main_treasury_bump) = Pubkey::find_program_address(
     &[b"main_treasury"], 
     &PROGRAM_ID

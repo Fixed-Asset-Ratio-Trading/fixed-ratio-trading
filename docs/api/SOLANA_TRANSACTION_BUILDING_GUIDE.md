@@ -197,7 +197,7 @@ if (!aLessThanB) {
 | 2 | System State PDA | Readable | Global state for pause validation |
 | 3 | Pool State PDA | Writable | Will be created |
 | 4 | SPL Token Program | Readable | Token program ID |
-| 5 | Main Treasury PDA | Writable | For 1.15 SOL fee collection |
+| 5 | Main Treasury PDA | Writable | For 1.15 SOL direct fee collection |
 | 6 | Rent Sysvar | Readable | Rent calculations |
 | 7 | Token A Mint | Readable | Lexicographically smaller mint |
 | 8 | Token B Mint | Readable | Lexicographically larger mint |

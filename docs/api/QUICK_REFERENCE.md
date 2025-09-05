@@ -189,7 +189,7 @@ const unpauseInstruction = createUnpausePoolInstruction(
 2. **Authority v0.16.x+**: Most admin functions use configurable Admin Authority (with upgrade authority fallback)
 3. **Fees**: Collected in SOL, configurable per pool
 4. **Pausing**: System pause overrides pool pause
-5. **Treasury**: Withdrawals subject to dynamic rate limiting
+5. **Treasury**: Withdrawals subject to fixed 60-minute cooldown after success
 6. **Breaking Changes**: v0.16.x+ requires new SystemState deserialization methods
 7. **Migration**: Update client code to use `load_from_account()` or `from_account_data_unchecked()`
 
