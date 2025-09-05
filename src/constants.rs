@@ -150,7 +150,7 @@ pub const TOKEN_B_VAULT_SEED_PREFIX: &[u8] = b"token_b_vault";
 
 pub const SYSTEM_STATE_SEED_PREFIX: &[u8] = b"system_state";
 
-/// Main treasury seed prefix for the centralized treasury PDA
+/// Main treasury seed prefix for the consolidation treasury PDA
 pub const MAIN_TREASURY_SEED_PREFIX: &[u8] = b"main_treasury";
 
 pub const LP_TOKEN_A_MINT_SEED_PREFIX: &[u8] = b"lp_token_a_mint";

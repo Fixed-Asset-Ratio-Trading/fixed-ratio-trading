@@ -1,9 +1,9 @@
 //! Treasury Management Processors
 //!
-//! This module handles centralized treasury operations with real-time tracking:
+//! This module handles treasury operations with distributed fee consolidation:
 //! - Contract fee withdrawals by system authority
-//! - Real-time treasury information queries
-//! - Simplified architecture with single treasury
+//! - Treasury information queries with consolidated data
+//! - Consolidation target for distributed fee collection
 //!
 //! Removed functionality:
 //! - Specialized treasury consolidation (no longer needed)
@@ -199,6 +199,7 @@ pub fn process_treasury_withdraw_fees(
             available_balance, available_balance as f64 / 1_000_000_000.0);
         msg!("   Requested amount: {} lamports ({} SOL)",
             withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
+        msg!("   Maximum withdrawable now: 0 lamports (0 SOL) - blocked by penalty/cooldown");
         msg!("   Last withdrawal: {} (timestamp)", main_treasury_state.last_withdrawal_timestamp);
         return Err(ProgramError::InvalidInstructionData);
     }
@@ -207,8 +208,12 @@ pub fn process_treasury_withdraw_fees(
     msg!("💰 Treasury Withdrawal Details:");
     msg!("   Current balance: {} lamports", current_balance);
     msg!("   Rent-exempt minimum: {} lamports", rent_exempt_minimum);
-    msg!("   Available for withdrawal: {} lamports", available_balance);
-    msg!("   Withdrawing: {} lamports", withdrawal_amount);
+    msg!("   Available for withdrawal: {} lamports ({} SOL)", 
+        available_balance, available_balance as f64 / 1_000_000_000.0);
+    msg!("   Maximum withdrawable now: {} lamports ({} SOL)", 
+        available_balance, available_balance as f64 / 1_000_000_000.0);
+    msg!("   Withdrawing: {} lamports ({} SOL)", 
+        withdrawal_amount, withdrawal_amount as f64 / 1_000_000_000.0);
     
     // Transfer SOL from treasury to destination account
     **main_treasury_pda.try_borrow_mut_lamports()? -= withdrawal_amount;

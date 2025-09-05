@@ -213,9 +213,9 @@ pub enum PoolInstruction {
         amount: u64,
     },
     
-    /// **PHASE 3: REAL-TIME TREASURY INFORMATION**
+    /// **TREASURY INFORMATION WITH CONSOLIDATED DATA**
     /// 
-    /// Returns comprehensive real-time information about the centralized treasury including:
+    /// Returns comprehensive information about the treasury including:
     /// - Current balance and total withdrawn
     /// - Real-time fee counts by category (no consolidation needed)
     /// - Total fees collected by type
