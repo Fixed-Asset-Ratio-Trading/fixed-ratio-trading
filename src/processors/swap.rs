@@ -118,7 +118,7 @@ use crate::{
 /// * `ProgramResult` - Success or error with detailed error information
 /// 
 /// # Fee Structure
-/// - **Fixed SOL Fee**: 27,150 lamports (0.00002715 SOL) charged to user's SOL balance
+/// - **Fixed SOL Fee**: 271,500 lamports (0.0002715 SOL) charged to user's SOL balance
 /// - **Purpose**: Covers computational costs and protocol revenue
 /// - **Collection**: Accumulated in pool state for later withdrawal
 /// 

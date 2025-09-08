@@ -2120,8 +2120,8 @@ async fn test_governance_fee_architecture() -> TestResult {
     
     println!("✅ SOL fee collection flows to central treasury:");
     println!("   ✓ Pool creation fees: 1.15 SOL → MainTreasury PDA");
-    println!("   ✓ Liquidity operation fees: 0.0013 SOL → MainTreasury PDA");
-    println!("   ✓ Regular swap fees: 0.00002715 SOL → SwapTreasury PDA");
+    println!("   ✓ Liquidity operation fees: 0.013 SOL → MainTreasury PDA");
+    println!("   ✓ Regular swap fees: 0.0002715 SOL → SwapTreasury PDA");
     
     
     // Test 3: Mathematical validation of fee formulas (still accurate)

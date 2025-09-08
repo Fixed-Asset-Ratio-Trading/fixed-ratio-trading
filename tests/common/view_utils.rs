@@ -165,7 +165,7 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     msg!("Pool Custom Fee Structure:");
     msg!("  Owner-Only Swaps: {}", if pool_state.swap_for_owners_only() { "ENABLED" } else { "DISABLED" });
     msg!("  Custom Fee Collection: {}", if pool_state.swap_for_owners_only() { "Available through external contracts" } else { "Not enabled" });
-    msg!("  Fixed Contract Fee: 27,150 lamports per swap");
+    msg!("  Fixed Contract Fee: 271,500 lamports per swap");
     msg!("  Collected Token A Fees: {}", pool_state.collected_fees_token_a);
     msg!("  Collected Token B Fees: {}", pool_state.collected_fees_token_b);
     msg!("  Total Token A Fees Withdrawn: {}", pool_state.total_fees_withdrawn_token_a);

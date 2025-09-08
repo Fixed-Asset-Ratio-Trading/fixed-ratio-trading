@@ -66,13 +66,13 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 ### Liquidity Operations
 | Function | Authority | Default Fee | Purpose |
 |----------|-----------|-------------|---------|
-| `process_liquidity_deposit` | Any User | 0.0013 SOL | Add liquidity |
-| `process_liquidity_withdraw` | LP Holder | 0.0013 SOL | Remove liquidity |
+| `process_liquidity_deposit` | Any User | 0.013 SOL | Add liquidity |
+| `process_liquidity_withdraw` | LP Holder | 0.013 SOL | Remove liquidity |
 
 ### Swap Operations
 | Function | Authority | Default Fee | Purpose |
 |----------|-----------|-------------|---------|
-| `process_swap_execute` | Any User** | 0.00002715 SOL | Execute swap |
+| `process_swap_execute` | Any User** | 0.0002715 SOL | Execute swap |
 | `process_swap_set_owner_only` | Admin Authority* | - | Restrict swaps |
 
 *Admin Authority (with Program Upgrade Authority fallback)

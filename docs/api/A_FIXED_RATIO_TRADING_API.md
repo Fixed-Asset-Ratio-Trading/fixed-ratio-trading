@@ -3009,7 +3009,7 @@ Adds liquidity to a pool by depositing a single token type and minting correspon
 - **No Impermanent Loss**: Fixed ratios eliminate typical AMM impermanent loss risks
 
 **Authority:** Any user  
-**Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
+**Fee:** 0.013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 310,000 CUs maximum (Dashboard: min observed 249K; set 310K for safety margin)
 
 ⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
@@ -3114,7 +3114,7 @@ If you deposited 100 SOL and received 100 Token A LP tokens:
 ```
 
 **Authority:** LP token holder  
-**Fee:** 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
+**Fee:** 0.013 SOL (DEPOSIT_WITHDRAWAL_FEE constant)  
 **Compute Units:** 290,000 CUs maximum (Dashboard: min observed 227K; set 290K for safety margin)
 
 ⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
@@ -3266,7 +3266,7 @@ For detailed examples and step-by-step instructions on calculating exact swap am
 6. Updates pool balances and fee accounting
 
 **Authority:** Any user (unless owner-only mode)  
-**Fee:** 0.00002715 SOL (SWAP_CONTRACT_FEE constant)  
+**Fee:** 0.0002715 SOL (SWAP_CONTRACT_FEE constant)  
 **Compute Units:** 250,000 CUs maximum (Dashboard: tested 202K works; set to 250K to allow for fee changes and variability)
 
 ⚠️ **CRITICAL ACCOUNT REQUIREMENT:**
@@ -3694,7 +3694,7 @@ Exact account order is required. The `Program Data Account` must be derived with
 - Admin authority: caller must be the configured admin (program upgrade authority validation via program data account).
 - System not paused: withdrawals blocked while paused; upon unpause, a restart penalty window applies.
 - Rent protection: withdrawal is limited to lamports above rent-exempt minimum of the treasury account.
-- Minimum amount: withdrawal amount must be at least 0.01 SOL (10,000,000 lamports) unless using amount = 0 for withdraw-all.
+- Minimum amount: withdrawal amount must be at least 0.1 SOL (100,000,000 lamports) unless using amount = 0 for withdraw-all.
 
 #### Rate Limiting Implementation Details
 

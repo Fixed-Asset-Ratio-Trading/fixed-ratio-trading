@@ -5,7 +5,7 @@ Aug 8, 2025 5:18PM
 
 **Revolutionary fixed-ratio token trading infrastructure for Solana - enabling predictable exchanges, micro-denominations, token migrations, and precise liquidity provision at any price point.**
 
----
+---Ad
 **GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
 ---
 
@@ -112,8 +112,10 @@ The protocol implements a sophisticated **dual-fee system** designed for **decen
 | Operation | Fee Amount | Purpose |
 |-----------|------------|---------|
 | **Pool Creation** | **1.15 SOL** | One-time setup, PDA creation, anti-spam protection |
-| **Liquidity Operations** | **0.0013 SOL** | Deposits/withdrawals processing |
-| **Token Swaps** | **0.00002715 SOL** | Ultra-low swap execution costs |
+| **Liquidity Operations** | **0.013 SOL** | Deposits/withdrawals processing |
+| **Token Swaps** | **0.0002715 SOL** | Swap execution costs |
+
+**📧 Fee Adjustment Requests:** Initial fees are set higher for launch sustainability. For fee reduction requests, contact **info@davincicodes.net** with **"FRT"** in the subject line for faster processing.
 
 #### **2. Pool Fees (Currently 0%, Governance-Controlled) 📊**
 *Trading fees configurable by governance protocols:*
@@ -483,7 +485,7 @@ This project is licensed under the **MIT License**. See [LICENSE](LICENSE) for f
 ## 💬 **Support & Contact**
 
 **Technical Support**: support@davincicodes.net  
-**Fee Modifications**: Contact for case-by-case fee adjustments  
+**Fee Reduction Requests**: info@davincicodes.net (Subject: "FRT" for faster processing)  
 **Governance Acceleration**: info@davincicodes.net ($50,000 USD acceleration payment)  
 **Public Updates**: @davincij15 (Twitter/X)
 

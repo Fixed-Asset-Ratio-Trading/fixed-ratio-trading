@@ -1774,8 +1774,8 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
     ];
     
     // Fee Calculation Constants
-    const LIQUIDITY_FEE_LAMPORTS: u64 = 1_300_000;        // Fee per liquidity operation
-    const SWAP_FEE_LAMPORTS: u64 = 2_600_000;             // Fee per swap operation
+    const LIQUIDITY_FEE_LAMPORTS: u64 = 13_000_000;        // Fee per liquidity operation
+    const SWAP_FEE_LAMPORTS: u64 = 271_500;             // Fee per swap operation
     const EXPECTED_FEES_PER_POOL: u64 = LIQUIDITY_FEE_LAMPORTS * 2 + SWAP_FEE_LAMPORTS; // 2 deposits + 1 swap
     const EXPECTED_TOTAL_FEES: u64 = EXPECTED_FEES_PER_POOL * NUM_POOLS as u64;
     

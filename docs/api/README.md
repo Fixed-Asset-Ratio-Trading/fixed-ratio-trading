@@ -133,8 +133,8 @@ Step-by-step guide for building Solana transactions:
 
 3. **Fees**: 
    - Pool creation: 1.15 SOL (REGISTRATION_FEE)
-   - Deposits/Withdrawals: 0.0013 SOL (DEPOSIT_WITHDRAWAL_FEE)
-   - Swaps: 0.00002715 SOL (SWAP_CONTRACT_FEE)
+   - Deposits/Withdrawals: 0.013 SOL (DEPOSIT_WITHDRAWAL_FEE)
+   - Swaps: 0.0002715 SOL (SWAP_CONTRACT_FEE)
    - Fee modifications: Contact support@davincicodes.net
 
 4. **Special Features**:

@@ -39,16 +39,17 @@
 /// **Purpose**: Cover pool creation transaction costs and prevent spam pool creation
 pub const REGISTRATION_FEE: u64 = 1_150_000_000; // 1.15 SOL
 
-/// Fee charged for deposit and withdrawal operations in lamports (0.0013 SOL)
+/// Fee charged for deposit and withdrawal operations in lamports (0.013 SOL)
 /// 
 /// This fee covers the computational cost of liquidity operations including
 /// token transfers, LP token minting/burning, and pool state updates.
 /// 
 /// **Type**: Contract Fee (Fixed SOL amount)  
 /// **When Charged**: During `Deposit` and `Withdraw` operations
-/// **Amount**: 0.0013 SOL (1,300,000 lamports)
+/// **Amount**: 0.013 SOL (13,000,000 lamports)
 /// **Purpose**: Cover transaction processing costs for liquidity operations
-pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
+/// **Note**: Higher initial fee for launch; can be reduced upon request to info@davincicodes.net (subject: FRT)
+pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 13_000_000; // 0.013 SOL
 
 //-----------------------------------------------------------------------------
 // SWAP CONTRACT FEES (Fixed SOL amounts)
@@ -63,11 +64,11 @@ pub const DEPOSIT_WITHDRAWAL_FEE: u64 = 1_300_000; // 0.0013 SOL
 /// 
 /// **Type**: Swap Contract Fee (Fixed SOL amount)
 /// **When Charged**: During `Swap` operations  
-/// **Amount**: 0.00002715 SOL (27,150 lamports)
+/// **Amount**: 0.0002715 SOL (271,500 lamports)
 /// **Purpose**: Cover transaction processing costs for swap operations
 /// **Goes To**: Pool state for operational cost coverage
-/// **Cannot Be Changed**: This is a fixed operational cost
-pub const SWAP_CONTRACT_FEE: u64 = 27_150; // 0.00002715 SOL
+/// **Note**: Higher initial fee for launch; can be reduced upon request to info@davincicodes.net (subject: FRT)
+pub const SWAP_CONTRACT_FEE: u64 = 271_500; // 0.0002715 SOL
 
 //=============================================================================
 // CUSTOM FEE STRUCTURE APPROACH
@@ -275,13 +276,15 @@ pub const FEE_UPDATE_FLAG_BOTH: u8 = FEE_UPDATE_FLAG_LIQUIDITY | FEE_UPDATE_FLAG
 // FEE VALIDATION LIMITS
 //=============================================================================
 
-/// Maximum allowed liquidity fee in lamports (0.01 SOL)
+/// Maximum allowed liquidity fee in lamports (0.1 SOL)
 /// Prevents excessive fees that would make operations prohibitively expensive
-pub const MAX_LIQUIDITY_FEE: u64 = 10_000_000; // 0.01 SOL
+/// **Note**: Higher initial limit for launch; can be reduced upon request to info@davincicodes.net (subject: FRT)
+pub const MAX_LIQUIDITY_FEE: u64 = 100_000_000; // 0.1 SOL
 
-/// Maximum allowed swap fee in lamports (0.001 SOL)
+/// Maximum allowed swap fee in lamports (0.01 SOL)
 /// Prevents excessive fees that would make swaps prohibitively expensive
-pub const MAX_SWAP_FEE: u64 = 1_000_000; // 0.001 SOL
+/// **Note**: Higher initial limit for launch; can be reduced upon request to info@davincicodes.net (subject: FRT)
+pub const MAX_SWAP_FEE: u64 = 10_000_000; // 0.01 SOL
 
 /// Minimum allowed liquidity fee in lamports (0.0001 SOL)
 /// Ensures fees cover basic transaction costs

@@ -221,8 +221,8 @@ async fn test_fee_routing_validation() {
     
     // Define actual fee amounts from constants
     let pool_creation_fee = 1_150_000_000u64; // 1.15 SOL (REGISTRATION_FEE)
-    let liquidity_fee = 1_300_000u64; // 0.0013 SOL  
-    let swap_fee = 27_150u64; // Swap contract fee
+    let liquidity_fee = 13_000_000u64; // 0.013 SOL  
+    let swap_fee = 271_500u64; // Swap contract fee
 
     
     println!("🧪 Testing fee routing methods:");
@@ -471,14 +471,14 @@ async fn test_treasury_workflow_operations() {
     
     // Simulate liquidity operations
     for i in 1..=5 {
-        let liquidity_fee = 1_300_000u64; // 0.0013 SOL
+        let liquidity_fee = 13_000_000u64; // 0.013 SOL
         treasury_state.add_liquidity_fee(liquidity_fee, current_timestamp + i + 10);
         println!("  Liquidity operation {} - Fee: {} lamports", i, liquidity_fee);
     }
     
     // Simulate regular swaps
     for i in 1..=10 {
-        let swap_fee = 27_150u64; // Regular swap fee
+        let swap_fee = 271_500u64; // Regular swap fee
         treasury_state.add_swap_contract_fee(swap_fee, current_timestamp + i + 20);
         println!("  Regular swap {} - Fee: {} lamports", i, swap_fee);
     }

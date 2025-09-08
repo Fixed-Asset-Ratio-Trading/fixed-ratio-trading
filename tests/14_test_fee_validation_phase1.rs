@@ -236,21 +236,14 @@ async fn test_fee_collection_workflow() {
         FeeTestCase {
             name: "Liquidity Operation (sufficient funds)",
             fee_amount: DEPOSIT_WITHDRAWAL_FEE,
-            initial_balance: 10_000_000u64, // 0.01 SOL
+            initial_balance: 20_000_000u64, // 0.02 SOL (sufficient for 0.013 SOL fee)
             should_succeed: true,
             validation_context_code: VALIDATION_CONTEXT_LIQUIDITY,
         },
         FeeTestCase {
             name: "Regular Swap (sufficient funds)",
             fee_amount: SWAP_CONTRACT_FEE,
-            initial_balance: 1_000_000u64, // 0.001 SOL
-            should_succeed: true,
-            validation_context_code: VALIDATION_CONTEXT_SWAP,
-        },
-        FeeTestCase {
-                    name: "Swap (sufficient funds)",
-        fee_amount: SWAP_CONTRACT_FEE,
-            initial_balance: 100_000u64, // 0.0001 SOL
+            initial_balance: 500_000u64, // 0.0005 SOL (sufficient for 0.0002715 SOL fee)
             should_succeed: true,
             validation_context_code: VALIDATION_CONTEXT_SWAP,
         },
@@ -313,9 +306,8 @@ async fn test_fee_amounts_consistency() {
     
     // Verify fee amounts match constants
     assert_eq!(REGISTRATION_FEE, 1_150_000_000u64, "Pool creation fee should be 1.15 SOL");
-    assert_eq!(DEPOSIT_WITHDRAWAL_FEE, 1_300_000u64, "Liquidity fee should be 0.0013 SOL");
-    assert_eq!(SWAP_CONTRACT_FEE, 27_150u64, "Regular swap fee should be 0.00002715 SOL");
-        assert_eq!(SWAP_CONTRACT_FEE, 27_150u64, "Swap fee should be 0.00002715 SOL");
+    assert_eq!(DEPOSIT_WITHDRAWAL_FEE, 13_000_000u64, "Liquidity fee should be 0.013 SOL");
+    assert_eq!(SWAP_CONTRACT_FEE, 271_500u64, "Regular swap fee should be 0.0002715 SOL");
     
     // Verify fee relationships
     assert!(REGISTRATION_FEE > DEPOSIT_WITHDRAWAL_FEE, "Pool creation fee should be higher than liquidity fee");
