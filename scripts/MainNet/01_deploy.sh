@@ -143,6 +143,30 @@ check_prerequisites() {
     log_message "Prerequisites check completed successfully"
 }
 
+# Function to check if program is already deployed
+check_existing_deployment() {
+    print_info "Checking if program is already deployed..."
+    
+    # Check if program exists on-chain
+    if solana program show "$PROGRAM_ID" --url "$RPC_URL" >/dev/null 2>&1; then
+        print_error "❌ Program is already deployed!"
+        print_error "   Program ID: $PROGRAM_ID"
+        print_error "   This deployment would fail or overwrite existing program"
+        print_error ""
+        print_info "To check current program status:"
+        print_info "   solana program show $PROGRAM_ID --url $RPC_URL"
+        print_info ""
+        print_info "If you need to redeploy:"
+        print_info "   1. First run Phase 3 handoff to transfer authority"
+        print_info "   2. Or use a different Program ID keypair"
+        print_info "   3. Or deploy to a different network (devnet/testnet)"
+        exit 1
+    else
+        print_success "✅ Program not deployed - safe to proceed"
+        log_message "Program deployment check passed - no existing deployment found"
+    fi
+}
+
 # Function to build the program
 build_program() {
     print_info "Building program for MainNet..."
@@ -434,6 +458,9 @@ EOF
 
 # Function to display next steps
 show_next_steps() {
+    # Get final balance
+    FINAL_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" 2>/dev/null | awk '{print $1}' || echo "unknown")
+    
     print_success "🎉 Phase 1 Deployment Complete!"
     echo ""
     print_info "What was accomplished:"
@@ -442,6 +469,9 @@ show_next_steps() {
     echo "  ✅ Program deployed to MainNet"
     echo "  ✅ System state initialized with admin authority"
     echo "  ✅ Deployment information recorded"
+    echo ""
+    print_info "💰 Deployment Authority Balance:"
+    echo "  • Remaining SOL: $FINAL_BALANCE"
     echo ""
     print_warning "⚠️  IMPORTANT: Upgrade authority is still with deployment key!"
     print_warning "   Do NOT transfer authority until Phase 3 (after verification)"
@@ -462,6 +492,7 @@ main() {
     log_message "Starting Phase 1 deployment"
     
     check_prerequisites
+    check_existing_deployment
     build_program
     deploy_program
     initialize_system

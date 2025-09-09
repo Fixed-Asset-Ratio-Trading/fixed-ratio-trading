@@ -334,19 +334,30 @@ async function verifyMainNetDeployment() {
         const tokenBKey = new PublicKey(tokenBMint);
         
         // Use buffer comparison like the program does: tokenAMint.toBuffer() < tokenBMint.toBuffer()
-        const [token_a_mint_key, token_b_mint_key] = tokenAKey.toBuffer() < tokenBKey.toBuffer()
-            ? [tokenAKey, tokenBKey] 
-            : [tokenBKey, tokenAKey];
+        const aBuf = tokenAKey.toBytes();
+        const bBuf = tokenBKey.toBytes();
+        let aLessThanB = false;
+        for (let i = 0; i < 32; i++) {
+            if (aBuf[i] < bBuf[i]) { aLessThanB = true; break; }
+            if (aBuf[i] > bBuf[i]) { aLessThanB = false; break; }
+        }
+        const token_a_mint_key = aLessThanB ? tokenAKey : tokenBKey;
+        const token_b_mint_key = aLessThanB ? tokenBKey : tokenAKey;
             
         console.log(`   Token A (normalized): ${token_a_mint_key.toBase58()}`);
         console.log(`   Token B (normalized): ${token_b_mint_key.toBase58()}`);
         
+        // Canonicalize ratios with normalized token order per API docs
+        // If original tokenA < tokenB, keep (1,2); else swap to (2,1)
+        const ratioANormalized = aLessThanB ? 1n : 2n;
+        const ratioBNormalized = aLessThanB ? 2n : 1n;
+
         // Derive pool PDA (must match program's derivation exactly)
+        // Use the exact same format as the program: to_le_bytes() for u64 ratios
         const ratioABuffer = Buffer.alloc(8);
-        ratioABuffer.writeBigUInt64LE(BigInt(1), 0); // ratio_a_numerator: 1 as u64 little endian
-        
+        ratioABuffer.writeBigUInt64LE(ratioANormalized, 0);
         const ratioBBuffer = Buffer.alloc(8);
-        ratioBBuffer.writeBigUInt64LE(BigInt(2), 0); // ratio_b_denominator: 2 as u64 little endian (1:2 ratio)
+        ratioBBuffer.writeBigUInt64LE(ratioBNormalized, 0);
         
         const [poolStatePda] = PublicKey.findProgramAddressSync(
             [
@@ -428,8 +439,8 @@ async function verifyMainNetDeployment() {
             ],
             data: Buffer.concat([
                 Buffer.from([1]), // InitializePool instruction
-                Buffer.from([1, 0, 0, 0, 0, 0, 0, 0]), // ratio_a_numerator (1 as u64)
-                Buffer.from([2, 0, 0, 0, 0, 0, 0, 0]), // ratio_b_denominator (2 as u64) - 1:2 ratio
+                (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(ratioANormalized, 0); return b; })(),
+                (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(ratioBNormalized, 0); return b; })(),
             ])
         });
         
@@ -591,6 +602,9 @@ EOF
 
 # Function to display results
 show_verification_results() {
+    # Get final balance
+    FINAL_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" 2>/dev/null | awk '{print $1}' || echo "unknown")
+    
     print_success "🎉 Phase 2 Verification Complete!"
     echo ""
     print_info "What was verified:"
@@ -599,6 +613,9 @@ show_verification_results() {
     echo "  ✅ Test pool creation (1:2 ratio)"
     echo "  ✅ Pool state validation"
     echo "  ✅ Program functionality confirmed"
+    echo ""
+    print_info "💰 Deployment Authority Balance:"
+    echo "  • Remaining SOL: $FINAL_BALANCE"
     echo ""
     print_warning "⚠️  System is ready for production use!"
     print_warning "   Upgrade authority is still with deployment key"
