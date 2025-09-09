@@ -7,6 +7,8 @@
   },
   "program": {
     "programId": "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn",
+    "mainnetProgramId": "quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD",
+    "devnetProgramId": "9iqh69RqeG3RRrFBNZVoE77TMRvYboFUtC2sykaFVzB7",
     "poolStateSeedPrefix": "pool_state"
   },
   "metaplex": {

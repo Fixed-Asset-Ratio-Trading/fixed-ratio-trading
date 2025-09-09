@@ -96,6 +96,12 @@ use solana_program::entrypoint;
 
 // ⚠️ IMPORTANT: When changing the program ID, also update PROGRAM_AUTHORITY in constants.rs
 // Network-specific program IDs using conditional compilation
+//
+// Build commands for different networks:
+//   LocalNet (default): cargo build-bpf
+//   DevNet:            cargo build-bpf --features devnet --no-default-features
+//   MainNet:           cargo build-bpf --features mainnet --no-default-features
+//
 #[cfg(feature = "localnet")]
 declare_id!("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"); // LocalNet Program ID
 
