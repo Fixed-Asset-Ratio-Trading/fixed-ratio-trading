@@ -1,6 +1,14 @@
+
 #!/bin/bash
 
 # Fixed Ratio Trading - MainNet Verification Script (Phase 2)
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 # This script creates test tokens and pool to verify the deployed program works correctly
 # 
 # Usage:
@@ -40,6 +48,10 @@ if [ "${1:-}" = "--test" ]; then
     VERIFICATION_LOG="$PROJECT_ROOT/temp/mainnet_verification_phase2_localnet.log"
     VERIFICATION_INFO="$PROJECT_ROOT/temp/verification_info_mainnet_phase2_localnet.json"
     INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1_localnet.json"
+else
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+fi
+
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -49,17 +61,14 @@ print_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-else
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
-fi
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
 
@@ -115,10 +124,22 @@ check_phase1_completion() {
     DEPLOYMENT_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" | awk '{print $1}')
     print_info "Deployment authority balance: $DEPLOYMENT_BALANCE SOL"
     
-    if (( $(echo "$DEPLOYMENT_BALANCE < 2" | bc -l) )); then
-        print_warning "Low balance in deployment authority. May need more SOL for verification operations"
-        print_info "Current balance: $DEPLOYMENT_BALANCE SOL"
-        print_info "Recommended: At least 2 SOL for token creation and pool operations"
+    # Strict balance check for Phase 2 operations
+    MINIMUM_BALANCE="2"
+    if (( $(echo "$DEPLOYMENT_BALANCE < $MINIMUM_BALANCE" | bc -l) )); then
+        print_error "Insufficient balance for Phase 2 operations"
+        print_error "   Current balance: $DEPLOYMENT_BALANCE SOL"
+        print_error "   Required minimum: $MINIMUM_BALANCE SOL"
+        print_error "   Phase 2 operations include:"
+        print_error "     • Token creation (2 tokens)"
+        print_error "     • Pool creation (1.15 SOL registration fee)"
+        print_error "     • Account creation and transaction fees"
+        print_error ""
+        print_info "To add funds:"
+        print_info "   solana transfer $DEPLOYMENT_AUTHORITY 2 --url $RPC_URL"
+        exit 1
+    else
+        print_success "✅ Sufficient funds available for Phase 2"
     fi
     
     print_success "Phase 1 verification complete - ready for Phase 2"

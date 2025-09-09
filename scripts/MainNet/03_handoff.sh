@@ -1,6 +1,13 @@
 #!/bin/bash
 
 # Fixed Ratio Trading - MainNet Handoff Script (Phase 3)
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 # This script transfers upgrade authority to Squads multisig and remaining SOL
 # 
 # Usage:
@@ -45,8 +52,6 @@ if [ "${1:-}" = "--test" ]; then
 else
     PHASE2_INFO_PATH="$PROJECT_ROOT/temp/verification_info_mainnet_phase2.json"
 fi
-print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
-print_info "RPC URL: $RPC_URL"
 
 # Function to print colored messages
 print_info() {
@@ -57,17 +62,51 @@ print_success() {
     echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
-print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
-}
-
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
+print_info "RPC URL: $RPC_URL"
+
 # Function to log messages
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$HANDOFF_LOG"
+}
+
+# Function to check sufficient funds for Phase 3
+check_phase3_funds() {
+    print_info "Checking sufficient funds for Phase 3 operations..."
+    
+    # Get current balance
+    DEPLOYMENT_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" 2>/dev/null | awk '{print $1}' || echo "0")
+    
+    print_info "Deployment authority balance: $DEPLOYMENT_BALANCE SOL"
+    
+    # Phase 3 operations are minimal - just authority transfer and SOL transfer
+    # But we need some SOL for transaction fees
+    MINIMUM_BALANCE="0.1"
+    
+    if (( $(echo "$DEPLOYMENT_BALANCE < $MINIMUM_BALANCE" | bc -l) )); then
+        print_error "Insufficient balance for Phase 3 operations"
+        print_error "   Current balance: $DEPLOYMENT_BALANCE SOL"
+        print_error "   Required minimum: $MINIMUM_BALANCE SOL"
+        print_error "   Phase 3 operations include:"
+        print_error "     • Authority transfer to multisig"
+        print_error "     • SOL transfer to multisig"
+        print_error "     • Transaction fees"
+        print_error ""
+        print_info "To add funds:"
+        print_info "   solana transfer $DEPLOYMENT_AUTHORITY 0.5 --url $RPC_URL"
+        exit 1
+    else
+        print_success "✅ Sufficient funds available for Phase 3"
+        log_message "Phase 3 funds check passed - balance: $DEPLOYMENT_BALANCE SOL"
+    fi
 }
 
 # Function to check Phase 2 completion
@@ -362,6 +401,7 @@ main() {
     log_message "Starting Phase 3 handoff"
     
     check_phase2_completion
+    check_phase3_funds
     transfer_upgrade_authority
     transfer_remaining_sol
     create_final_deployment_record
