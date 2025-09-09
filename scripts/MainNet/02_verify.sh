@@ -29,17 +29,17 @@ DEPLOYMENT_KEYPAIR="/Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2
 ADMIN_AUTHORITY="4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko"
 RPC_URL="https://api.mainnet-beta.solana.com"
 PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
-VERIFICATION_LOG="$PROJECT_ROOT/mainnet_verification_phase2.log"
-VERIFICATION_INFO="$PROJECT_ROOT/verification_info_mainnet_phase2.json"
+VERIFICATION_LOG="$PROJECT_ROOT/temp/mainnet_verification_phase2.log"
+VERIFICATION_INFO="$PROJECT_ROOT/temp/verification_info_mainnet_phase2.json"
 
 # Mode (MainNet default; use --test to target localnet with MainNet build)
 TEST_MODE=0
 if [ "${1:-}" = "--test" ]; then
     TEST_MODE=1
     RPC_URL="http://192.168.2.88:8899"
-    VERIFICATION_LOG="$PROJECT_ROOT/mainnet_verification_phase2_localnet.log"
-    VERIFICATION_INFO="$PROJECT_ROOT/verification_info_mainnet_phase2_localnet.json"
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
+    VERIFICATION_LOG="$PROJECT_ROOT/temp/mainnet_verification_phase2_localnet.log"
+    VERIFICATION_INFO="$PROJECT_ROOT/temp/verification_info_mainnet_phase2_localnet.json"
+    INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1_localnet.json"
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -75,9 +75,9 @@ check_phase1_completion() {
     
     # Check if Phase 1 deployment info exists
     if [ $TEST_MODE -eq 1 ]; then
-        PHASE1_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1_localnet.json"
+        PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1_localnet.json"
     else
-        PHASE1_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1.json"
+        PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1.json"
     fi
     if [ ! -f "$PHASE1_INFO" ]; then
         print_error "Phase 1 deployment info not found: $PHASE1_INFO"
@@ -128,7 +128,7 @@ check_phase1_completion() {
 create_verification_script() {
     print_info "Creating MainNet verification script..."
     
-    cat > "$PROJECT_ROOT/scripts/MainNet/verify_mainnet.js" << 'EOF'
+    cat > "$PROJECT_ROOT/temp/verify_mainnet.js" << 'EOF'
 #!/usr/bin/env node
 
 const { 
@@ -520,7 +520,7 @@ async function verifyMainNetDeployment() {
 verifyMainNetDeployment();
 EOF
     
-    chmod +x "$PROJECT_ROOT/scripts/MainNet/verify_mainnet.js"
+    chmod +x "$PROJECT_ROOT/temp/verify_mainnet.js"
     print_success "Verification script created"
 }
 
@@ -532,7 +532,7 @@ run_verification() {
     cd "$PROJECT_ROOT"
     
     # Run the verification script
-    node "$PROJECT_ROOT/scripts/MainNet/verify_mainnet.js" \
+    node "$PROJECT_ROOT/temp/verify_mainnet.js" \
         "$PROGRAM_ID" \
         "$RPC_URL" \
         "$DEPLOYMENT_KEYPAIR"

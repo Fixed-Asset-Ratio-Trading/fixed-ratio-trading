@@ -31,19 +31,19 @@ ADMIN_AUTHORITY="4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko"
 SQUADS_MULTISIG="i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi"
 RPC_URL="https://api.mainnet-beta.solana.com"
 PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
-HANDOFF_LOG="$PROJECT_ROOT/mainnet_handoff_phase3.log"
-FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_final.json"
+HANDOFF_LOG="$PROJECT_ROOT/temp/mainnet_handoff_phase3.log"
+FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_final.json"
 
 # Mode (MainNet default; use --test to target localnet with MainNet build)
 TEST_MODE=0
 if [ "${1:-}" = "--test" ]; then
     TEST_MODE=1
     RPC_URL="http://192.168.2.88:8899"
-    HANDOFF_LOG="$PROJECT_ROOT/mainnet_handoff_phase3_localnet.log"
-    FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_final_localnet.json"
-    PHASE2_INFO_PATH="$PROJECT_ROOT/verification_info_mainnet_phase2_localnet.json"
+    HANDOFF_LOG="$PROJECT_ROOT/temp/mainnet_handoff_phase3_localnet.log"
+    FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_final_localnet.json"
+    PHASE2_INFO_PATH="$PROJECT_ROOT/temp/verification_info_mainnet_phase2_localnet.json"
 else
-    PHASE2_INFO_PATH="$PROJECT_ROOT/verification_info_mainnet_phase2.json"
+    PHASE2_INFO_PATH="$PROJECT_ROOT/temp/verification_info_mainnet_phase2.json"
 fi
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
@@ -237,10 +237,10 @@ create_final_deployment_record() {
     print_info "Creating final deployment record..."
     
     # Gather all information from previous phases
-    PHASE1_INFO=$(cat "$PROJECT_ROOT/deployment_info_mainnet_phase1.json" 2>/dev/null || echo "{}")
-    PHASE2_INFO=$(cat "$PROJECT_ROOT/verification_info_mainnet_phase2.json" 2>/dev/null || echo "{}")
-    TRANSFER_TX=$(cat "$PROJECT_ROOT/.mainnet_transfer_tx_phase3" 2>/dev/null || echo "unknown")
-    SOL_TRANSFER_TX=$(cat "$PROJECT_ROOT/.mainnet_sol_transfer_tx_phase3" 2>/dev/null || echo "unknown")
+    PHASE1_INFO=$(cat "$PROJECT_ROOT/temp/deployment_info_mainnet_phase1.json" 2>/dev/null || echo "{}")
+    PHASE2_INFO=$(cat "$PROJECT_ROOT/temp/verification_info_mainnet_phase2.json" 2>/dev/null || echo "{}")
+    TRANSFER_TX=$(cat "$PROJECT_ROOT/temp/.mainnet_transfer_tx_phase3" 2>/dev/null || echo "unknown")
+    SOL_TRANSFER_TX=$(cat "$PROJECT_ROOT/temp/.mainnet_sol_transfer_tx_phase3" 2>/dev/null || echo "unknown")
     
     # Create comprehensive final deployment record
     cat > "$FINAL_DEPLOYMENT_INFO" << EOF

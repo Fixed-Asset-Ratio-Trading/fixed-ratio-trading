@@ -47,23 +47,23 @@ DEPLOYMENT_KEYPAIR="/Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2
 ADMIN_AUTHORITY="4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko"
 RPC_URL="https://api.mainnet-beta.solana.com"
 PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
-DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1.log"
-DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1.json"
+DEPLOYMENT_LOG="$PROJECT_ROOT/temp/mainnet_deployment_phase1.log"
+DEPLOYMENT_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1.json"
 
 # Mode (MainNet default; use --test to target localnet with MainNet build)
 TEST_MODE=0
 if [ "${1:-}" = "--test" ]; then
     TEST_MODE=1
     RPC_URL="http://192.168.2.88:8899"
-    DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1_localnet.log"
-    DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1_localnet.json"
-    BINARY_HASH_FILE=".mainnet_binary_hash_phase1_localnet"
-    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1_localnet"
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
+    DEPLOYMENT_LOG="$PROJECT_ROOT/temp/mainnet_deployment_phase1_localnet.log"
+    DEPLOYMENT_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1_localnet.json"
+    BINARY_HASH_FILE="temp/.mainnet_binary_hash_phase1_localnet"
+    DEPLOY_TX_FILE="temp/.mainnet_deploy_tx_phase1_localnet"
+    INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1_localnet.json"
 else
-    BINARY_HASH_FILE=".mainnet_binary_hash_phase1"
-    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1"
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+    BINARY_HASH_FILE="temp/.mainnet_binary_hash_phase1"
+    DEPLOY_TX_FILE="temp/.mainnet_deploy_tx_phase1"
+    INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1.json"
 fi
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
@@ -237,7 +237,7 @@ initialize_system() {
     cd "$PROJECT_ROOT"
     
     # Create initialization script for MainNet Phase 1
-    cat > "$PROJECT_ROOT/scripts/MainNet/initialize_phase1.js" << 'EOF'
+    cat > "$PROJECT_ROOT/temp/initialize_phase1.js" << 'EOF'
 #!/usr/bin/env node
 
 const { PublicKey, Connection, Transaction, TransactionInstruction, Keypair, SystemProgram, sendAndConfirmTransaction } = require('@solana/web3.js');
@@ -368,11 +368,11 @@ async function initializeSystem() {
 initializeSystem();
 EOF
     
-    chmod +x "$PROJECT_ROOT/scripts/MainNet/initialize_phase1.js"
+    chmod +x "$PROJECT_ROOT/temp/initialize_phase1.js"
     
     # Run initialization
     print_info "Running system initialization..."
-    INIT_INFO_PATH="$INIT_INFO_PATH" node "$PROJECT_ROOT/scripts/MainNet/initialize_phase1.js" \
+    INIT_INFO_PATH="$INIT_INFO_PATH" node "$PROJECT_ROOT/temp/initialize_phase1.js" \
         "$PROGRAM_ID" \
         "$RPC_URL" \
         "$DEPLOYMENT_KEYPAIR" \

@@ -32,3 +32,6 @@ artifacts/
 *.nuget.targets
 swap_debug_output.txt
 logs/
+
+# Temporary files and logs from deployment/testing
+temp/
