@@ -34,6 +34,20 @@ PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
 HANDOFF_LOG="$PROJECT_ROOT/mainnet_handoff_phase3.log"
 FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_final.json"
 
+# Mode (MainNet default; use --test to target localnet with MainNet build)
+TEST_MODE=0
+if [ "${1:-}" = "--test" ]; then
+    TEST_MODE=1
+    RPC_URL="http://127.0.0.1:8899"
+    HANDOFF_LOG="$PROJECT_ROOT/mainnet_handoff_phase3_localnet.log"
+    FINAL_DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_final_localnet.json"
+    PHASE2_INFO_PATH="$PROJECT_ROOT/verification_info_mainnet_phase2_localnet.json"
+else
+    PHASE2_INFO_PATH="$PROJECT_ROOT/verification_info_mainnet_phase2.json"
+fi
+print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
+print_info "RPC URL: $RPC_URL"
+
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -62,7 +76,7 @@ check_phase2_completion() {
     log_message "Starting Phase 3 handoff prerequisites"
     
     # Check if Phase 2 verification info exists
-    PHASE2_INFO="$PROJECT_ROOT/verification_info_mainnet_phase2.json"
+    PHASE2_INFO="$PHASE2_INFO_PATH"
     if [ ! -f "$PHASE2_INFO" ]; then
         print_error "Phase 2 verification info not found: $PHASE2_INFO"
         print_error "Please run Phase 2 verification first: ./scripts/MainNet/02_verify.sh"

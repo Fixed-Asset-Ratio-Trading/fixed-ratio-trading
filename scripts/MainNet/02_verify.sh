@@ -32,6 +32,20 @@ PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
 VERIFICATION_LOG="$PROJECT_ROOT/mainnet_verification_phase2.log"
 VERIFICATION_INFO="$PROJECT_ROOT/verification_info_mainnet_phase2.json"
 
+# Mode (MainNet default; use --test to target localnet with MainNet build)
+TEST_MODE=0
+if [ "${1:-}" = "--test" ]; then
+    TEST_MODE=1
+    RPC_URL="http://127.0.0.1:8899"
+    VERIFICATION_LOG="$PROJECT_ROOT/mainnet_verification_phase2_localnet.log"
+    VERIFICATION_INFO="$PROJECT_ROOT/verification_info_mainnet_phase2_localnet.json"
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
+else
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+fi
+print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
+print_info "RPC URL: $RPC_URL"
+
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -85,8 +99,8 @@ check_phase1_completion() {
     
     # Verify system state exists
     print_info "Verifying system state initialization..."
-    if [ -f "$PROJECT_ROOT/.mainnet_init_info_phase1.json" ]; then
-        SYSTEM_STATE_PDA=$(jq -r '.systemStatePda' "$PROJECT_ROOT/.mainnet_init_info_phase1.json")
+    if [ -f "$INIT_INFO_PATH" ]; then
+        SYSTEM_STATE_PDA=$(jq -r '.systemStatePda' "$INIT_INFO_PATH")
         print_success "System state PDA: $SYSTEM_STATE_PDA"
     else
         print_error "System initialization info not found"

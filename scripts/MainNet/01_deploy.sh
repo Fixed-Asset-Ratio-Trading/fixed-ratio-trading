@@ -33,6 +33,24 @@ PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
 DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1.log"
 DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1.json"
 
+# Mode (MainNet default; use --test to target localnet with MainNet build)
+TEST_MODE=0
+if [ "${1:-}" = "--test" ]; then
+    TEST_MODE=1
+    RPC_URL="http://127.0.0.1:8899"
+    DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1_localnet.log"
+    DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1_localnet.json"
+    BINARY_HASH_FILE=".mainnet_binary_hash_phase1_localnet"
+    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1_localnet"
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
+else
+    BINARY_HASH_FILE=".mainnet_binary_hash_phase1"
+    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1"
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+fi
+print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
+print_info "RPC URL: $RPC_URL"
+
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -153,7 +171,7 @@ build_program() {
     log_message "Binary hash: $BINARY_HASH"
     
     # Store hash in temp file for later use
-    echo "$BINARY_HASH" > "$PROJECT_ROOT/.mainnet_binary_hash_phase1"
+    echo "$BINARY_HASH" > "$PROJECT_ROOT/$BINARY_HASH_FILE"
 }
 
 # Function to deploy the program
@@ -188,7 +206,7 @@ deploy_program() {
     log_message "Deployment transaction: $DEPLOY_TX"
     
     # Store deployment transaction
-    echo "$DEPLOY_TX" > "$PROJECT_ROOT/.mainnet_deploy_tx_phase1"
+    echo "$DEPLOY_TX" > "$PROJECT_ROOT/$DEPLOY_TX_FILE"
     
     # Verify deployment
     print_info "Verifying deployment..."
@@ -198,7 +216,7 @@ deploy_program() {
     print_info "Verifying binary hash on-chain..."
     solana program dump "$PROGRAM_ID" dumped_mainnet_phase1.so --url "$RPC_URL"
     ONCHAIN_HASH=$(sha256sum dumped_mainnet_phase1.so | awk '{print $1}')
-    LOCAL_HASH=$(cat "$PROJECT_ROOT/.mainnet_binary_hash_phase1")
+    LOCAL_HASH=$(cat "$PROJECT_ROOT/$BINARY_HASH_FILE")
     
     if [ "$ONCHAIN_HASH" == "$LOCAL_HASH" ]; then
         print_success "Binary hash verification successful"
@@ -329,7 +347,7 @@ async function initializeSystem() {
         };
         
         fs.writeFileSync(
-            path.join(process.cwd(), '.mainnet_init_info_phase1.json'),
+            path.join(process.cwd(), process.env.INIT_INFO_PATH || '.mainnet_init_info_phase1.json'),
             JSON.stringify(initInfo, null, 2)
         );
         
@@ -351,7 +369,7 @@ EOF
     
     # Run initialization
     print_info "Running system initialization..."
-    node "$PROJECT_ROOT/scripts/MainNet/initialize_phase1.js" \
+    INIT_INFO_PATH="$INIT_INFO_PATH" node "$PROJECT_ROOT/scripts/MainNet/initialize_phase1.js" \
         "$PROGRAM_ID" \
         "$RPC_URL" \
         "$DEPLOYMENT_KEYPAIR" \
@@ -362,8 +380,8 @@ EOF
         log_message "System initialization completed successfully"
         
         # Read initialization info
-        if [ -f "$PROJECT_ROOT/.mainnet_init_info_phase1.json" ]; then
-            INIT_TX=$(jq -r '.initTransaction' "$PROJECT_ROOT/.mainnet_init_info_phase1.json")
+        if [ -f "$INIT_INFO_PATH" ]; then
+            INIT_TX=$(jq -r '.initTransaction' "$INIT_INFO_PATH")
             log_message "Initialization transaction: $INIT_TX"
             print_info "System is now ready for verification testing (Phase 2)"
         fi
@@ -378,9 +396,9 @@ create_deployment_record() {
     print_info "Creating Phase 1 deployment record..."
     
     # Gather all information
-    BINARY_HASH=$(cat "$PROJECT_ROOT/.mainnet_binary_hash_phase1" 2>/dev/null || echo "unknown")
-    DEPLOY_TX=$(cat "$PROJECT_ROOT/.mainnet_deploy_tx_phase1" 2>/dev/null || echo "unknown")
-    INIT_INFO=$(cat "$PROJECT_ROOT/.mainnet_init_info_phase1.json" 2>/dev/null || echo "{}")
+    BINARY_HASH=$(cat "$PROJECT_ROOT/$BINARY_HASH_FILE" 2>/dev/null || echo "unknown")
+    DEPLOY_TX=$(cat "$PROJECT_ROOT/$DEPLOY_TX_FILE" 2>/dev/null || echo "unknown")
+    INIT_INFO=$(cat "$INIT_INFO_PATH" 2>/dev/null || echo "{}")
     
     # Create deployment info JSON
     cat > "$DEPLOYMENT_INFO" << EOF
@@ -406,8 +424,8 @@ EOF
     log_message "Phase 1 deployment record created"
     
     # Clean up temporary files
-    rm -f "$PROJECT_ROOT/.mainnet_binary_hash_phase1"
-    rm -f "$PROJECT_ROOT/.mainnet_deploy_tx_phase1"
+    rm -f "$PROJECT_ROOT/$BINARY_HASH_FILE"
+    rm -f "$PROJECT_ROOT/$DEPLOY_TX_FILE"
     # Keep init info for Phase 2
 }
 
