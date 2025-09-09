@@ -53,8 +53,8 @@ The deployment authority keypair for `3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4X
 - [ ] Backup all keypairs to secure location
 - [ ] Test deployment process on Devnet first
 
-### Phase 2: Funding (7 SOL Total Required)
-- [ ] Fund deployment authority: 7 SOL minimum
+### Phase 2: Funding (10 SOL Total Required)
+- [ ] Fund deployment authority: 10 SOL minimum (includes Phase 2 verification costs)
 - [ ] Admin authority: NOT required for deployment
 - [ ] Squads multisig: Will receive remaining SOL automatically in Phase 3
 
@@ -103,10 +103,10 @@ The deployment authority keypair for `3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4X
 
 | Account | Purpose | Amount | Notes |
 |---------|---------|--------|-------|
-| Deployment Authority | Program deployment + fees | 7 SOL | Minimum required |
+| Deployment Authority | Program deployment + verification | 10 SOL | Minimum required |
 | Admin Authority | Future operations | 0 SOL | NOT required for deployment |
 | Squads Multisig | Future upgrades | 0 SOL | Receives remainder automatically |
-| **TOTAL REQUIRED** | | **7 SOL** | Only deployment authority needs funding |
+| **TOTAL REQUIRED** | | **10 SOL** | Only deployment authority needs funding |
 
 ## 🚀 Quick Start Commands
 
@@ -122,8 +122,8 @@ solana-keygen pubkey /Users/davinci/code/keys/MainNet-quXSYkeZ8ByTCtYY1J1uxQmE36
 solana-keygen pubkey /Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB.json
 # Must output: 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB
 
-# 3. Fund deployment authority (7 SOL minimum)
-solana transfer 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB 7 --from YOUR_FUNDING_WALLET --url mainnet-beta
+# 3. Fund deployment authority (10 SOL minimum)
+solana transfer 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB 10 --from YOUR_FUNDING_WALLET --url mainnet-beta
 
 # 4. Run Three-Phase Deployment
 cd /Users/davinci/code/fixed-ratio-trading
@@ -145,7 +145,7 @@ cd /Users/davinci/code/fixed-ratio-trading
 - **Public Key Verification**: Both keypairs must have exact expected public keys or scripts will fail
 - **Automatic SOL Transfer**: Phase 3 transfers remaining SOL from deployment authority to Squads multisig
 - **Recovery Points**: Can recover/fix issues after Phase 1 and Phase 2, but not after Phase 3
-- **Funding**: Only deployment authority needs funding (7 SOL minimum)
+- **Funding**: Only deployment authority needs funding (10 SOL minimum)
 
 ## 🆘 Support
 

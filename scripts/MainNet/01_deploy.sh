@@ -22,35 +22,6 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Configuration
-PROGRAM_ID="quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"
-PROGRAM_KEYPAIR="/Users/davinci/code/keys/MainNet-quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD.json"
-DEPLOYMENT_AUTHORITY="3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB"
-DEPLOYMENT_KEYPAIR="/Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB.json"
-ADMIN_AUTHORITY="4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko"
-RPC_URL="https://api.mainnet-beta.solana.com"
-PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
-DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1.log"
-DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1.json"
-
-# Mode (MainNet default; use --test to target localnet with MainNet build)
-TEST_MODE=0
-if [ "${1:-}" = "--test" ]; then
-    TEST_MODE=1
-    RPC_URL="http://127.0.0.1:8899"
-    DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1_localnet.log"
-    DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1_localnet.json"
-    BINARY_HASH_FILE=".mainnet_binary_hash_phase1_localnet"
-    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1_localnet"
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
-else
-    BINARY_HASH_FILE=".mainnet_binary_hash_phase1"
-    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1"
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
-fi
-print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
-print_info "RPC URL: $RPC_URL"
-
 # Function to print colored messages
 print_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -67,6 +38,35 @@ print_warning() {
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
+
+# Configuration
+PROGRAM_ID="quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD"
+PROGRAM_KEYPAIR="/Users/davinci/code/keys/MainNet-quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD.json"
+DEPLOYMENT_AUTHORITY="3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB"
+DEPLOYMENT_KEYPAIR="/Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB.json"
+ADMIN_AUTHORITY="4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko"
+RPC_URL="https://api.mainnet-beta.solana.com"
+PROJECT_ROOT="/Users/davinci/code/fixed-ratio-trading"
+DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1.log"
+DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1.json"
+
+# Mode (MainNet default; use --test to target localnet with MainNet build)
+TEST_MODE=0
+if [ "${1:-}" = "--test" ]; then
+    TEST_MODE=1
+    RPC_URL="http://192.168.2.88:8899"
+    DEPLOYMENT_LOG="$PROJECT_ROOT/mainnet_deployment_phase1_localnet.log"
+    DEPLOYMENT_INFO="$PROJECT_ROOT/deployment_info_mainnet_phase1_localnet.json"
+    BINARY_HASH_FILE=".mainnet_binary_hash_phase1_localnet"
+    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1_localnet"
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1_localnet.json"
+else
+    BINARY_HASH_FILE=".mainnet_binary_hash_phase1"
+    DEPLOY_TX_FILE=".mainnet_deploy_tx_phase1"
+    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+fi
+print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
+print_info "RPC URL: $RPC_URL"
 
 # Function to log messages
 log_message() {
@@ -133,9 +133,9 @@ check_prerequisites() {
     DEPLOYMENT_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" | awk '{print $1}')
     print_info "Deployment authority balance: $DEPLOYMENT_BALANCE SOL"
     
-    if (( $(echo "$DEPLOYMENT_BALANCE < 7" | bc -l) )); then
-        print_error "Insufficient balance in deployment authority. Need at least 7 SOL, have $DEPLOYMENT_BALANCE SOL"
-        print_info "Run: solana transfer $DEPLOYMENT_AUTHORITY 7 --url $RPC_URL"
+    if (( $(echo "$DEPLOYMENT_BALANCE < 10" | bc -l) )); then
+        print_error "Insufficient balance in deployment authority. Need at least 10 SOL, have $DEPLOYMENT_BALANCE SOL"
+        print_info "Run: solana transfer $DEPLOYMENT_AUTHORITY 10 --url $RPC_URL"
         exit 1
     fi
     
@@ -156,7 +156,7 @@ build_program() {
     
     # Build with MainNet feature (disable default features to ensure only mainnet is used)
     print_info "Building with MainNet feature flag..."
-    cargo build-bpf --features mainnet --no-default-features
+    cargo build-sbf --features mainnet --no-default-features
     
     # Verify the binary was created
     if [ ! -f "target/deploy/fixed_ratio_trading.so" ]; then
@@ -289,15 +289,16 @@ async function initializeSystem() {
         console.log(`   MainTreasury: ${mainTreasuryPda.toBase58()}`);
         console.log(`   ProgramData: ${programDataAddress.toBase58()}`);
         
-        // Create initialization instruction (InitializeProgram = instruction 0)
+        // Create initialization instruction (InitializeProgram = instruction 0) - 6 accounts required
         const initInstruction = new TransactionInstruction({
             programId: programId,
             keys: [
-                { pubkey: authority.publicKey, isSigner: true, isWritable: true },
-                { pubkey: systemStatePda, isSigner: false, isWritable: true },
-                { pubkey: mainTreasuryPda, isSigner: false, isWritable: true },
-                { pubkey: programDataAddress, isSigner: false, isWritable: false },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                { pubkey: authority.publicKey, isSigner: true, isWritable: true },        // 0: Program Authority Signer
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },  // 1: System Program Account
+                { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false }, // 2: Rent Sysvar
+                { pubkey: systemStatePda, isSigner: false, isWritable: true },            // 3: System State PDA
+                { pubkey: mainTreasuryPda, isSigner: false, isWritable: true },           // 4: Main Treasury PDA
+                { pubkey: programDataAddress, isSigner: false, isWritable: false },       // 5: Program Data Account
             ],
             data: Buffer.concat([
                 Buffer.from([0]), // InitializeProgram instruction
@@ -346,8 +347,10 @@ async function initializeSystem() {
             phase: 'phase1_initialization'
         };
         
+        const initInfoFile = process.env.INIT_INFO_PATH || '.mainnet_init_info_phase1.json';
+        const initInfoPath = initInfoFile.startsWith('/') ? initInfoFile : path.join(process.cwd(), initInfoFile);
         fs.writeFileSync(
-            path.join(process.cwd(), process.env.INIT_INFO_PATH || '.mainnet_init_info_phase1.json'),
+            initInfoPath,
             JSON.stringify(initInfo, null, 2)
         );
         

@@ -25,11 +25,11 @@ The Fixed Ratio Trading MainNet deployment is split into three separate phases t
 
 ### Updated Funding Requirements
 
-**Total Required: 7 SOL** (reduced from previous 9 SOL estimate)
+**Total Required: 10 SOL** (includes buffer for token/pool creation in Phase 2)
 
 | Account | Amount | Purpose | Phase |
 |---------|--------|---------|--------|
-| Deployment Authority (`3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB`) | 7 SOL | All deployment operations | Phase 1-3 |
+| Deployment Authority (`3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB`) | 10 SOL | All deployment operations including verification | Phase 1-3 |
 | Admin Authority (`4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko`) | 0 SOL | Not needed for deployment | N/A |
 | Squads Multisig (`i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi`) | 0 SOL | Receives remainder automatically | Phase 3 |
 
@@ -39,17 +39,17 @@ The Fixed Ratio Trading MainNet deployment is split into three separate phases t
 - Program deployment: ~5 SOL
 - System initialization: ~0.1 SOL
 - Transaction fees: ~0.5 SOL
-- **Remaining after Phase 1: ~1.4 SOL**
+- **Remaining after Phase 1: ~4.4 SOL**
 
 **Phase 2 (Verification):**
 - Token creation (2 tokens): ~0.01 SOL
-- Pool creation: ~0.01 SOL
+- Pool creation: ~1.15 SOL (registration fee)
 - Transaction fees: ~0.05 SOL
-- **Remaining after Phase 2: ~1.3 SOL**
+- **Remaining after Phase 2: ~3.2 SOL**
 
 **Phase 3 (Handoff):**
 - Authority transfer: ~0.001 SOL
-- Remaining SOL transferred to multisig: ~1.299 SOL
+- Remaining SOL transferred to multisig: ~3.199 SOL
 - **Final deployment authority balance: 0.001 SOL (rent-exempt)**
 
 ## Pre-Deployment Setup
@@ -74,12 +74,12 @@ solana-keygen pubkey /Users/davinci/code/keys/3Li1ktauXzse1oHueYDAkD1d4o25u11jBT
 # Set to mainnet
 solana config set --url https://api.mainnet-beta.solana.com
 
-# Fund deployment authority (7 SOL minimum)
-solana transfer 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB 7 --from <YOUR_FUNDING_WALLET>
+# Fund deployment authority (10 SOL minimum)
+solana transfer 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB 10 --from <YOUR_FUNDING_WALLET>
 
 # Verify funding
 solana balance 3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4XbB
-# Should show at least 7 SOL
+# Should show at least 10 SOL
 ```
 
 ## Deployment Process
