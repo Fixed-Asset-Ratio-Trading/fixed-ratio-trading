@@ -48,8 +48,10 @@ if [ "${1:-}" = "--test" ]; then
     VERIFICATION_LOG="$PROJECT_ROOT/temp/mainnet_verification_phase2_localnet.log"
     VERIFICATION_INFO="$PROJECT_ROOT/temp/verification_info_mainnet_phase2_localnet.json"
     INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1_localnet.json"
+    PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1_localnet.json"
 else
     INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1.json"
+    PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1.json"
 fi
 
 # Function to print colored messages
@@ -86,11 +88,6 @@ check_phase1_completion() {
     log_message "Starting Phase 2 verification prerequisites"
     
     # Check if Phase 1 deployment info exists
-    if [ $TEST_MODE -eq 1 ]; then
-        PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1_localnet.json"
-    else
-        PHASE1_INFO="$PROJECT_ROOT/temp/deployment_info_mainnet_phase1.json"
-    fi
     if [ ! -f "$PHASE1_INFO" ]; then
         print_error "Phase 1 deployment info not found: $PHASE1_INFO"
         print_error "Please run Phase 1 deployment first: ./scripts/MainNet/01_deploy.sh"
