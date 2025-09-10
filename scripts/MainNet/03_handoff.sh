@@ -142,6 +142,21 @@ check_phase2_completion() {
     fi
     
     print_success "Current upgrade authority confirmed: $DEPLOYMENT_AUTHORITY"
+
+    # Verify the deployment keypair matches the expected deployment authority pubkey
+    print_info "Verifying deployment keypair matches deployment authority..."
+    DEPLOYMENT_KEYPAIR_PUBKEY=$(solana-keygen pubkey "$DEPLOYMENT_KEYPAIR" 2>/dev/null || echo "")
+    if [ -z "$DEPLOYMENT_KEYPAIR_PUBKEY" ]; then
+        print_error "Could not read deployment keypair: $DEPLOYMENT_KEYPAIR"
+        exit 1
+    fi
+    if [ "$DEPLOYMENT_KEYPAIR_PUBKEY" != "$DEPLOYMENT_AUTHORITY" ]; then
+        print_error "Deployment keypair public key mismatch!"
+        print_error "  Expected: $DEPLOYMENT_AUTHORITY"
+        print_error "  Actual:   $DEPLOYMENT_KEYPAIR_PUBKEY"
+        exit 1
+    fi
+    print_success "Deployment keypair matches expected authority: $DEPLOYMENT_AUTHORITY"
     
     # Check deployment authority balance
     DEPLOYMENT_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" | awk '{print $1}')
@@ -189,25 +204,24 @@ transfer_upgrade_authority() {
     TRANSFER_OUTPUT=$(solana program set-upgrade-authority \
         "$PROGRAM_ID" \
         --new-upgrade-authority "$SQUADS_MULTISIG" \
-        --keypair "$DEPLOYMENT_KEYPAIR" \
+        --upgrade-authority "$DEPLOYMENT_KEYPAIR" \
+        --skip-new-upgrade-authority-signer-check \
         --url "$RPC_URL" \
         2>&1)
     
-    # Extract transaction signature
+    # Extract transaction signature (may be missing on some CLI versions)
     TRANSFER_TX=$(echo "$TRANSFER_OUTPUT" | grep -oE '[A-Za-z0-9]{87,88}' | head -1)
     
     if [ -z "$TRANSFER_TX" ]; then
-        print_error "Failed to transfer upgrade authority"
+        print_warning "No transaction signature parsed from CLI output"
         echo "$TRANSFER_OUTPUT"
-        exit 1
+    else
+        print_success "Upgrade authority transferred successfully"
+        print_info "Transfer transaction: $TRANSFER_TX"
+        log_message "Authority transfer transaction: $TRANSFER_TX"
+        # Store transfer transaction
+        echo "$TRANSFER_TX" > "$PROJECT_ROOT/temp/.mainnet_transfer_tx_phase3"
     fi
-    
-    print_success "Upgrade authority transferred successfully"
-    print_info "Transfer transaction: $TRANSFER_TX"
-    log_message "Authority transfer transaction: $TRANSFER_TX"
-    
-    # Store transfer transaction
-    echo "$TRANSFER_TX" > "$PROJECT_ROOT/.mainnet_transfer_tx_phase3"
     
     # Verify transfer
     print_info "Verifying authority transfer..."
@@ -264,7 +278,7 @@ transfer_remaining_sol() {
     fi
     
     # Store SOL transfer transaction
-    echo "$SOL_TRANSFER_TX" > "$PROJECT_ROOT/.mainnet_sol_transfer_tx_phase3"
+    echo "$SOL_TRANSFER_TX" > "$PROJECT_ROOT/temp/.mainnet_sol_transfer_tx_phase3"
     
     # Show final balance
     FINAL_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" | awk '{print $1}')
@@ -327,8 +341,8 @@ EOF
     log_message "Final deployment record created"
     
     # Clean up temporary files
-    rm -f "$PROJECT_ROOT/.mainnet_transfer_tx_phase3"
-    rm -f "$PROJECT_ROOT/.mainnet_sol_transfer_tx_phase3"
+    rm -f "$PROJECT_ROOT/temp/.mainnet_transfer_tx_phase3"
+    rm -f "$PROJECT_ROOT/temp/.mainnet_sol_transfer_tx_phase3"
 }
 
 # Function to provide security instructions
