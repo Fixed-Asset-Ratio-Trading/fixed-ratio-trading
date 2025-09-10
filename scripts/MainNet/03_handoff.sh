@@ -73,6 +73,9 @@ print_warning() {
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
 
+# Create temp directory if it doesn't exist
+mkdir -p "$PROJECT_ROOT/temp"
+
 # Function to log messages
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$HANDOFF_LOG"
@@ -283,6 +286,10 @@ transfer_remaining_sol() {
     # Show final balance
     FINAL_BALANCE=$(solana balance "$DEPLOYMENT_AUTHORITY" --url "$RPC_URL" | awk '{print $1}')
     print_info "Final deployment authority balance: $FINAL_BALANCE SOL"
+    
+    # Store transfer amount and final balance for final status display
+    echo "$TRANSFER_AMOUNT" > "$PROJECT_ROOT/temp/.mainnet_transfer_amount_phase3"
+    echo "$FINAL_BALANCE" > "$PROJECT_ROOT/temp/.mainnet_final_balance_phase3"
 }
 
 # Function to create final deployment record
@@ -339,10 +346,6 @@ EOF
     
     print_success "Final deployment record created: $FINAL_DEPLOYMENT_INFO"
     log_message "Final deployment record created"
-    
-    # Clean up temporary files
-    rm -f "$PROJECT_ROOT/temp/.mainnet_transfer_tx_phase3"
-    rm -f "$PROJECT_ROOT/temp/.mainnet_sol_transfer_tx_phase3"
 }
 
 # Function to provide security instructions
@@ -388,6 +391,18 @@ show_final_status() {
     echo "  ✅ Remaining SOL transferred to multisig"
     echo "  ✅ Deployment records created"
     echo ""
+    
+    # Read SOL transfer information
+    TRANSFER_AMOUNT=$(cat "$PROJECT_ROOT/temp/.mainnet_transfer_amount_phase3" 2>/dev/null || echo "0")
+    FINAL_BALANCE=$(cat "$PROJECT_ROOT/temp/.mainnet_final_balance_phase3" 2>/dev/null || echo "0")
+    
+    print_info "💰 SOL Transfer Summary:"
+    echo "  • Deployment Authority ($DEPLOYMENT_AUTHORITY):"
+    echo "    - Final Balance: $FINAL_BALANCE SOL"
+    echo "  • Transferred to Multisig ($SQUADS_MULTISIG):"
+    echo "    - Amount Transferred: $TRANSFER_AMOUNT SOL"
+    echo ""
+    
     print_info "Key Addresses:"
     echo "  • Program ID: $PROGRAM_ID"
     echo "  • Admin Authority: $ADMIN_AUTHORITY"
@@ -421,6 +436,12 @@ main() {
     create_final_deployment_record
     provide_security_instructions
     show_final_status
+    
+    # Clean up temporary files after final status display
+    rm -f "$PROJECT_ROOT/temp/.mainnet_transfer_tx_phase3"
+    rm -f "$PROJECT_ROOT/temp/.mainnet_sol_transfer_tx_phase3"
+    rm -f "$PROJECT_ROOT/temp/.mainnet_transfer_amount_phase3"
+    rm -f "$PROJECT_ROOT/temp/.mainnet_final_balance_phase3"
     
     print_success "Phase 3 handoff completed successfully!"
     print_success "Fixed Ratio Trading is now live on MainNet! 🚀"

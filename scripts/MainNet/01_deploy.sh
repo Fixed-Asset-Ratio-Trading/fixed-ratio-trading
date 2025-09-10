@@ -68,6 +68,9 @@ fi
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
 
+# Create temp directory if it doesn't exist
+mkdir -p "$PROJECT_ROOT/temp"
+
 # Function to log messages
 log_message() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$DEPLOYMENT_LOG"
@@ -238,13 +241,13 @@ deploy_program() {
     
     # Dump and verify binary hash matches
     print_info "Verifying binary hash on-chain..."
-    solana program dump "$PROGRAM_ID" dumped_mainnet_phase1.so --url "$RPC_URL"
-    ONCHAIN_HASH=$(sha256sum dumped_mainnet_phase1.so | awk '{print $1}')
+    solana program dump "$PROGRAM_ID" temp/dumped_mainnet_phase1.so --url "$RPC_URL"
+    ONCHAIN_HASH=$(sha256sum temp/dumped_mainnet_phase1.so | awk '{print $1}')
     LOCAL_HASH=$(cat "$PROJECT_ROOT/$BINARY_HASH_FILE")
     
     if [ "$ONCHAIN_HASH" == "$LOCAL_HASH" ]; then
         print_success "Binary hash verification successful"
-        rm dumped_mainnet_phase1.so
+        rm temp/dumped_mainnet_phase1.so
     else
         print_error "Binary hash mismatch!"
         print_error "  Local:    $LOCAL_HASH"
@@ -371,14 +374,14 @@ async function initializeSystem() {
             phase: 'phase1_initialization'
         };
         
-        const initInfoFile = process.env.INIT_INFO_PATH || '.mainnet_init_info_phase1.json';
+        const initInfoFile = process.env.INIT_INFO_PATH || 'temp/.mainnet_init_info_phase1.json';
         const initInfoPath = initInfoFile.startsWith('/') ? initInfoFile : path.join(process.cwd(), initInfoFile);
         fs.writeFileSync(
             initInfoPath,
             JSON.stringify(initInfo, null, 2)
         );
         
-        console.log(`\n💾 Initialization info saved to .mainnet_init_info_phase1.json`);
+        console.log(`\n💾 Initialization info saved to ${initInfoFile}`);
         process.exit(0);
     } catch (error) {
         console.error('❌ System initialization failed:', error);

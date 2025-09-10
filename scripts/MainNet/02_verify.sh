@@ -49,7 +49,7 @@ if [ "${1:-}" = "--test" ]; then
     VERIFICATION_INFO="$PROJECT_ROOT/temp/verification_info_mainnet_phase2_localnet.json"
     INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1_localnet.json"
 else
-    INIT_INFO_PATH="$PROJECT_ROOT/.mainnet_init_info_phase1.json"
+    INIT_INFO_PATH="$PROJECT_ROOT/temp/.mainnet_init_info_phase1.json"
 fi
 
 # Function to print colored messages
@@ -71,6 +71,9 @@ print_warning() {
 
 print_info "Mode: $( [ $TEST_MODE -eq 1 ] && echo 'TEST (localnet)' || echo 'MAINNET' )"
 print_info "RPC URL: $RPC_URL"
+
+# Create temp directory if it doesn't exist
+mkdir -p "$PROJECT_ROOT/temp"
 
 # Function to log messages
 log_message() {
@@ -521,7 +524,7 @@ async function verifyMainNetDeployment() {
         };
         
         // Write verification results to file
-        const resultsPath = process.env.VERIFICATION_INFO_PATH || '.mainnet_verification_results.json';
+        const resultsPath = process.env.VERIFICATION_INFO_PATH || 'temp/.mainnet_verification_results.json';
         fs.writeFileSync(resultsPath, JSON.stringify(verificationResults, null, 2));
         console.log(`\n💾 Verification results saved to: ${resultsPath}`);
         
@@ -540,7 +543,7 @@ async function verifyMainNetDeployment() {
         };
         
         fs.writeFileSync(
-            path.join(process.cwd(), '.mainnet_verification_failure.json'),
+            path.join(process.cwd(), 'temp/.mainnet_verification_failure.json'),
             JSON.stringify(failureInfo, null, 2)
         );
         
@@ -574,7 +577,7 @@ run_verification() {
         log_message "MainNet verification completed successfully"
         
         # Check if verification results exist
-        if [ -f "$PROJECT_ROOT/.mainnet_verification_results.json" ]; then
+        if [ -f "$PROJECT_ROOT/temp/.mainnet_verification_results.json" ]; then
             print_info "Verification results available"
             return 0
         else
@@ -585,8 +588,8 @@ run_verification() {
         print_error "MainNet verification failed"
         log_message "MainNet verification failed"
         
-        if [ -f "$PROJECT_ROOT/.mainnet_verification_failure.json" ]; then
-            print_error "Failure details saved to .mainnet_verification_failure.json"
+        if [ -f "$PROJECT_ROOT/temp/.mainnet_verification_failure.json" ]; then
+            print_error "Failure details saved to temp/.mainnet_verification_failure.json"
         fi
         return 1
     fi
@@ -597,8 +600,8 @@ create_verification_record() {
     print_info "Creating Phase 2 verification record..."
     
     # Read verification results
-    if [ -f "$PROJECT_ROOT/.mainnet_verification_results.json" ]; then
-        VERIFICATION_RESULTS=$(cat "$PROJECT_ROOT/.mainnet_verification_results.json")
+    if [ -f "$PROJECT_ROOT/temp/.mainnet_verification_results.json" ]; then
+        VERIFICATION_RESULTS=$(cat "$PROJECT_ROOT/temp/.mainnet_verification_results.json")
     else
         VERIFICATION_RESULTS="{}"
     fi
@@ -649,8 +652,8 @@ show_verification_results() {
     print_info "  Verification log: $VERIFICATION_LOG"
     print_info "  Verification info: $VERIFICATION_INFO"
     
-    if [ -f "$PROJECT_ROOT/.mainnet_verification_results.json" ]; then
-        print_info "  Detailed results: .mainnet_verification_results.json"
+    if [ -f "$PROJECT_ROOT/temp/.mainnet_verification_results.json" ]; then
+        print_info "  Detailed results: temp/.mainnet_verification_results.json"
     fi
 }
 
