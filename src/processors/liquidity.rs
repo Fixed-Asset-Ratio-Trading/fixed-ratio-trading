@@ -442,6 +442,7 @@ pub fn process_liquidity_deposit<'a>(
         pool_state_pda,
         system_program_account,
         program_id,
+        pool_state_pda.key,
         pool_state_data.contract_liquidity_fee,
     )?;
     msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
@@ -931,6 +932,7 @@ fn execute_withdrawal_logic<'a>(
         pool_state_account,
         system_program_account,
         program_id,
+        pool_state_account.key,
         pool_state_data.contract_liquidity_fee,
     )?;
     msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);

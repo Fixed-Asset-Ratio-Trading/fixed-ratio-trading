@@ -334,7 +334,7 @@ pub fn validate_system_not_paused_secure(
             return Err(PoolError::SystemPaused.into());
         }
         
-        return Ok(());
+        Ok(())
     }
     
     // 🧪 TEST ENVIRONMENT: Handle test environment compatibility issues

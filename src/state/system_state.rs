@@ -58,7 +58,6 @@ pub enum AdminChangeResult {
 /// - 14: External audit in progress
 /// - 15: Scheduled system maintenance
 /// - 255: Custom reason (see external documentation)
-///
 ///   System-wide state that controls global operations for the entire contract.
 /// 
 /// This state is separate from individual pool states and provides emergency

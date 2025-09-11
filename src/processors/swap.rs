@@ -661,6 +661,7 @@ pub fn process_swap_execute<'a>(
         pool_state_pda,
         system_program_account,
         program_id,
+        pool_state_pda.key,
         pool_state_data.swap_contract_fee,
         FeeType::RegularSwap,
     )?;
