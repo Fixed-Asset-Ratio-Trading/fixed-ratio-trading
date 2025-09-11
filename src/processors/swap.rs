@@ -404,6 +404,13 @@ fn swap_b_to_a(
 /// // Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
 /// ```
 ///
+/// # Arguments
+/// * `program_id` - The program ID for PDA validation
+/// * `amount_in` - Input amount in basis points
+/// * `expected_amount_out` - Expected output amount in basis points
+/// * `pool_id` - Expected Pool ID for security validation
+/// * `accounts` - Array of account infos (11 accounts)
+/// 
 /// # Key Features
 ///
 /// # Fixed Ratio Exchange
@@ -882,11 +889,8 @@ pub fn process_swap_execute<'a>(
 /// * `program_id` - The program ID for PDA validation and upgrade authority checks
 /// * `enable_restriction` - True to enable owner-only mode, false to disable
 /// * `designated_owner` - The pubkey that will have swap control when restrictions are enabled
-/// * `accounts` - Array of account infos in the following order:
-///   - `accounts[0]` - Contract owner account (must be admin authority and signer)
-///   - `accounts[1]` - System state PDA account (for system pause validation)
-///   - `accounts[2]` - Pool state PDA account (writable for flag and ownership updates)
-///   - `accounts[3]` - Program data account (for upgrade authority validation)
+/// * `pool_id` - Expected Pool ID for security validation
+/// * `accounts` - Array of account infos (4 accounts)
 ///
 /// # Account Requirements
 /// - **Contract Owner**: Must be signer and match the admin authority

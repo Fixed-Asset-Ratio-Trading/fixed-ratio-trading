@@ -115,6 +115,7 @@ use crate::processors::utilities::validate_liquidity_not_paused;
 /// * `program_id` - The program ID for PDA derivation
 /// * `amount` - Amount to deposit
 /// * `deposit_token_mint_key` - Token mint being deposited
+/// * `pool_id` - Expected Pool ID for security validation
 /// * `accounts` - Array of accounts in optimized order (11 accounts total)
 /// 
 /// # Account Info
@@ -600,6 +601,7 @@ pub fn process_liquidity_deposit<'a>(
 /// * `program_id` - The program ID
 /// * `lp_amount_to_burn` - Amount of LP tokens to burn for withdrawal
 /// * `withdraw_token_mint_key` - Token mint being withdrawn
+/// * `pool_id` - Expected Pool ID for security validation
 /// * `accounts` - Array of accounts in optimized order (11 accounts minimum)
 ///
 /// # Account Info

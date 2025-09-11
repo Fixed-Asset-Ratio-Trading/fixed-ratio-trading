@@ -2880,6 +2880,7 @@ Pauses specific operations on a pool.
 ```rust
 program_id: &Pubkey
 pause_flags: u8    // Bitwise flags for operations
+pool_id: Pubkey    // Expected Pool ID for security validation
 accounts: &[AccountInfo; 4]
 ```
 
@@ -2900,6 +2901,7 @@ Resumes paused operations on a pool.
 ```rust
 program_id: &Pubkey
 unpause_flags: u8    // Same as pause flags
+pool_id: Pubkey      // Expected Pool ID for security validation
 accounts: &[AccountInfo; 4]
 ```
 
@@ -2917,10 +2919,11 @@ Important: These fees are fixed SOL fees charged in lamports (smallest SOL unit)
 #### Parameters
 ```rust
 program_id: &Pubkey
+accounts: &[AccountInfo; 4]
 update_flags: u8           // Which fees to update
 new_liquidity_fee: u64     // New liquidity fee in lamports (fixed SOL fee per deposit/withdraw)
 new_swap_fee: u64          // New swap fee in lamports (fixed SOL fee per swap)
-accounts: &[AccountInfo; 4]
+pool_id: Pubkey            // Expected Pool ID for security validation
 ```
 
 #### Update Flags
@@ -3131,7 +3134,8 @@ amountBytes.forEach((byte, index) => {
 program_id: &Pubkey
 amount: u64                   // Amount in basis points
 deposit_token_mint: Pubkey    // Which token to deposit
-accounts: &[AccountInfo; 12]
+pool_id: Pubkey               // Expected Pool ID for security validation
+accounts: &[AccountInfo; 11]
 ```
 
 #### Account Structure
@@ -3236,6 +3240,7 @@ lpAmountBytes.forEach((byte, index) => {
 program_id: &Pubkey
 lp_amount_to_burn: u64        // LP tokens to burn
 withdraw_token_mint: Pubkey   // Which token to receive
+pool_id: Pubkey               // Expected Pool ID for security validation
 accounts: &[AccountInfo; 11]
 ```
 
@@ -3385,6 +3390,7 @@ console.log('Swap instruction data length:', instructionData.length);
 program_id: &Pubkey
 amount_in: u64              // Input amount in basis points
 expected_amount_out: u64    // EXACT expected output (must match calculated amount precisely)
+pool_id: Pubkey             // Expected Pool ID for security validation
 accounts: &[AccountInfo; 11]
 ```
 
@@ -3454,6 +3460,7 @@ Configures advanced access control for swap operations with flexible ownership d
 program_id: &Pubkey
 enable_restriction: bool    // Enable/disable owner-only restrictions
 designated_owner: Pubkey    // Entity to delegate operational control to (ignored when disabling)
+pool_id: Pubkey             // Expected Pool ID for security validation
 accounts: &[AccountInfo; 4]
 ```
 

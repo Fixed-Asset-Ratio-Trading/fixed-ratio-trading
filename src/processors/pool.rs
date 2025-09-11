@@ -657,17 +657,14 @@ pub fn process_pool_initialize(
 /// - PAUSE_FLAG_SWAPS (2): Pause swaps
 /// - PAUSE_FLAG_ALL (3): Pause both (required for consolidation eligibility)
 /// 
-/// **Security**: Only the Program Upgrade Authority can pause individual pools.
-/// **Idempotent**: Pausing already paused operations does not cause an error.
-/// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `pause_flags` - Bitwise flags indicating which operations to pause
-/// * `accounts` - Array of accounts in the following order:
-///   - [0] Program Upgrade Authority Signer (must be program upgrade authority)
-///   - [1] System State PDA (for system pause validation)  
-///   - [2] Pool State PDA (writable, to update pause state)
-///   - [3] Program Data Account (for authority validation)
+/// * `pool_id` - Expected Pool ID for security validation
+/// * `accounts` - Array of account infos (4 accounts)
+/// 
+/// **Security**: Only the Program Upgrade Authority can pause individual pools.
+/// **Idempotent**: Pausing already paused operations does not cause an error.
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -740,17 +737,14 @@ pub fn process_pool_pause(
 /// - PAUSE_FLAG_SWAPS (2): Unpause swaps
 /// - PAUSE_FLAG_ALL (3): Unpause both operations
 /// 
-/// **Security**: Only the Program Upgrade Authority can unpause individual pools.
-/// **Idempotent**: Unpausing already unpaused operations does not cause an error.
-/// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `unpause_flags` - Bitwise flags indicating which operations to unpause
-/// * `accounts` - Array of accounts in the following order:
-///   - [0] Program Upgrade Authority Signer (must be program upgrade authority)
-///   - [1] System State PDA (for system pause validation)  
-///   - [2] Pool State PDA (writable, to update pause state)
-///   - [3] Program Data Account (for authority validation)
+/// * `pool_id` - Expected Pool ID for security validation
+/// * `accounts` - Array of account infos (4 accounts)
+/// 
+/// **Security**: Only the Program Upgrade Authority can unpause individual pools.
+/// **Idempotent**: Unpausing already unpaused operations does not cause an error.
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
@@ -839,14 +833,11 @@ pub struct ProgramDataAccount {
 /// 
 /// # Arguments
 /// * `program_id` - The program ID
-/// * `accounts` - Array of account infos in the following order:
-///   - [0] Program Authority Signer (must be program upgrade authority)
-///   - [1] System State PDA (for system pause validation)
-///   - [2] Pool State PDA (writable, to update fee parameters)
-///   - [3] Program Data Account (for upgrade authority validation)
+/// * `accounts` - Array of account infos (4 accounts)
 /// * `update_flags` - Bitwise flags indicating which fees to update
 /// * `new_liquidity_fee` - New liquidity fee in lamports
 /// * `new_swap_fee` - New swap fee in lamports
+/// * `pool_id` - Expected Pool ID for security validation
 /// 
 /// # Returns
 /// * `ProgramResult` - Success or error
