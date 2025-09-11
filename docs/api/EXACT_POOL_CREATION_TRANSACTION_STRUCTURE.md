@@ -45,13 +45,27 @@ const programId = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
 
 #### **Instruction Data Structure**
 ```javascript
-// Total: 17 bytes (1 + 8 + 8)
+// Total: 18 bytes (1 + 8 + 8 + 1)
+const flags = 0; // Standard pool (default)
+// const flags = 32; // Owner-only swaps
+// const flags = 64; // Exact exchange required
+// const flags = 96; // Both owner-only and exact exchange
+
 const instructionData = concatUint8Arrays([
     new Uint8Array([1]),                                           // 1 byte: Discriminator (InitializePool)
     new Uint8Array(new BigUint64Array([BigInt(ratioABasisPoints)]).buffer),  // 8 bytes: ratio_a_numerator (little-endian u64)
-    new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer)   // 8 bytes: ratio_b_denominator (little-endian u64)
+    new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer),  // 8 bytes: ratio_b_denominator (little-endian u64)
+    new Uint8Array([flags])                                        // 1 byte: Pool behavior flags
 ]);
 ```
+
+#### **Pool Flags (New in v0.16.x+)**
+| Flag | Bit | Value | Description |
+|------|-----|-------|-------------|
+| Owner-only swaps | 5 | 32 | Only pool creator can swap |
+| Exact exchange required | 6 | 64 | Reject swaps with precision loss |
+
+**Important**: Only bits 5 and 6 can be set during pool creation. Use `0` for standard pools that allow all users and permit dust loss.
 
 #### **Account Structure (13 accounts total)**
 
@@ -388,10 +402,11 @@ Compare your stress test service against this exact structure:
 - [ ] Correct writable flags (accounts 0, 3, 5, 9, 10, 11, 12 are writable)
 
 ### **3. Instruction Data**
-- [ ] Exactly 17 bytes total
+- [ ] Exactly 18 bytes total
 - [ ] First byte is `1` (discriminator)
 - [ ] Next 8 bytes are ratio_a_numerator (little-endian u64)
-- [ ] Last 8 bytes are ratio_b_denominator (little-endian u64)
+- [ ] Next 8 bytes are ratio_b_denominator (little-endian u64)
+- [ ] Last byte is flags (u8) - use `0` for standard pools
 
 ### **4. PDA Derivation**
 - [ ] Pool State PDA uses normalized tokens and basis points

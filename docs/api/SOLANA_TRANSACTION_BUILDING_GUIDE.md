@@ -120,18 +120,25 @@ Transaction Structure:
 
 Build the InitializePool instruction exactly as specified in the API documentation. This section summarizes the precise wire format and account ordering, and provides .NET-focused examples.
 
-**Instruction Data (exactly 17 bytes):**
+**Instruction Data (exactly 18 bytes):**
 - Byte 0: discriminator = `1`
 - Bytes 1-8: `ratio_a_numerator` as u64 little-endian (basis points)
 - Bytes 9-16: `ratio_b_denominator` as u64 little-endian (basis points)
+- Byte 17: `flags` as u8 (pool behavior flags, use `0` for standard pools)
 
 ```csharp
-// Build 17-byte instruction data for InitializePool in C#
+// Build 18-byte instruction data for InitializePool in C#
 // Input ratios MUST already be in basis points (amount * 10^decimals)
-Span<byte> data = stackalloc byte[17];
+byte flags = 0; // Standard pool (default)
+// byte flags = 32; // Owner-only swaps
+// byte flags = 64; // Exact exchange required
+// byte flags = 96; // Both owner-only and exact exchange
+
+Span<byte> data = stackalloc byte[18];
 data[0] = 1; // InitializePool discriminator
 System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(data.Slice(1, 8), ratioANumeratorBasisPoints);
 System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(data.Slice(9, 8), ratioBDenominatorBasisPoints);
+data[17] = flags; // Pool behavior flags
 
 byte[] instructionData = data.ToArray();
 ```
@@ -213,7 +220,8 @@ Note: All 6 PDAs must match expected derived addresses. If any PDA is wrong, the
 const discriminator = new Uint8Array([1]);
 const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioANumeratorBasisPoints)]).buffer);
 const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBDenominatorBasisPoints)]).buffer);
-const instructionData = new Uint8Array([...discriminator, ...ratioABytes, ...ratioBBytes]); // 17 bytes
+const flagsByte = new Uint8Array([flags]); // Pool behavior flags
+const instructionData = new Uint8Array([...discriminator, ...ratioABytes, ...ratioBBytes, ...flagsByte]); // 18 bytes
 ```
 
 **Submission Strategy (avoid Solnet builder issues):**

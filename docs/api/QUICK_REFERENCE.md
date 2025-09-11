@@ -56,6 +56,14 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 
 *Admin Authority (with Program Upgrade Authority fallback)
 
+#### Pool Creation Flags
+| Flag | Bit | Value | Purpose |
+|------|-----|-------|---------|
+| Owner-only swaps | 5 | 32 | Only pool creator can swap |
+| Exact exchange required | 6 | 64 | Reject swaps with precision loss |
+
+**Note**: Only bits 5 and 6 can be set during pool creation. Other flags are admin-controlled.
+
 #### Pool Pause Flags
 | Flag | Value | Purpose |
 |------|-------|---------|
@@ -136,10 +144,17 @@ const [lpTokenAMintPDA] = PublicKey.findProgramAddress(
 const ratioA = 1.0 * Math.pow(10, tokenADecimals);
 const ratioB = 160.0 * Math.pow(10, tokenBDecimals);
 
-// 2. Build instruction
+// 2. Set pool flags (optional)
+const flags = 0; // Standard pool (default)
+// const flags = 32; // Owner-only swaps
+// const flags = 64; // Exact exchange required (no dust loss)
+// const flags = 96; // Both owner-only and exact exchange
+
+// 3. Build instruction
 const ix = createInitializePoolInstruction(
     ratioA,
     ratioB,
+    flags,
     accounts
 );
 ```

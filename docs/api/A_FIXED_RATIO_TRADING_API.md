@@ -97,7 +97,7 @@ This guide covers critical requirements for:
    - **Wrong ratios are permanent** - no fix possible, results in lost SOL (1.15+ SOL per mistake)
 
 5. **⚠️ Transaction Building Requirements**
-   - **Instruction Data Format**: Use single-byte discriminator `[1]` (17 bytes total for InitializePool)
+   - **Instruction Data Format**: Use single-byte discriminator `[1]` (18 bytes total for InitializePool)
    - **Token Ordering**: Must use lexicographic byte comparison (same as Rust Pubkey::cmp)
    - **Basis Points**: Convert user ratios using `amount * Math.pow(10, decimals)`
    - **Account Structure**: Must include exactly 13 accounts in documented order
@@ -443,7 +443,7 @@ The Fixed Ratio Trading contract uses Borsh serialization with enum discriminato
 | Discriminator | Instruction | Data Size | Total Size | Description |
 |---------------|-------------|-----------|------------|-------------|
 | `0` | `InitializeProgram` | 32 bytes | 33 bytes | Initialize system state and treasury |
-| `1` | `InitializePool` | 16 bytes | 17 bytes | Create new trading pool |
+| `1` | `InitializePool` | 17 bytes | 18 bytes | Create new trading pool |
 | `2` | `Deposit` | 40 bytes | 41 bytes | Add liquidity to pool |
 | `3` | `Withdraw` | 40 bytes | 41 bytes | Remove liquidity from pool |
 | `4` | `Swap` | 48 bytes | 49 bytes | Execute token swap |
@@ -1404,11 +1404,12 @@ var data = new PoolInitializeInstructionData
 
 **✅ Correct:**
 ```javascript
-// Single-byte discriminator (17 bytes total)
+// Single-byte discriminator (18 bytes total)
 const discriminator = new Uint8Array([1]); // Single byte for InitializePool
 const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioABasisPoints)]).buffer);
 const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer);
-const instructionData = concatUint8Arrays([discriminator, ratioABytes, ratioBBytes]);
+const flagsByte = new Uint8Array([flags]); // Pool behavior flags
+const instructionData = concatUint8Arrays([discriminator, ratioABytes, ratioBBytes, flagsByte]);
 ```
 
 ### 2. Token Ordering (Critical Fix)
@@ -1533,7 +1534,7 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 #### Instruction Format
 
 **Discriminator:** `1` (single byte)  
-**Total Data Length:** 17 bytes  
+**Total Data Length:** 18 bytes  
 **Serialization:** Borsh format
 
 ```rust
@@ -1542,6 +1543,7 @@ pub struct InitializePoolInstruction {
     discriminator: u8,           // 1 byte: value = 1
     ratio_a_numerator: u64,      // 8 bytes: Token A ratio in basis points (little-endian)
     ratio_b_denominator: u64,    // 8 bytes: Token B ratio in basis points (little-endian)
+    flags: u8,                   // 1 byte: Pool behavior flags (bitwise)
 }
 ```
 
@@ -1551,11 +1553,13 @@ pub struct InitializePoolInstruction {
 const discriminator = new Uint8Array([1]); // InitializePool discriminator
 const ratioABytes = new Uint8Array(new BigUint64Array([BigInt(ratioABasisPoints)]).buffer);
 const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(ratioBBasisPoints)]).buffer);
+const flagsByte = new Uint8Array([flags]); // Pool behavior flags
 
 const instructionData = new Uint8Array([
     ...discriminator,    // 1 byte
     ...ratioABytes,      // 8 bytes (u64 little-endian)
-    ...ratioBBytes       // 8 bytes (u64 little-endian)
+    ...ratioBBytes,      // 8 bytes (u64 little-endian)
+    ...flagsByte         // 1 byte (u8 flags)
 ]);
 
 // Example: 1 SOL = 160 USDT pool
@@ -1572,7 +1576,7 @@ import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn");
 const RPC_URL = "http://192.168.2.88:8899";
 
-async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratioB) {
+async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratioB, flags = 0) {
     const connection = new Connection(RPC_URL, 'confirmed');
     
     // Step 1: Normalize tokens (CRITICAL! Use byte-wise lexicographic order like Rust Pubkey::cmp)
@@ -1626,7 +1630,7 @@ async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratio
     );
     
     // Step 3: Create instruction data - EXACT FORMAT
-    const instructionData = new Uint8Array(17); // 1 + 8 + 8 bytes
+    const instructionData = new Uint8Array(18); // 1 + 8 + 8 + 1 bytes
     instructionData[0] = 1; // InitializePool discriminator
     
     // Ratio A as little-endian u64
@@ -1636,6 +1640,9 @@ async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratio
     // Ratio B as little-endian u64  
     const ratioBBytes = new Uint8Array(new BigUint64Array([BigInt(normalized.ratioB)]).buffer);
     instructionData.set(ratioBBytes, 9);
+    
+    // Pool flags
+    instructionData[17] = flags;
     
     // Step 4: Create accounts array - EXACT ORDER FROM CONTRACT
     const accounts = [
@@ -1676,15 +1683,28 @@ async function createPoolExact(userWallet, tokenAMint, tokenBMint, ratioA, ratio
     }
 }
 
-// Usage example
-const result = await createPoolExact(
+// Usage examples
+
+// Standard pool (allows all users, permits dust loss)
+const standardPool = await createPoolExact(
     wallet,
     new PublicKey("So11111111111111111111111111111111111111112"), // SOL
     new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"), // USDC
     1000000000,  // 1 SOL in basis points (1 * 10^9)
-    160000000    // 160 USDC in basis points (160 * 10^6)
+    160000000,   // 160 USDC in basis points (160 * 10^6)
+    0            // flags: standard behavior
 );
-// Results in 17-byte instruction data: [1, ...16 bytes of ratio data]
+
+// Owner-only pool with exact exchange required
+const restrictedPool = await createPoolExact(
+    wallet,
+    tokenAMint,
+    tokenBMint,
+    ratioA,
+    ratioB,
+    32 | 64      // flags: owner-only (32) + exact exchange (64) = 96
+);
+// Results in 18-byte instruction data: [1, ...16 bytes of ratio data, flags]
 ```
 
 #### Parameters
@@ -1692,7 +1712,63 @@ const result = await createPoolExact(
 program_id: &Pubkey
 ratio_a_numerator: u64      // Token A ratio in basis points
 ratio_b_denominator: u64    // Token B ratio in basis points
+flags: u8                   // Pool behavior flags (bitwise)
 accounts: &[AccountInfo; 13]
+```
+
+#### Pool Flags (Bitwise)
+
+The `flags` parameter controls pool behavior using bitwise operations. Multiple flags can be combined using the OR operator (`|`).
+
+| Bit | Value | Flag Name | Description |
+|-----|-------|-----------|-------------|
+| 0 | 1 | **One-to-many ratio** | Automatically set by contract based on ratio type |
+| 1 | 2 | **Liquidity paused** | Deposits/withdrawals paused (set by admin) |
+| 2 | 4 | **Swaps paused** | Swap operations paused (set by admin) |
+| 3 | 8 | **Withdrawal protection** | Enhanced withdrawal validation (set by admin) |
+| 4 | 16 | **Single LP token mode** | Future feature (reserved) |
+| 5 | 32 | **Owner-only swaps** | Only pool creator can swap (settable at creation) |
+| 6 | 64 | **Exact exchange required** | Reject swaps with precision loss (settable at creation) |
+| 7 | 128 | *Reserved* | Future use |
+
+**⚠️ Important Notes:**
+- **Settable at creation**: Only bits 5 (owner-only) and 6 (exact exchange) can be set during pool initialization
+- **Admin-controlled**: Bits 1-4 are managed by admin authority after pool creation
+- **Automatic**: Bit 0 is automatically set by the contract based on ratio analysis
+- **Default value**: Use `0` for standard pool behavior (allows all users, permits dust loss)
+
+**Detailed Flag Behavior:**
+
+**Bit 5 (32) - Owner-only swaps:**
+- When set: Only the pool creator (original signer) can execute swaps
+- When unset: Any user can swap tokens in the pool
+- Use case: Private pools, testing environments, or exclusive trading pairs
+- Can be toggled after creation using `SetSwapOwnerOnly` instruction (can also set a new owner)
+
+**Bit 6 (64) - Exact exchange required:**
+- When set: Rejects any swap that would result in precision loss (dust)
+- When unset: Allows swaps with dust loss (standard behavior)
+- Use case: High-value tokens where precision is critical, institutional trading
+- Cannot be changed after pool creation
+- Example rejection: Swapping 1.5 tokens for a 0-decimal token (would lose 0.5)
+
+**Common Flag Combinations:**
+```javascript
+// Standard pool (default)
+const flags = 0; // No restrictions, allows dust loss
+
+// Owner-only pool
+const flags = 32; // 0b0010_0000 - only creator can swap
+
+// Exact exchange pool (precision-critical)
+const flags = 64; // 0b0100_0000 - rejects swaps with precision loss
+
+// Owner-only + exact exchange (maximum control)
+const flags = 32 | 64; // 96 (0b0110_0000) - both restrictions
+
+// Check if flags are set
+const isOwnerOnly = (flags & 32) !== 0;
+const requiresExactExchange = (flags & 64) !== 0;
 ```
 
 #### Account Structure
@@ -2019,12 +2095,13 @@ function checkAccountOrdering(userWallet, systemStatePDA, poolStatePDA, mainTrea
 ##### Step 4: Verify Instruction Data Format
 ```javascript
 // Test exact instruction data format
-function createInstructionData(normalizedRatioA, normalizedRatioB) {
+function createInstructionData(normalizedRatioA, normalizedRatioB, flags = 0) {
     console.log("🔧 Creating instruction data:");
     console.log(`  Ratio A: ${normalizedRatioA}`);
     console.log(`  Ratio B: ${normalizedRatioB}`);
+    console.log(`  Flags: ${flags} (0b${flags.toString(2).padStart(8, '0')})`);
     
-    const instructionData = new Uint8Array(17);
+    const instructionData = new Uint8Array(18);
     instructionData[0] = 1; // InitializePool discriminator
     
     // Convert ratios to little-endian u64
@@ -2033,6 +2110,7 @@ function createInstructionData(normalizedRatioA, normalizedRatioB) {
     
     instructionData.set(ratioABytes, 1);
     instructionData.set(ratioBBytes, 9);
+    instructionData[17] = flags; // Pool flags
     
     console.log("  Instruction data (hex):", Array.from(instructionData).map(b => b.toString(16).padStart(2, '0')).join(' '));
     console.log("  Total length:", instructionData.length, "bytes");
@@ -2049,7 +2127,7 @@ function createInstructionData(normalizedRatioA, normalizedRatioB) {
 | `ProgramError: AccountAlreadyInitialized` | Pool already exists | Check if pool exists first |
 | `InvalidInstruction` | Wrong discriminator | Use discriminator `1` for InitializePool |
 | `NotEnoughAccountKeys` | Missing accounts | Ensure exactly 13 accounts provided |
-| `InvalidArgument` | Wrong data format | Check instruction data is 17 bytes |
+| `InvalidArgument` | Wrong data format | Check instruction data is 18 bytes |
 | `Custom: 1002` | Invalid ratio | Ensure one ratio is exactly 1 whole token |
 | Simulation timeout | Insufficient SOL | User needs ~2+ SOL for fees and rent |
 

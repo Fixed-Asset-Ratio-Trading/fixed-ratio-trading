@@ -26,7 +26,7 @@ const connection = new Connection("https://api.mainnet-beta.solana.com");
 const PoolInstruction = {
     // System Management
     InitializeProgram: 0,        // InitializeProgram { admin_authority }
-    InitializePool: 1,           // InitializePool { ratio_a_numerator, ratio_b_denominator }
+    InitializePool: 1,           // InitializePool { ratio_a_numerator, ratio_b_denominator, flags }
     Deposit: 2,                  // Deposit { deposit_token_mint, amount }
     Withdraw: 3,                 // Withdraw { withdraw_token_mint, lp_amount_to_burn }
     Swap: 4,                     // Swap { input_token_mint, amount_in, expected_amount_out }
@@ -132,7 +132,8 @@ async function createInitializePoolInstruction(
     tokenAMint: PublicKey,
     tokenBMint: PublicKey,
     ratioA: BN,
-    ratioB: BN
+    ratioB: BN,
+    flags: number = 0
 ) {
     // Normalize token order
     const [mintA, mintB] = tokenAMint.toBuffer() < tokenBMint.toBuffer() 
@@ -185,7 +186,8 @@ async function createInitializePoolInstruction(
     const instructionData = Buffer.concat([
         Buffer.from([PoolInstruction.InitializePool]),
         ratioA.toArrayLike(Buffer, 'le', 8),
-        ratioB.toArrayLike(Buffer, 'le', 8)
+        ratioB.toArrayLike(Buffer, 'le', 8),
+        Buffer.from([flags])
     ]);
     
     return new TransactionInstruction({
@@ -633,13 +635,19 @@ async function executePoolCreation() {
     const ratioA = toBasisPoints(1.0, decimalsA);
     const ratioB = toBasisPoints(160.0, decimalsB);
     
-    // Create instruction
+    // Create instruction (with optional flags)
+    const flags = 0; // Standard pool (default)
+    // const flags = 32; // Owner-only swaps
+    // const flags = 64; // Exact exchange required
+    // const flags = 96; // Both owner-only and exact exchange
+    
     const instruction = await createInitializePoolInstruction(
         wallet.publicKey,
         tokenAMint,
         tokenBMint,
         ratioA,
-        ratioB
+        ratioB,
+        flags
     );
     
     // Build and send transaction
