@@ -81,7 +81,6 @@ use crate::PoolState;
 
 use crate::utils::token_validation::safe_unpack_and_validate_token_account;
 
-use borsh::BorshSerialize;
 use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
@@ -495,13 +494,8 @@ pub fn process_liquidity_deposit<'a>(
                     .ok_or(ProgramError::ArithmeticOverflow)?;
             }
 
-            // Buffer serialization pattern to prevent PDA corruption
-            let mut serialized_data = Vec::new();
-            pool_state_data.serialize(&mut serialized_data)?;
-            {
-                let mut account_data = pool_state_pda.data.borrow_mut();
-                account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-            }
+            // Buffer serialization pattern to prevent PDA corruption - use safe serialization with size validation
+            crate::utils::serialization::serialize_to_account(&pool_state_data, pool_state_pda)?;
 
             // Mint LP tokens (1:1 ratio)
             let pool_pda_seeds = &[
@@ -857,13 +851,8 @@ pub fn process_liquidity_withdraw<'a>(
         program_id,
     );
 
-    // Save final state
-    let mut serialized_data = Vec::new();
-    pool_state_data.serialize(&mut serialized_data)?;
-    {
-        let mut account_data = pool_state_pda.data.borrow_mut();
-        account_data[..serialized_data.len()].copy_from_slice(&serialized_data);
-    }
+    // Save final state - use safe serialization with size validation
+    crate::utils::serialization::serialize_to_account(&pool_state_data, pool_state_pda)?;
 
     // Ensure the withdrawal operations completed successfully before collecting fees
     result?;

@@ -162,7 +162,7 @@ pub fn process_system_initialize(
         return Err(ProgramError::AccountDataTooSmall);
     }
     
-    // Clear the account first, then write data
+    // Clear the account first, then write data (size already validated above)
     {
         let mut account_data = system_state_pda.data.borrow_mut();
         // Zero out the entire account first
@@ -286,8 +286,12 @@ pub fn process_system_pause(
     // Pause the system
     system_state.pause(reason_code, current_timestamp);
     
-    // Serialize updated state back to account
+    // Serialize updated state back to account with size validation
     let serialized_data = system_state.try_to_vec()?;
+    if system_state_pda.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: System state serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // Log the system pause
@@ -394,8 +398,12 @@ pub fn process_system_unpause(
     // Unpause the system
     system_state.unpause();
     
-    // Serialize updated state back to account
+    // Serialize updated state back to account with size validation
     let serialized_data = system_state.try_to_vec()?;
+    if system_state_pda.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: System state serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     system_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // **APPLY SYSTEM RESTART PENALTY**: Block treasury withdrawals for 3 days

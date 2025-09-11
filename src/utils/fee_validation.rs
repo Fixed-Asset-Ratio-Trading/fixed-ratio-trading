@@ -18,6 +18,7 @@ use solana_program::{
     account_info::AccountInfo,
     entrypoint::ProgramResult,
     msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -320,8 +321,11 @@ pub fn collect_fee_to_pool_state<'a>(
         }.into());
     }
     
-    // Copy serialized data to account
-
+    // Copy serialized data to account with size validation
+    if pool_state_account.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: Pool state serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     pool_state_account.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
 
     

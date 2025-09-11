@@ -214,8 +214,12 @@ pub fn process_pool_initialize(
     treasury_state.add_pool_creation_fee(REGISTRATION_FEE, current_timestamp);
     treasury_state.sync_balance_with_account(main_treasury_pda.lamports());
     
-    // Save updated treasury state
+    // Save updated treasury state with size validation
     let serialized_data = treasury_state.try_to_vec()?;
+    if main_treasury_pda.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: Treasury serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     main_treasury_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
 
     // Token normalization: Always store tokens in lexicographic order (Token A < Token B)
@@ -710,8 +714,12 @@ pub fn process_pool_pause(
         operations_changed.push("swaps");
     }
     
-    // Save updated pool state
+    // Save updated pool state with size validation
     let serialized_data = pool_state.try_to_vec()?;
+    if pool_state_pda.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: Pool state serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     pool_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // Log results
@@ -790,8 +798,12 @@ pub fn process_pool_unpause(
         operations_changed.push("swaps");
     }
     
-    // Save updated pool state
+    // Save updated pool state with size validation
     let serialized_data = pool_state.try_to_vec()?;
+    if pool_state_pda.data_len() < serialized_data.len() {
+        msg!("🚨 Critical Error: Pool state serialized data too large for account");
+        return Err(ProgramError::AccountDataTooSmall);
+    }
     pool_state_pda.data.borrow_mut()[..serialized_data.len()].copy_from_slice(&serialized_data);
     
     // Log results
