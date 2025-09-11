@@ -417,9 +417,42 @@ impl PoolState {
     /// - Previous total_collected_sol_fees() only summed liquidity + swap fees
     /// - Would need complex logic to determine if pool creation fees were consolidated
     /// - Mathematical approach is simple, accurate, and includes everything automatically
+    /// 
+    /// **🔒 SECURITY FIX**: Uses checked arithmetic to prevent integer underflow attacks
     pub fn pending_sol_fees(&self) -> u64 {
-        // Simple and accurate: total collected minus what's been consolidated
-        self.total_sol_fees_collected - self.total_fees_consolidated
+        // 🔒 CRITICAL SECURITY FIX: Use checked subtraction to prevent underflow
+        // In release builds, unchecked subtraction can wrap to huge values if 
+        // total_fees_consolidated > total_sol_fees_collected due to state corruption
+        match self.total_sol_fees_collected.checked_sub(self.total_fees_consolidated) {
+            Some(pending_fees) => {
+                // Normal case: total_collected >= total_consolidated
+                pending_fees
+            },
+            None => {
+                // 🚨 CRITICAL ERROR: State corruption detected!
+                // This should never happen in normal operation
+                #[cfg(not(test))]
+                {
+                    use solana_program::msg;
+                    msg!("🚨 CRITICAL ERROR: Fee accounting corruption detected!");
+                    msg!("   total_sol_fees_collected: {}", self.total_sol_fees_collected);
+                    msg!("   total_fees_consolidated: {}", self.total_fees_consolidated);
+                    msg!("   This indicates potential state manipulation or bug");
+                    msg!("   Returning 0 to prevent underflow exploitation");
+                }
+                
+                #[cfg(test)]
+                {
+                    // In tests, log but don't panic to allow debugging
+                    println!("⚠️ TEST: Fee accounting underflow detected - returning 0");
+                    println!("   total_sol_fees_collected: {}", self.total_sol_fees_collected);
+                    println!("   total_fees_consolidated: {}", self.total_fees_consolidated);
+                }
+                
+                // Return 0 instead of wrapping to prevent exploitation
+                0
+            }
+        }
     }
     
     /// Calculates total operations since last consolidation using fee constants
