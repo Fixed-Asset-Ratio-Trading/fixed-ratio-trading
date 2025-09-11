@@ -237,7 +237,8 @@ pub fn process_instruction<'a>(
             ratio_b_denominator,
         } => {
             validate_account_count(accounts, INITIALIZE_POOL_ACCOUNTS, "InitializePool")?;
-            process_pool_initialize(program_id, ratio_a_numerator, ratio_b_denominator, accounts)
+            // Default flags to 0 for now (no behavior change); flags will be plumbed later
+            process_pool_initialize(program_id, ratio_a_numerator, ratio_b_denominator, 0u8, accounts)
         },
 
         PoolInstruction::Deposit {

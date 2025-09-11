@@ -90,6 +90,8 @@ pub struct PoolState {
     /// Bit 2 (4): Swap operations paused
     /// Bit 3 (8): Withdrawal protection active
     /// Bit 4 (16): Single LP token mode (future feature)
+    /// Bit 5 (32): Swap operations restricted to owners only
+    /// Bit 6 (64): Exact-exchange required (no rounding allowed)
     pub flags: u8,
     
     // **NEW: CONFIGURABLE CONTRACT FEES**

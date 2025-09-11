@@ -256,6 +256,17 @@ pub const POOL_FLAG_SINGLE_LP_TOKEN: u8 = 0b10000; // 16
 /// **Use Case**: Pool owners deploy custom fee-collecting contracts and route swaps through them
 pub const POOL_FLAG_SWAP_FOR_OWNERS_ONLY: u8 = 0b100000; // 32
 
+/// Pool state flag: Exact-exchange required for swaps
+/// 
+/// When this flag is set, swap calculations must divide exactly with no
+/// remainder. Any precision loss (dust) causes the swap to fail. This is
+/// enforced in swap processing by checking the modulo before division.
+/// 
+/// Bit position: 6 (value 64)
+/// Interaction: Can be combined with `POOL_FLAG_SWAP_FOR_OWNERS_ONLY` (bit 5)
+/// Default: Off unless explicitly enabled at initialization
+pub const POOL_FLAG_EXACT_EXCHANGE_REQUIRED: u8 = 0b0100_0000; // 64
+
 //=============================================================================
 // FEE UPDATE BITWISE FLAGS
 //=============================================================================

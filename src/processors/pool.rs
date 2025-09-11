@@ -74,6 +74,11 @@ use spl_token::{
 /// * `program_id` - The program ID
 /// * `ratio_a_numerator` - Token A ratio in basis points (client-converted)
 /// * `ratio_b_denominator` - Token B ratio in basis points (client-converted)
+/// * `flags` - Pool configuration flags (bitwise OR of supported flags)
+///   - Supported bits:
+///     - `POOL_FLAG_SWAP_FOR_OWNERS_ONLY` (bit 5, value 32): Restrict swaps to owner-only
+///     - `POOL_FLAG_EXACT_EXCHANGE_REQUIRED` (bit 6, value 64): Require exact exchange (no rounding)
+///   - Note: Flags are documented here for visibility; they are not yet applied in initialization
 /// * `accounts` - Array of accounts in secure order (13 accounts minimum)
 /// 
 /// # Account Info
@@ -113,6 +118,7 @@ pub fn process_pool_initialize(
     program_id: &Pubkey,
     ratio_a_numerator: u64,
     ratio_b_denominator: u64,
+    flags: u8,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     // ✅ ACCOUNT EXTRACTION: Extract accounts using updated indices
@@ -574,6 +580,18 @@ pub fn process_pool_initialize(
     }
  
     // ✅ POOL STATE: Create pool state with comprehensive configuration
+    // Base flags: set SIMPLE_RATIO if applicable; OR-in allowed init flags without clearing
+    let mut initial_flags: u8 = if ratio_type == crate::types::RatioType::SimpleRatio {
+        crate::constants::POOL_FLAG_SIMPLE_RATIO
+    } else {
+        0
+    };
+    // Only allow a curated subset of flags at initialization time
+    let allowed_init_mask: u8 =
+        crate::constants::POOL_FLAG_SWAP_FOR_OWNERS_ONLY |
+        crate::constants::POOL_FLAG_EXACT_EXCHANGE_REQUIRED;
+    initial_flags |= flags & allowed_init_mask;
+
     let pool_state = PoolState {
         owner: *user_authority_signer.key,
         token_a_mint: *token_a_mint_key,
@@ -591,12 +609,8 @@ pub fn process_pool_initialize(
         token_b_vault_bump_seed,
         lp_token_a_mint_bump_seed,
         lp_token_b_mint_bump_seed,
-        // Set the simple ratio flag only for SimpleRatio type
-        flags: if ratio_type == crate::types::RatioType::SimpleRatio { 
-            crate::constants::POOL_FLAG_SIMPLE_RATIO 
-        } else { 
-            0 
-        },
+        // Preserve base flags and OR-in allowed initialization flags
+        flags: initial_flags,
         
         // **NEW: CONFIGURABLE CONTRACT FEES** - Initialize with current constants
         contract_liquidity_fee: crate::constants::DEPOSIT_WITHDRAWAL_FEE,
