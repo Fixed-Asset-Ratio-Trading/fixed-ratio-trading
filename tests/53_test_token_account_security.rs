@@ -33,10 +33,12 @@ mod test_token_account_security {
         let user_token_b = Keypair::new();
         
         // Build minimal swap instruction for compilation
+        let dummy_pool_id = Pubkey::new_unique(); // For serialization test only
         let swap_ix_data = PoolInstruction::Swap {
             input_token_mint: test_env.payer.pubkey(),
             amount_in: 500_000_000,
             expected_amount_out: 1000,
+            pool_id: dummy_pool_id,
         };
         let mut swap_data = Vec::new();
         swap_ix_data.serialize(&mut swap_data).unwrap();
@@ -72,9 +74,11 @@ mod test_token_account_security {
         let lp_token_mint = Keypair::new();
         
         // Build minimal deposit instruction for compilation
+        let dummy_pool_id = Pubkey::new_unique(); // For serialization test only
         let deposit_ix_data = PoolInstruction::Deposit {
             deposit_token_mint: user.pubkey(),
             amount: 1_000_000_000,
+            pool_id: dummy_pool_id,
         };
         let mut deposit_data = Vec::new();
         deposit_ix_data.serialize(&mut deposit_data).unwrap();
@@ -111,10 +115,12 @@ mod test_token_account_security {
         let wrong_mint = Keypair::new();
         
         // Build minimal swap instruction for compilation
+        let dummy_pool_id = Pubkey::new_unique(); // For serialization test only
         let swap_ix_data = PoolInstruction::Swap {
             input_token_mint: wrong_mint.pubkey(),
             amount_in: 500_000_000,
             expected_amount_out: 1000,
+            pool_id: dummy_pool_id,
         };
         let mut swap_data = Vec::new();
         swap_ix_data.serialize(&mut swap_data).unwrap();

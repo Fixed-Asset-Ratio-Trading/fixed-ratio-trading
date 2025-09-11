@@ -85,6 +85,7 @@ fn create_fee_update_instruction(
             update_flags,
             new_liquidity_fee,
             new_swap_fee,
+            pool_id: pool_state_pda,
         }
         .try_to_vec()?,
     })

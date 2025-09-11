@@ -315,6 +315,7 @@ pub fn create_swap_instruction(
         input_token_mint: *input_token_mint,
         amount_in,
         expected_amount_out,
+        pool_id: pool_config.pool_state_pda,
     };
 
     // Use the standardized function from liquidity_helpers
@@ -443,10 +444,12 @@ async fn test_pool_instruction_serialization() -> TestResult {
     
     // Test basic Swap instruction serialization
     let test_mint = Pubkey::new_unique();
+    let dummy_pool_id = Pubkey::new_unique(); // For serialization test only
     let swap_instruction = PoolInstruction::Swap {
         input_token_mint: test_mint,
         amount_in: 1000000u64,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: dummy_pool_id,
     };
     
     // Test serialization
@@ -462,7 +465,7 @@ async fn test_pool_instruction_serialization() -> TestResult {
     assert!(deserialized.is_ok(), "Swap instruction deserialization should succeed");
     
     // Verify the data matches
-    if let Ok(PoolInstruction::Swap { input_token_mint, amount_in, expected_amount_out: _ }) = deserialized {
+    if let Ok(PoolInstruction::Swap { input_token_mint, amount_in, expected_amount_out: _, .. }) = deserialized {
         assert_eq!(input_token_mint, test_mint);
         assert_eq!(amount_in, 1000000u64);
         println!("✅ Serialization roundtrip successful");
@@ -1421,6 +1424,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: max_input_for_exact_output,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: config.pool_state_pda,
     };
     
     let exact_boundary_data = exact_boundary_instruction.try_to_vec().unwrap();
@@ -1454,6 +1458,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: over_boundary_input,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: config.pool_state_pda,
     };
     
     let insufficient_data = insufficient_instruction.try_to_vec().unwrap();
@@ -1492,6 +1497,7 @@ async fn test_swap_liquidity_constraints() -> TestResult {
                 input_token_mint: ctx.primary_mint.pubkey(),
                 amount_in: input_amount,
                 expected_amount_out: 0, // Placeholder for test utility
+                pool_id: config.pool_state_pda,
             };
             
             let stress_data = stress_instruction.try_to_vec().unwrap();
@@ -1933,6 +1939,7 @@ async fn test_process_swap_execute_a_to_b_execution() -> TestResult {
         input_token_mint: ctx.primary_mint.pubkey(),
         amount_in: 100_000u64,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: config.pool_state_pda,
     };
     
     let serialized = test_instruction.try_to_vec();
@@ -2071,6 +2078,7 @@ async fn test_process_swap_execute_b_to_a_execution() -> TestResult {
         input_token_mint: ctx.base_mint.pubkey(),
         amount_in: 100_000u64,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: config.pool_state_pda,
     };
     
     let serialized = test_instruction.try_to_vec();
@@ -2462,6 +2470,7 @@ async fn execute_swap_operation(
         input_token_mint: *input_mint,
         amount_in: amount,
         expected_amount_out,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let serialized = swap_instruction_data.try_to_vec()?;
@@ -3122,6 +3131,7 @@ async fn test_mixed_decimal_token_swap_precision() -> TestResult {
             input_token_mint: token_a_mint, // Swap Token A for Token B
             amount_in: swap_amount,
             expected_amount_out,
+            pool_id: foundation.pool_config.pool_state_pda,
         };
         
         let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(
@@ -3510,6 +3520,7 @@ async fn test_dashboard_basis_points_math_fixed_token_a_first() -> TestResult {
         input_token_mint: token_a_mint, // MST mint
         amount_in: SWAP_INPUT_MST_BASIS_POINTS,
         expected_amount_out: expected_amount_out_basis_points, // This is the critical value!
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(
@@ -3822,6 +3833,7 @@ async fn test_dashboard_basis_points_math_fixed_token_b_first() -> TestResult {
         input_token_mint: token_a_mint, // MST mint
         amount_in: SWAP_INPUT_MST_BASIS_POINTS,
         expected_amount_out: expected_amount_out_basis_points, // This is the critical value!
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(
@@ -4160,6 +4172,7 @@ async fn test_fractional_swap_result() -> TestResult {
         input_token_mint: token_a_mint, // MST mint
         amount_in: SWAP_INPUT_MST_BASIS_POINTS,
         expected_amount_out: expected_amount_out_basis_points, // This is the critical value!
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(

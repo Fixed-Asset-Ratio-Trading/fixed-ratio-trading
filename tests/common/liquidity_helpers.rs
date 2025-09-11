@@ -1303,6 +1303,7 @@ pub async fn execute_deposit_operation(
     let deposit_instruction_data = PoolInstruction::Deposit {
         deposit_token_mint: *deposit_token_mint,
         amount,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let deposit_ix = create_deposit_instruction_standardized(
@@ -1449,6 +1450,7 @@ pub async fn execute_withdrawal_operation(
     let withdrawal_instruction_data = PoolInstruction::Withdraw {
         withdraw_token_mint: *withdraw_token_mint,
         lp_amount_to_burn,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let withdrawal_ix = create_withdrawal_instruction_standardized(
@@ -1525,6 +1527,7 @@ pub async fn execute_swap_operation(
         input_token_mint: *input_token_mint,
         amount_in,
         expected_amount_out,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let swap_ix = create_swap_instruction_standardized(

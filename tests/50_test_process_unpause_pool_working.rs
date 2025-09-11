@@ -70,6 +70,7 @@ async fn test_process_pool_unpause_liquidity() -> TestResult {
     
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_LIQUIDITY,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive the Program Data Account PDA required for authority validation
@@ -114,6 +115,7 @@ async fn test_process_pool_unpause_liquidity() -> TestResult {
     
     let unpause_instruction = PoolInstruction::UnpausePool {
         unpause_flags: PAUSE_FLAG_LIQUIDITY,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive the Program Data Account PDA required for authority validation
@@ -181,6 +183,7 @@ async fn test_process_pool_unpause_all_operations() -> TestResult {
     
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive the Program Data Account PDA required for authority validation
@@ -225,6 +228,7 @@ async fn test_process_pool_unpause_all_operations() -> TestResult {
     
     let unpause_instruction = PoolInstruction::UnpausePool {
         unpause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive the Program Data Account PDA required for authority validation

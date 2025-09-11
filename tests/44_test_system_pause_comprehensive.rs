@@ -934,6 +934,7 @@ async fn test_swap_blocked_when_paused() -> TestResult {
             input_token_mint: foundation.pool_config.token_a_mint,
             amount_in: 1000,
             expected_amount_out: 333, // Calculated for 2:1 ratio (1000 A -> 500 B, but decimal-aware: 1000 * 10^0 / 2 = 500 / 2 = 250, but need realistic calculation)
+            pool_id: foundation.pool_config.pool_state_pda,
         }.try_to_vec().unwrap(),
     };
 

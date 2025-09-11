@@ -78,6 +78,7 @@ async fn test_basic_consolidation_instruction() -> TestResult {
     
         let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     // Derive program data account (required for program upgrade authority validation)
@@ -289,6 +290,7 @@ async fn pause_all_pools(
     if let Some(config) = pool_configs.first() {
         let pause_instruction = PoolInstruction::PausePool {
             pause_flags: PAUSE_FLAG_ALL,
+            pool_id: foundation.pool_config.pool_state_pda,
         };
         
         // Derive program data account (required for program upgrade authority validation)
@@ -378,6 +380,7 @@ async fn test_consolidation_maximum_pools_success() -> TestResult {
     
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive program data account (required for program upgrade authority validation)
@@ -731,6 +734,7 @@ async fn test_consolidation_mixed_pause_states() -> TestResult {
         
         let pause_instruction = PoolInstruction::PausePool {
             pause_flags: PAUSE_FLAG_ALL,
+            pool_id: config.pool_state_pda,
         };
         
         // Derive program data account (required for program upgrade authority validation)
@@ -935,6 +939,7 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
     let deposit_instruction = PoolInstruction::Deposit {
         deposit_token_mint: foundation.primary_mint.pubkey(),
         amount: 500_000_000, // 500K tokens
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let accounts = vec![
@@ -1009,6 +1014,7 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
         input_token_mint: foundation.primary_mint.pubkey(),
         amount_in: 50_000_000, // 50K tokens
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let accounts = vec![
@@ -1054,6 +1060,7 @@ async fn test_consolidation_with_actual_fees() -> TestResult {
     
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive program data account (required for program upgrade authority validation)
@@ -1246,6 +1253,7 @@ async fn test_consolidation_with_system_pause_mode() -> TestResult {
     let deposit_instruction = PoolInstruction::Deposit {
         deposit_token_mint: foundation.primary_mint.pubkey(),
         amount: 500_000_000, // 500K tokens
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let accounts = vec![
@@ -1528,6 +1536,7 @@ async fn test_consolidation_with_real_fee_generation() -> TestResult {
     
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive program data account (required for program upgrade authority validation)
@@ -1956,6 +1965,7 @@ async fn test_consolidation_maximum_20_pools_with_fees() -> TestResult {
         
         let pause_instruction = PoolInstruction::PausePool {
             pause_flags: PAUSE_FLAG_ALL,
+            pool_id: main_foundation.pool_config.pool_state_pda,
         };
         
         // For the first pool, actually pause it. For others, just simulate the pause action

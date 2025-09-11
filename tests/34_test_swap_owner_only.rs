@@ -50,14 +50,17 @@ async fn test_set_swap_owner_only_serialization() -> TestResult {
     println!("🧪 Testing SWAP-OWNER-001: SetSwapOwnerOnly instruction serialization...");
 
     // Test both enable and disable cases
+    let dummy_pool_id = solana_sdk::pubkey::Pubkey::new_unique(); // For serialization test only
     let test_instructions = vec![
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction: true,
             designated_owner: solana_sdk::pubkey::Pubkey::new_unique(),
+            pool_id: dummy_pool_id,
         },
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction: false,
             designated_owner: solana_sdk::pubkey::Pubkey::default(), // Ignored when disabling
+            pool_id: dummy_pool_id,
         },
     ];
 
@@ -81,8 +84,8 @@ async fn test_set_swap_owner_only_serialization() -> TestResult {
         // Verify round-trip consistency
         match (original_instruction, &deserialized_instruction) {
             (
-                            PoolInstruction::SetSwapOwnerOnly { enable_restriction: orig_flag, designated_owner: _ },
-            PoolInstruction::SetSwapOwnerOnly { enable_restriction: deser_flag, designated_owner: _ }
+                            PoolInstruction::SetSwapOwnerOnly { enable_restriction: orig_flag, designated_owner: _, .. },
+            PoolInstruction::SetSwapOwnerOnly { enable_restriction: deser_flag, designated_owner: _, .. }
             ) => {
                 assert_eq!(orig_flag, deser_flag, "Enable restriction flag should match");
                 println!("   ✅ SetSwapOwnerOnly instruction round-trip verified (enable: {})", orig_flag);
@@ -136,6 +139,7 @@ async fn test_set_swap_owner_only_success() -> TestResult {
     let enable_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: program_upgrade_authority.pubkey(), // Delegate to Program Upgrade Authority
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let enable_tx = Transaction::new_signed_with_payer(
@@ -173,6 +177,7 @@ async fn test_set_swap_owner_only_success() -> TestResult {
     let disable_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: false,
         designated_owner: solana_sdk::pubkey::Pubkey::default(), // Ignored when disabling
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let disable_tx = Transaction::new_signed_with_payer(
@@ -238,6 +243,7 @@ async fn test_set_swap_owner_only_access_control() -> TestResult {
     let enable_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: pool_owner.pubkey(), // Designate the current pool owner
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     // Try with the pool owner first
@@ -392,6 +398,7 @@ async fn test_swap_behavior_with_owner_only_restrictions() -> TestResult {
     let enable_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: program_upgrade_authority.pubkey(), // Delegate to Program Upgrade Authority
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let enable_tx = Transaction::new_signed_with_payer(
@@ -473,6 +480,7 @@ async fn test_flexible_ownership_delegation() -> Result<(), Box<dyn std::error::
     let delegate_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: custom_fee_collector.pubkey(), // Delegate to custom entity
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let delegate_tx = Transaction::new_signed_with_payer(
@@ -514,6 +522,7 @@ async fn test_flexible_ownership_delegation() -> Result<(), Box<dyn std::error::
     let redelegate_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: program_upgrade_authority.pubkey(), // Re-delegate to Program Upgrade Authority
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let redelegate_tx = Transaction::new_signed_with_payer(
@@ -555,6 +564,7 @@ async fn test_flexible_ownership_delegation() -> Result<(), Box<dyn std::error::
     let disable_instruction = PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: false,
         designated_owner: solana_sdk::pubkey::Pubkey::default(), // Ignored when disabling
+        pool_id: foundation.pool_config.pool_state_pda,
     };
 
     let disable_tx = Transaction::new_signed_with_payer(

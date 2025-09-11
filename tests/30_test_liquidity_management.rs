@@ -270,6 +270,7 @@ async fn test_instruction_serialization() -> TestResult {
     println!("🧪 Testing instruction serialization and deserialization...");
 
     // Test data setup
+    let dummy_pool_id = Pubkey::new_unique(); // For serialization test only
     let test_instructions = vec![
         // Test case 1: Basic Deposit instruction
         {
@@ -278,6 +279,7 @@ async fn test_instruction_serialization() -> TestResult {
             PoolInstruction::Deposit {
                 deposit_token_mint: test_mint,
                 amount: test_amount,
+                pool_id: dummy_pool_id,
             }
         },
         
@@ -288,6 +290,7 @@ async fn test_instruction_serialization() -> TestResult {
             PoolInstruction::Withdraw {
                 withdraw_token_mint: test_mint,
                 lp_amount_to_burn: test_amount,
+                pool_id: dummy_pool_id,
             }
         },
         
@@ -330,11 +333,13 @@ async fn test_instruction_serialization() -> TestResult {
             (
                 PoolInstruction::Deposit { 
                     deposit_token_mint: orig_mint, 
-                    amount: orig_amount 
+                    amount: orig_amount,
+                    ..
                 },
                 PoolInstruction::Deposit { 
                     deposit_token_mint: deser_mint, 
-                    amount: deser_amount 
+                    amount: deser_amount,
+                    ..
                 }
             ) => {
                 assert_eq!(orig_mint, deser_mint, "Deposit mint should match");
@@ -344,11 +349,13 @@ async fn test_instruction_serialization() -> TestResult {
             (
                 PoolInstruction::Withdraw { 
                     withdraw_token_mint: orig_mint, 
-                    lp_amount_to_burn: orig_amount 
+                    lp_amount_to_burn: orig_amount,
+                    ..
                 },
                 PoolInstruction::Withdraw { 
                     withdraw_token_mint: deser_mint, 
-                    lp_amount_to_burn: deser_amount 
+                    lp_amount_to_burn: deser_amount,
+                    ..
                 }
             ) => {
                 assert_eq!(orig_mint, deser_mint, "Withdraw mint should match");

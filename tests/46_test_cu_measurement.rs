@@ -574,6 +574,7 @@ async fn test_cu_measurement_regular_swap() {
         input_token_mint: token_a_mint,
         amount_in: swap_amount,
         expected_amount_out: 0, // Placeholder for test utility
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let swap_instruction = create_swap_instruction_standardized(
@@ -915,6 +916,7 @@ async fn test_cu_measurement_withdrawal_liquidity() {
     let withdrawal_instruction_data = PoolInstruction::Withdraw {
         withdraw_token_mint: deposit_mint,
         lp_amount_to_burn: withdraw_amount,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     let withdrawal_instruction = create_withdrawal_instruction_standardized(

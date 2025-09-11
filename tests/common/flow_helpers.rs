@@ -314,6 +314,7 @@ pub async fn execute_basic_trading_flow(
     let deposit_instruction_data = fixed_ratio_trading::types::instructions::PoolInstruction::Deposit {
         deposit_token_mint: primary_mint.pubkey(),
         amount: token_a_deposit,
+        pool_id: pool_config.pool_state_pda,
     };
     
     let deposit_ix = crate::common::liquidity_helpers::create_deposit_instruction_standardized(
@@ -423,6 +424,7 @@ pub async fn execute_basic_trading_flow(
     let deposit_b_instruction_data = fixed_ratio_trading::types::instructions::PoolInstruction::Deposit {
         deposit_token_mint: base_mint.pubkey(),
         amount: token_b_deposit,
+        pool_id: pool_config.pool_state_pda,
     };
     
     let deposit_b_ix = crate::common::liquidity_helpers::create_deposit_instruction_standardized(
@@ -655,6 +657,7 @@ pub async fn execute_basic_trading_flow(
             input_token_mint: *input_mint,
             amount_in: swap_op.amount,
             expected_amount_out,
+            pool_id: pool_config.pool_state_pda,
         };
         
         let swap_ix = crate::common::liquidity_helpers::create_swap_instruction_standardized(

@@ -454,6 +454,7 @@ async fn test_comprehensive_treasury_operations_workflow() -> TestResult {
     println!("\n=== Step 6: Pool Pause for Consolidation ===");
     let pause_instruction = PoolInstruction::PausePool {
         pause_flags: PAUSE_FLAG_ALL,
+        pool_id: foundation.pool_config.pool_state_pda,
     };
     
     // Derive the Program Data Account PDA required for authority validation

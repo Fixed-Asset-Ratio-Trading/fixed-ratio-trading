@@ -80,6 +80,7 @@ pub fn create_deposit_instruction(
     let instruction_data = PoolInstruction::Deposit {
         deposit_token_mint: *deposit_token_mint,
         amount,
+        pool_id: pool_client.derive_pool_id(config),
     };
 
     let data = instruction_data.try_to_vec()?;
@@ -131,6 +132,7 @@ pub fn create_withdraw_instruction(
     let instruction_data = PoolInstruction::Withdraw {
         withdraw_token_mint: *withdraw_token_mint,
         lp_amount_to_burn,
+        pool_id: pool_client.derive_pool_id(config),
     };
 
     let data = instruction_data.try_to_vec()?;
@@ -206,6 +208,7 @@ pub fn create_swap_instruction(
         input_token_mint,
         amount_in,
         expected_amount_out,
+        pool_id: pool_client.derive_pool_id(config),
     };
 
     let accounts = vec![
