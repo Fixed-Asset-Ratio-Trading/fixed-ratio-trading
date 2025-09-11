@@ -141,39 +141,81 @@ fn swap_a_to_b(
     _token_b_decimals: u8,
 ) -> Result<u64, ProgramError> {
     
-    // Note: We don't enforce artificial ratio limits because:
-    // - 18-decimal tokens paired with 0-decimal tokens need ratios up to 10^18
-    // - The checked_* operations below will catch any actual overflow risks
-    // - This allows all legitimate token pairs while preventing overflow
+    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
+    // Check for zero ratios first to prevent division by zero
+    if ratio_a_numerator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
     
-    // Convert to u128 to prevent overflow during calculation
+    if ratio_b_denominator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
+    // Check if inputs are within reasonable bounds to prevent extreme calculations
+    if amount_a == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Convert to u128 to prevent overflow during intermediate calculations
     let amount_a_base = amount_a as u128;
     let ratio_a_num = ratio_a_numerator as u128;
     let ratio_b_den = ratio_b_denominator as u128;
     
-    if ratio_a_num == 0 {
-        msg!("❌ CALCULATION ERROR: ratio_a_numerator is zero");
-        return Err(ProgramError::InvalidAccountData);
+    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
+    // Before multiplication, check if the result would exceed u128::MAX
+    // This is more precise than just relying on checked_mul failure
+    if amount_a_base > 0 && ratio_b_den > u128::MAX / amount_a_base {
+        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
+        msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
+        msg!("   This indicates an extremely large swap amount or ratio");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
     }
     
-    // Simple ratio-based calculation
-    // The pool creator must set ratios that account for decimal differences
-    // For 1 TS = 10,000 MST: use ratio 10000:10000 (both in basis points)
-    
+    // Perform multiplication with overflow detection
     let numerator = amount_a_base
         .checked_mul(ratio_b_den)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or_else(|| {
+            msg!("❌ MULTIPLICATION OVERFLOW in swap_a_to_b calculation");
+            msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
+            msg!("   Intermediate calculation: {} * {}", amount_a_base, ratio_b_den);
+            crate::error::PoolError::ArithmeticOverflow
+        })?;
     
+    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation
+    // checked_div only fails if divisor is zero, which we already checked
     let result = numerator.checked_div(ratio_a_num)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or_else(|| {
+            msg!("❌ DIVISION ERROR in swap_a_to_b calculation");
+            msg!("   This should not happen as we validated ratio_a_num != 0");
+            msg!("   ratio_a_num: {}", ratio_a_numerator);
+            ProgramError::InvalidAccountData
+        })?;
     
-    // Convert back to u64 and check for overflow
+    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
+    // Check if result fits in u64 with detailed error reporting
     if result > u64::MAX as u128 {
-        msg!("❌ CALCULATION ERROR: Result exceeds u64::MAX");
-        return Err(ProgramError::ArithmeticOverflow);
+        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
+        msg!("   Calculated result: {}", result);
+        msg!("   u64::MAX: {}", u64::MAX);
+        msg!("   amount_a: {}, ratio_a_num: {}, ratio_b_den: {}", 
+             amount_a, ratio_a_numerator, ratio_b_denominator);
+        msg!("   This indicates the swap would produce an impossibly large output");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
     }
     
     let final_result = result as u64;
+    
+    // 🔒 SANITY CHECK: Ensure result is reasonable
+    // If result is zero, log a warning as this might indicate precision loss
+    if final_result == 0 && amount_a > 0 {
+        msg!("⚠️ PRECISION WARNING: Swap calculation resulted in zero output");
+        msg!("   This may indicate precision loss due to very small ratios");
+        msg!("   amount_a: {}, final_result: {}", amount_a, final_result);
+    }
     
     Ok(final_result)
 }
@@ -190,43 +232,81 @@ fn swap_b_to_a(
     _token_a_decimals: u8,
 ) -> Result<u64, ProgramError> {
     
-    // Convert to u128 to prevent overflow during calculation
+    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
+    // Check for zero ratios first to prevent division by zero
+    if ratio_a_numerator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if ratio_b_denominator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
+    // Check if inputs are within reasonable bounds to prevent extreme calculations
+    if amount_b == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Convert to u128 to prevent overflow during intermediate calculations
     let amount_b_base = amount_b as u128;
     let ratio_a_num = ratio_a_numerator as u128;
     let ratio_b_den = ratio_b_denominator as u128;
     
-    if ratio_b_den == 0 {
-        msg!("❌ CALCULATION ERROR: ratio_b_denominator is zero");
-        return Err(ProgramError::InvalidAccountData);
+    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
+    // Before multiplication, check if the result would exceed u128::MAX
+    // This is more precise than just relying on checked_mul failure
+    if amount_b_base > 0 && ratio_a_num > u128::MAX / amount_b_base {
+        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
+        msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
+        msg!("   This indicates an extremely large swap amount or ratio");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
     }
     
-    // Apply the correct mathematical specification:
-    // A_out = floor( B_in * ratioA_num * 10^(decimals_A - decimals_B) / ratioB_den )
-    
-    // Note: We don't enforce artificial ratio limits because:
-    // - 18-decimal tokens paired with 0-decimal tokens need ratios up to 10^18
-    // - The checked_* operations below will catch any actual overflow risks
-    // - This allows all legitimate token pairs while preventing overflow
-    
-    // Simple ratio-based calculation
-    // The pool creator must set ratios that account for decimal differences
-    
+    // Perform multiplication with overflow detection
     let numerator = amount_b_base
         .checked_mul(ratio_a_num)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
-        
+        .ok_or_else(|| {
+            msg!("❌ MULTIPLICATION OVERFLOW in swap_b_to_a calculation");
+            msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
+            msg!("   Intermediate calculation: {} * {}", amount_b_base, ratio_a_num);
+            crate::error::PoolError::ArithmeticOverflow
+        })?;
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation
+    // checked_div only fails if divisor is zero, which we already checked
     let result = numerator.checked_div(ratio_b_den)
-        .ok_or(ProgramError::ArithmeticOverflow)?;
+        .ok_or_else(|| {
+            msg!("❌ DIVISION ERROR in swap_b_to_a calculation");
+            msg!("   This should not happen as we validated ratio_b_den != 0");
+            msg!("   ratio_b_den: {}", ratio_b_denominator);
+            ProgramError::InvalidAccountData
+        })?;
     
-    
-    
-    // Convert back to u64 and check for overflow
+    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
+    // Check if result fits in u64 with detailed error reporting
     if result > u64::MAX as u128 {
-        msg!("❌ CALCULATION ERROR: Result exceeds u64::MAX");
-        return Err(ProgramError::ArithmeticOverflow);
+        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
+        msg!("   Calculated result: {}", result);
+        msg!("   u64::MAX: {}", u64::MAX);
+        msg!("   amount_b: {}, ratio_a_num: {}, ratio_b_den: {}", 
+             amount_b, ratio_a_numerator, ratio_b_denominator);
+        msg!("   This indicates the swap would produce an impossibly large output");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
     }
     
     let final_result = result as u64;
+    
+    // 🔒 SANITY CHECK: Ensure result is reasonable
+    // If result is zero, log a warning as this might indicate precision loss
+    if final_result == 0 && amount_b > 0 {
+        msg!("⚠️ PRECISION WARNING: Swap calculation resulted in zero output");
+        msg!("   This may indicate precision loss due to very small ratios");
+        msg!("   amount_b: {}, final_result: {}", amount_b, final_result);
+    }
     
     Ok(final_result)
 }
