@@ -88,6 +88,11 @@ pub enum PoolInstruction {
     /// # Arguments:
     /// - `deposit_token_mint`: Token mint being deposited (must match pool's Token A or Token B)
     /// - `amount`: Amount of tokens to deposit (will receive exactly this many LP tokens)
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents PDA bypass attacks
+    /// - Client must specify exact pool they intend to deposit to
     /// 
     /// # Guarantees:
     /// - Strict 1:1 ratio: deposit N tokens → receive exactly N LP tokens
@@ -98,12 +103,23 @@ pub enum PoolInstruction {
     Deposit {
         deposit_token_mint: Pubkey,
         amount: u64,
+        pool_id: Pubkey,
     },
     
     /// Withdraw liquidity from the pool by burning LP tokens
+    /// 
+    /// # Arguments:
+    /// - `withdraw_token_mint`: Token mint to withdraw (must match pool's Token A or Token B)
+    /// - `lp_amount_to_burn`: Amount of LP tokens to burn for withdrawal
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents PDA bypass attacks
+    /// - Client must specify exact pool they intend to withdraw from
     Withdraw {
         withdraw_token_mint: Pubkey,
         lp_amount_to_burn: u64,
+        pool_id: Pubkey,
     },
     
     /// Swap tokens at fixed ratio
@@ -112,10 +128,21 @@ pub enum PoolInstruction {
     /// The output amount is deterministically calculated based on the ratio - 
     /// either you get the exact calculated amount or the transaction fails.
     /// No slippage protection needed since exchange rates are constant.
+    /// 
+    /// # Arguments:
+    /// - `input_token_mint`: Token mint being swapped from
+    /// - `amount_in`: Amount of input tokens to swap
+    /// - `expected_amount_out`: Expected output amount (for validation)
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents PDA bypass attacks
+    /// - Client must specify exact pool they intend to swap with
     Swap {
         input_token_mint: Pubkey,
         amount_in: u64,
         expected_amount_out: u64,
+        pool_id: Pubkey,
     },
 
 
@@ -296,6 +323,11 @@ pub enum PoolInstruction {
     /// 
     /// # Arguments:
     /// - `pause_flags`: Bitwise flags indicating which operations to pause
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents targeting wrong pool
+    /// - Admin must specify exact pool they intend to pause
     /// 
     /// # Account Order:
     /// - [0] Pool Owner Signer (must match pool.owner)
@@ -303,6 +335,7 @@ pub enum PoolInstruction {
     /// - [2] Pool State PDA (writable, to update pause state)
     PausePool {
         pause_flags: u8,
+        pool_id: Pubkey,
     },
     
     /// **PHASE 4: POOL UNPAUSE OPERATIONS**
@@ -317,6 +350,11 @@ pub enum PoolInstruction {
     /// 
     /// # Arguments:
     /// - `unpause_flags`: Bitwise flags indicating which operations to unpause
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents targeting wrong pool
+    /// - Admin must specify exact pool they intend to unpause
     /// 
     /// # Account Order:
     /// - [0] Pool Owner Signer (must match pool.owner)
@@ -324,6 +362,7 @@ pub enum PoolInstruction {
     /// - [2] Pool State PDA (writable, to update pause state)
     UnpausePool {
         unpause_flags: u8,
+        pool_id: Pubkey,
     },
     
     /// **SWAP ACCESS CONTROL**: Enable/disable restrictions and delegate ownership control
@@ -353,6 +392,11 @@ pub enum PoolInstruction {
     /// # Arguments:
     /// - `enable_restriction`: True to enable owner-only mode, false to disable
     /// - `designated_owner`: The pubkey that will have swap control when restrictions are enabled
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents targeting wrong pool
+    /// - Admin must specify exact pool they intend to modify
     /// 
     /// # Account Order:
     /// - [0] Contract Owner Signer (must be admin authority)
@@ -362,6 +406,7 @@ pub enum PoolInstruction {
     SetSwapOwnerOnly {
         enable_restriction: bool,
         designated_owner: Pubkey,
+        pool_id: Pubkey,
     },
     
     /// **POOL FEE UPDATE**: Update pool contract fees (program authority only)
@@ -383,6 +428,11 @@ pub enum PoolInstruction {
     ///   - 0b11 (3): Update both fees
     /// - `new_liquidity_fee`: New liquidity fee in lamports (only used if liquidity flag is set)
     /// - `new_swap_fee`: New swap fee in lamports (only used if swap flag is set)
+    /// - `pool_id`: Expected Pool ID (PDA address) for security validation
+    /// 
+    /// # Security:
+    /// - Pool ID validation prevents targeting wrong pool
+    /// - Admin must specify exact pool they intend to modify
     /// 
     /// # Account Order:
     /// - [0] Program Authority Signer (must be admin authority)
@@ -393,6 +443,7 @@ pub enum PoolInstruction {
         update_flags: u8,
         new_liquidity_fee: u64,
         new_swap_fee: u64,
+        pool_id: Pubkey,
     },
     
     /// **DONATION: Voluntary SOL contribution to the protocol treasury**

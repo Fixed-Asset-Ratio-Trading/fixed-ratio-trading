@@ -354,6 +354,7 @@ pub fn process_swap_execute<'a>(
     program_id: &Pubkey,
     amount_in: u64,              // Input amount in basis points
     expected_amount_out: u64,    // Expected output amount in basis points
+    pool_id: Pubkey,             // Expected Pool ID for security validation
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     // 🔒 CRITICAL SECURITY FIX: Validate input amount is non-zero
@@ -385,8 +386,8 @@ pub fn process_swap_execute<'a>(
     // Validate system is not paused
     crate::utils::validation::validate_system_not_paused_secure(system_state_pda, program_id)?;
     
-    // Load and validate pool state data
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // Load and validate pool state data with Pool ID security validation
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
 
     // Check if pool swaps are paused
     if pool_state_data.swaps_paused() {
@@ -667,7 +668,7 @@ pub fn process_swap_execute<'a>(
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_swap_contract_fees and total_sol_fees_collected
     // but pool_state_data was loaded before fee collection, so we need fresh data
-    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     pool_state_data.collected_swap_contract_fees = fresh_pool_state.collected_swap_contract_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
     
@@ -864,6 +865,7 @@ pub fn process_swap_set_owner_only<'a>(
     program_id: &Pubkey,
     enable_restriction: bool,
     designated_owner: Pubkey,
+    pool_id: Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🔒 SWAP OWNER-ONLY CONFIGURATION");
@@ -893,8 +895,8 @@ pub fn process_swap_set_owner_only<'a>(
     
     
     
-    // Load and validate pool state data
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // Load and validate pool state data with Pool ID security validation
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     
     // Check if flag is already in the requested state

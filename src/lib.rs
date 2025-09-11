@@ -243,41 +243,46 @@ pub fn process_instruction<'a>(
         PoolInstruction::Deposit {
             deposit_token_mint,
             amount,
+            pool_id,
         } => {
             validate_account_count(accounts, DEPOSIT_ACCOUNTS, "Deposit")?;
-            process_liquidity_deposit(program_id, amount, deposit_token_mint, accounts)
+            process_liquidity_deposit(program_id, amount, deposit_token_mint, pool_id, accounts)
         },
 
         PoolInstruction::Withdraw {
             withdraw_token_mint,
             lp_amount_to_burn,
+            pool_id,
         } => {
             validate_account_count(accounts, WITHDRAW_ACCOUNTS, "Withdraw")?;
-            process_liquidity_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, accounts)
+            process_liquidity_withdraw(program_id, lp_amount_to_burn, withdraw_token_mint, pool_id, accounts)
         },
 
         PoolInstruction::Swap {
             input_token_mint: _,
             amount_in,
             expected_amount_out,
+            pool_id,
         } => {
             validate_account_count(accounts, SWAP_ACCOUNTS, "Swap")?;
-            process_swap_execute(program_id, amount_in, expected_amount_out, accounts)
+            process_swap_execute(program_id, amount_in, expected_amount_out, pool_id, accounts)
         },
 
         PoolInstruction::SetSwapOwnerOnly {
             enable_restriction,
             designated_owner,
+            pool_id,
         } => {
             validate_account_count(accounts, SET_SWAP_OWNER_ONLY_ACCOUNTS, "SetSwapOwnerOnly")?;
-            process_swap_set_owner_only(program_id, enable_restriction, designated_owner, accounts)
+            process_swap_set_owner_only(program_id, enable_restriction, designated_owner, pool_id, accounts)
         },
 
         PoolInstruction::UpdatePoolFees {
             update_flags,
             new_liquidity_fee,
             new_swap_fee,
-        } => process_pool_update_fees(program_id, accounts, update_flags, new_liquidity_fee, new_swap_fee),
+            pool_id,
+        } => process_pool_update_fees(program_id, accounts, update_flags, new_liquidity_fee, new_swap_fee, pool_id),
 
 
 
@@ -330,16 +335,18 @@ pub fn process_instruction<'a>(
         // Pool Management Instructions
         PoolInstruction::PausePool {
             pause_flags,
+            pool_id,
         } => {
             validate_account_count(accounts, PAUSE_POOL_ACCOUNTS, "PausePool")?;
-            process_pool_pause(program_id, pause_flags, accounts)
+            process_pool_pause(program_id, pause_flags, pool_id, accounts)
         },
         
         PoolInstruction::UnpausePool {
             unpause_flags,
+            pool_id,
         } => {
             validate_account_count(accounts, UNPAUSE_POOL_ACCOUNTS, "UnpausePool")?;
-            process_pool_unpause(program_id, unpause_flags, accounts)
+            process_pool_unpause(program_id, unpause_flags, pool_id, accounts)
         },
         
         PoolInstruction::DonateSol {

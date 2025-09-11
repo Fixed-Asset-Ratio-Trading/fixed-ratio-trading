@@ -660,6 +660,7 @@ pub fn process_pool_initialize(
 pub fn process_pool_pause(
     program_id: &Pubkey,
     pause_flags: u8,
+    pool_id: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing PausePool instruction with flags: 0b{:08b} ({})", pause_flags, pause_flags);
@@ -682,8 +683,8 @@ pub fn process_pool_pause(
         program_id,
     )?;
     
-    // Load and validate pool state
-    let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // Load and validate pool state with Pool ID security validation
+    let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     // Apply pause flags (idempotent - no error if already paused)
     let mut operations_changed = Vec::new();
@@ -742,6 +743,7 @@ pub fn process_pool_pause(
 pub fn process_pool_unpause(
     program_id: &Pubkey,
     unpause_flags: u8,
+    pool_id: Pubkey,
     accounts: &[AccountInfo],
 ) -> ProgramResult {
     msg!("Processing UnpausePool instruction with flags: 0b{:08b} ({})", unpause_flags, unpause_flags);
@@ -764,8 +766,8 @@ pub fn process_pool_unpause(
         program_id,
     )?;
     
-    // Load and validate pool state
-    let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // Load and validate pool state with Pool ID security validation
+    let mut pool_state = validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     // Apply unpause flags (idempotent - no error if already unpaused)
     let mut operations_changed = Vec::new();
@@ -840,6 +842,7 @@ pub fn process_pool_update_fees(
     update_flags: u8,
     new_liquidity_fee: u64,
     new_swap_fee: u64,
+    pool_id: Pubkey,
 ) -> ProgramResult {
     msg!("🔧 POOL FEE UPDATE TRANSACTION");
     msg!("📊 Update Flags: 0b{:03b} ({})", update_flags, update_flags);
@@ -883,8 +886,8 @@ pub fn process_pool_update_fees(
     
     msg!("⏳ Step 4/4: Loading and updating pool state");
     
-    // ✅ LOAD POOL STATE: Load current pool state for validation and update
-    let mut pool_state_data = validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // ✅ LOAD POOL STATE: Load current pool state with Pool ID security validation
+    let mut pool_state_data = validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     // ✅ DISPLAY CURRENT FEES: Show current fee configuration
     msg!("💰 CURRENT FEE CONFIGURATION:");

@@ -236,8 +236,8 @@ pub fn collect_fee_to_pool_state<'a>(
     }
     msg!("✅ Pool state account is writable");
     
-    // Load and validate pool state
-    let mut pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
+    // Load and validate pool state (using legacy validation for internal utility)
+    let mut pool_state = crate::utils::validation::validate_and_deserialize_pool_state_legacy(pool_state_account, program_id)?;
 
     
     // Transfer SOL to pool state account
@@ -330,8 +330,8 @@ pub fn collect_fee_to_pool_state<'a>(
 
     msg!("✅ Pool state saved to account");
     
-    // Verify the save worked by reading it back
-    let verification_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
+    // Verify the save worked by reading it back (using legacy validation for verification)
+    let verification_state = crate::utils::validation::validate_and_deserialize_pool_state_legacy(pool_state_account, program_id)?;
     msg!("🔍 VERIFICATION - After save:");
     msg!("   collected_liquidity_fees: {}", verification_state.collected_liquidity_fees);
     msg!("   collected_swap_contract_fees: {}", verification_state.collected_swap_contract_fees);

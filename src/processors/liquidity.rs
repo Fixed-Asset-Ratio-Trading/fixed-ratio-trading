@@ -153,6 +153,7 @@ pub fn process_liquidity_deposit<'a>(
     program_id: &Pubkey,
     amount: u64,
     deposit_token_mint_key: Pubkey,
+    pool_id: Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🏦 DEPOSIT TRANSACTION SUMMARY");
@@ -211,8 +212,8 @@ pub fn process_liquidity_deposit<'a>(
     // Critical security fix: Explicit signer checks are required for user operations
     // to prevent unauthorized access to user token accounts.
 
-    // Read and validate pool state (SECURITY: Now validates PDA)
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // Read and validate pool state with Pool ID security validation
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
     msg!("💰 ACTUAL FEE BREAKDOWN:");
@@ -448,7 +449,7 @@ pub fn process_liquidity_deposit<'a>(
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
     // but pool_state_data was loaded before fee collection, so we need fresh data
-    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
     msg!("🔄 Pool state reloaded after fee collection:");
@@ -635,6 +636,7 @@ pub fn process_liquidity_withdraw<'a>(
     program_id: &Pubkey,
     lp_amount_to_burn: u64,
     withdraw_token_mint_key: Pubkey,
+    pool_id: Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
     msg!("🏦 WITHDRAWAL TRANSACTION SUMMARY");
@@ -699,8 +701,8 @@ pub fn process_liquidity_withdraw<'a>(
         return Err(ProgramError::InvalidArgument);
     }
 
-    // ✅ LOAD POOL STATE: Single deserialization (SECURITY: Now validates PDA)
-    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, program_id)?;
+    // ✅ LOAD POOL STATE: Single deserialization with Pool ID security validation
+    let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
     // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
     msg!("💰 ACTUAL FEE BREAKDOWN:");
@@ -848,6 +850,7 @@ pub fn process_liquidity_withdraw<'a>(
         pool_state_pda,
         spl_token_program_account,
         system_program_account,
+        &pool_id,
         program_id,
     );
 
@@ -895,6 +898,7 @@ fn execute_withdrawal_logic<'a>(
     pool_state_account: &'a AccountInfo<'a>,
     token_program_account: &'a AccountInfo<'a>,
     system_program_account: &'a AccountInfo<'a>,
+    pool_id: &Pubkey,
     program_id: &Pubkey,
 ) -> ProgramResult {
     use solana_program::program::{invoke, invoke_signed};
@@ -934,7 +938,7 @@ fn execute_withdrawal_logic<'a>(
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
     // but pool_state_data was loaded before fee collection, so we need fresh data
-    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, program_id)?;
+    let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, pool_id, program_id)?;
     pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
     msg!("🔄 Pool state reloaded after fee collection:");

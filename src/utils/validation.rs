@@ -170,23 +170,93 @@ pub fn validate_lp_mint_authority(
 ///
 /// # Returns
 ///
-/// **SECURITY CRITICAL**: Validates and deserializes PoolState with PDA verification.
+/// **SECURITY CRITICAL**: Validates and deserializes PoolState with explicit Pool ID verification.
 /// 
 /// This function prevents malicious users from passing fake PoolState accounts by:
-/// 1. Deriving the expected PoolState PDA from the pool's token mints and ratio
-/// 2. Validating the provided account matches the expected PDA
-/// 3. Only then deserializing the PoolState data
+/// 1. Requiring clients to provide the expected Pool ID (PDA address)
+/// 2. Validating the provided account matches the expected Pool ID BEFORE deserialization
+/// 3. Only then deserializing the PoolState data (safe since we know it's the right account)
 /// 
 /// # Arguments
 /// * `pool_state_account` - The pool state account to validate and deserialize
-/// * `program_id` - The program ID for PDA derivation
+/// * `expected_pool_id` - The expected Pool ID (PDA address) that the client must provide
+/// * `program_id` - The program ID for ownership validation
 /// 
 /// # Returns
 /// * `Result<PoolState, ProgramError>` - The validated and deserialized PoolState or error
 pub fn validate_and_deserialize_pool_state_secure(
     pool_state_account: &AccountInfo,
+    expected_pool_id: &Pubkey,
     program_id: &Pubkey,
 ) -> Result<PoolState, ProgramError> {
+    // 🔒 STEP 1: Validate account ownership
+    if pool_state_account.owner != program_id {
+        msg!("❌ SECURITY VIOLATION: Pool state account not owned by program");
+        msg!("   Expected owner: {}", program_id);
+        msg!("   Actual owner: {}", pool_state_account.owner);
+        msg!("   Account: {}", pool_state_account.key);
+        msg!("   This indicates a potential attack using unauthorized account");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    
+    // 🔒 STEP 2: Validate Pool ID BEFORE deserialization (CRITICAL SECURITY FIX)
+    if *pool_state_account.key != *expected_pool_id {
+        msg!("❌ SECURITY VIOLATION: Pool ID mismatch - potential PDA bypass attack");
+        msg!("   Expected Pool ID: {}", expected_pool_id);
+        msg!("   Provided account: {}", pool_state_account.key);
+        msg!("   This indicates an attempt to use wrong pool or malicious account");
+        return Err(PoolError::TreasuryValidationFailed {
+            expected: *expected_pool_id,
+            provided: *pool_state_account.key,
+            treasury_type: "PoolState-PoolID".to_string(),
+        }.into());
+    }
+    
+    // 🔒 STEP 3: Safe to deserialize now (we know it's the right account)
+    let pool_state_data = PoolState::deserialize(&mut &pool_state_account.data.borrow()[..])
+        .map_err(|e| {
+            msg!("❌ DESERIALIZATION ERROR: Failed to deserialize pool state");
+            msg!("   Pool ID: {}", expected_pool_id);
+            msg!("   Error: {:?}", e);
+            msg!("   This could indicate corrupted pool data");
+            ProgramError::InvalidAccountData
+        })?;
+    
+    // 🔒 STEP 4: Additional data integrity validation
+    if pool_state_data.token_a_mint == Pubkey::default() ||
+       pool_state_data.token_b_mint == Pubkey::default() {
+        msg!("❌ DATA INTEGRITY ERROR: Pool contains invalid token mints");
+        msg!("   Pool ID: {}", expected_pool_id);
+        msg!("   Token A: {}", pool_state_data.token_a_mint);
+        msg!("   Token B: {}", pool_state_data.token_b_mint);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if pool_state_data.ratio_a_numerator == 0 || pool_state_data.ratio_b_denominator == 0 {
+        msg!("❌ DATA INTEGRITY ERROR: Pool contains invalid ratios");
+        msg!("   Pool ID: {}", expected_pool_id);
+        msg!("   Ratio: {}:{}", pool_state_data.ratio_a_numerator, pool_state_data.ratio_b_denominator);
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    msg!("✅ SECURITY: Pool state validation passed for Pool ID: {}", expected_pool_id);
+    Ok(pool_state_data)
+}
+
+/// **LEGACY FUNCTION - DEPRECATED**: Old validation function for backward compatibility during migration
+/// 
+/// **⚠️ SECURITY WARNING**: This function is vulnerable to PDA bypass attacks.
+/// Use `validate_and_deserialize_pool_state_secure` with explicit Pool ID instead.
+/// 
+/// This function will be removed in a future version.
+#[deprecated(note = "Use validate_and_deserialize_pool_state_secure with explicit pool_id parameter")]
+pub fn validate_and_deserialize_pool_state_legacy(
+    pool_state_account: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<PoolState, ProgramError> {
+    msg!("⚠️ SECURITY WARNING: Using deprecated pool state validation");
+    msg!("   Consider upgrading to secure validation with explicit Pool ID");
+    
     // 🔒 CRITICAL SECURITY FIX: Validate account ownership
     if pool_state_account.owner != program_id {
         msg!("❌ SECURITY VIOLATION: Pool state account not owned by program");
