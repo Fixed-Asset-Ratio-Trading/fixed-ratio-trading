@@ -184,7 +184,7 @@ pub fn get_pool_info(accounts: &[AccountInfo]) -> ProgramResult {
     let pool_state_account = &accounts[2];                   // Index 2: Pool State PDA
     let _spl_token_program_account = &accounts[3];           // Index 3: SPL Token Program Account (placeholder)
     // Note: Read-only operations still use secure validation for security consistency
-    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, &crate::id(), pool_state_account.key)?;
+    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, pool_state_account.key, &crate::id())?;
     
     msg!("=== POOL STATE INFORMATION ===");
     msg!("Pool Owner: {}", pool_state.owner);
@@ -272,7 +272,7 @@ pub fn get_liquidity_info(accounts: &[AccountInfo]) -> ProgramResult {
     
     let pool_state_account = &accounts[0];
     // Note: Read-only operations still use secure validation for security consistency
-    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, &crate::id(), pool_state_account.key)?;
+    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, pool_state_account.key, &crate::id())?;
     
     msg!("=== LIQUIDITY INFORMATION ===");
     msg!("Total Token A Liquidity: {}", pool_state.total_token_a_liquidity);
@@ -310,7 +310,7 @@ pub fn get_fee_info(accounts: &[AccountInfo]) -> ProgramResult {
     let pool_state_account = next_account_info(account_info_iter)?;
 
     // Note: Read-only operations still use secure validation for security consistency
-    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, &crate::id(), pool_state_account.key)?;
+    let pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, pool_state_account.key, &crate::id())?;
 
     msg!("=== FEE INFORMATION ===");
     

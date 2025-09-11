@@ -162,7 +162,7 @@ fn perform_batch_consolidation(
     
     // **PROCESS POOLS BASED ON CONSOLIDATION MODE**
     for pool_account in pool_accounts {
-        let mut pool_state = validate_and_deserialize_pool_state_secure(pool_account, program_id, pool_account.key)?;
+        let mut pool_state = validate_and_deserialize_pool_state_secure(pool_account, pool_account.key, program_id)?;
         
         // Check if pool is eligible for consolidation based on mode
         let is_eligible = match consolidation_mode {
@@ -437,7 +437,7 @@ pub fn get_consolidation_status(
     let mut pools_with_fees = 0u8;
     
     for (i, pool_account) in pool_accounts.iter().enumerate() {
-        let pool_state = validate_and_deserialize_pool_state_secure(pool_account, program_id, pool_account.key)?;
+        let pool_state = validate_and_deserialize_pool_state_secure(pool_account, pool_account.key, program_id)?;
         
         let pool_fees = pool_state.pending_sol_fees();
         let operations = pool_state.total_operations_since_consolidation();
