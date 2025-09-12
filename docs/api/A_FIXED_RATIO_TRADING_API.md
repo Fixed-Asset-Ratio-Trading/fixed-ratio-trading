@@ -2479,15 +2479,24 @@ Pauses specific pool operations using bitwise flags with granular control over w
 // Instruction structure (Borsh serialized)
 PoolInstruction::PausePool {
     pause_flags: u8,      // Bitwise flags for operations to pause
+    pool_id: Pubkey,      // Expected Pool ID for security validation
 }
+```
+
+#### Parameters
+```rust
+program_id: &Pubkey            // Program ID
+pause_flags: u8                // Bitwise flags to pause
+pool_id: Pubkey                // Expected Pool ID for security validation
+accounts: &[AccountInfo; 4]    // Admin, SystemState, PoolState (w), ProgramData
 ```
 
 #### Account Order
 
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | Admin Authority | Signer, Writable | Must be admin authority (or program upgrade authority as fallback) |
-| 1 | System State PDA | Writable | System state for pause validation |
+| 0 | Admin Authority | Signer, Readable | Must be admin authority (or program upgrade authority as fallback) |
+| 1 | System State PDA | Readable | System state for pause validation |
 | 2 | Pool State PDA | **Writable** | Pool state to update with pause information |
 | 3 | Program Data Account | Readable | Program data account for authority validation |
 
@@ -2520,7 +2529,8 @@ function createPausePoolInstruction(
     // Create PoolInstruction::PausePool using Borsh serialization
     const pausePoolInstruction = {
         pausePool: {
-            pause_flags: pauseFlags
+            pause_flags: pauseFlags,
+            pool_id: poolStatePDA,
         }
     };
     
@@ -2616,7 +2626,16 @@ Unpauses specific pool operations using bitwise flags with granular control over
 // Instruction structure (Borsh serialized)
 PoolInstruction::UnpausePool {
     unpause_flags: u8,      // Bitwise flags for operations to unpause
+    pool_id: Pubkey,        // Expected Pool ID for security validation
 }
+```
+
+#### Parameters
+```rust
+program_id: &Pubkey            // Program ID
+unpause_flags: u8              // Bitwise flags to unpause
+pool_id: Pubkey                // Expected Pool ID for security validation
+accounts: &[AccountInfo; 4]    // Admin, SystemState, PoolState (w), ProgramData
 ```
 
 #### Account Order
@@ -2648,7 +2667,8 @@ function createUnpausePoolInstruction(
     // Create PoolInstruction::UnpausePool using Borsh serialization
     const unpausePoolInstruction = {
         unpausePool: {
-            unpause_flags: unpauseFlags
+            unpause_flags: unpauseFlags,
+            pool_id: poolStatePDA,
         }
     };
     
@@ -2872,6 +2892,34 @@ For immediate error code lookup, see the [Custom Error Codes](#custom-error-code
 ### `process_pool_pause`
 
 Pauses specific operations on a pool.
+
+#### Instruction Format
+
+**Discriminator:** `19` (single byte)
+
+```rust
+// Instruction structure (Borsh serialized)
+PoolInstruction::PausePool {
+    pause_flags: u8,      // Bitwise flags for operations to pause
+    pool_id: Pubkey,      // Expected Pool ID for security validation
+}
+```
+
+#### Parameters
+```rust
+program_id: &Pubkey
+pause_flags: u8
+pool_id: Pubkey
+accounts: &[AccountInfo; 4]
+```
+
+#### Account Order
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | Admin Authority | Signer, Readable | Must be admin authority (or program upgrade authority as fallback) |
+| 1 | System State PDA | Readable | System state for pause validation |
+| 2 | Pool State PDA | Writable | Pool state to update with pause information |
+| 3 | Program Data Account | Readable | Program data account for authority validation |
 
 **Authority:** Admin Authority only  
 **Flags:** Can pause liquidity, swaps, or both
@@ -3099,7 +3147,7 @@ The Pool State PDA **MUST** be marked as writable in your transaction. This is r
 #### Instruction Format
 
 **Discriminator:** `2` (single byte)  
-**Total Data Length:** 41 bytes  
+**Total Data Length:** 73 bytes  
 **Serialization:** Borsh format
 
 ```rust
@@ -3107,14 +3155,15 @@ The Pool State PDA **MUST** be marked as writable in your transaction. This is r
 pub struct DepositInstruction {
     discriminator: u8,           // 1 byte: value = 2
     deposit_token_mint: Pubkey,  // 32 bytes: Token mint to deposit
-    amount: u64,                 // 8 bytes: Amount in basis points (little-endian)
+    amount: u64,                 // 8 bytes: Amount in base units (little-endian)
+    pool_id: Pubkey,             // 32 bytes: Expected Pool ID (security validation)
 }
 ```
 
 #### JavaScript Example
 ```javascript
 // Create instruction data for Deposit
-const instructionData = new Uint8Array(41); // 1 + 32 + 8 bytes
+const instructionData = new Uint8Array(73); // 1 + 32 + 8 + 32 bytes
 instructionData[0] = 2; // Deposit discriminator
 
 // Copy token mint bytes (32 bytes)
@@ -3123,16 +3172,21 @@ depositTokenMint.toBytes().forEach((byte, index) => {
 });
 
 // Copy amount bytes (8 bytes, u64 little-endian)
-const amountBytes = new Uint8Array(new BigUint64Array([BigInt(amountBasisPoints)]).buffer);
+const amountBytes = new Uint8Array(new BigUint64Array([BigInt(amountBaseUnits)]).buffer);
 amountBytes.forEach((byte, index) => {
     instructionData[33 + index] = byte;
+});
+
+// Copy pool_id bytes (32 bytes)
+poolId.toBytes().forEach((byte, index) => {
+    instructionData[41 + index] = byte;
 });
 ```
 
 #### Parameters
 ```rust
 program_id: &Pubkey
-amount: u64                   // Amount in basis points
+amount: u64                   // Amount in base units (smallest token units)
 deposit_token_mint: Pubkey    // Which token to deposit
 pool_id: Pubkey               // Expected Pool ID for security validation
 accounts: &[AccountInfo; 11]
@@ -3141,24 +3195,24 @@ accounts: &[AccountInfo; 11]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | User Authority | Signer, Writable | Depositor |
-| 1 | System State PDA | Readable | Pause validation |
-| 2 | Pool State PDA | Writable | Pool to deposit into |
-| 3 | User Token Account | Writable | Source of deposit |
-| 4 | Pool Token Vault | Writable | Destination vault |
-| 5 | Other Token Vault | Writable | Paired token vault |
-| 6 | LP Token Mint | Writable | LP mint to use |
-| 7 | User LP Account | Writable | To receive LP tokens |
-| 8 | Token Program | Readable | SPL token program |
-| 9 | System Program | Readable | For fee transfer |
-| 10 | Main Treasury PDA | Writable | Fee destination |
-| 11 | Deposit Token Mint | Readable | Token being deposited |
+| 0 | User Authority Signer | Signer, Writable | Depositor authority |
+| 1 | System Program | Readable | Solana system program |
+| 2 | System State PDA | Readable | Global pause validation |
+| 3 | Pool State PDA | Writable | Target pool state account |
+| 4 | SPL Token Program | Readable | SPL Token program |
+| 5 | Token A Vault PDA | Writable | Pool vault for Token A |
+| 6 | Token B Vault PDA | Writable | Pool vault for Token B |
+| 7 | User Input Token Account | Writable | Source token account |
+| 8 | User Output LP Token Account | Writable | Destination LP token account |
+| 9 | LP Token A Mint PDA | Writable | LP mint for Token A deposits |
+| 10 | LP Token B Mint PDA | Writable | LP mint for Token B deposits |
 
 #### Important Notes
 - **Single token deposits only** - choose either Token A or Token B
 - **1:1 LP token ratio** - receive exactly the amount of LP tokens as deposited tokens
 - **Token-specific LP tokens** - Token A deposits get Token A LP tokens, Token B deposits get Token B LP tokens
 - **User must create LP token account first** - transaction fails if LP token account doesn't exist
+- **Fee destination** - Fees are collected to the Pool State PDA (distributed). Consolidation to the Main Treasury occurs via separate operations.
 
 ---
 
@@ -3205,7 +3259,7 @@ The Pool State PDA **MUST** be marked as writable in your transaction. This is r
 #### Instruction Format
 
 **Discriminator:** `3` (single byte)  
-**Total Data Length:** 41 bytes  
+**Total Data Length:** 73 bytes  
 **Serialization:** Borsh format
 
 ```rust
@@ -3214,13 +3268,14 @@ pub struct WithdrawInstruction {
     discriminator: u8,            // 1 byte: value = 3
     withdraw_token_mint: Pubkey,  // 32 bytes: Token mint to receive
     lp_amount_to_burn: u64,       // 8 bytes: LP tokens to burn (little-endian)
+    pool_id: Pubkey,              // 32 bytes: Expected Pool ID (security validation)
 }
 ```
 
 #### JavaScript Example
 ```javascript
 // Create instruction data for Withdraw
-const instructionData = new Uint8Array(41); // 1 + 32 + 8 bytes
+const instructionData = new Uint8Array(73); // 1 + 32 + 8 + 32 bytes
 instructionData[0] = 3; // Withdraw discriminator
 
 // Copy withdraw token mint bytes (32 bytes)
@@ -3233,6 +3288,11 @@ const lpAmountBytes = new Uint8Array(new BigUint64Array([BigInt(lpAmountLamports
 lpAmountBytes.forEach((byte, index) => {
     instructionData[33 + index] = byte;
 });
+
+// Copy pool_id bytes (32 bytes)
+poolId.toBytes().forEach((byte, index) => {
+    instructionData[41 + index] = byte;
+});
 ```
 
 #### Parameters
@@ -3243,6 +3303,24 @@ withdraw_token_mint: Pubkey   // Which token to receive
 pool_id: Pubkey               // Expected Pool ID for security validation
 accounts: &[AccountInfo; 11]
 ```
+
+#### Account Structure
+| Index | Account | Type | Description |
+|-------|---------|------|-------------|
+| 0 | User Authority Signer | Signer, Writable | Withdrawer authority |
+| 1 | System Program | Readable | Solana system program |
+| 2 | System State PDA | Readable | Global pause validation |
+| 3 | Pool State PDA | Writable | Target pool state account |
+| 4 | SPL Token Program | Readable | SPL Token program |
+| 5 | Token A Vault PDA | Writable | Pool vault for Token A |
+| 6 | Token B Vault PDA | Writable | Pool vault for Token B |
+| 7 | User Input LP Token Account | Writable | Source LP token account |
+| 8 | User Output Token Account | Writable | Destination token account |
+| 9 | LP Token A Mint PDA | Writable | LP mint A (authority validation) |
+| 10 | LP Token B Mint PDA | Writable | LP mint B (authority validation) |
+
+#### Important Notes
+- **Fee destination** - Fees are collected to the Pool State PDA (distributed). Consolidation to the Main Treasury occurs via separate operations.
 
 #### Returns
 - **Single token type only** - the token corresponding to the LP tokens burned
@@ -3358,31 +3436,39 @@ The Pool State PDA **MUST** be marked as writable in your transaction. This is t
 #### Instruction Format
 
 **Discriminator:** `4` (single byte)  
-**Total Data Length:** 49 bytes  
+**Total Data Length:** 81 bytes (when manually constructing bytes; recommended to Borsh-serialize the enum)  
 **Serialization:** Borsh format
 
 ```rust
-// Instruction structure
+// Instruction structure (when manually constructing bytes)
 pub struct SwapInstruction {
     discriminator: u8,           // 1 byte: value = 4
     input_token_mint: Pubkey,    // 32 bytes: Input token mint
     amount_in: u64,              // 8 bytes: Input amount in basis points (little-endian)
-    expected_amount_out: u64,    // 8 bytes: EXACT expected output - must match calculated amount (little-endian)
+    expected_amount_out: u64,    // 8 bytes: EXACT expected output (little-endian)
+    pool_id: Pubkey,             // 32 bytes: Expected Pool ID for security validation
 }
 ```
 
 #### JavaScript Example
 ```javascript
-// Create instruction data for Swap
-const instructionData = new Uint8Array([
-    4, // Swap discriminator (single byte)
-    ...inputTokenMint.toBuffer(), // input_token_mint (32 bytes)
-    ...new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer), // amount_in (u64 little-endian)
-    ...new Uint8Array(new BigUint64Array([BigInt(expectedAmountOut)]).buffer)  // expected_amount_out (u64 little-endian)
-]);
+// Create instruction data for Swap (manual bytes; prefer Borsh enum serialization)
+const instructionData = new Uint8Array(81); // 1 + 32 + 8 + 8 + 32
+instructionData[0] = 4; // Swap discriminator
 
-// Total: 1 + 32 + 8 + 8 = 49 bytes
-console.log('Swap instruction data length:', instructionData.length);
+// input_token_mint (32 bytes)
+inputTokenMint.toBytes().forEach((b, i) => instructionData[1 + i] = b);
+
+// amount_in (u64 little-endian)
+new Uint8Array(new BigUint64Array([BigInt(amountInBaseUnits)]).buffer)
+  .forEach((b, i) => instructionData[33 + i] = b);
+
+// expected_amount_out (u64 little-endian)
+new Uint8Array(new BigUint64Array([BigInt(expectedAmountOut)]).buffer)
+  .forEach((b, i) => instructionData[41 + i] = b);
+
+// pool_id (32 bytes)
+poolId.toBytes().forEach((b, i) => instructionData[49 + i] = b);
 ```
 
 #### Parameters
@@ -3397,17 +3483,17 @@ accounts: &[AccountInfo; 11]
 #### Account Structure
 | Index | Account | Type | Description |
 |-------|---------|------|-------------|
-| 0 | User Authority | Signer, Writable | Swapper |
-| 1 | System State PDA | Readable | Pause validation |
-| 2 | Pool State PDA | Writable | Pool to swap in |
-| 3 | User Input Account | Writable | Source tokens |
-| 4 | User Output Account | Writable | Destination tokens |
-| 5 | Pool Input Vault | Writable | Receives input |
-| 6 | Pool Output Vault | Writable | Sends output |
-| 7 | Token Program | Readable | SPL token program |
-| 8 | System Program | Readable | For fee transfer |
-| 9 | Main Treasury PDA | Writable | Fee destination |
-| 10 | Input Token Mint | Readable | For validation |
+| 0 | User Authority Signer | Signer, Readable | Swapper authority |
+| 1 | System Program | Readable | Solana system program |
+| 2 | System State PDA | Readable | Global pause validation |
+| 3 | Pool State PDA | Writable | Pool state (fee tracking, flags) |
+| 4 | SPL Token Program | Readable | SPL Token program |
+| 5 | Token A Vault PDA | Writable | Pool vault for Token A |
+| 6 | Token B Vault PDA | Writable | Pool vault for Token B |
+| 7 | User Input Token Account | Writable | Source tokens |
+| 8 | User Output Token Account | Writable | Destination tokens |
+| 9 | Input Token Mint | Readable | Mint for input token (decimals/validation) |
+| 10 | Output Token Mint | Readable | Mint for output token (decimals/validation) |
 
 #### Swap Calculation
 ```
@@ -3511,6 +3597,7 @@ let ix = Instruction {
     data: fixed_ratio_trading::PoolInstruction::SetSwapOwnerOnly {
         enable_restriction: true,
         designated_owner: delegated_owner,
+        pool_id: pool_state_pda, // Include pool_id for security validation
     }
     .try_to_vec()
     .unwrap(),
@@ -3699,6 +3786,7 @@ export function buildSetSwapOwnerOnlyIx(params: {
     SetSwapOwnerOnly: new SetSwapOwnerOnly({
       enable_restriction: params.enableRestriction,
       designated_owner: params.designatedOwner,
+      pool_id: params.poolStatePda,
     }),
   });
 
