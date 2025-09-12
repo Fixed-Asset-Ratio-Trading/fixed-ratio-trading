@@ -97,11 +97,24 @@ This guide covers critical requirements for:
    - **Wrong ratios are permanent** - no fix possible, results in lost SOL (1.15+ SOL per mistake)
 
 5. **⚠️ Transaction Building Requirements**
-   - **Instruction Data Format**: Use single-byte discriminator `[1]` (18 bytes total for InitializePool)
+   - **Instruction Data Format**: Use **single-byte discriminator** `[1]` (**EXACTLY 18 bytes total** for InitializePool)
+   - **Exact Byte Layout**: 
+     - Offset 0: discriminator (u8 = 1) 
+     - Offset 1-8: ratio_a_numerator (u64, little-endian)
+     - Offset 9-16: ratio_b_denominator (u64, little-endian) 
+     - Offset 17: flags (u8) **MANDATORY - include even if zero**
    - **Token Ordering**: Must use lexicographic byte comparison (same as Rust Pubkey::cmp)
    - **Basis Points**: Convert user ratios using `amount * Math.pow(10, decimals)`
    - **Account Structure**: Must include exactly 13 accounts in documented order
+   - **Compute Budget**: Recommend 150k-200k CU for reliability (observed ~91k, but allow headroom)
    - **Solnet Issues**: Known transaction serialization bugs - use raw RPC for complex transactions
+
+6. **🚨 CRITICAL PRECONDITIONS for InitializePool**
+   - **System State Must Exist**: Run `InitializeProgram` first or reset localnet if using stale data
+   - **Main Treasury Must Exist**: Must be created by current program version with matching schema
+   - **Account Validation**: Verify owner = program ID and data length matches current schema
+   - **Schema Compatibility**: BorshIoError: Unknown occurs if accounts created by older program versions
+   - **Fresh Environment**: For development, consider resetting localnet to ensure clean state
 
 ---
 
@@ -153,15 +166,15 @@ The following lists reflect the on-chain handlers and are validated in code. Ind
   - [5] Program Data Account (BPF Upgradeable Loader ProgramData)
 
 - InitializePool (13 accounts)
-  - [0] User Authority Signer (signer)
+  - [0] User Authority Signer (signer, writable; **MUST be transaction fee payer**)
   - [1] System Program
-  - [2] System State PDA
+  - [2] System State PDA (**PRECONDITION: Must exist and match current program schema**)
   - [3] Pool State PDA (writable)
   - [4] SPL Token Program
-  - [5] Main Treasury PDA (writable)
+  - [5] Main Treasury PDA (writable; **PRECONDITION: Must exist and match current program schema**)
   - [6] Rent Sysvar
-  - [7] Token A Mint Account (readable)
-  - [8] Token B Mint Account (readable)
+  - [7] Token A Mint Account (readable; **MUST be normalized mint order**)
+  - [8] Token B Mint Account (readable; **MUST be normalized mint order**)
   - [9] Token A Vault PDA (writable)
   - [10] Token B Vault PDA (writable)
   - [11] LP Token A Mint PDA (writable)
@@ -1520,6 +1533,31 @@ Creates a comprehensive fixed-ratio trading pool with complete infrastructure se
 - **Validation**: If neither side represents exactly one whole token unit after token normalization, the instruction fails with `InvalidRatio (1002)`.
 - **Normalization Note**: Tokens are normalized to lexicographic order before storage. You must normalize both the token order and the ratio so that one side is exactly 1 whole token in the final, normalized order. Use `normalize_pool_config()` to enforce this safely.
 
+**📝 Concrete Example - Ratio with Token Normalization:**
+```javascript
+// User wants: 1 SOL = 160 USDT pool
+// SOL mint: So11111111111111111111111111111111111111112 (9 decimals)
+// USDT mint: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB (6 decimals)
+
+// Step 1: Normalize token order (lexicographic byte comparison)
+// USDT mint (Es9v...) < SOL mint (So11...) in byte order
+// So normalized order is: Token A = USDT, Token B = SOL
+
+// Step 2: Calculate basis points for normalized order
+// User ratio "1 SOL = 160 USDT" becomes "1/160 USDT = 1 SOL" in normalized order
+// Token A (USDT): 1 * 10^6 = 1,000,000 basis points (1 whole USDT)
+// Token B (SOL): 160 * 10^9 = 160,000,000,000 basis points (160 whole SOL)
+
+// Step 3: Verify one side equals exactly 10^decimals
+// ✅ Token A: 1,000,000 = 10^6 (matches USDT decimals)
+// ❌ Token B: 160,000,000,000 ≠ 10^9 (doesn't match SOL decimals)
+
+// This would FAIL validation! Correct approach:
+// Token A (USDT): 160 * 10^6 = 160,000,000 basis points (160 whole USDT)  
+// Token B (SOL): 1 * 10^9 = 1,000,000,000 basis points (1 whole SOL)
+// ✅ Token B: 1,000,000,000 = 10^9 (matches SOL decimals)
+```
+
 **⚙️ Technical Implementation Details:**
 - **Account Creation Sequence**: Pool State → Token A Vault → Token B Vault → LP Token A Mint → LP Token B Mint
 - **Rent Calculations**: Automatically calculates and pays rent for all created accounts
@@ -1566,6 +1604,51 @@ const instructionData = new Uint8Array([
 // ratioABasisPoints = 1000000000 (1.0 * 10^9)
 // ratioBBasisPoints = 160000000 (160.0 * 10^6)
 ```
+
+#### 🚨 Pre-Flight Checklist for InitializePool
+
+**Before attempting pool creation, verify these requirements to avoid BorshIoError and other failures:**
+
+1. **✅ System State Verification**
+   ```javascript
+   // Check if system_state exists and has correct owner
+   const systemStatePDA = PublicKey.findProgramAddressSync([Buffer.from("system_state")], PROGRAM_ID)[0];
+   const systemStateInfo = await connection.getAccountInfo(systemStatePDA);
+   if (!systemStateInfo || !systemStateInfo.owner.equals(PROGRAM_ID)) {
+       throw new Error("System state not initialized - run InitializeProgram first");
+   }
+   ```
+
+2. **✅ Main Treasury Verification**
+   ```javascript
+   // Check if main_treasury exists and has correct owner  
+   const mainTreasuryPDA = PublicKey.findProgramAddressSync([Buffer.from("main_treasury")], PROGRAM_ID)[0];
+   const treasuryInfo = await connection.getAccountInfo(mainTreasuryPDA);
+   if (!treasuryInfo || !treasuryInfo.owner.equals(PROGRAM_ID)) {
+       throw new Error("Main treasury not initialized - run InitializeProgram first");
+   }
+   ```
+
+3. **✅ Program Version Compatibility**
+   ```javascript
+   // Verify program is responding and version matches
+   const versionInstruction = new TransactionInstruction({
+       keys: [],
+       programId: PROGRAM_ID,
+       data: new Uint8Array([14]) // GetVersion discriminator
+   });
+   // Should return version info without errors
+   ```
+
+4. **✅ Account Requirements**
+   - Fee payer has sufficient SOL (minimum 2+ SOL for rent and fees)
+   - Token mints exist and are valid SPL tokens
+   - Normalized token order calculated correctly (lexicographic byte comparison)
+   - Instruction data is exactly 18 bytes with mandatory flags byte
+
+5. **✅ Compute Budget**
+   - Set compute budget to 150k-200k CU for reliability
+   - Use ComputeBudgetProgram.setComputeUnitLimit() instruction
 
 #### Complete Working Example - EXACT FORMAT
 ```javascript
