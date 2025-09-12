@@ -156,29 +156,7 @@ pub fn process_liquidity_deposit<'a>(
     pool_id: Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
-    msg!("🏦 DEPOSIT TRANSACTION SUMMARY");
-    msg!("📊 Amount: {} tokens", amount);
-    msg!("🎯 Token Mint: {}", deposit_token_mint_key);
-    
-    // ✅ PRE-TRANSACTION INFORMATION (DEFI UX BEST PRACTICES)
-    msg!("💰 FEE BREAKDOWN:");
-    msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
-    msg!("   • Protocol Fee: Will be displayed after pool state validation");
-    msg!("   • Account Creation: May require ~0.00203928 SOL rent if LP token account doesn't exist");
-    
-    msg!("📈 EXPECTED OUTCOMES:");
-    msg!("   • You will receive: {} LP tokens (1:1 ratio)", amount);
-    msg!("   • Slippage protection: Guaranteed {} LP tokens minimum", amount);
-    msg!("   • LP token mint: Will be determined based on deposit token");
-    msg!("   • Your liquidity position will be created/increased");
-    
-    msg!("🔒 TRANSACTION SECURITY:");
-    msg!("   • MEV protection: Enabled via atomic transaction bundling");
-    msg!("   • Slippage tolerance: 0% (exact 1:1 ratio guaranteed)");
-    msg!("   • Account validation: Comprehensive PDA security checks");
-    msg!("   • System pause protection: Active");
-    
-    msg!("⏳ Processing deposit with comprehensive validation...");
+    msg!("🏦 DEPOSIT: {} tokens to mint {}", amount, deposit_token_mint_key);
     
     // ✅ ACCOUNT EXTRACTION: Extract accounts using optimized indices (Removed unused sysvar accounts)
     let user_authority_signer = &accounts[0];                    // Index 0: User Authority Signer
@@ -215,26 +193,8 @@ pub fn process_liquidity_deposit<'a>(
     // Read and validate pool state with Pool ID security validation
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
-    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
-    msg!("💰 ACTUAL FEE BREAKDOWN:");
-    msg!("   • Protocol Fee: {} lamports ({} SOL)", pool_state_data.contract_liquidity_fee, pool_state_data.contract_liquidity_fee as f64 / 1_000_000_000.0);
-    
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
-
-    // ✅ FEE COLLECTION MOVED TO AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
-    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
-    
-    msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
-    msg!("💰 Fee: {} lamports (will be collected to pool state)", pool_state_data.contract_liquidity_fee);
-    
-    // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
-    msg!("🔍 TRANSACTION SIMULATION RESULTS:");
-    msg!("   • Pool liquidity impact: +{} tokens to pool vault", amount);
-    msg!("   • Price impact: 0% (liquidity provision has no price impact)");
-    msg!("   • Pool depth increase: Estimated +{}% relative liquidity", 
-         if amount > 1_000_000 { amount / 1_000_000 } else { 1 });
-    msg!("   • Transaction success probability: >99% (all validations passed)");
     
     // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
     // If we successfully deserialized pool_state_data, the pool is initialized
@@ -244,7 +204,7 @@ pub fn process_liquidity_deposit<'a>(
     let is_depositing_token_a = deposit_token_mint_key == pool_state_data.token_a_mint;
     
     if !is_depositing_token_a && deposit_token_mint_key != pool_state_data.token_b_mint {
-        msg!("Invalid deposit token mint: {}. Expected {} or {}", 
+        msg!("❌ Invalid deposit token mint: {}. Expected {} or {}", 
              deposit_token_mint_key, pool_state_data.token_a_mint, pool_state_data.token_b_mint);
         return Err(ProgramError::InvalidInstructionData);
     }
@@ -283,9 +243,6 @@ pub fn process_liquidity_deposit<'a>(
     
     // ✅ OPTIMIZATION: Only validate the LP token mint being used for this deposit
     // The other LP token mint may not exist yet (will be created when needed)
-    msg!("✅ SECURITY: Target LP token mint account validated as correct PDA");
-    msg!("   Using: {} (Token {})", target_lp_mint_pda, if is_depositing_token_a { "A" } else { "B" });
-    msg!("🔍 Step 2/4: Validating user accounts and token transfers...");
     
     // ✅ OPTIMIZATION: User LP token account should exist (created by client)
     // The LP token mint now exists, so user should have created their account ahead of time
@@ -314,24 +271,21 @@ pub fn process_liquidity_deposit<'a>(
         ) {
             Ok(data) => Some(data),
             Err(_) => {
-                msg!("⚠️ User LP token account exists but is not properly initialized");
+                msg!("❌ User LP token account exists but is not properly initialized");
                 None
             }
         }
     } else {
-        msg!("⚠️ User LP token account does not exist yet, will be created on-demand");
+        msg!("❌ User LP token account does not exist - must be created first");
         None
     };
     
     // Validate instruction parameter matches accounts-derived mint
     if actual_deposit_mint != deposit_token_mint_key {
-        msg!("Instruction deposit_token_mint ({}) does not match user input account mint ({})", 
+        msg!("❌ Instruction deposit_token_mint ({}) does not match user input account mint ({})", 
              deposit_token_mint_key, actual_deposit_mint);
         return Err(ProgramError::InvalidInstructionData);
     }
-    
-    msg!("Deposit token mint validated: {}", deposit_token_mint_key);
-    msg!("🔍 Step 3/4: Executing token transfers and LP token minting...");
 
     // ✅ SECURITY: Validate vault accounts match pool state (simplified for optimization)
     // Only validate the vault for the side being deposited to, not both sides
@@ -369,7 +323,6 @@ pub fn process_liquidity_deposit<'a>(
     };
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
-    msg!("🔒 VALIDATING VAULT AND LP MINT AUTHORITIES...");
     // 🔒 SECURITY: Validate vault account
     let target_vault_data = safe_unpack_and_validate_token_account(
         target_vault,
@@ -386,19 +339,10 @@ pub fn process_liquidity_deposit<'a>(
 
     // Validate user accounts (user's LP token account must exist)
     let user_output_data = if let Some(output_data) = user_output_data {
-        msg!("✅ ACCOUNT STATUS:");
-        msg!("   • LP token account exists: {}", user_output_account.key);
-        msg!("   • Current LP balance: {}", output_data.amount);
-        msg!("   • No account creation fee required");
         output_data
     } else {
-        msg!("🏗️ ACCOUNT CREATION REQUIRED:");
-        msg!("   • LP token account does not exist: {}", user_output_account.key);
-        msg!("   • LP token mint PDA: {}", target_lp_mint_pda);
-        msg!("   • Account creation rent: ~0.00203928 SOL");
-        msg!("   • User must create LP token account before deposit");
-        msg!("   • Depositing to: {} side", if is_depositing_token_a { "Token A" } else { "Token B" });
-        msg!("❌ Please create your LP token account first using your wallet");
+        msg!("❌ LP token account does not exist: {}", user_output_account.key);
+        msg!("   Must create LP token account before deposit");
         return Err(ProgramError::Custom(4001)); // Custom error for missing user LP token account
     };
     
@@ -433,7 +377,6 @@ pub fn process_liquidity_deposit<'a>(
     msg!("Initial LP balance: {}, expecting to mint: {}", initial_lp_balance, amount);
 
     // CRITICAL: Collect fees BEFORE token operations to prevent free deposits
-    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
     use crate::utils::fee_validation::collect_liquidity_fee_distributed;
     
     // Collect fee upfront - if this fails, no tokens are transferred
@@ -445,7 +388,6 @@ pub fn process_liquidity_deposit<'a>(
         pool_state_pda.key,
         pool_state_data.contract_liquidity_fee,
     )?;
-    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
     
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
@@ -453,16 +395,6 @@ pub fn process_liquidity_deposit<'a>(
     let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
-    msg!("🔄 Pool state reloaded after fee collection:");
-    msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
-    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
-    
-    // 🔒 REENTRANCY SAFETY: This operation is protected by Solana's built-in mechanisms:
-    // 1. Account locking: Solana locks all accounts for exclusive access during transaction
-    // 2. Atomic execution: All operations succeed/fail together - no partial state changes
-    // 3. Single-threaded: Each transaction executes sequentially, preventing race conditions
-    // 4. Account validation: All accounts are validated before any operations begin
-    msg!("🔄 Starting atomic liquidity deposit operation");
     
     // Process deposit with atomic guarantees - no reentrancy possible due to account locking
     {
@@ -548,39 +480,7 @@ pub fn process_liquidity_deposit<'a>(
         return Err(ProgramError::Custom(3001));
     }
 
-    msg!("🔍 Step 4/4: Verifying transaction and finalizing...");
-    
-    // ✅ COLLECT SOL FEES TO POOL STATE AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
-    // Note: Fee was already collected before token operations
-    // This prevents users from getting free deposits if fee collection fails
-
-    msg!("✅ DEPOSIT COMPLETED SUCCESSFULLY!");
-    msg!("📈 COMPREHENSIVE TRANSACTION SUMMARY:");
-    msg!("   • Input: {} tokens (mint: {})", amount, deposit_token_mint_key);
-    msg!("   • Output: {} LP tokens (1:1 ratio maintained)", lp_tokens_received);
-    msg!("   • Total fees paid: {} lamports ({} SOL)", 
-         crate::constants::DEPOSIT_WITHDRAWAL_FEE, 
-         crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    msg!("   • Pool: {} (Token A: {}, Token B: {})", 
-         pool_state_pda.key, pool_state_data.token_a_mint, pool_state_data.token_b_mint);
-    
-    msg!("💰 POST-TRANSACTION BALANCES:");
-    msg!("   • Your LP token balance: {} (increased by {})", final_lp_balance, lp_tokens_received);
-    msg!("   • Pool total liquidity A: {}", pool_state_data.total_token_a_liquidity);
-    msg!("   • Pool total liquidity B: {}", pool_state_data.total_token_b_liquidity);
-    msg!("   • Your share of pool: {}%", 
-         if is_depositing_token_a && pool_state_data.total_token_a_liquidity > 0 {
-             (lp_tokens_received * 100) / pool_state_data.total_token_a_liquidity
-         } else if !is_depositing_token_a && pool_state_data.total_token_b_liquidity > 0 {
-             (lp_tokens_received * 100) / pool_state_data.total_token_b_liquidity
-         } else { 100 });
-    
-    msg!("🎉 Your liquidity position has been created!");
-    msg!("💡 NEXT STEPS:");
-    msg!("   • Withdraw liquidity anytime using your LP tokens");
-    msg!("   • Earn trading fees from swap transactions");
-    msg!("   • Monitor your position in the pool dashboard");
-    msg!("   • LP tokens represent your claim on underlying assets");
+    msg!("✅ DEPOSIT SUCCESS: {} tokens → {} LP tokens", amount, lp_tokens_received);
     Ok(())
 }
 
@@ -636,29 +536,7 @@ pub fn process_liquidity_withdraw<'a>(
     pool_id: Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> ProgramResult {
-    msg!("🏦 WITHDRAWAL TRANSACTION SUMMARY");
-    msg!("📊 LP Tokens to Burn: {}", lp_amount_to_burn);
-    msg!("🎯 Withdraw Token Mint: {}", withdraw_token_mint_key);
-    
-    // ✅ PRE-TRANSACTION INFORMATION (DEFI UX BEST PRACTICES)
-    msg!("💰 FEE BREAKDOWN:");
-    msg!("   • Network Fee: ~0.000005 SOL (base Solana transaction fee)");
-    msg!("   • Protocol Fee: Will be displayed after pool state validation");
-    msg!("   • No account creation fees (withdrawing to existing accounts)");
-    
-    msg!("📈 EXPECTED OUTCOMES:");
-    msg!("   • You will receive: {} underlying tokens (1:1 ratio)", lp_amount_to_burn);
-    msg!("   • LP tokens burned: {} (permanently removed from supply)", lp_amount_to_burn);
-    msg!("   • Slippage protection: Guaranteed {} tokens minimum", lp_amount_to_burn);
-    msg!("   • Your liquidity position will be reduced/removed");
-    
-    msg!("🔒 TRANSACTION SECURITY:");
-    msg!("   • MEV protection: Enabled via atomic transaction bundling");
-    msg!("   • Slippage tolerance: 0% (exact 1:1 ratio guaranteed)");
-    msg!("   • Account validation: Comprehensive PDA security checks");
-    msg!("   • System pause protection: Active");
-    
-    msg!("⏳ Processing withdrawal with comprehensive validation...");
+    msg!("🏦 WITHDRAWAL: {} LP tokens for {}", lp_amount_to_burn, withdraw_token_mint_key);
     
     // 🔒 CRITICAL SECURITY FIX: Validate withdrawal amount is non-zero
     use crate::utils::validation::validate_non_zero_amount;
@@ -694,34 +572,15 @@ pub fn process_liquidity_withdraw<'a>(
     // to prevent unauthorized access to user token accounts.
     
     if lp_amount_to_burn == 0 {
-        msg!("Cannot withdraw zero LP tokens");
+        msg!("❌ Cannot withdraw zero LP tokens");
         return Err(ProgramError::InvalidArgument);
     }
 
     // ✅ LOAD POOL STATE: Single deserialization with Pool ID security validation
     let mut pool_state_data = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_pda, &pool_id, program_id)?;
     
-    // ✅ DISPLAY ACTUAL FEE INFORMATION (now that pool state is loaded)
-    msg!("💰 ACTUAL FEE BREAKDOWN:");
-    msg!("   • Protocol Fee: {} lamports ({} SOL)", pool_state_data.contract_liquidity_fee, pool_state_data.contract_liquidity_fee as f64 / 1_000_000_000.0);
-    
     // ✅ LIQUIDITY PAUSE CHECK: Validate that liquidity operations are not paused
     validate_liquidity_not_paused(&pool_state_data)?;
-
-    // ✅ FEE COLLECTION MOVED TO AFTER INVOKE_SIGNED (GitHub Issue #31960 Workaround)
-    // Fee collection must happen AFTER all invoke_signed operations to prevent PDA corruption
-    
-    msg!("🔍 Fee collection will happen after token operations to prevent PDA corruption");
-    msg!("💰 Fee: {} lamports (will be collected to pool state)", pool_state_data.contract_liquidity_fee);
-    
-    // ✅ REAL-TIME TRANSACTION SIMULATION RESULTS
-    msg!("🔍 TRANSACTION SIMULATION RESULTS:");
-    msg!("   • Pool liquidity impact: -{} tokens from pool vault", lp_amount_to_burn);
-    msg!("   • LP token supply reduction: -{} LP tokens (burned)", lp_amount_to_burn);
-    msg!("   • Price impact: 0% (liquidity removal has no price impact)");
-    msg!("   • Pool depth decrease: Estimated -{}% relative liquidity", 
-         if lp_amount_to_burn > 1_000_000 { lp_amount_to_burn / 1_000_000 } else { 1 });
-    msg!("   • Transaction success probability: >99% (all validations passed)");
     
     // **PHASE 1: POOL EXISTENCE = INITIALIZATION**
     // If we successfully deserialized pool_state_data, the pool is initialized
@@ -775,23 +634,12 @@ pub fn process_liquidity_withdraw<'a>(
         true, // Reject delegated accounts
     )?;
     
-    // ✅ ACCOUNT STATUS AND BALANCE PREVIEW
-    msg!("✅ ACCOUNT STATUS:");
-    msg!("   • LP token account: {} (balance: {})", user_input_account.key, user_input_data.amount);
-    msg!("   • Output token account: {} (balance: {})", user_output_account.key, user_output_data.amount);
-    msg!("   • Sufficient LP balance: {}", if user_input_data.amount >= lp_amount_to_burn { "✅ Yes" } else { "❌ No" });
-    msg!("   • Post-withdrawal LP balance: {}", user_input_data.amount.saturating_sub(lp_amount_to_burn));
-    msg!("   • Post-withdrawal token balance: {}", user_output_data.amount + lp_amount_to_burn);
-    
     // Validate instruction parameter matches accounts-derived mint
     if actual_withdraw_mint != withdraw_token_mint_key {
-        msg!("Instruction withdraw_token_mint ({}) does not match user output account mint ({})", 
+        msg!("❌ Instruction withdraw_token_mint ({}) does not match user output account mint ({})", 
              withdraw_token_mint_key, actual_withdraw_mint);
         return Err(ProgramError::InvalidInstructionData);
     }
-    
-    msg!("Withdrawal token mint validated: {}", withdraw_token_mint_key);
-    msg!("🔍 Step 2/4: Validating LP token correspondence and user accounts...");
 
     // ✅ OPTIMIZATION: USE CONSOLIDATED VALIDATION FUNCTIONS
     // Validate LP token correspondence for withdrawal using consolidated function
@@ -831,8 +679,6 @@ pub fn process_liquidity_withdraw<'a>(
         token_b_vault_pda
     };
 
-    msg!("🔍 Step 3/4: Executing LP token burning and token transfers...");
-    
     // Execute withdrawal logic
     let result = execute_withdrawal_logic(
         &mut pool_state_data,
@@ -898,7 +744,6 @@ fn execute_withdrawal_logic<'a>(
     use crate::constants::POOL_STATE_SEED_PREFIX;
 
     // 🔒 CRITICAL SECURITY FIX: Validate vault and LP mint authorities
-    msg!("🔒 VALIDATING WITHDRAWAL AUTHORITIES...");
     // 🔒 SECURITY: Validate source vault account
     let source_vault_data = safe_unpack_and_validate_token_account(
         source_pool_vault_acc,
@@ -914,7 +759,6 @@ fn execute_withdrawal_logic<'a>(
     msg!("✅ Withdrawal authorities validated successfully");
 
     // CRITICAL: Collect fees BEFORE token operations to prevent free withdrawals
-    msg!("💰 COLLECTING FEES FIRST to prevent race conditions...");
     use crate::utils::fee_validation::collect_liquidity_fee_distributed;
     
     // Collect fee upfront - if this fails, no tokens are transferred
@@ -926,7 +770,6 @@ fn execute_withdrawal_logic<'a>(
         pool_state_account.key,
         pool_state_data.contract_liquidity_fee,
     )?;
-    msg!("✅ Fee collected successfully: {} lamports", pool_state_data.contract_liquidity_fee);
     
     // 🔧 CRITICAL FIX: Reload pool state after fee collection to get updated fee tracking fields
     // The fee collection function updates collected_liquidity_fees and total_sol_fees_collected
@@ -934,16 +777,6 @@ fn execute_withdrawal_logic<'a>(
     let fresh_pool_state = crate::utils::validation::validate_and_deserialize_pool_state_secure(pool_state_account, pool_id, program_id)?;
     pool_state_data.collected_liquidity_fees = fresh_pool_state.collected_liquidity_fees;
     pool_state_data.total_sol_fees_collected = fresh_pool_state.total_sol_fees_collected;
-    msg!("🔄 Pool state reloaded after fee collection:");
-    msg!("   collected_liquidity_fees: {}", pool_state_data.collected_liquidity_fees);
-    msg!("   total_sol_fees_collected: {}", pool_state_data.total_sol_fees_collected);
-    
-    // 🔒 REENTRANCY SAFETY: Withdrawal operations are protected by Solana's built-in mechanisms:
-    // 1. Account locking: All accounts (LP tokens, pool vaults, user accounts) are locked
-    // 2. Atomic execution: Burn and transfer operations are atomic - both succeed or both fail
-    // 3. Authority validation: Only token owners can burn their LP tokens
-    // 4. PDA authority: Only pool PDA can transfer from pool vaults
-    msg!("🔄 Starting atomic liquidity withdrawal operation");
     
     // Process withdrawal with atomic guarantees - no reentrancy possible due to account locking
     {
@@ -1007,34 +840,7 @@ fn execute_withdrawal_logic<'a>(
             .ok_or(ProgramError::ArithmeticOverflow)?;
     }
     
-    msg!("📊 Pool liquidity updated. Token A: {}, Token B: {}", pool_state_data.total_token_a_liquidity, pool_state_data.total_token_b_liquidity);
-    msg!("🔍 Step 4/4: Finalizing transaction and updating pool state...");
-
-    // Fee collection will happen in the main function after the helper completes
-
-    msg!("✅ WITHDRAWAL COMPLETED SUCCESSFULLY!");
-    msg!("📈 COMPREHENSIVE TRANSACTION SUMMARY:");
-    msg!("   • LP Tokens Burned: {} (permanently removed from supply)", lp_amount_to_burn);
-    msg!("   • Tokens Received: {} (mint: {})", lp_amount_to_burn, withdraw_token_mint_key);
-    msg!("   • Total fees paid: {} lamports ({} SOL)", 
-         crate::constants::DEPOSIT_WITHDRAWAL_FEE, 
-         crate::constants::DEPOSIT_WITHDRAWAL_FEE as f64 / 1_000_000_000.0);
-    msg!("   • Pool: {} (Token A: {}, Token B: {})", 
-         pool_state_account.key, pool_state_data.token_a_mint, pool_state_data.token_b_mint);
-    
-    msg!("💰 POST-TRANSACTION BALANCES:");
-    msg!("   • Pool total liquidity A: {}", pool_state_data.total_token_a_liquidity);
-    msg!("   • Pool total liquidity B: {}", pool_state_data.total_token_b_liquidity);
-    msg!("   • Your position reduced by: {} LP tokens", lp_amount_to_burn);
-    msg!("   • Pool depth impact: -{}% relative liquidity removed", 
-         if lp_amount_to_burn > 1_000_000 { lp_amount_to_burn / 1_000_000 } else { 1 });
-    
-    msg!("🎉 Your tokens have been successfully returned!");
-    msg!("💡 NEXT STEPS:");
-    msg!("   • Deposit again to provide liquidity and earn fees");
-    msg!("   • Trade tokens using the swap functionality");
-    msg!("   • Monitor pool performance and APY");
-    msg!("   • Your remaining LP tokens still earn trading fees");
+    msg!("✅ WITHDRAWAL SUCCESS: {} LP tokens → {} tokens", lp_amount_to_burn, lp_amount_to_burn);
 
     Ok(())
 }
