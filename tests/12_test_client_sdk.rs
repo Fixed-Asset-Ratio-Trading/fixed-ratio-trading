@@ -281,6 +281,7 @@ async fn test_initialize_pool_instruction() -> TestResult {
     let instruction_data = PoolInstruction::InitializePool {
         ratio_a_numerator: ratio,
         ratio_b_denominator: 1,
+        flags: 0u8, // Default flags for standard pool behavior
     };
     
     let data = instruction_data.try_to_vec().expect("Instruction data should serialize successfully");
@@ -296,6 +297,7 @@ async fn test_initialize_pool_instruction() -> TestResult {
     if let PoolInstruction::InitializePool { 
         ratio_a_numerator,
         ratio_b_denominator,
+        flags,
     } = deserialized_data {
         // 3.1 Verify ratio
         assert_eq!(ratio_a_numerator, ratio, "Ratio A numerator should match the input");
@@ -310,6 +312,7 @@ async fn test_initialize_pool_instruction() -> TestResult {
     let invalid_instruction_data = PoolInstruction::InitializePool {
         ratio_a_numerator: 0, // Invalid: zero ratio
         ratio_b_denominator: 1,
+        flags: 0u8, // Default flags for standard pool behavior
     };
     
     // This should serialize fine, but the program will reject it during execution
@@ -322,6 +325,7 @@ async fn test_initialize_pool_instruction() -> TestResult {
     let expected_data_size = PoolInstruction::InitializePool {
         ratio_a_numerator: ratio,
         ratio_b_denominator: 1,
+        flags: 0u8, // Default flags for standard pool behavior
     }.try_to_vec().unwrap().len();
     
     assert_eq!(data.len(), expected_data_size, 

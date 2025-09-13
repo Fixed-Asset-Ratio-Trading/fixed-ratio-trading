@@ -267,6 +267,7 @@ pub async fn create_pool_new_pattern(
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,
             ratio_b_denominator: config.ratio_b_denominator,
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().unwrap(),
     };
 
@@ -1310,6 +1311,7 @@ async fn create_pool_with_normalized_config(
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,
             ratio_b_denominator: config.ratio_b_denominator,
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().unwrap(),
     };
 

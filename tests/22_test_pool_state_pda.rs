@@ -618,6 +618,7 @@ async fn create_pool_with_basis_points(
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,      // Normalized basis points
             ratio_b_denominator: config.ratio_b_denominator,  // Normalized basis points
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().unwrap(),
     };
 

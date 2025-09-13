@@ -299,6 +299,7 @@ async fn test_instruction_serialization() -> TestResult {
             PoolInstruction::InitializePool {
                 ratio_a_numerator: 3,
                 ratio_b_denominator: 1,
+                flags: 0u8, // Default flags for standard pool behavior
             }
         },
         
@@ -366,10 +367,12 @@ async fn test_instruction_serialization() -> TestResult {
                 PoolInstruction::InitializePool { 
                     ratio_a_numerator: orig_ratio_a, 
                     ratio_b_denominator: orig_ratio_b, 
+                    flags: _,
                 },
                 PoolInstruction::InitializePool { 
                     ratio_a_numerator: deser_ratio_a, 
                     ratio_b_denominator: deser_ratio_b, 
+                    flags: _,
                 }
             ) => {
                 assert_eq!(orig_ratio_a, deser_ratio_a, "InitializePool ratio A should match");

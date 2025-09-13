@@ -67,7 +67,8 @@ SOFTWARE.
 //! // Create instruction data (for use with solana_program::instruction::Instruction)
 //! let instruction_data = PoolInstruction::InitializePool { 
 //!     ratio_a_numerator: 1000, 
-//!     ratio_b_denominator: 1 
+//!     ratio_b_denominator: 1,
+//!     flags: 0u8, // Default flags for standard pool behavior
 //! };
 //! # Ok(())
 //! # }

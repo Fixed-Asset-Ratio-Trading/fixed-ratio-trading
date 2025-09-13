@@ -325,6 +325,7 @@ pub async fn create_liquidity_test_foundation_with_exact_basis_points(
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: pool_config.ratio_a_numerator,
             ratio_b_denominator: pool_config.ratio_b_denominator,
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().unwrap(),
     };
 

@@ -77,6 +77,7 @@ pub enum PoolInstruction {
     InitializePool {
         ratio_a_numerator: u64,
         ratio_b_denominator: u64,
+        flags: u8,
     },
 
     /// Standard deposit operation for adding liquidity to the pool

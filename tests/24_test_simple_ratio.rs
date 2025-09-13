@@ -131,6 +131,7 @@ async fn create_pool_with_display_ratios(
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,      // Basis points
             ratio_b_denominator: config.ratio_b_denominator,  // Basis points
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().unwrap(),
     };
 

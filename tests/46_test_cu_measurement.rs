@@ -145,6 +145,7 @@ async fn test_cu_measurement_pool_creation() {
         data: PoolInstruction::InitializePool {
             ratio_a_numerator: config.ratio_a_numerator,
             ratio_b_denominator: config.ratio_b_denominator,
+            flags: 0u8, // Default flags for standard pool behavior
         }.try_to_vec().expect("Instruction data creation should succeed"),
     };
     
