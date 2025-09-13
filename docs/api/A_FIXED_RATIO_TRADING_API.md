@@ -5676,6 +5676,152 @@ const expectedOutput = tokenPair.SwapAToB(inputAmount);
 
 ---
 
+## Error Codes
+
+The Fixed Ratio Trading Contract returns structured error codes to help developers identify and handle specific failure conditions. All errors are returned as custom program errors with numeric codes.
+
+### Error Code Format
+- **Decimal Format**: Used in client applications (e.g., `1047`)
+- **Hexadecimal Format**: Used in program logs (e.g., `0x417`)
+- **Conversion**: `hex_code = decimal_code.toString(16).padStart(2, '0').toUpperCase()`
+
+### Complete Error Code Reference
+
+| Code | Hex | Error Type | Description | Common Causes |
+|------|-----|------------|-------------|---------------|
+| 1001 | 0x3E9 | `InvalidTokenPair` | Invalid token pair configuration | Duplicate tokens, invalid mints |
+| 1002 | 0x3EA | `InvalidRatio` | Invalid ratio configuration | Zero ratios, out of bounds |
+| 1003 | 0x3EB | `InsufficientFunds` | Insufficient funds for operation | Low balance, insufficient tokens |
+| 1004 | 0x3EC | `InvalidTokenAccount` | Invalid token account state | Wrong owner, frozen account |
+| 1005 | 0x3ED | `InvalidSwapAmount` | Invalid swap amount bounds | Amount too small/large |
+| 1006 | 0x3EE | `RentExemptError` | Insufficient rent exemption | Account needs more SOL |
+| 1007 | 0x3EF | `PoolPaused` | Pool operations paused | Pool paused by admin |
+| 1012 | 0x3F4 | `Unauthorized` | Unauthorized operation | Wrong authority, invalid signer |
+| 1019 | 0x3FB | `ArithmeticOverflow` | Arithmetic overflow | Large number calculations |
+| 1023 | 0x3FF | `SystemPaused` | System-wide pause active | System paused by admin |
+| 1024 | 0x400 | `SystemAlreadyPaused` | System already paused | Attempting to pause paused system |
+| 1025 | 0x401 | `SystemNotPaused` | System not paused | Attempting to unpause active system |
+| 1026 | 0x402 | `UnauthorizedAccess` | Unauthorized system access | Wrong admin authority |
+| 1027 | 0x403 | `PoolSwapsPaused` | Pool swaps paused | Swaps disabled for this pool |
+| 1028 | 0x404 | `SwapAccessRestricted` | Swap access restricted to owners | Owner-only mode enabled |
+| 1029 | 0x405 | `PoolSwapsAlreadyPaused` | Pool swaps already paused | Attempting to pause already paused swaps |
+| 1030 | 0x406 | `PoolSwapsNotPaused` | Pool swaps not paused | Attempting to unpause active swaps |
+| 1031 | 0x407 | `InsufficientFeeBalance` | Insufficient balance for fee payment | Not enough SOL for fees |
+| 1032 | 0x408 | `FeeCollectionFailed` | Fee collection transfer failed | Transfer error during fee collection |
+| 1033 | 0x409 | `FeeValidationFailed` | Fee validation failed | Pool state not writable, validation error |
+| 1034 | 0x40A | `TreasuryValidationFailed` | Treasury account validation failed | Wrong treasury PDA |
+| 1035 | 0x40B | `PoolLiquidityPaused` | Pool liquidity operations paused | Deposits/withdrawals disabled |
+| 1036 | 0x40C | `InvalidSystemStateDeserialization` | System state deserialization failed | Corrupted system state |
+| 1037 | 0x40D | `ConsolidationFailed` | Fee consolidation failed | Consolidation operation error |
+| 1038 | 0x40E | `InvalidConsolidationBatch` | Invalid consolidation batch size | Wrong number of pools |
+| 1039 | 0x40F | `PoolNotEligibleForConsolidation` | Pool not eligible for consolidation | Pool doesn't meet criteria |
+| 1040 | 0x410 | `ConsolidationRaceCondition` | Consolidation race condition detected | Concurrent consolidation attempts |
+| 1041 | 0x411 | `NoPoolsEligibleForConsolidation` | No pools eligible for consolidation | No pools meet consolidation criteria |
+| 1042 | 0x412 | `UnauthorizedFeeUpdate` | Unauthorized fee update attempt | Only program authority can update fees |
+| 1043 | 0x413 | `InvalidFeeUpdateFlags` | Invalid fee update flags | Wrong flag values for fee updates |
+| 1044 | 0x414 | `InvalidLiquidityFee` | Invalid liquidity fee amount | Fee outside allowed bounds |
+| 1045 | 0x415 | `InvalidSwapFee` | Invalid swap fee amount | Fee outside allowed bounds |
+| 1046 | 0x416 | `FeeUpdateValidationFailed` | Fee update validation failed | Validation error during fee update |
+| **1047** | **0x417** | **`AmountMismatch`** | **Calculated amount does not match expected amount** | **Wrong expected_amount_out in swap** |
+| 1048 | 0x418 | `UnsafeRatioValues` | Unsafe ratio values exceed limits | Ratios too large, overflow risk |
+| 1049 | 0x419 | `UnsupportedRatioType` | Unsupported ratio type for pool creation | Invalid ratio configuration |
+
+### 🚨 Critical Error: 1047 (AmountMismatch)
+
+**Error Code 1047** is one of the most common swap errors. It occurs when the calculated output amount doesn't exactly match the `expected_amount_out` parameter in your swap instruction.
+
+#### Common Causes:
+1. **Decimal Precision Issues**: Using wrong decimal places in calculations
+2. **Rounding Errors**: Client calculation doesn't match contract calculation
+3. **Basis Points Conversion**: Incorrect conversion between display amounts and basis points
+4. **Token Ordering**: Using wrong token order in calculations
+
+#### Debugging Steps:
+1. **Check Your Calculation**: Verify your expected amount calculation matches the contract formula:
+   ```javascript
+   // Contract formula
+   output_amount = (input_amount * output_ratio) / input_ratio
+   ```
+
+2. **Verify Token Decimals**: Ensure you're using the correct decimals for each token:
+   ```javascript
+   const decimalsA = await getTokenDecimals(tokenAMint);
+   const decimalsB = await getTokenDecimals(tokenBMint);
+   ```
+
+3. **Check Basis Points Conversion**: Ensure proper conversion to basis points:
+   ```javascript
+   const inputBasisPoints = displayAmount * Math.pow(10, inputTokenDecimals);
+   ```
+
+4. **Use Exact Calculation**: The contract requires exact matches - no rounding allowed:
+   ```javascript
+   // ❌ Wrong - will cause 1047 error
+   const expectedOut = Math.floor(calculatedAmount);
+   
+   // ✅ Correct - exact calculation
+   const expectedOut = calculatedAmount; // Use exact value
+   ```
+
+#### Example Fix:
+```javascript
+// Get exact calculation from contract formula
+const inputAmount = 1000000; // 1 token in basis points
+const inputRatio = 1000000;  // 1 token in basis points  
+const outputRatio = 160000000; // 160 tokens in basis points
+
+// Calculate exact output (no rounding)
+const exactOutput = (inputAmount * outputRatio) / inputRatio;
+// Result: 160000000 (exactly 160 tokens)
+
+// Use exact value in swap instruction
+const swapInstruction = new TransactionInstruction({
+    keys: accounts,
+    programId: PROGRAM_ID,
+    data: Buffer.concat([
+        Buffer.from([4]), // Swap discriminator
+        inputTokenMint.toBuffer(),
+        new Uint8Array(new BigUint64Array([BigInt(inputAmount)]).buffer),
+        new Uint8Array(new BigUint64Array([BigInt(exactOutput)]).buffer), // Exact match
+        poolId.toBuffer()
+    ])
+});
+```
+
+### Error Handling Best Practices
+
+1. **Parse Error Codes**: Always parse custom program errors to get specific error codes
+2. **Provide User-Friendly Messages**: Map error codes to user-friendly explanations
+3. **Log Detailed Information**: Include error codes in logs for debugging
+4. **Handle Common Errors**: Implement specific handling for common errors like 1047
+
+#### JavaScript Error Handling Example:
+```javascript
+try {
+    const result = await connection.sendTransaction(transaction, [wallet]);
+} catch (error) {
+    if (error.message.includes('custom program error')) {
+        const errorCode = parseInt(error.message.match(/\d+/)[0]);
+        
+        switch (errorCode) {
+            case 1047:
+                console.error('Amount mismatch - check your expected output calculation');
+                break;
+            case 1003:
+                console.error('Insufficient funds - check your token balance');
+                break;
+            case 1027:
+                console.error('Pool swaps are paused - try again later');
+                break;
+            default:
+                console.error(`Unknown error code: ${errorCode}`);
+        }
+    }
+}
+```
+
+---
+
 ## Support and Resources
 
 - **Email:** support@davincicodes.net
