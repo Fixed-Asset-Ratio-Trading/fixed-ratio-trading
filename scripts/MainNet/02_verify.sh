@@ -462,6 +462,7 @@ async function verifyMainNetDeployment() {
                 Buffer.from([1]), // InitializePool instruction
                 (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(ratioANormalized, 0); return b; })(),
                 (() => { const b = Buffer.alloc(8); b.writeBigUInt64LE(ratioBNormalized, 0); return b; })(),
+                Buffer.from([0]), // flags: 0 (default flags for standard pool behavior)
             ])
         });
         
