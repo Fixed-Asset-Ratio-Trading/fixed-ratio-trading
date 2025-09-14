@@ -85,12 +85,145 @@ else
     BACKPACK_WALLET="5GGZiMwU56rYL1L52q7Jz7ELkSN4iYyQqdv418hxPh6t"
 fi
 
-# Configuration - Get program ID from the generated keypair
+# Configuration - Ensure we use the correct program ID keypair
+EXPECTED_PROGRAM_ID="4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"
 PROGRAM_KEYPAIR="$PROJECT_ROOT/target/deploy/fixed_ratio_trading-keypair.json"
+BACKUP_KEYPAIR="$PROJECT_ROOT/target/deploy/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+TEMP_KEYPAIR="$PROJECT_ROOT/temp/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+
+# Function to restore correct keypair from backup
+restore_correct_keypair() {
+    echo -e "${YELLOW}🔧 Attempting to restore correct program ID keypair...${NC}"
+    
+    # Priority 1: Check temp directory first (most reliable backup)
+    if [ -f "$TEMP_KEYPAIR" ]; then
+        TEMP_PROGRAM_ID=$(solana-keygen pubkey "$TEMP_KEYPAIR")
+        if [ "$TEMP_PROGRAM_ID" = "$EXPECTED_PROGRAM_ID" ]; then
+            echo -e "${GREEN}✅ Found correct temp keypair, restoring...${NC}"
+            cp "$TEMP_KEYPAIR" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Keypair restored from temp directory${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}⚠️  Temp keypair has wrong program ID: $TEMP_PROGRAM_ID${NC}"
+        fi
+    fi
+    
+    # Priority 2: Check if backup exists in target/deploy/
+    if [ -f "$BACKUP_KEYPAIR" ]; then
+        BACKUP_PROGRAM_ID=$(solana-keygen pubkey "$BACKUP_KEYPAIR")
+        if [ "$BACKUP_PROGRAM_ID" = "$EXPECTED_PROGRAM_ID" ]; then
+            echo -e "${GREEN}✅ Found correct backup keypair, restoring...${NC}"
+            cp "$BACKUP_KEYPAIR" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Keypair restored successfully${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}⚠️  Backup keypair has wrong program ID: $BACKUP_PROGRAM_ID${NC}"
+        fi
+    fi
+    
+    # Priority 3: Check if backup exists in /Users/davinci/code/keys/
+    EXTERNAL_BACKUP="/Users/davinci/code/keys/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+    if [ -f "$EXTERNAL_BACKUP" ]; then
+        EXTERNAL_PROGRAM_ID=$(solana-keygen pubkey "$EXTERNAL_BACKUP")
+        if [ "$EXTERNAL_PROGRAM_ID" = "$EXPECTED_PROGRAM_ID" ]; then
+            echo -e "${GREEN}✅ Found correct external backup keypair, restoring...${NC}"
+            cp "$EXTERNAL_BACKUP" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Keypair restored from external backup${NC}"
+            return 0
+        else
+            echo -e "${YELLOW}⚠️  External backup keypair has wrong program ID: $EXTERNAL_PROGRAM_ID${NC}"
+        fi
+    fi
+    
+    echo -e "${RED}❌ Cannot restore correct keypair automatically${NC}"
+    echo "  No valid backup found with program ID: $EXPECTED_PROGRAM_ID"
+    return 1
+}
+
+# Ensure the keypair file exists and matches the expected program ID
 if [ -f "$PROGRAM_KEYPAIR" ]; then
-    PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
+    CURRENT_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
+    if [ "$CURRENT_PROGRAM_ID" = "$EXPECTED_PROGRAM_ID" ]; then
+        PROGRAM_ID="$CURRENT_PROGRAM_ID"
+        echo -e "${GREEN}✅ Using correct program ID keypair: $PROGRAM_ID${NC}"
+        
+        # Verify it matches the temp file if temp file exists
+        if [ -f "$TEMP_KEYPAIR" ]; then
+            TEMP_PROGRAM_ID=$(solana-keygen pubkey "$TEMP_KEYPAIR")
+            if [ "$TEMP_PROGRAM_ID" != "$CURRENT_PROGRAM_ID" ]; then
+                echo -e "${YELLOW}⚠️  Target keypair doesn't match temp keypair!${NC}"
+                echo "  Target keypair ID: $CURRENT_PROGRAM_ID"
+                echo "  Temp keypair ID: $TEMP_PROGRAM_ID"
+                echo -e "${YELLOW}🔧 Overwriting target with correct temp keypair...${NC}"
+                cp "$TEMP_KEYPAIR" "$PROGRAM_KEYPAIR"
+                echo -e "${GREEN}✅ Target keypair synchronized with temp keypair${NC}"
+            else
+                echo -e "${GREEN}✅ Target and temp keypairs are synchronized${NC}"
+            fi
+        fi
+        
+        # Create backup to preserve the correct keypair
+        if [ ! -f "$BACKUP_KEYPAIR" ]; then
+            cp "$PROGRAM_KEYPAIR" "$BACKUP_KEYPAIR"
+            echo -e "${BLUE}📋 Created backup of correct keypair${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  Program ID mismatch detected!${NC}"
+        echo "  Current keypair ID: $CURRENT_PROGRAM_ID"
+        echo "  Expected ID: $EXPECTED_PROGRAM_ID"
+        
+        # Backup the incorrect keypair
+        mv "$PROGRAM_KEYPAIR" "$PROGRAM_KEYPAIR.backup.$(date +%s)"
+        
+        # Try to restore correct keypair
+        if restore_correct_keypair; then
+            PROGRAM_ID="$EXPECTED_PROGRAM_ID"
+            echo -e "${GREEN}✅ Successfully restored correct program ID keypair${NC}"
+        else
+            echo -e "${RED}❌ DEPLOYMENT FAILED: Cannot restore correct keypair${NC}"
+            echo ""
+            echo -e "${RED}🚨 CRITICAL ERROR: Required program ID keypair not found${NC}"
+            echo "  Expected program ID: $EXPECTED_PROGRAM_ID"
+            echo ""
+            echo -e "${YELLOW}📋 REQUIRED ACTION: Restore the correct keypair file${NC}"
+            echo "  The script requires temp/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+            echo "  This file must contain the keypair that generates program ID: $EXPECTED_PROGRAM_ID"
+            echo ""
+            echo -e "${BLUE}🔍 Checked these locations (none found or wrong program ID):${NC}"
+            echo "    1. $TEMP_KEYPAIR (PRIORITY - required for deployment)"
+            echo "    2. $BACKUP_KEYPAIR"
+            echo "    3. /Users/davinci/code/keys/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+            echo ""
+            echo -e "${RED}❌ DEPLOYMENT CANNOT PROCEED WITHOUT CORRECT KEYPAIR${NC}"
+            exit 1
+        fi
+    fi
 else
-    PROGRAM_ID="Will be generated during build"
+    echo -e "${YELLOW}⚠️  Program keypair not found, attempting to restore...${NC}"
+    
+    # Try to restore from backup
+    if restore_correct_keypair; then
+        PROGRAM_ID="$EXPECTED_PROGRAM_ID"
+        echo -e "${GREEN}✅ Successfully restored program ID keypair${NC}"
+    else
+        echo -e "${RED}❌ DEPLOYMENT FAILED: Cannot create or restore keypair${NC}"
+        echo ""
+        echo -e "${RED}🚨 CRITICAL ERROR: Program keypair file missing${NC}"
+        echo "  Target file: $PROGRAM_KEYPAIR"
+        echo "  Expected program ID: $EXPECTED_PROGRAM_ID"
+        echo ""
+        echo -e "${YELLOW}📋 REQUIRED ACTION: Provide the correct keypair file${NC}"
+        echo "  The script requires temp/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+        echo "  This file must contain the keypair that generates program ID: $EXPECTED_PROGRAM_ID"
+        echo ""
+        echo -e "${BLUE}🔍 Checked these locations (none found):${NC}"
+        echo "    1. $TEMP_KEYPAIR (PRIORITY - required for deployment)"
+        echo "    2. $BACKUP_KEYPAIR"
+        echo "    3. /Users/davinci/code/keys/LocalNet-4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn.json"
+        echo ""
+        echo -e "${RED}❌ DEPLOYMENT CANNOT PROCEED WITHOUT CORRECT KEYPAIR${NC}"
+        exit 1
+    fi
 fi
 KEYPAIR_PATH="$HOME/.config/solana/id.json"
 
@@ -315,6 +448,47 @@ else
     echo "  No previous build found"
 fi
 
+# Step 5: Ensure correct keypair before build
+echo -e "${YELLOW}🔧 Ensuring correct program keypair before build...${NC}"
+
+# Critical: Ensure the correct keypair is in place BEFORE build
+if [ ! -f "$PROGRAM_KEYPAIR" ]; then
+    echo -e "${YELLOW}⚠️  Program keypair missing, restoring from temp...${NC}"
+    if [ -f "$TEMP_KEYPAIR" ]; then
+        TEMP_PROGRAM_ID=$(solana-keygen pubkey "$TEMP_KEYPAIR")
+        if [ "$TEMP_PROGRAM_ID" = "$EXPECTED_PROGRAM_ID" ]; then
+            echo -e "${GREEN}✅ Copying correct keypair from temp directory${NC}"
+            mkdir -p "$(dirname "$PROGRAM_KEYPAIR")"
+            cp "$TEMP_KEYPAIR" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Program keypair restored: $EXPECTED_PROGRAM_ID${NC}"
+        else
+            echo -e "${RED}❌ Temp keypair has wrong program ID: $TEMP_PROGRAM_ID${NC}"
+            echo -e "${RED}❌ Expected: $EXPECTED_PROGRAM_ID${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${RED}❌ CRITICAL: Temp keypair not found at $TEMP_KEYPAIR${NC}"
+        echo -e "${RED}❌ Cannot proceed without correct program keypair${NC}"
+        exit 1
+    fi
+else
+    # Verify existing keypair is correct
+    CURRENT_PROGRAM_ID=$(solana-keygen pubkey "$PROGRAM_KEYPAIR")
+    if [ "$CURRENT_PROGRAM_ID" != "$EXPECTED_PROGRAM_ID" ]; then
+        echo -e "${YELLOW}⚠️  Existing keypair has wrong program ID: $CURRENT_PROGRAM_ID${NC}"
+        echo -e "${YELLOW}🔧 Replacing with correct keypair from temp...${NC}"
+        if [ -f "$TEMP_KEYPAIR" ]; then
+            cp "$TEMP_KEYPAIR" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Program keypair corrected: $EXPECTED_PROGRAM_ID${NC}"
+        else
+            echo -e "${RED}❌ CRITICAL: Temp keypair not found at $TEMP_KEYPAIR${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✅ Program keypair is correct: $EXPECTED_PROGRAM_ID${NC}"
+    fi
+fi
+
 # Step 5: Initial build to check for changes
 echo -e "${YELLOW}🔨 Running initial build to detect changes...${NC}"
 cd "$PROJECT_ROOT"
@@ -363,6 +537,19 @@ if [ "$NEW_TIMESTAMP" != "$OLD_TIMESTAMP" ] && [ "$NEW_TIMESTAMP" != "0" ]; then
     
     echo -e "${GREEN}✅ Version updated: $CURRENT_VERSION → $NEW_VERSION${NC}"
     VERSION_UPDATED=true
+    
+    # Step 7: Ensure correct keypair before rebuild
+    echo -e "${YELLOW}🔧 Ensuring correct program keypair before rebuild...${NC}"
+    if [ ! -f "$PROGRAM_KEYPAIR" ] || [ "$(solana-keygen pubkey "$PROGRAM_KEYPAIR")" != "$EXPECTED_PROGRAM_ID" ]; then
+        echo -e "${YELLOW}🔧 Restoring correct keypair before rebuild...${NC}"
+        if [ -f "$TEMP_KEYPAIR" ]; then
+            cp "$TEMP_KEYPAIR" "$PROGRAM_KEYPAIR"
+            echo -e "${GREEN}✅ Program keypair restored for rebuild: $EXPECTED_PROGRAM_ID${NC}"
+        else
+            echo -e "${RED}❌ CRITICAL: Cannot rebuild without correct keypair${NC}"
+            exit 1
+        fi
+    fi
     
     # Step 7: Rebuild with new version
     echo -e "${YELLOW}🔨 Rebuilding with updated version...${NC}"
