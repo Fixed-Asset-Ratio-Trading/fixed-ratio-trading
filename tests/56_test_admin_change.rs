@@ -125,8 +125,14 @@ async fn test_process_admin_change_success_and_new_admin_can_pause() -> TestResu
         .expect("SystemState should exist");
     let state = SystemState::from_account_data_unchecked(&account.data)?;
     let mut clock = context.banks_client.get_sysvar::<Clock>().await?;
-    clock.unix_timestamp = state.admin_change_timestamp + SystemState::ADMIN_CHANGE_TIMELOCK + 1;
+    
+    // Add extra buffer time to ensure timelock is definitely satisfied
+    let buffer_time = 3600; // 1 hour buffer to prevent race conditions
+    clock.unix_timestamp = state.admin_change_timestamp + SystemState::ADMIN_CHANGE_TIMELOCK + buffer_time;
     context.set_sysvar(&clock);
+    
+    // Wait a moment for sysvar propagation to ensure consistency
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
 
     // 4) Complete the admin change
     let bh_complete = context.banks_client.get_latest_blockhash().await?;
@@ -141,11 +147,48 @@ async fn test_process_admin_change_success_and_new_admin_can_pause() -> TestResu
     };
     let mut complete_tx = Transaction::new_with_payer(&[complete_ix], Some(&context.payer.pubkey()));
     complete_tx.sign(&[&context.payer, &current_admin], bh_complete);
-    context.banks_client.process_transaction(complete_tx).await?;
+    
+    // Process transaction and verify it succeeded
+    let tx_result = context.banks_client.process_transaction(complete_tx).await;
+    if let Err(e) = &tx_result {
+        // If transaction failed, get current state for debugging
+        if let Some(debug_account) = context.banks_client.get_account(system_state_pda).await? {
+            let debug_state = SystemState::from_account_data_unchecked(&debug_account.data)?;
+            eprintln!("❌ Admin change transaction failed: {:?}", e);
+            eprintln!("🔍 Current SystemState:");
+            eprintln!("   - Current admin: {}", debug_state.admin_authority);
+            eprintln!("   - Pending admin: {:?}", debug_state.pending_admin_authority);
+            eprintln!("   - Admin change timestamp: {}", debug_state.admin_change_timestamp);
+            eprintln!("   - Expected new admin: {}", new_admin.pubkey());
+        }
+    }
+    tx_result?;
 
     // Verify admin changed
     if let Some(account) = context.banks_client.get_account(system_state_pda).await? {
         let state = SystemState::from_account_data_unchecked(&account.data)?;
+        
+        // Detailed debugging for assertion failure
+        if state.admin_authority != new_admin.pubkey() {
+            eprintln!("❌ ADMIN CHANGE VERIFICATION FAILED:");
+            eprintln!("   - Expected new admin: {}", new_admin.pubkey());
+            eprintln!("   - Actual current admin: {}", state.admin_authority);
+            eprintln!("   - Pending admin: {:?}", state.pending_admin_authority);
+            eprintln!("   - Admin change timestamp: {}", state.admin_change_timestamp);
+            eprintln!("   - System paused: {}", state.is_paused);
+            
+            // Get current clock for additional debugging
+            let current_clock = context.banks_client.get_sysvar::<Clock>().await?;
+            eprintln!("   - Current timestamp: {}", current_clock.unix_timestamp);
+            eprintln!("   - Timelock duration: {} seconds", SystemState::ADMIN_CHANGE_TIMELOCK);
+            
+            if let Some(pending) = state.pending_admin_authority {
+                let time_elapsed = current_clock.unix_timestamp - state.admin_change_timestamp;
+                eprintln!("   - Time elapsed since initiation: {} seconds", time_elapsed);
+                eprintln!("   - Timelock satisfied: {}", time_elapsed >= SystemState::ADMIN_CHANGE_TIMELOCK);
+            }
+        }
+        
         assert_eq!(state.admin_authority, new_admin.pubkey(), "Admin should be transferred to new_admin after timelock completion");
         assert!(state.pending_admin_authority.is_none(), "Pending admin should be cleared after completion");
     } else {

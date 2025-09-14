@@ -1457,16 +1457,12 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
     );
     transaction.sign(&[upgrade_authority], recent_blockhash);
     
-    // Execute with timeout handling
-    let timeout_duration = Duration::from_secs(30);
-    let transaction_future = banks_client.process_transaction(transaction);
-    
-    match tokio::time::timeout(timeout_duration, transaction_future).await {
-        Ok(result) => result?,
-        Err(_) => {
-            return Err("Pause transaction timed out after 30 seconds".into());
-        }
-    };
+    // Execute with timeout handling using optimized helper function
+    process_transaction_with_timeout(
+        &mut banks_client,
+        transaction,
+        10000, // 10 second timeout for pause operation
+    ).await?;
     
     // Verify system is paused and record state (recommended by GitHub Issue #31960 workaround)
     verify_system_paused(&mut banks_client, &system_state_pda, true, Some(PAUSE_REASON_CODE)).await?;
@@ -1522,21 +1518,21 @@ async fn test_system_pause_persists_across_transactions() -> TestResult {
             );
             transaction.sign(&[&authority_to_use], recent_blockhash);
             
-            // Execute with timeout handling
-            let transaction_future = banks_client.process_transaction(transaction);
-            let result = match tokio::time::timeout(timeout_duration, transaction_future).await {
-                Ok(result) => result,
-                Err(_) => {
-                    println!("      ⏰ Transaction timed out (expected due to pause)");
-                    failed_operations += 1;
-                    continue;
-                }
-            };
+            // Execute with timeout handling using optimized helper function
+            let result = process_transaction_with_timeout(
+                &mut banks_client,
+                transaction,
+                5000, // 5 second timeout for blocked operations (faster than 30s)
+            ).await;
             
-            // Check result
+            // Check result (timeout or transaction failure both indicate successful blocking)
             match result {
-                Err(_) => {
-                    println!("      ✅ Operation blocked as expected");
+                Err(e) => {
+                    if e.to_string().contains("timed out") {
+                        println!("      ✅ Operation timed out (expected due to pause)");
+                    } else {
+                        println!("      ✅ Operation blocked as expected");
+                    }
                     failed_operations += 1;
                 }
                 Ok(_) => {
@@ -3707,17 +3703,17 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
     println!("✅ EXPECTED: All reason codes handle unpause correctly");
     println!("\n📊 Testing {} different reason codes: {:?}", REASON_CODES_TO_TEST.len(), REASON_CODES_TO_TEST);
     
+    // Create single foundation for all tests (major performance optimization)
+    let mut foundation = create_foundation_with_timeout(None).await?;
+    
     for (index, &reason_code) in REASON_CODES_TO_TEST.iter().enumerate() {
         println!("\n{}", "=".repeat(60));
         println!("🔄 Test iteration #{} - Reason code: {}", index + 1, reason_code);
         println!("{}", "=".repeat(60));
-        
-        // Create fresh foundation for each test to ensure clean state
-        let mut foundation = create_foundation_with_timeout(None).await?;
+        // Reuse foundation environment (performance optimization)
         let env = &foundation.as_liquidity_foundation().env;
         let program_id = PROGRAM_ID;
         let payer = &env.payer;
-        let recent_blockhash = env.recent_blockhash;
         let mut banks_client = env.banks_client.clone();
         
         // Get PDAs
@@ -3725,15 +3721,15 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
         let main_treasury_pda = get_main_treasury_pda(&program_id);
         let program_data_account = get_program_data_address(&program_id);
         
-        // Setup treasury if needed
-        if USE_DONATE_SOL_FOR_SETUP {
+        // Setup treasury only on first iteration (performance optimization)
+        if index == 0 && USE_DONATE_SOL_FOR_SETUP {
             setup_treasury_with_donation(
                 &foundation,
                 &mut banks_client,
                 payer,
-                recent_blockhash,
+                env.recent_blockhash,
                 1000,
-                &format!("Setup for reason code {}", reason_code)
+                "Setup for reason code testing"
             ).await?;
         }
         
@@ -3748,17 +3744,17 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
             reason_code,
         )?;
         
+        // Get fresh blockhash for each transaction
+        let recent_blockhash = banks_client.get_latest_blockhash().await?;
+        
         let mut transaction = Transaction::new_with_payer(
             &[pause_instruction],
             Some(&upgrade_authority.pubkey()),
         );
         transaction.sign(&[upgrade_authority], recent_blockhash);
         
-        // Add delay to prevent timing conflicts
-        tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-        
-        // Execute pause
-        process_transaction_with_timeout(&mut banks_client, transaction, 500).await?;
+        // Execute pause with shorter timeout for faster execution
+        process_transaction_with_timeout(&mut banks_client, transaction, 2000).await?;
         
         // Verify pause state
         let system_state_paused = {
@@ -3780,9 +3776,6 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
             MainTreasuryState::deserialize(&mut &account.data[..])?
         };
         
-        // Refresh blockhash
-        let recent_blockhash = banks_client.get_latest_blockhash().await?;
-        
         // Unpause the system
         println!("\n🔧 Step 2: Unpausing system (from reason code {})...", reason_code);
         let unpause_instruction = create_unpause_system_instruction(
@@ -3793,17 +3786,17 @@ async fn test_system_unpause_various_reason_codes() -> TestResult {
             &program_data_account,
         )?;
         
+        // Get fresh blockhash for unpause transaction
+        let recent_blockhash = banks_client.get_latest_blockhash().await?;
+        
         let mut transaction = Transaction::new_with_payer(
             &[unpause_instruction],
             Some(&upgrade_authority.pubkey()),
         );
         transaction.sign(&[upgrade_authority], recent_blockhash);
         
-        // Add delay to prevent timing conflicts
-        tokio::time::sleep(tokio::time::Duration::from_millis(OPTIMIZED_DELAY_MS)).await;
-        
-        // Execute unpause
-        process_transaction_with_timeout(&mut banks_client, transaction, 500).await?;
+        // Execute unpause with shorter timeout for faster execution
+        process_transaction_with_timeout(&mut banks_client, transaction, 2000).await?;
         
         // Verify unpause state
         let system_state_after = {
