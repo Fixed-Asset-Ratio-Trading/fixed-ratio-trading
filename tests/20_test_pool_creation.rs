@@ -847,4 +847,495 @@ async fn test_pool_creation_basis_points_refactor() -> TestResult {
     println!("====================================================================");
 
     Ok(())
+}
+
+// ================================================================================================
+// SECURITY GUARDS TESTS
+// ================================================================================================
+
+/// 🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR
+const SECURITY_TEST_RATIO_A: u64 = 1000;
+const SECURITY_TEST_RATIO_B: u64 = 1;
+
+/// **SECURITY GUARD TEST 1**: Same-mint rejection
+/// 
+/// This test validates that the security guard prevents creating pools where Token A and Token B
+/// are the same mint, which would create a nonsensical single-token pool.
+#[tokio::test]
+async fn test_security_guard_same_mint_rejection() {
+    use common::{
+        pool_helpers::*,
+        liquidity_helpers::*,
+    };
+    use solana_sdk::{
+        signature::{Keypair, Signer},
+        transaction::Transaction,
+        instruction::{AccountMeta, Instruction},
+        system_program,
+        pubkey::Pubkey,
+    };
+    use fixed_ratio_trading::{
+        types::instructions::PoolInstruction,
+        constants::*,
+        id,
+    };
+    use borsh::BorshSerialize;
+
+    println!("🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR");
+    println!("   • Test Ratio A: {}", SECURITY_TEST_RATIO_A);
+    println!("   • Test Ratio B: {}", SECURITY_TEST_RATIO_B);
+    println!("");
+
+    println!("🔒 SECURITY GUARD TEST 1: Same-mint rejection");
+    println!("Testing that pool creation fails when Token A and Token B are the same mint");
+    
+    // Create a proper foundation to get a real mint
+    let foundation = create_liquidity_test_foundation(Some(2)).await
+        .expect("Should create foundation successfully");
+    
+    println!("✅ Created foundation with mint: {}", foundation.primary_mint.pubkey());
+    
+    // Try to create a pool using the same mint for both Token A and Token B
+    let same_mint_pubkey = foundation.primary_mint.pubkey();
+    
+    // Derive required PDAs using the same mint for both tokens
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
+    // Manually derive PDAs since normalize_pool_config panics on same mint
+    // We want to test the on-chain guard, not the helper function guard
+    let (pool_state_pda, _) = Pubkey::find_program_address(
+        &[
+            POOL_STATE_SEED_PREFIX,
+            same_mint_pubkey.as_ref(),
+            same_mint_pubkey.as_ref(),
+            &SECURITY_TEST_RATIO_A.to_le_bytes(),
+            &SECURITY_TEST_RATIO_B.to_le_bytes(),
+        ],
+        &id(),
+    );
+    
+    let (token_a_vault_pda, _) = Pubkey::find_program_address(
+        &[TOKEN_A_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (token_b_vault_pda, _) = Pubkey::find_program_address(
+        &[TOKEN_B_VAULT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &id(),
+    );
+    
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_A_MINT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_B_MINT_SEED_PREFIX, pool_state_pda.as_ref()],
+        &id(),
+    );
+    
+    // Create InitializePool instruction with same mint for both tokens
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(foundation.env.payer.pubkey(), true),               // Index 0: User Authority Signer
+            AccountMeta::new_readonly(system_program::id(), false),              // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),                  // Index 2: System State PDA
+            AccountMeta::new(pool_state_pda, false),                             // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                   // Index 4: SPL Token Program Account
+            AccountMeta::new(main_treasury_pda, false),                          // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar Account
+            AccountMeta::new_readonly(same_mint_pubkey, false),                  // Index 7: Token A Mint (same mint)
+            AccountMeta::new_readonly(same_mint_pubkey, false),                  // Index 8: Token B Mint (same mint)
+            AccountMeta::new(token_a_vault_pda, false),                          // Index 9: Token A Vault PDA
+            AccountMeta::new(token_b_vault_pda, false),                          // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                        // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                        // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: SECURITY_TEST_RATIO_A,
+            ratio_b_denominator: SECURITY_TEST_RATIO_B,
+            flags: 0u8,
+        }.try_to_vec().unwrap(),
+    };
+    
+    // Add compute budget and create transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&foundation.env.payer.pubkey())
+    );
+    transaction.sign(&[&foundation.env.payer], foundation.env.recent_blockhash);
+    
+    // Execute transaction and expect it to fail
+    let mut banks_client = foundation.env.banks_client;
+    let result = banks_client.process_transaction(transaction).await;
+    
+    println!("🔍 Transaction result: {:?}", result);
+    
+    // Verify that the transaction failed with the expected error
+    assert!(result.is_err(), "Transaction should fail when using same mint for both tokens");
+    
+    // Check that the error is InvalidArgument (which maps to our same-mint rejection)
+    let error = result.unwrap_err();
+    match error {
+        solana_program_test::BanksClientError::TransactionError(tx_error) => {
+            println!("✅ Transaction failed as expected: {:?}", tx_error);
+            // The error should contain InvalidArgument somewhere in the chain
+            let error_string = format!("{:?}", tx_error);
+            assert!(
+                error_string.contains("InvalidArgument") || 
+                error_string.contains("Custom") || 
+                error_string.contains("ProgramError"),
+                "Error should be related to invalid argument: {}", error_string
+            );
+        }
+        _ => panic!("Expected TransactionError, got: {:?}", error),
+    }
+    
+    println!("✅ SECURITY GUARD TEST 1 PASSED: Same-mint rejection works correctly");
+}
+
+/// **SECURITY GUARD TEST 2**: Invalid token mint owner rejection
+/// 
+/// This test validates that the security guard prevents creating pools when token mints
+/// are not owned by the SPL Token program.
+#[tokio::test]
+async fn test_security_guard_invalid_token_program_owner() {
+    use common::{
+        pool_helpers::*,
+        liquidity_helpers::*,
+    };
+    use solana_sdk::{
+        signature::{Keypair, Signer},
+        transaction::Transaction,
+        instruction::{AccountMeta, Instruction},
+        system_program,
+        pubkey::Pubkey,
+    };
+    use fixed_ratio_trading::{
+        types::instructions::PoolInstruction,
+        constants::*,
+        id,
+    };
+    use borsh::BorshSerialize;
+
+    println!("🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR");
+    println!("   • Test Ratio A: {}", SECURITY_TEST_RATIO_A);
+    println!("   • Test Ratio B: {}", SECURITY_TEST_RATIO_B);
+    println!("");
+
+    println!("🔒 SECURITY GUARD TEST 2: Invalid token mint owner rejection");
+    println!("Testing that pool creation fails when token mints are not owned by SPL Token program");
+    
+    // Create a proper foundation to get the environment
+    let foundation = create_liquidity_test_foundation(Some(2)).await
+        .expect("Should create foundation successfully");
+    
+    // Create a fake "mint" account that's not owned by SPL Token program
+    let fake_mint = Keypair::new();
+    
+    // Create the fake mint account owned by system program instead of SPL Token program
+    let create_fake_mint_ix = solana_sdk::system_instruction::create_account(
+        &foundation.env.payer.pubkey(),
+        &fake_mint.pubkey(),
+        10_000_000, // More lamports for rent exemption
+        165,        // Size of a mint account
+        &system_program::id(), // Owned by system program, NOT SPL Token program
+    );
+    
+    let mut create_fake_transaction = Transaction::new_with_payer(
+        &[create_fake_mint_ix],
+        Some(&foundation.env.payer.pubkey())
+    );
+    create_fake_transaction.sign(&[&foundation.env.payer, &fake_mint], foundation.env.recent_blockhash);
+    
+    let mut banks_client = foundation.env.banks_client;
+    banks_client.process_transaction(create_fake_transaction).await
+        .expect("Should create fake mint account");
+    
+    println!("✅ Created fake mint (owned by system program): {}", fake_mint.pubkey());
+    println!("✅ Created valid mint (owned by SPL Token program): {}", foundation.base_mint.pubkey());
+    
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
+    // Use normalize_pool_config with fake mint as Token A
+    let config = normalize_pool_config(
+        &fake_mint.pubkey(),  // Fake mint (invalid owner)
+        &foundation.base_mint.pubkey(), // Valid mint
+        SECURITY_TEST_RATIO_A,
+        SECURITY_TEST_RATIO_B,
+    );
+    
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_B_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    
+    // Create InitializePool instruction with fake mint
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(foundation.env.payer.pubkey(), true),               // Index 0: User Authority Signer
+            AccountMeta::new_readonly(system_program::id(), false),              // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),                  // Index 2: System State PDA
+            AccountMeta::new(config.pool_state_pda, false),                      // Index 3: Pool State PDA
+            AccountMeta::new_readonly(spl_token::id(), false),                   // Index 4: SPL Token Program Account
+            AccountMeta::new(main_treasury_pda, false),                          // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar Account
+            AccountMeta::new_readonly(config.token_a_mint, false),               // Index 7: Token A Mint (normalized)
+            AccountMeta::new_readonly(config.token_b_mint, false),               // Index 8: Token B Mint (normalized)
+            AccountMeta::new(config.token_a_vault_pda, false),                   // Index 9: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),                   // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                        // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                        // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: SECURITY_TEST_RATIO_A,
+            ratio_b_denominator: SECURITY_TEST_RATIO_B,
+            flags: 0u8,
+        }.try_to_vec().unwrap(),
+    };
+    
+    // Add compute budget and create transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&foundation.env.payer.pubkey())
+    );
+    transaction.sign(&[&foundation.env.payer], foundation.env.recent_blockhash);
+    
+    // Execute transaction and expect it to fail
+    let result = banks_client.process_transaction(transaction).await;
+    
+    println!("🔍 Transaction result: {:?}", result);
+    
+    // Verify that the transaction failed with the expected error
+    assert!(result.is_err(), "Transaction should fail when using mint not owned by SPL Token program");
+    
+    // Check that the error is IncorrectProgramId
+    let error = result.unwrap_err();
+    match error {
+        solana_program_test::BanksClientError::TransactionError(tx_error) => {
+            println!("✅ Transaction failed as expected: {:?}", tx_error);
+            let error_string = format!("{:?}", tx_error);
+            assert!(
+                error_string.contains("IncorrectProgramId") || 
+                error_string.contains("Custom") || 
+                error_string.contains("ProgramError"),
+                "Error should be related to incorrect program ID: {}", error_string
+            );
+        }
+        _ => panic!("Expected TransactionError, got: {:?}", error),
+    }
+    
+    println!("✅ SECURITY GUARD TEST 2 PASSED: Invalid token mint owner rejection works correctly");
+}
+
+/// **SECURITY GUARD TEST 3**: Invalid SPL Token program account rejection
+/// 
+/// This test validates that the security guard prevents creating pools when the wrong
+/// SPL Token program account is provided in the instruction.
+#[tokio::test]
+async fn test_security_guard_invalid_spl_token_program() {
+    use common::{
+        pool_helpers::*,
+        liquidity_helpers::*,
+    };
+    use solana_sdk::{
+        signature::{Keypair, Signer},
+        transaction::Transaction,
+        instruction::{AccountMeta, Instruction},
+        system_program,
+        pubkey::Pubkey,
+    };
+    use fixed_ratio_trading::{
+        types::instructions::PoolInstruction,
+        constants::*,
+        id,
+    };
+    use borsh::BorshSerialize;
+
+    println!("🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR");
+    println!("   • Test Ratio A: {}", SECURITY_TEST_RATIO_A);
+    println!("   • Test Ratio B: {}", SECURITY_TEST_RATIO_B);
+    println!("");
+
+    println!("🔒 SECURITY GUARD TEST 3: Invalid SPL Token program account rejection");
+    println!("Testing that pool creation fails when wrong SPL Token program account is provided");
+    
+    // Create a proper foundation to get the environment and valid mints
+    let foundation = create_liquidity_test_foundation(Some(2)).await
+        .expect("Should create foundation successfully");
+    
+    println!("✅ Created foundation with Token A mint: {}", foundation.primary_mint.pubkey());
+    println!("✅ Created foundation with Token B mint: {}", foundation.base_mint.pubkey());
+    
+    // Derive required PDAs
+    let (main_treasury_pda, _) = Pubkey::find_program_address(
+        &[MAIN_TREASURY_SEED_PREFIX],
+        &id(),
+    );
+    let (system_state_pda, _) = Pubkey::find_program_address(
+        &[SYSTEM_STATE_SEED_PREFIX],
+        &id(),
+    );
+    
+    let config = normalize_pool_config(
+        &foundation.primary_mint.pubkey(),
+        &foundation.base_mint.pubkey(),
+        SECURITY_TEST_RATIO_A,
+        SECURITY_TEST_RATIO_B,
+    );
+    
+    let (lp_token_a_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_A_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    let (lp_token_b_mint_pda, _) = Pubkey::find_program_address(
+        &[LP_TOKEN_B_MINT_SEED_PREFIX, config.pool_state_pda.as_ref()],
+        &id(),
+    );
+    
+    // Create InitializePool instruction with WRONG SPL Token program account
+    let initialize_pool_ix = Instruction {
+        program_id: id(),
+        accounts: vec![
+            AccountMeta::new(foundation.env.payer.pubkey(), true),               // Index 0: User Authority Signer
+            AccountMeta::new_readonly(system_program::id(), false),              // Index 1: System Program Account
+            AccountMeta::new_readonly(system_state_pda, false),                  // Index 2: System State PDA
+            AccountMeta::new(config.pool_state_pda, false),                      // Index 3: Pool State PDA
+            AccountMeta::new_readonly(system_program::id(), false),              // Index 4: WRONG! Should be spl_token::id()
+            AccountMeta::new(main_treasury_pda, false),                          // Index 5: Main Treasury PDA
+            AccountMeta::new_readonly(solana_program::sysvar::rent::id(), false), // Index 6: Rent Sysvar Account
+            AccountMeta::new_readonly(config.token_a_mint, false),               // Index 7: Token A Mint (normalized)
+            AccountMeta::new_readonly(config.token_b_mint, false),               // Index 8: Token B Mint (normalized)
+            AccountMeta::new(config.token_a_vault_pda, false),                   // Index 9: Token A Vault PDA
+            AccountMeta::new(config.token_b_vault_pda, false),                   // Index 10: Token B Vault PDA
+            AccountMeta::new(lp_token_a_mint_pda, false),                        // Index 11: LP Token A Mint PDA
+            AccountMeta::new(lp_token_b_mint_pda, false),                        // Index 12: LP Token B Mint PDA
+        ],
+        data: PoolInstruction::InitializePool {
+            ratio_a_numerator: SECURITY_TEST_RATIO_A,
+            ratio_b_denominator: SECURITY_TEST_RATIO_B,
+            flags: 0u8,
+        }.try_to_vec().unwrap(),
+    };
+    
+    // Add compute budget and create transaction
+    use solana_sdk::compute_budget::ComputeBudgetInstruction;
+    let compute_budget_ix = ComputeBudgetInstruction::set_compute_unit_limit(500_000);
+    
+    let mut transaction = Transaction::new_with_payer(
+        &[compute_budget_ix, initialize_pool_ix], 
+        Some(&foundation.env.payer.pubkey())
+    );
+    transaction.sign(&[&foundation.env.payer], foundation.env.recent_blockhash);
+    
+    // Execute transaction and expect it to fail
+    let mut banks_client = foundation.env.banks_client;
+    let result = banks_client.process_transaction(transaction).await;
+    
+    println!("🔍 Transaction result: {:?}", result);
+    
+    // Verify that the transaction failed with the expected error
+    assert!(result.is_err(), "Transaction should fail when using wrong SPL Token program account");
+    
+    // Check that the error is IncorrectProgramId
+    let error = result.unwrap_err();
+    match error {
+        solana_program_test::BanksClientError::TransactionError(tx_error) => {
+            println!("✅ Transaction failed as expected: {:?}", tx_error);
+            let error_string = format!("{:?}", tx_error);
+            assert!(
+                error_string.contains("IncorrectProgramId") || 
+                error_string.contains("Custom") || 
+                error_string.contains("ProgramError"),
+                "Error should be related to incorrect program ID: {}", error_string
+            );
+        }
+        _ => panic!("Expected TransactionError, got: {:?}", error),
+    }
+    
+    println!("✅ SECURITY GUARD TEST 3 PASSED: Invalid SPL Token program account rejection works correctly");
+}
+
+/// **COMPREHENSIVE SECURITY GUARD TEST**: Validates that valid pool creation still works
+/// 
+/// This test ensures that after adding the security guards, legitimate pool creation
+/// operations continue to work correctly.
+#[tokio::test]
+async fn test_security_guards_comprehensive_validation() {
+    use common::{
+        pool_helpers::*,
+        liquidity_helpers::*,
+        enhanced_test_foundation::*,
+    };
+
+    println!("🎯 TEST CONFIGURATION - MODIFY THESE VALUES TO CHANGE TEST BEHAVIOR");
+    println!("   • Test Ratio A: {}", SECURITY_TEST_RATIO_A);
+    println!("   • Test Ratio B: {}", SECURITY_TEST_RATIO_B);
+    println!("");
+
+    println!("🔒 COMPREHENSIVE SECURITY GUARD TEST");
+    println!("Testing that valid pool creation still works after adding security guards");
+    
+    // Create a proper foundation and verify it works correctly
+    let mut foundation = create_liquidity_test_foundation(Some(SECURITY_TEST_RATIO_A)).await
+        .expect("Should create foundation successfully");
+    
+    println!("✅ Foundation created successfully with pool: {}", foundation.pool_config.pool_state_pda);
+    
+    // Verify the foundation's pool has different token mints
+    assert_ne!(foundation.primary_mint.pubkey(), foundation.base_mint.pubkey(), "Mints should be different");
+    
+    // Verify pool state was created correctly
+    let pool_state = get_pool_state(&mut foundation.env.banks_client, &foundation.pool_config.pool_state_pda).await
+        .expect("Pool state should exist");
+    
+    // Verify the pool has the correct token mints (normalized)
+    assert_eq!(pool_state.token_a_mint, foundation.pool_config.token_a_mint);
+    assert_eq!(pool_state.token_b_mint, foundation.pool_config.token_b_mint);
+    assert_eq!(pool_state.ratio_a_numerator, foundation.pool_config.ratio_a_numerator);
+    assert_eq!(pool_state.ratio_b_denominator, foundation.pool_config.ratio_b_denominator);
+    
+    println!("✅ Pool state validation passed:");
+    println!("   • Token A mint: {}", pool_state.token_a_mint);
+    println!("   • Token B mint: {}", pool_state.token_b_mint);
+    println!("   • Ratio: {}:{}", pool_state.ratio_a_numerator, pool_state.ratio_b_denominator);
+    
+    // Try to create another pool with different mints to ensure it still works
+    let enhanced_foundation = create_enhanced_liquidity_test_foundation(Some(3)).await
+        .expect("Should create enhanced foundation successfully");
+    
+    // Add an additional pool with different ratio
+    let mut enhanced = enhanced_foundation;
+    let additional_pool_index = enhanced.add_pool(PoolCreationParams::new(5, 1)).await
+        .expect("Should create additional pool successfully");
+    
+    println!("✅ Additional pool created successfully with index: {}", additional_pool_index);
+    println!("   • Total pools in enhanced foundation: {}", enhanced.pool_count());
+    
+    println!("✅ COMPREHENSIVE SECURITY GUARD TEST PASSED: Valid pool creation works correctly");
 } 

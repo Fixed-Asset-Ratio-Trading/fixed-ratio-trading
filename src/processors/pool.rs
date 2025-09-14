@@ -164,6 +164,40 @@ pub fn process_pool_initialize(
     // Validate ratio values
     crate::utils::validation::validate_ratio_values(ratio_a_numerator, ratio_b_denominator)?;
 
+    // 🔒 SECURITY GUARDS: Early validation to prevent invalid pool creation
+    // Guard 1: Same-mint rejection
+    if token_a_mint_account.key == token_b_mint_account.key {
+        msg!("❌ SECURITY VIOLATION: Token A and Token B cannot be the same mint");
+        msg!("   Provided Token A: {}", token_a_mint_account.key);
+        msg!("   Provided Token B: {}", token_b_mint_account.key);
+        msg!("   This would create a nonsensical single-token pool");
+        return Err(ProgramError::InvalidArgument);
+    }
+
+    // Guard 2: SPL Token program ID assertions for token mint accounts
+    if token_a_mint_account.owner != &spl_token::id() {
+        msg!("❌ SECURITY VIOLATION: Token A mint not owned by SPL Token program");
+        msg!("   Expected owner: {}", spl_token::id());
+        msg!("   Actual owner: {}", token_a_mint_account.owner);
+        msg!("   Account: {}", token_a_mint_account.key);
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    if token_b_mint_account.owner != &spl_token::id() {
+        msg!("❌ SECURITY VIOLATION: Token B mint not owned by SPL Token program");
+        msg!("   Expected owner: {}", spl_token::id());
+        msg!("   Actual owner: {}", token_b_mint_account.owner);
+        msg!("   Account: {}", token_b_mint_account.key);
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // Guard 3: SPL Token program account validation
+    if *token_program_account.key != spl_token::id() {
+        msg!("❌ SECURITY VIOLATION: Invalid SPL Token program account provided");
+        msg!("   Expected: {}", spl_token::id());
+        msg!("   Provided: {}", token_program_account.key);
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
     // ✅ CENTRALIZED FEE COLLECTION - Collect registration fee with real-time tracking
     // This ensures the operation fails immediately if fee payment is not possible
     // and updates treasury state in real-time
