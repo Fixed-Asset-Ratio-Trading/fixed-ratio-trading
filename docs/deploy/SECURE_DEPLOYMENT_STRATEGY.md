@@ -60,12 +60,25 @@ This document defines a safe, auditable deployment process that prevents loss of
 4. Add member public keys (up to 10 members)
 5. Set confirmation threshold (e.g., 2-of-3, 3-of-5)
 6. Review and deploy (~0.1 SOL cost)
-7. Record the Squad address for use as upgrade authority
+7. Record the Squad address
+
+**🚨 CRITICAL AUTHORITY TRANSFER SAFETY:**
+- **NEVER** transfer authority directly to the Squad address
+- Squad addresses and Squad Vault PDAs are different!
+- Transferring to Squad address directly may make programs unrecoverable
+- **ALWAYS** use SAT (Safe Authority Transfer) feature
+
+**Safe Authority Transfer Process:**
+1. Add your program to Squad via "Add Program" button
+2. Use "Create SAT" (Safe Authority Transfer) feature
+3. Squad automatically handles correct Vault PDA derivation
+4. No risk of using wrong address
 
 **Best Practices:**
 - Include hardware wallet addresses as members
 - Set threshold to prevent single points of failure (avoid 1-of-N)
-- Test with small transactions before using for program upgrades
+- Test SAT process on Devnet first
+- Never use manual authority transfer with Squad addresses
 
 **Advantages over Realms:**
 - Clear, user-friendly interface that matches documentation
@@ -110,9 +123,15 @@ This document defines a safe, auditable deployment process that prevents loss of
    - This creates SystemState PDA with admin_authority = 4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko
    - Initialize Treasury PDAs and validate all system components
    - **WARNING**: System will be unusable if upgrade authority is transferred before initialization
-8. Transfer Upgrade Authority (ONLY after successful initialization)
-   - `solana program set-upgrade-authority <DEVNET_PROGRAM_ID> --new-upgrade-authority <DEVNET_UPGRADE_AUTH>`
-   - Verify transfer: `solana program show <DEVNET_PROGRAM_ID>` → confirm Squad address is now upgrade authority
+8. Transfer Upgrade Authority (ONLY after successful initialization) - USE SAT
+   - **CRITICAL: Do NOT use manual solana program set-upgrade-authority**
+   - Go to Squad interface: https://app.squads.so/squads/YOUR_SQUAD/home
+   - Navigate to "Programs" section
+   - Click "Add Program" and enter your program ID
+   - Click "Create SAT" (Safe Authority Transfer)
+   - Get required multisig signatures
+   - Execute SAT transaction
+   - Verify transfer: `solana program show <DEVNET_PROGRAM_ID>` → confirm Squad Vault PDA is now upgrade authority
 9. Exercise emergency controls
    - Pause/Unpause (system and per-pool)
    - Owner-only swaps toggling (ensure unified control per design)
@@ -157,9 +176,15 @@ This document defines a safe, auditable deployment process that prevents loss of
    - This creates SystemState PDA with admin_authority = 4ekSqR4pNZ5hp4cRyicji1Yj7ZCphgkYQhwZf2ib9Wko
    - Initialize Treasury PDAs and validate all system components
    - **WARNING**: System will be unusable if upgrade authority is transferred before initialization
-8. Transfer Upgrade Authority (ONLY after successful initialization)
-   - `solana program set-upgrade-authority <MAINNET_PROGRAM_ID> --new-upgrade-authority <MAINNET_UPGRADE_AUTH>`
-   - Verify transfer: `solana program show <MAINNET_PROGRAM_ID>` → confirm Squad address is now upgrade authority
+8. Transfer Upgrade Authority (ONLY after successful initialization) - USE SAT
+   - **CRITICAL: Do NOT use manual solana program set-upgrade-authority**
+   - Go to Squad interface: https://app.squads.so/squads/YOUR_SQUAD/home
+   - Navigate to "Programs" section
+   - Click "Add Program" and enter your program ID
+   - Click "Create SAT" (Safe Authority Transfer)
+   - Get required multisig signatures
+   - Execute SAT transaction
+   - Verify transfer: `solana program show <MAINNET_PROGRAM_ID>` → confirm Squad Vault PDA is now upgrade authority
 9. Sanity Checks & Validation
    - Create a test pool with minimal funds; perform a test swap
    - Validate emergency pause/unpause with hardware wallet
@@ -222,8 +247,9 @@ This document defines a safe, auditable deployment process that prevents loss of
 ## Reference Commands
 - Show program: `solana program show <PROGRAM_ID>`
 - Dump program: `solana program dump <PROGRAM_ID> ./dumped.so && shasum -a 256 ./dumped.so`
-- Set upgrade authority: `solana program set-upgrade-authority <PROGRAM_ID> --new-upgrade-authority <SQUAD_ADDRESS>`
-- Deploy: `solana program deploy <PATH_TO_SO> --program-id <PATH_TO_KEYPAIR> --upgrade-authority <KEYPAIR_OR_SQUAD>`
+- Deploy: `solana program deploy <PATH_TO_SO> --program-id <PATH_TO_KEYPAIR> --upgrade-authority <KEYPAIR>`
+- **🚨 NEVER USE**: `solana program set-upgrade-authority <PROGRAM_ID> --new-upgrade-authority <SQUAD_ADDRESS>`
+- **✅ SAFE**: Use Squad's SAT (Safe Authority Transfer) feature via web interface
 
 ---
 

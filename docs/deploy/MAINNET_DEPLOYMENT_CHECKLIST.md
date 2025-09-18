@@ -74,10 +74,16 @@ The deployment authority keypair for `3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4X
 - [ ] Verify pool state validation
 - [ ] Check Phase 2 completion status
 
-### Phase 3: Handoff to Multisig
-- [ ] Run: `./scripts/MainNet/03_handoff.sh`
-- [ ] Verify upgrade authority transfer to Squads
-- [ ] Verify remaining SOL transfer to multisig
+### Phase 3: Handoff to Multisig (USE SAT - SAFE AUTHORITY TRANSFER)
+- [ ] **CRITICAL**: DO NOT run old `./scripts/MainNet/03_handoff.sh` (DANGEROUS!)
+- [ ] Run: `./scripts/MainNet/03_handoff_safe.sh` (provides SAT instructions)
+- [ ] Follow SAT process in Squad interface:
+  - [ ] Add program to Squad via "Add Program" button
+  - [ ] Use "Create SAT" feature (NOT manual authority transfer)
+  - [ ] Get required multisig signatures
+  - [ ] Execute SAT transaction
+- [ ] Verify upgrade authority transferred to Squad Vault PDA (NOT Squad address)
+- [ ] Transfer remaining SOL to multisig manually
 - [ ] Secure program keypair in cold storage
 - [ ] Delete online copies of sensitive keypairs
 - [ ] Verify final deployment status
@@ -94,10 +100,13 @@ The deployment authority keypair for `3Li1ktauXzse1oHueYDAkD1d4o25u11jBT2yY61w4X
 ## ⚠️ Critical Warnings
 
 1. **DO NOT** transfer upgrade authority before system initialization
-2. **DO NOT** use the same keypairs for Devnet and MainNet
-3. **DO NOT** keep program keypair online after deployment
-4. **ALWAYS** verify each step before proceeding
-5. **ALWAYS** test on Devnet first with identical process
+2. **DO NOT** use manual `solana program set-upgrade-authority` with Squad addresses
+3. **DO NOT** run old `./scripts/MainNet/03_handoff.sh` (contains dangerous authority transfer)
+4. **DO NOT** use the same keypairs for Devnet and MainNet
+5. **DO NOT** keep program keypair online after deployment
+6. **ALWAYS** use Squad's SAT (Safe Authority Transfer) feature
+7. **ALWAYS** verify each step before proceeding
+8. **ALWAYS** test SAT process on Devnet first
 
 ## 📊 SOL Budget Breakdown
 
@@ -135,7 +144,8 @@ cd /Users/davinci/code/fixed-ratio-trading
 ./scripts/MainNet/02_verify.sh
 
 # Phase 3: Handoff to Multisig (only after Phase 2 success)
-./scripts/MainNet/03_handoff.sh
+# CRITICAL: Use safe SAT process instead of old script
+./scripts/MainNet/03_handoff_safe.sh
 ```
 
 ## 📝 Notes

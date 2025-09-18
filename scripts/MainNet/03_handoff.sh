@@ -1,6 +1,31 @@
 #!/bin/bash
 
-# Fixed Ratio Trading - MainNet Handoff Script (Phase 3)
+# 🚨 DANGER: THIS SCRIPT IS DISABLED DUE TO CRITICAL SECURITY ISSUE 🚨
+# 
+# ISSUE: This script transfers authority to Squad address directly instead of Squad Vault PDA
+# RESULT: Would permanently lose program control - funds/programs may be unrecoverable
+# 
+# SAFE ALTERNATIVE: Use Squad's SAT (Safe Authority Transfer) feature
+# 1. Add program to Squad via "Add Program" button
+# 2. Use "Create SAT" feature in Squad interface
+# 3. Squad automatically handles correct Vault PDA derivation
+#
+# See: docs/deploy/SAFE_SQUAD_DEPLOYMENT_TESTING.md for safe procedures
+#
+echo "🚨 CRITICAL ERROR: This script contains a dangerous authority transfer!"
+echo "It would transfer authority to Squad address instead of Squad Vault PDA"
+echo "This could permanently lose program control!"
+echo ""
+echo "Use Squad's SAT (Safe Authority Transfer) feature instead:"
+echo "1. Go to https://app.squads.so/squads/YOUR_SQUAD/home"
+echo "2. Navigate to Programs section"
+echo "3. Add your program"
+echo "4. Use 'Create SAT' button"
+echo ""
+echo "See docs/deploy/SAFE_SQUAD_DEPLOYMENT_TESTING.md for details"
+exit 1
+
+# Fixed Ratio Trading - MainNet Handoff Script (Phase 3) - DISABLED
 
 # Color codes for output
 RED='\033[0;31m'
