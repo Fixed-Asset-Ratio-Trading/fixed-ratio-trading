@@ -135,7 +135,15 @@ use crate::processors::utilities::validate_liquidity_not_paused;
 /// * `ProgramResult` - Success or error code
 /// 
 /// # Performance CUs
-/// 35,000 - 40,000 CUs    2025/7/11 11:11 pm
+/// **249,000 - 310,000 CUs** (Dashboard tested: 249K minimum observed, 310K safety margin)
+/// 
+/// # Advanced Implementation Features
+/// - **Upfront Fee Collection**: SOL fees collected before any token operations to prevent free deposits
+/// - **Pool State Reloading**: Fresh pool state loaded after fee collection to sync fee tracking fields
+/// - **Buffer Serialization**: Uses buffer serialization pattern to prevent PDA data corruption during SPL operations
+/// - **Authority Validation**: Comprehensive vault and LP mint authority validation before operations
+/// - **Atomic Operations**: Token transfer and LP minting occur atomically with automatic rollback on failure
+/// - **1:1 Ratio Enforcement**: Strict validation that LP tokens minted equals input tokens deposited
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
@@ -496,7 +504,7 @@ pub fn process_liquidity_deposit<'a>(
 /// * `lp_amount_to_burn` - Amount of LP tokens to burn for withdrawal
 /// * `withdraw_token_mint_key` - Token mint being withdrawn
 /// * `pool_id` - Expected Pool ID for security validation
-/// * `accounts` - Array of accounts in optimized order (11 accounts minimum)
+/// * `accounts` - Array of accounts in optimized order (11 accounts total)
 ///
 /// # Account Info
 /// The accounts must be provided in the following order:
@@ -516,7 +524,16 @@ pub fn process_liquidity_deposit<'a>(
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 102,500 - 120,000 CUs    2025/7/15 7:24 pm
+/// **227,000 - 290,000 CUs** (Dashboard tested: 227K minimum observed, 290K safety margin)
+/// 
+/// # Advanced Implementation Features
+/// - **Upfront Fee Collection**: SOL fees collected before any token operations to prevent free withdrawals
+/// - **Pool State Reloading**: Fresh pool state loaded after fee collection to sync fee tracking fields
+/// - **Authority Validation**: Comprehensive vault and LP mint authority validation before operations
+/// - **LP Correspondence Validation**: Ensures correct LP token type is burned for requested underlying token
+/// - **Atomic Operations**: LP token burning and underlying token transfer occur atomically
+/// - **1:1 Ratio Enforcement**: LP tokens burned equals underlying tokens transferred
+/// - **Buffer Serialization**: Uses safe serialization pattern to prevent PDA data corruption
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account

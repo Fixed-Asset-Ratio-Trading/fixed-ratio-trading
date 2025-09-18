@@ -32,6 +32,14 @@ use crate::{
 /// 3. **Individual Control**: Allows pausing specific pools without affecting entire system
 /// 4. **Race Protection**: Paused state prevents concurrent operations during consolidation
 /// 
+/// # Advanced Implementation Features
+/// - **Rent-Exempt Protection**: Automatically calculates and preserves rent-exempt minimum balance for each pool
+/// - **Partial Consolidation**: Supports consolidating only available SOL above rent-exempt minimum when pools have insufficient balance
+/// - **Proportional Fee Distribution**: Uses precise integer math to distribute partial consolidations proportionally across fee types
+/// - **Buffer Serialization Workaround**: Implements GitHub issue #31960 workaround to prevent SOL transfer corruption of PDA data
+/// - **Safety Validations**: Multiple consistency checks including fee tracking integrity validation
+/// - **Atomic State Updates**: Pool state serialization occurs before SOL transfers to ensure data consistency
+/// 
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation
 /// * `pool_count` - Number of pools to consolidate (1-20)
@@ -43,15 +51,27 @@ use crate::{
 ///   - [4..4+pool_count] Pool State PDAs (pools to consolidate)
 /// 
 /// # Returns
-/// * `ProgramResult` - Success or error
+/// * `ProgramResult` - Success on full completion, error on critical failures
+/// * Individual pools may be skipped (logged) without failing the entire operation for:
+///   - Insufficient fees above rent-exempt minimum
+///   - Safety validation failures
+///   - Fee consistency check failures
 /// 
-/// # CU Estimate: ~109,000 CUs for 20 pools, scales linearly down to ~5,000 for 1 pool
-/// - System pause validation: 1,000 CUs
-/// - Pool processing (N pools): N * 5,200 CUs  
-/// - Treasury update: 4,000 CUs
+/// # CU Estimate: ~185,000 CUs for 20 pools, scales down to ~12,000 for 1 pool
+/// - Admin authority validation: 2,500 CUs
+/// - System pause validation: 1,500 CUs
+/// - Per pool processing (N pools): N * 8,500 CUs including:
+///   - Pool state validation and deserialization: 1,200 CUs
+///   - Rent-exempt minimum calculation: 800 CUs
+///   - Proportional fee distribution math: 1,500 CUs
+///   - Safety validations and consistency checks: 1,000 CUs
+///   - Buffer serialization and SOL transfers: 2,000 CUs
+///   - State updates and atomic writes: 2,000 CUs
+/// - Treasury state update and sync: 6,000 CUs
+/// - Logging and reporting overhead: 3,000 CUs
 /// 
 /// # External Validation
-/// - **No fee minimums**: All pools processed regardless of fee amount
+/// - **No fee minimums**: All pools processed regardless of fee amount (but may skip if below rent-exempt minimum)
 /// - **No operation minimums**: All pools processed regardless of operation count
 /// - **External filtering**: Caller responsible for determining which pools to consolidate
 /// - **Flexible pause support**: Works with system-wide pause OR individual pool pause

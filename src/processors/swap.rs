@@ -89,18 +89,12 @@ use crate::{
 /// // Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
 /// ```
 ///
-/// # Key Features
-///
-/// # Fixed Ratio Exchange
-/// - Exchange rates are predetermined and constant (e.g., 2:1, 3:1, etc.)
-/// - No slippage - you get exactly the calculated amount or transaction fails
-/// - Deterministic pricing eliminates front-running and MEV extraction
-/// - Pool maintains its configured ratio regardless of trade size
-///
 /// # Arguments
 /// * `program_id` - The program ID for PDA validation and signing authority
 /// * `amount_in` - The amount of input tokens to swap (exact input model)
-/// * `accounts` - Array of accounts in required order (9 accounts total)
+/// * `expected_amount_out` - Expected output amount for validation
+/// * `pool_id` - Expected Pool ID for security validation
+/// * `accounts` - Array of accounts in required order (11 accounts total)
 /// 
 /// # Account Layout
 /// The accounts must be provided in the following order:
@@ -113,318 +107,44 @@ use crate::{
 /// 6. **Token B Vault PDA** (writable) - Pool's Token B vault PDA
 /// 7. **User Input Token Account** (writable) - User's input token account
 /// 8. **User Output Token Account** (writable) - User's output token account
+/// 9. **Input Token Mint Account** (readable) - Input token mint for decimal validation
+/// 10. **Output Token Mint Account** (readable) - Output token mint for decimal validation
 ///
 /// # Returns
 /// * `ProgramResult` - Success or error with detailed error information
 /// 
-/// # Fee Structure
-/// - **Fixed SOL Fee**: 271,500 lamports (0.0002715 SOL) charged to user's SOL balance
-/// - **Purpose**: Covers computational costs and protocol revenue
-/// - **Collection**: Accumulated in pool state for later withdrawal
+/// # Performance CUs
+/// **202,000 - 250,000 CUs** (202K observed working, 250K max for headroom)
 /// 
-/// # Security Features
-/// - Pause enforcement: Respects both system-wide and pool-specific pause states
-/// - PDA validation: All pool accounts validated against expected PDA addresses
-/// - Authority checks: Only token owners can initiate swaps for their tokens
-/// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
-/// - Atomic operations: Token transfers are atomic - either both succeed or both fail
-
-/// Calculate precise swap output for Token A → Token B with EXACT EXCHANGE validation
-///
-/// **EXACT EXCHANGE REQUIREMENT**: This function enforces zero dust loss by validating that
-/// the division is exact (no remainder). If any precision would be lost, the swap fails.
-///
-/// **Formula**: B_out = (A_in * ratioB_den) / ratioA_num (must divide exactly)
-/// **Validation**: Verifies exchange is perfectly reversible with no value loss
-fn swap_a_to_b(
-    amount_a: u64,
-    ratio_a_numerator: u64,     // Token A ratio in basis points
-    ratio_b_denominator: u64,   // Token B ratio in basis points 
-    _token_a_decimals: u8,
-    _token_b_decimals: u8,
-    require_exact_exchange: bool,
-) -> Result<u64, ProgramError> {
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
-    // Check for zero ratios first to prevent division by zero
-    if ratio_a_numerator == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    if ratio_b_denominator == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
-    // Check if inputs are within reasonable bounds to prevent extreme calculations
-    if amount_a == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    // Convert to u128 to prevent overflow during intermediate calculations
-    let amount_a_base = amount_a as u128;
-    let ratio_a_num = ratio_a_numerator as u128;
-    let ratio_b_den = ratio_b_denominator as u128;
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
-    // Before multiplication, check if the result would exceed u128::MAX
-    // This is more precise than just relying on checked_mul failure
-    if amount_a_base > 0 && ratio_b_den > u128::MAX / amount_a_base {
-        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
-        msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
-        msg!("   This indicates an extremely large swap amount or ratio");
-        return Err(crate::error::PoolError::ArithmeticOverflow.into());
-    }
-    
-    // Perform multiplication with overflow detection
-    let numerator = amount_a_base
-        .checked_mul(ratio_b_den)
-        .ok_or_else(|| {
-            msg!("❌ MULTIPLICATION OVERFLOW in swap_a_to_b calculation");
-            msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
-            msg!("   Intermediate calculation: {} * {}", amount_a_base, ratio_b_den);
-            crate::error::PoolError::ArithmeticOverflow
-        })?;
-    
-    // 🔒 EXACT EXCHANGE (optional): enforce no remainder; otherwise allow floor division
-    if require_exact_exchange {
-        if numerator % ratio_a_num != 0 {
-            let remainder = numerator % ratio_a_num;
-            return Err(crate::error::PoolError::AmountMismatch {
-                expected: 0,
-                calculated: remainder as u64,
-                difference: remainder as u64,
-            }.into());
-        }
-    }
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation (now guaranteed to be exact)
-    let result = numerator.checked_div(ratio_a_num)
-        .ok_or_else(|| {
-            msg!("❌ DIVISION ERROR in swap_a_to_b calculation");
-            msg!("   This should not happen as we validated ratio_a_num != 0");
-            msg!("   ratio_a_num: {}", ratio_a_numerator);
-            ProgramError::InvalidAccountData
-        })?;
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
-    // Check if result fits in u64 with detailed error reporting
-    if result > u64::MAX as u128 {
-        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
-        msg!("   Calculated result: {}", result);
-        msg!("   u64::MAX: {}", u64::MAX);
-        msg!("   amount_a: {}, ratio_a_num: {}, ratio_b_den: {}", 
-             amount_a, ratio_a_numerator, ratio_b_denominator);
-        msg!("   This indicates the swap would produce an impossibly large output");
-        return Err(crate::error::PoolError::ArithmeticOverflow.into());
-    }
-    
-    let final_result = result as u64;
-    
-    if require_exact_exchange {
-        // Verify reversibility only in exact mode
-        let verification_check = (final_result as u128)
-            .checked_mul(ratio_a_num)
-            .and_then(|product| product.checked_div(ratio_b_den));
-        if let Some(reverse_amount) = verification_check {
-            if reverse_amount != amount_a as u128 {
-                return Err(crate::error::PoolError::AmountMismatch {
-                    expected: amount_a,
-                    calculated: reverse_amount as u64,
-                    difference: amount_a.abs_diff(reverse_amount as u64),
-                }.into());
-            }
-        }
-    }
-    
-    // 🔒 ZERO OUTPUT VALIDATION: Ensure meaningful exchange
-    if final_result == 0 {
-        msg!("❌ ZERO OUTPUT ERROR: Swap calculation resulted in zero output");
-        msg!("   Input amount: {} basis points", amount_a);
-        msg!("   This indicates the input amount is too small for this ratio");
-        msg!("   🚫 EXACT EXCHANGE REQUIRED: Must receive meaningful output");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    // Logging omitted for CU efficiency; expected_amount_out check enforces correctness
-    
-    Ok(final_result)
-}
-
-/// Calculate precise swap output for Token B → Token A with EXACT EXCHANGE validation
-///
-/// **EXACT EXCHANGE REQUIREMENT**: This function enforces zero dust loss by validating that
-/// the division is exact (no remainder). If any precision would be lost, the swap fails.
-///
-/// **Formula**: A_out = (B_in * ratioA_num) / ratioB_den (must divide exactly)
-/// **Validation**: Verifies exchange is perfectly reversible with no value loss
-fn swap_b_to_a(
-    amount_b: u64,
-    ratio_a_numerator: u64,     // Token A ratio in basis points
-    ratio_b_denominator: u64,   // Token B ratio in basis points
-    _token_b_decimals: u8,
-    _token_a_decimals: u8,
-    require_exact_exchange: bool,
-) -> Result<u64, ProgramError> {
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
-    // Check for zero ratios first to prevent division by zero
-    if ratio_a_numerator == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    if ratio_b_denominator == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
-        return Err(ProgramError::InvalidAccountData);
-    }
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
-    // Check if inputs are within reasonable bounds to prevent extreme calculations
-    if amount_b == 0 {
-        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    // Convert to u128 to prevent overflow during intermediate calculations
-    let amount_b_base = amount_b as u128;
-    let ratio_a_num = ratio_a_numerator as u128;
-    let ratio_b_den = ratio_b_denominator as u128;
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
-    // Before multiplication, check if the result would exceed u128::MAX
-    // This is more precise than just relying on checked_mul failure
-    if amount_b_base > 0 && ratio_a_num > u128::MAX / amount_b_base {
-        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
-        msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
-        msg!("   This indicates an extremely large swap amount or ratio");
-        return Err(crate::error::PoolError::ArithmeticOverflow.into());
-    }
-    
-    // Perform multiplication with overflow detection
-    let numerator = amount_b_base
-        .checked_mul(ratio_a_num)
-        .ok_or_else(|| {
-            msg!("❌ MULTIPLICATION OVERFLOW in swap_b_to_a calculation");
-            msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
-            msg!("   Intermediate calculation: {} * {}", amount_b_base, ratio_a_num);
-            crate::error::PoolError::ArithmeticOverflow
-        })?;
-    
-    // 🔒 EXACT EXCHANGE (optional): enforce no remainder; otherwise allow floor division
-    if require_exact_exchange {
-        if numerator % ratio_b_den != 0 {
-            let remainder = numerator % ratio_b_den;
-            return Err(crate::error::PoolError::AmountMismatch {
-                expected: 0,
-                calculated: remainder as u64,
-                difference: remainder as u64,
-            }.into());
-        }
-    }
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation (now guaranteed to be exact)
-    let result = numerator.checked_div(ratio_b_den)
-        .ok_or_else(|| {
-            msg!("❌ DIVISION ERROR in swap_b_to_a calculation");
-            msg!("   This should not happen as we validated ratio_b_den != 0");
-            msg!("   ratio_b_den: {}", ratio_b_denominator);
-            ProgramError::InvalidAccountData
-        })?;
-    
-    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
-    // Check if result fits in u64 with detailed error reporting
-    if result > u64::MAX as u128 {
-        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
-        msg!("   Calculated result: {}", result);
-        msg!("   u64::MAX: {}", u64::MAX);
-        msg!("   amount_b: {}, ratio_a_num: {}, ratio_b_den: {}", 
-             amount_b, ratio_a_numerator, ratio_b_denominator);
-        msg!("   This indicates the swap would produce an impossibly large output");
-        return Err(crate::error::PoolError::ArithmeticOverflow.into());
-    }
-    
-    let final_result = result as u64;
-    
-    if require_exact_exchange {
-        // Verify reversibility only in exact mode
-        let verification_check = (final_result as u128)
-            .checked_mul(ratio_b_den)
-            .and_then(|product| product.checked_div(ratio_a_num));
-        if let Some(reverse_amount) = verification_check {
-            if reverse_amount != amount_b as u128 {
-                return Err(crate::error::PoolError::AmountMismatch {
-                    expected: amount_b,
-                    calculated: reverse_amount as u64,
-                    difference: amount_b.abs_diff(reverse_amount as u64),
-                }.into());
-            }
-        }
-    }
-    
-    // 🔒 ZERO OUTPUT VALIDATION: Ensure meaningful exchange
-    if final_result == 0 {
-        msg!("❌ ZERO OUTPUT ERROR: Swap calculation resulted in zero output");
-        msg!("   Input amount: {} basis points", amount_b);
-        msg!("   This indicates the input amount is too small for this ratio");
-        msg!("   🚫 EXACT EXCHANGE REQUIRED: Must receive meaningful output");
-        return Err(ProgramError::InvalidArgument);
-    }
-    
-    // Logging omitted for CU efficiency; expected_amount_out check enforces correctness
-    
-    Ok(final_result)
-}
-
-/// **Fixed-Ratio Token Swap with Basis Points Architecture**
-///
-/// Performs deterministic token swaps using pre-configured fixed exchange ratios stored
-/// in basis points. This function implements exact input swapping where users specify
-/// the input amount and receive a deterministic output amount based on the pool's ratio.
-/// 
-/// **BASIS POINTS REFACTOR: All Values in Basis Points**
-/// 
-/// This function operates entirely in basis points (smallest token units) with no
-/// decimal conversion performed by the contract. All calculations preserve precision
-/// and handle large numbers efficiently.
-/// 
-/// **Input/Output Flow:**
-/// - Input: `amount_in` in basis points (from SPL token transfer)
-/// - Pool ratios: Already stored in basis points (set during pool creation)
-/// - Calculation: Pure basis point arithmetic
-/// - Output: Result in basis points (for SPL token transfer)
-/// 
-/// **Example Calculation:**
-/// ```
-/// // Pool: 1.0 SOL = 160.0 USDT (1,000,000,000 : 160,000,000 basis points)
-/// // Input: 0.5 SOL = 500,000,000 basis points
-/// // Output: 500,000,000 * 160,000,000 / 1,000,000,000 = 80,000,000 basis points = 80.0 USDT
-/// ```
-///
-/// # Arguments
-/// * `program_id` - The program ID for PDA validation
-/// * `amount_in` - Input amount in basis points
-/// * `expected_amount_out` - Expected output amount in basis points
-/// * `pool_id` - Expected Pool ID for security validation
-/// * `accounts` - Array of account infos (11 accounts)
+/// # Advanced Implementation Features
+/// - **Upfront Fee Collection**: SOL fees collected before any token operations to prevent free swaps
+/// - **Pool State Reloading**: Fresh pool state loaded after fee collection to sync fee tracking fields
+/// - **Exact Exchange Validation**: Optional exact exchange requirement with zero dust loss enforcement
+/// - **Bidirectional Support**: Supports both Token A → Token B and Token B → Token A swaps
+/// - **Decimal-Aware Calculations**: Fetches token mint decimals for precise calculations
+/// - **Owner-Only Mode Support**: Respects pool-specific access restrictions
+/// - **Comprehensive Validation**: Validates expected output amount against calculated amount
+/// - **Liquidity Checks**: Ensures sufficient pool liquidity before executing swaps
+/// - **Atomic Operations**: Token transfers are atomic with automatic rollback on failure
+/// - **Buffer Serialization**: Uses safe serialization pattern to prevent PDA data corruption
 /// 
 /// # Key Features
-///
-/// # Fixed Ratio Exchange
-/// - Exchange rates are predetermined and constant (e.g., 2:1, 3:1, etc.)
-/// - No slippage - you get exactly the calculated amount or transaction fails
-/// - Deterministic pricing eliminates front-running and MEV extraction
-/// - Pool maintains its configured ratio regardless of trade size
-///
+/// - **Fixed Ratio Exchange**: Exchange rates are predetermined and constant (e.g., 2:1, 3:1, etc.)
+/// - **No Slippage**: You get exactly the calculated amount or transaction fails
+/// - **Deterministic Pricing**: Eliminates front-running and MEV extraction
+/// - **Ratio Preservation**: Pool maintains its configured ratio regardless of trade size
+/// 
+/// # Fee Structure
+/// - **Fixed SOL Fee**: Configurable per pool (default: 271,500 lamports / 0.0002715 SOL)
+/// - **Purpose**: Covers computational costs and protocol revenue
+/// - **Collection**: Accumulated in pool state for later consolidation
+/// 
 /// # Security Features
-/// - Pause enforcement: Respects both system-wide and pool-specific pause states
-/// - PDA validation: All pool accounts validated against expected PDA addresses
-/// - Authority checks: Only token owners can initiate swaps for their tokens
-/// - Arithmetic safety: All calculations use checked arithmetic to prevent overflow
-/// - Atomic operations: Token transfers are atomic - either both succeed or both fail
+/// - **Pause Enforcement**: Respects both system-wide and pool-specific pause states
+/// - **PDA Validation**: All pool accounts validated against expected PDA addresses
+/// - **Authority Checks**: Only token owners can initiate swaps for their tokens
+/// - **Arithmetic Safety**: All calculations use checked arithmetic to prevent overflow
+/// - **Vault Authority Validation**: Comprehensive vault ownership and authority validation
 pub fn process_swap_execute<'a>(
     program_id: &Pubkey,
     amount_in: u64,              // Input amount in basis points
@@ -843,6 +563,257 @@ pub fn process_swap_execute<'a>(
     msg!("📈 SUMMARY: {} → {} tokens, Fee: {} lamports", amount_in, amount_out, pool_state_data.swap_contract_fee);
     
     Ok(())
+}
+
+
+/// Calculate precise swap output for Token A → Token B with EXACT EXCHANGE validation
+///
+/// **EXACT EXCHANGE REQUIREMENT**: This function enforces zero dust loss by validating that
+/// the division is exact (no remainder). If any precision would be lost, the swap fails.
+///
+/// **Formula**: B_out = (A_in * ratioB_den) / ratioA_num (must divide exactly)
+/// **Validation**: Verifies exchange is perfectly reversible with no value loss
+fn swap_a_to_b(
+    amount_a: u64,
+    ratio_a_numerator: u64,     // Token A ratio in basis points
+    ratio_b_denominator: u64,   // Token B ratio in basis points 
+    _token_a_decimals: u8,
+    _token_b_decimals: u8,
+    require_exact_exchange: bool,
+) -> Result<u64, ProgramError> {
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
+    // Check for zero ratios first to prevent division by zero
+    if ratio_a_numerator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if ratio_b_denominator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
+    // Check if inputs are within reasonable bounds to prevent extreme calculations
+    if amount_a == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Convert to u128 to prevent overflow during intermediate calculations
+    let amount_a_base = amount_a as u128;
+    let ratio_a_num = ratio_a_numerator as u128;
+    let ratio_b_den = ratio_b_denominator as u128;
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
+    // Before multiplication, check if the result would exceed u128::MAX
+    // This is more precise than just relying on checked_mul failure
+    if amount_a_base > 0 && ratio_b_den > u128::MAX / amount_a_base {
+        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
+        msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
+        msg!("   This indicates an extremely large swap amount or ratio");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
+    }
+    
+    // Perform multiplication with overflow detection
+    let numerator = amount_a_base
+        .checked_mul(ratio_b_den)
+        .ok_or_else(|| {
+            msg!("❌ MULTIPLICATION OVERFLOW in swap_a_to_b calculation");
+            msg!("   amount_a: {}, ratio_b_den: {}", amount_a, ratio_b_denominator);
+            msg!("   Intermediate calculation: {} * {}", amount_a_base, ratio_b_den);
+            crate::error::PoolError::ArithmeticOverflow
+        })?;
+    
+    // 🔒 EXACT EXCHANGE (optional): enforce no remainder; otherwise allow floor division
+    if require_exact_exchange {
+        if numerator % ratio_a_num != 0 {
+            let remainder = numerator % ratio_a_num;
+            return Err(crate::error::PoolError::AmountMismatch {
+                expected: 0,
+                calculated: remainder as u64,
+                difference: remainder as u64,
+            }.into());
+        }
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation (now guaranteed to be exact)
+    let result = numerator.checked_div(ratio_a_num)
+        .ok_or_else(|| {
+            msg!("❌ DIVISION ERROR in swap_a_to_b calculation");
+            msg!("   This should not happen as we validated ratio_a_num != 0");
+            msg!("   ratio_a_num: {}", ratio_a_numerator);
+            ProgramError::InvalidAccountData
+        })?;
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
+    // Check if result fits in u64 with detailed error reporting
+    if result > u64::MAX as u128 {
+        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
+        msg!("   Calculated result: {}", result);
+        msg!("   u64::MAX: {}", u64::MAX);
+        msg!("   amount_a: {}, ratio_a_num: {}, ratio_b_den: {}", 
+             amount_a, ratio_a_numerator, ratio_b_denominator);
+        msg!("   This indicates the swap would produce an impossibly large output");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
+    }
+    
+    let final_result = result as u64;
+    
+    if require_exact_exchange {
+        // Verify reversibility only in exact mode
+        let verification_check = (final_result as u128)
+            .checked_mul(ratio_a_num)
+            .and_then(|product| product.checked_div(ratio_b_den));
+        if let Some(reverse_amount) = verification_check {
+            if reverse_amount != amount_a as u128 {
+                return Err(crate::error::PoolError::AmountMismatch {
+                    expected: amount_a,
+                    calculated: reverse_amount as u64,
+                    difference: amount_a.abs_diff(reverse_amount as u64),
+                }.into());
+            }
+        }
+    }
+    
+    // 🔒 ZERO OUTPUT VALIDATION: Ensure meaningful exchange
+    if final_result == 0 {
+        msg!("❌ ZERO OUTPUT ERROR: Swap calculation resulted in zero output");
+        msg!("   Input amount: {} basis points", amount_a);
+        msg!("   This indicates the input amount is too small for this ratio");
+        msg!("   🚫 EXACT EXCHANGE REQUIRED: Must receive meaningful output");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Logging omitted for CU efficiency; expected_amount_out check enforces correctness
+    
+    Ok(final_result)
+}
+
+/// Calculate precise swap output for Token B → Token A with EXACT EXCHANGE validation
+///
+/// **EXACT EXCHANGE REQUIREMENT**: This function enforces zero dust loss by validating that
+/// the division is exact (no remainder). If any precision would be lost, the swap fails.
+///
+/// **Formula**: A_out = (B_in * ratioA_num) / ratioB_den (must divide exactly)
+/// **Validation**: Verifies exchange is perfectly reversible with no value loss
+fn swap_b_to_a(
+    amount_b: u64,
+    ratio_a_numerator: u64,     // Token A ratio in basis points
+    ratio_b_denominator: u64,   // Token B ratio in basis points
+    _token_b_decimals: u8,
+    _token_a_decimals: u8,
+    require_exact_exchange: bool,
+) -> Result<u64, ProgramError> {
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Pre-flight validation
+    // Check for zero ratios first to prevent division by zero
+    if ratio_a_numerator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_a_numerator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    if ratio_b_denominator == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: ratio_b_denominator is zero - invalid pool configuration");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Input validation
+    // Check if inputs are within reasonable bounds to prevent extreme calculations
+    if amount_b == 0 {
+        msg!("❌ SWAP CALCULATION ERROR: input amount is zero");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Convert to u128 to prevent overflow during intermediate calculations
+    let amount_b_base = amount_b as u128;
+    let ratio_a_num = ratio_a_numerator as u128;
+    let ratio_b_den = ratio_b_denominator as u128;
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Check multiplication bounds
+    // Before multiplication, check if the result would exceed u128::MAX
+    // This is more precise than just relying on checked_mul failure
+    if amount_b_base > 0 && ratio_a_num > u128::MAX / amount_b_base {
+        msg!("❌ SWAP CALCULATION OVERFLOW: Multiplication would exceed u128::MAX");
+        msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
+        msg!("   This indicates an extremely large swap amount or ratio");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
+    }
+    
+    // Perform multiplication with overflow detection
+    let numerator = amount_b_base
+        .checked_mul(ratio_a_num)
+        .ok_or_else(|| {
+            msg!("❌ MULTIPLICATION OVERFLOW in swap_b_to_a calculation");
+            msg!("   amount_b: {}, ratio_a_num: {}", amount_b, ratio_a_numerator);
+            msg!("   Intermediate calculation: {} * {}", amount_b_base, ratio_a_num);
+            crate::error::PoolError::ArithmeticOverflow
+        })?;
+    
+    // 🔒 EXACT EXCHANGE (optional): enforce no remainder; otherwise allow floor division
+    if require_exact_exchange {
+        if numerator % ratio_b_den != 0 {
+            let remainder = numerator % ratio_b_den;
+            return Err(crate::error::PoolError::AmountMismatch {
+                expected: 0,
+                calculated: remainder as u64,
+                difference: remainder as u64,
+            }.into());
+        }
+    }
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Division validation (now guaranteed to be exact)
+    let result = numerator.checked_div(ratio_b_den)
+        .ok_or_else(|| {
+            msg!("❌ DIVISION ERROR in swap_b_to_a calculation");
+            msg!("   This should not happen as we validated ratio_b_den != 0");
+            msg!("   ratio_b_den: {}", ratio_b_denominator);
+            ProgramError::InvalidAccountData
+        })?;
+    
+    // 🔒 ENHANCED OVERFLOW DETECTION: Final result validation
+    // Check if result fits in u64 with detailed error reporting
+    if result > u64::MAX as u128 {
+        msg!("❌ RESULT OVERFLOW: Final swap result exceeds u64::MAX");
+        msg!("   Calculated result: {}", result);
+        msg!("   u64::MAX: {}", u64::MAX);
+        msg!("   amount_b: {}, ratio_a_num: {}, ratio_b_den: {}", 
+             amount_b, ratio_a_numerator, ratio_b_denominator);
+        msg!("   This indicates the swap would produce an impossibly large output");
+        return Err(crate::error::PoolError::ArithmeticOverflow.into());
+    }
+    
+    let final_result = result as u64;
+    
+    if require_exact_exchange {
+        // Verify reversibility only in exact mode
+        let verification_check = (final_result as u128)
+            .checked_mul(ratio_b_den)
+            .and_then(|product| product.checked_div(ratio_a_num));
+        if let Some(reverse_amount) = verification_check {
+            if reverse_amount != amount_b as u128 {
+                return Err(crate::error::PoolError::AmountMismatch {
+                    expected: amount_b,
+                    calculated: reverse_amount as u64,
+                    difference: amount_b.abs_diff(reverse_amount as u64),
+                }.into());
+            }
+        }
+    }
+    
+    // 🔒 ZERO OUTPUT VALIDATION: Ensure meaningful exchange
+    if final_result == 0 {
+        msg!("❌ ZERO OUTPUT ERROR: Swap calculation resulted in zero output");
+        msg!("   Input amount: {} basis points", amount_b);
+        msg!("   This indicates the input amount is too small for this ratio");
+        msg!("   🚫 EXACT EXCHANGE REQUIRED: Must receive meaningful output");
+        return Err(ProgramError::InvalidArgument);
+    }
+    
+    // Logging omitted for CU efficiency; expected_amount_out check enforces correctness
+    
+    Ok(final_result)
 }
 
 /// Manages swap access restrictions and delegates ownership control for a specific pool

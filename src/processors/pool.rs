@@ -79,7 +79,7 @@ use spl_token::{
 ///     - `POOL_FLAG_SWAP_FOR_OWNERS_ONLY` (bit 5, value 32): Restrict swaps to owner-only
 ///     - `POOL_FLAG_EXACT_EXCHANGE_REQUIRED` (bit 6, value 64): Require exact exchange (no rounding)
 ///   - Note: Flags are documented here for visibility; they are not yet applied in initialization
-/// * `accounts` - Array of accounts in secure order (13 accounts minimum)
+/// * `accounts` - Array of accounts in secure order (13 accounts total)
 /// 
 /// # Account Info
 /// The accounts must be provided in the following order:
@@ -101,7 +101,18 @@ use spl_token::{
 /// * `ProgramResult` - Success or error
 /// 
 /// # Performance CUs
-/// 400,000 CUs    2025/7/15 6:21 pm
+/// **~91,000 - 150,000 CUs** (Dashboard simulation: ~90,688 CUs observed, 150K max per policy)
+/// 
+/// # Advanced Implementation Features
+/// - **Upfront Registration Fee Collection**: 1.15 SOL registration fee collected before any account creation
+/// - **Real-Time Treasury Updates**: Treasury state updated immediately with fee tracking and balance sync
+/// - **Token Normalization**: Automatic lexicographic ordering of tokens (Token A < Token B) for consistency
+/// - **Comprehensive PDA Validation**: All PDAs validated against derived addresses to prevent fake accounts
+/// - **Ratio Type Classification**: Automatic classification into SimpleRatio, DecimalRatio, or EngineeringRatio
+/// - **LP Token Creation**: LP token mints created as PDAs during pool initialization for immediate availability
+/// - **Atomic Account Creation**: All accounts (pool state, vaults, LP mints) created atomically
+/// - **Security Guards**: Multiple validation layers including same-mint rejection and SPL program verification
+/// - **Fee Structure Initialization**: Pool initialized with current contract fee constants
 /// 
 /// # Critical Notes
 /// - **FIXED VALIDATION**: Fixed broken system pause validation by including system state account
