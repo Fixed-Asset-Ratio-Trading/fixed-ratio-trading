@@ -3,7 +3,7 @@ name = "fixed-ratio-trading"
 version = "0.17.1070"
 edition = "2021"
 description = "Fixed Ratio Trading Smart Contract for Solana"
-license = "Apache-2.0"
+license = "MIT"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

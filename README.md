@@ -1,6 +1,6 @@
 # Fixed Ratio Trading Protocol
 
-v0.15.1050 
+v0.17.1070 
 Aug 8, 2025 5:18PM
 
 **Revolutionary fixed-ratio token trading infrastructure for Solana - enabling predictable exchanges, micro-denominations, token migrations, and precise liquidity provision at any price point.**
@@ -177,7 +177,7 @@ git clone https://github.com/your-org/fixed-ratio-trading
 cd fixed-ratio-trading
 
 # Build the smart contract
-cargo build-bpf
+cargo build-sbf
 
 # Run comprehensive test suite
 cargo test
@@ -260,52 +260,22 @@ Authorities are configurable and subject to governance; specific keys are not li
 
 ## 📖 **API Documentation**
 
-### **🔗 Smart Contract Instructions**
+For complete developer documentation and integration guides, see our comprehensive API documentation suite:
 
-#### **Pool Management**
-```rust
-// Create new fixed-ratio pool
-InitializePool {
-    multiple_per_base: u64,              // Exchange ratio (multiple tokens per base)
-    pool_authority_bump_seed: u8,        // PDA bump for pool authority
-    multiple_token_vault_bump_seed: u8,  // PDA bump for token A vault
-    base_token_vault_bump_seed: u8,      // PDA bump for token B vault
-}
+### **📋 Complete API Reference**
+- **[📋 Fixed Ratio Trading API](docs/api/A_FIXED_RATIO_TRADING_API.md)** - Complete developer API reference with all instructions, account structures, and implementation details
+- **[⚡ Quick Reference Guide](docs/api/QUICK_REFERENCE.md)** - Developer cheat sheet with function summaries and common patterns
+- **[💻 Instruction Examples](docs/api/INSTRUCTION_EXAMPLES.md)** - JavaScript/TypeScript code examples for all operations
+- **[📚 API Documentation Overview](docs/api/README.md)** - Overview of all API documentation and integration guides
 
-// Provide liquidity asymmetrically
-Deposit {
-    deposit_token_mint: Pubkey,  // Which token to deposit (A or B)
-    amount: u64,                 // Amount to deposit (in token's native units)
-}
+### **🔧 Integration Guides**
+- **[🎯 Pool Creation Guide](docs/api/EXACT_POOL_CREATION_TRANSACTION_STRUCTURE.md)** - Step-by-step pool creation with transaction structures
+- **[📊 Swap Calculation Guide](docs/api/SWAP_CALCULATION_GUIDE.md)** - Token amount calculations and ratio mathematics
+- **[🔗 Solana Transaction Building](docs/api/SOLANA_TRANSACTION_BUILDING_GUIDE.md)** - Complete transaction construction guide
 
-// Withdraw liquidity to specific token
-Withdraw {
-    withdraw_token_mint: Pubkey,  // Which token to withdraw (A or B)  
-    lp_amount_to_burn: u64,      // LP tokens to burn for withdrawal
-}
-
-// Execute fixed-ratio swap
-Swap {
-    input_token_mint: Pubkey,     // Token being swapped in
-    amount_in: u64,               // Amount to swap (input token units)
-    minimum_amount_out: u64,      // Minimum acceptable output (slippage protection)
-}
-```
-
-#### **Governance & Security**
-```rust
-// System-wide emergency controls (system authority only)
-PauseSystem { reason_code: u8 }          // Pause entire protocol
-UnpauseSystem                            // Resume all operations
-
-// Treasury management (system authority only)  
-WithdrawTreasuryFees { amount: u64 }     // Withdraw SOL fees (0 = all)
-ConsolidateTreasuries                    // Optimize treasury storage
-
-// Pool-specific controls (pool owner or system authority)
-PausePool { pool_address: Pubkey, flags: u8 }    // Pause pool operations
-UnpausePool { pool_address: Pubkey }              // Resume pool operations
-```
+### **🌐 Language-Specific Guides**
+- **[🟨 JavaScript/TypeScript Guide](docs/api/EXPECTED_TOKENS_GUIDE_JAVASCRIPT.md)** - Web3.js and Anchor integration examples
+- **[🟦 C# Guide](docs/api/EXPECTED_TOKENS_GUIDE_CSHARP.md)** - .NET Solana integration patterns
 
 ---
 
@@ -349,7 +319,7 @@ sh -c "$(curl -sSfL https://release.solana.com/v1.18.0/install)"
 # 2. Clone and build
 git clone https://github.com/your-org/fixed-ratio-trading
 cd fixed-ratio-trading
-cargo build-bpf
+cargo build-sbf
 
 # 3. Run tests locally
 cargo test
