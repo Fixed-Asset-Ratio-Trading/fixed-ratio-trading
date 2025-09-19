@@ -2,19 +2,21 @@
 
 Welcome to the Fixed Ratio Trading Contract API documentation. This directory contains comprehensive documentation for developers integrating with the contract.
 
-## ⚠️ **BREAKING CHANGES v0.16.x+**
+## 📋 **Current API Version**
 
-**🚨 CRITICAL UPDATE**: Version 0.16.x+ introduces breaking changes to SystemState structure and deserialization methods.
+The API includes admin authority management with configurable authorities and 72-hour timelock for changes.
 
-### What Changed
-- **SystemState size**: 10 bytes → 83 bytes (added admin authority management)
-- **New fields**: `admin_authority`, `pending_admin_authority`, `admin_change_timestamp`
-- **Deserialization**: `try_from_slice()` → `load_from_account()` or `from_account_data_unchecked()`
+### Current Features
+- **SystemState size**: 83 bytes (includes admin authority management)
+- **Fields**: `admin_authority`, `pending_admin_authority`, `admin_change_timestamp`
+- **Deserialization**: Use `load_from_account()` or `from_account_data_unchecked()`
 - **Authority system**: Configurable admin authority with 72-hour timelock for changes
 
-### Migration Required
-All client code using SystemState deserialization must be updated. See [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) for migration examples.
+### Implementation
+See [QUICK_REFERENCE.md](./QUICK_REFERENCE.md) for current implementation examples.
 
+---Ad
+**GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
 ---
 
 ## 📚 Documentation Structure
@@ -129,7 +131,7 @@ Step-by-step guide for building Solana transactions:
    - 1 SOL = 1,000,000,000 lamports
    - 1 USDC = 1,000,000 (6 decimals)
 
-2. **Authority v0.16.x+**: Most administrative functions use configurable Admin Authority (with upgrade authority fallback)
+2. **Authority**: Most administrative functions use configurable Admin Authority (with upgrade authority fallback)
 
 3. **Fees**: 
    - Pool creation: 1.15 SOL (REGISTRATION_FEE)
@@ -161,10 +163,10 @@ Contact us for:
 
 ## 🔄 Version History
 
-- **v2.0** (August 31, 2025): ⚠️ **BREAKING CHANGES** - SystemState structure and deserialization methods updated for v0.16.x+
+- **v2.0** (August 31, 2025): SystemState structure and deserialization methods updated
 - **v1.1** (August 30, 2025): Updated documentation structure with new guides and renamed main API file
 - **v1.0** (Aug 5, 2025): Initial API documentation with realistic CU scaling
-- Contract version: 0.15.1053+ (v0.16.x+ breaking changes)
+- Contract version: 0.15.1053+
 
 ---
 

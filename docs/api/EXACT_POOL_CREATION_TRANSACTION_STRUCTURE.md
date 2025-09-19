@@ -9,6 +9,10 @@
 
 This document provides the **exact transaction structure** used by the working dashboard for pool creation. Use this to compare against your stress test service and resolve "Program failed to complete" errors.
 
+---Ad
+**GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
+---
+
 ## 📋 Complete Transaction Structure
 
 ### **Transaction Instructions**
@@ -59,7 +63,7 @@ const instructionData = concatUint8Arrays([
 ]);
 ```
 
-#### **Pool Flags (New in v0.16.x+)**
+#### **Pool Flags**
 | Flag | Bit | Value | Description |
 |------|-----|-------|-------------|
 | Owner-only swaps | 5 | 32 | Only pool creator can swap |

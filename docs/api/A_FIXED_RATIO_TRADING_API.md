@@ -3893,7 +3893,7 @@ Notes:
 - `enable_restriction` is serialized as `u8` (0 or 1) to match Borsh expectations for Rust `bool` in some toolchains. If your codegen emits `bool`, follow the emitted type.
 
 #### Legacy compatibility (pool schema version)
-- Only pools created with the current schema (v0.16.x+) support `SetSwapOwnerOnly`.
+- Only pools created with the current schema support `SetSwapOwnerOnly`.
 - Legacy pools are incompatible (e.g., `PoolState` account length ~438 bytes). Current pools are ~597 bytes.
 - How to check: fetch the pool state account and inspect `account.data.length`.
 - If the length indicates a legacy layout, migration or creating a new pool is required before using this instruction.
@@ -4799,7 +4799,7 @@ This section provides comprehensive documentation of all Program Derived Account
 
 **🏗️ Account Space Requirements:**
 - PoolState: 597 bytes
-- SystemState: 83 bytes ⚠️ **BREAKING CHANGE v0.16.x+**
+- SystemState: 83 bytes
 - MainTreasuryState: 128 bytes
 
 ---
@@ -4983,17 +4983,17 @@ pub struct SystemState {
     /// - Other: Custom reasons
     pub pause_reason_code: u8,              // 1 byte
     
-    /// ⚠️ **NEW IN v0.16.x+**: Admin authority for system operations
+    /// Admin authority for system operations
     pub admin_authority: Pubkey,            // 32 bytes
     
-    /// ⚠️ **NEW IN v0.16.x+**: Pending admin authority (with 72-hour timelock)
+    /// Pending admin authority (with 72-hour timelock)
     pub pending_admin_authority: Option<Pubkey>, // 33 bytes (1 + 32)
     
-    /// ⚠️ **NEW IN v0.16.x+**: Timestamp when admin change was initiated
+    /// Timestamp when admin change was initiated
     pub admin_change_timestamp: i64,        // 8 bytes
 }
 
-// Total Size: 83 bytes ⚠️ **BREAKING CHANGE from 10 bytes in v0.15.x**
+// Total Size: 83 bytes
 ```
 
 #### System State Usage
@@ -5008,9 +5008,9 @@ if !system_state.is_paused {
 }
 ```
 
-#### ⚠️ **BREAKING CHANGE v0.16.x+**: Centralized Deserialization Methods
+#### Centralized Deserialization Methods
 
-**🚨 IMPORTANT**: Direct deserialization with `try_from_slice()` is **DEPRECATED** and will fail due to account size changes.
+**🚨 IMPORTANT**: Use the centralized deserialization methods for proper account handling.
 
 ##### Production Code (Recommended)
 ```rust
@@ -5041,19 +5041,6 @@ pub fn from_account_data_unchecked(data: &[u8]) -> Result<SystemState, ProgramEr
 let system_state = SystemState::from_account_data_unchecked(&account.data)?;
 ```
 
-##### ❌ Deprecated (Will Fail in v0.16.x+)
-```rust
-// ❌ DEPRECATED: Will fail with "Not all bytes read" error
-let system_state = SystemState::try_from_slice(&account.data)?; // DON'T USE
-
-// ❌ DEPRECATED: Manual deserialization without validation  
-let system_state = SystemState::deserialize(&mut &account.data[..])?; // DON'T USE
-```
-
-**Migration Guide:**
-1. **Production code**: Replace `try_from_slice()` with `load_from_account()`
-2. **Test code**: Replace `try_from_slice()` with `from_account_data_unchecked()`
-3. **Update dependencies**: Ensure you're using v0.16.x+ of the contract
 
 ---
 
@@ -5445,15 +5432,15 @@ async function getPoolState(connection, poolStatePDA) {
 #### Reading System State
 
 ```javascript
-// ⚠️ **UPDATED FOR v0.16.x+**: System state with admin authority fields
+// System state with admin authority fields
 const SystemStateSchema = {
     struct: {
         is_paused: 'bool',
         pause_timestamp: 'i64', 
         pause_reason_code: 'u8',
-        admin_authority: 'publicKey',           // NEW in v0.16.x+
-        pending_admin_authority: { option: 'publicKey' }, // NEW in v0.16.x+
-        admin_change_timestamp: 'i64'          // NEW in v0.16.x+
+        admin_authority: 'publicKey',
+        pending_admin_authority: { option: 'publicKey' },
+        admin_change_timestamp: 'i64'
     }
 };
 
@@ -5549,7 +5536,7 @@ async fn read_pool_state(
     Ok(pool_state)
 }
 
-// ⚠️ **UPDATED FOR v0.16.x+**: Reading system state in Rust with new methods
+// Reading system state in Rust with current methods
 async fn read_system_state(
     rpc_client: &RpcClient,
     system_pda: &Pubkey,
@@ -5568,8 +5555,6 @@ async fn read_system_state(
     Ok(system_state)
 }
 
-// ❌ DEPRECATED: Old method (will fail in v0.16.x+)
-// let system_state = SystemState::try_from_slice(&account.data)?; // DON'T USE
 ```
 
 ---

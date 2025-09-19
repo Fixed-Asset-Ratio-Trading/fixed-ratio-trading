@@ -11,6 +11,8 @@ The Fixed Ratio Trading (FRT) system uses deterministic calculations for token s
 - **Deterministic Calculations**: Exact, predictable outputs with no slippage
 - **Integer Division**: All calculations use integer division, truncating remainders
 
+---Ad
+**GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
 ---
 
 ## Core Mathematical Foundation

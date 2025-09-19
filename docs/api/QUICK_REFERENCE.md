@@ -1,23 +1,23 @@
 # Fixed Ratio Trading - Quick Reference Guide
 
-## ⚠️ **BREAKING CHANGES v0.16.x+**
+## 📋 **Current API Implementation**
 
-**🚨 IMPORTANT**: SystemState structure and deserialization methods have changed in v0.16.x+
+---Ad
+**GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
+---
 
-### What Changed
-- **SystemState size**: 10 bytes → 83 bytes (added admin authority fields)
-- **Deserialization**: `try_from_slice()` → `load_from_account()` or `from_account_data_unchecked()`
-- **New fields**: `admin_authority`, `pending_admin_authority`, `admin_change_timestamp`
 
-### Migration Required
+### SystemState Implementation
+- **SystemState size**: 83 bytes (includes admin authority fields)
+- **Deserialization**: Use `load_from_account()` or `from_account_data_unchecked()`
+- **Fields**: `admin_authority`, `pending_admin_authority`, `admin_change_timestamp`
+
+### Current Usage
 ```rust
-// ❌ OLD (v15.x and below - will fail)
-let system_state = SystemState::try_from_slice(&account.data)?;
-
-// ✅ NEW (v0.16.x+ - production code)
+// ✅ Production code
 let system_state = SystemState::load_from_account(&account, &program_id)?;
 
-// ✅ NEW (v0.16.x+ - test/client code)
+// ✅ Test/client code
 let system_state = SystemState::from_account_data_unchecked(&account.data)?;
 ```
 
@@ -44,7 +44,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | `process_system_unpause` | Admin Authority* | Resume operations |
 | `process_admin_change` | Admin Authority* | Change admin (72h timelock) |
 
-*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
+*Uses configurable admin authority (with upgrade authority fallback)
 
 ### Pool Management
 | Function | Authority | Fee | Purpose |
@@ -94,7 +94,7 @@ const PROGRAM_ID = new PublicKey("4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn")
 | `process_treasury_donate_sol` | Any User | Support development |
 | `process_consolidate_pool_fees` | Admin Authority* | Collect pool fees (security update) |
 
-*v0.16.x+: Uses configurable admin authority (with upgrade authority fallback)
+*Uses configurable admin authority (with upgrade authority fallback)
 
 ## 🔑 Common PDA Derivations
 
@@ -201,12 +201,11 @@ const unpauseInstruction = createUnpausePoolInstruction(
 ## ⚠️ Important Notes
 
 1. **Basis Points**: All amounts must be in smallest unit
-2. **Authority v0.16.x+**: Most admin functions use configurable Admin Authority (with upgrade authority fallback)
+2. **Authority**: Most admin functions use configurable Admin Authority (with upgrade authority fallback)
 3. **Fees**: Collected in SOL, configurable per pool
 4. **Pausing**: System pause overrides pool pause
 5. **Treasury**: Withdrawals subject to fixed 60-minute cooldown after success
-6. **Breaking Changes**: v0.16.x+ requires new SystemState deserialization methods
-7. **Migration**: Update client code to use `load_from_account()` or `from_account_data_unchecked()`
+6. **SystemState**: Use `load_from_account()` or `from_account_data_unchecked()` for deserialization
 
 ## 📞 Support
 

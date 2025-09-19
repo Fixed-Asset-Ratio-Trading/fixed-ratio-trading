@@ -2,6 +2,11 @@
 
 This guide provides JavaScript/TypeScript code examples for constructing instructions to interact with the Fixed Ratio Trading contract.
 
+---Ad
+**GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
+---
+
+
 ## Setup
 
 ```javascript

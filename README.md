@@ -5,6 +5,8 @@ Aug 8, 2025 5:18PM
 
 **Revolutionary fixed-ratio token trading infrastructure for Solana - enabling predictable exchanges, micro-denominations, token migrations, and precise liquidity provision at any price point.**
 
+Conversions may diverge from market prices and can deplete one side; users accept imbalance risk.
+
 ---Ad
 **GitKracken** https://gitkraken.cello.so/pk9L5rp5jln visual Git helps you see it all clearly!
 ---
@@ -35,7 +37,7 @@ Seamlessly migrate users from old tokens to new versions with guaranteed rates:
 Set exact prices where you're willing to trade your assets:
 - **"I'll sell my 1 BTC at exactly $200,000"** - Guaranteed execution
 - **"I want to buy SOL at exactly $100"** - No slippage, no timing required
-- **Strategic Positioning** - Earn fees while waiting for target prices
+- **Strategic Positioning** - Governance may enable trading fees in the future; currently 0%
 
 ### 🏦 **Institutional Fixed-Rate Trading** → [**Full Guide**](docs/usecases/INSTITUTIONAL_FIXED_RATE_TRADING.md)
 Enterprise-grade trading infrastructure with guaranteed rates:
@@ -50,11 +52,11 @@ Enterprise-grade trading infrastructure with guaranteed rates:
 
 | Traditional AMMs | Fixed Ratio Trading |
 |------------------|-------------------|
-| ❌ Price slippage on large trades | ✅ **Zero slippage** - Always exact ratio |
-| ❌ Unpredictable pricing | ✅ **Guaranteed price** - You set the rate |
-| ❌ Complex curve calculations | ✅ **Simple math** - Direct ratio multiplication |
-| ❌ Impermanent loss risk | ✅ **Predictable outcomes** - Fixed ratios only |
-| ❌ MEV extraction potential | ✅ **MEV resistant** - No price curves to exploit |
+| ❌ Price slippage on large trades | ✅ **Zero slippage** - at the fixed ratio, subject to available liquidity |
+| ❌ Unpredictable pricing | ✅ **Fixed price** - you set the ratio; execution depends on liquidity/limits |
+| ❌ Complex curve calculations | ✅ **Simple math** - direct ratio multiplication |
+| ❌ Impermanent loss risk | ✅ **Predictable outcomes** - fixed ratios only |
+| ❌ MEV extraction potential | ✅ **Reduced MEV surface** - no price curves; ordering/arbitrage still possible |
 
 ---
 
@@ -136,7 +138,7 @@ The protocol implements a sophisticated **dual-fee system** designed for **decen
 - ✅ Secure key management with double NAT protection and 3 bonded employees
 
 #### **Phase 2: Governance Activation Triggers**
-**Governance development begins when ONE condition is met:**
+**Governance development begins when ONE condition is met (operational triggers only; not an offer, no rights or returns implied):**
 - 🎯 **Revenue Milestone**: Fixed Ratio Trading earns/receives **1,500 SOL** in revenue/donations
 - 🎯 **Acceleration Payment**: Receipt of **$50,000 USD** payment (contact: info@davincicodes.net)
 
@@ -149,8 +151,8 @@ The protocol implements a sophisticated **dual-fee system** designed for **decen
 
 #### **Phase 4: Full Decentralization (V3 Future)**
 - 🎯 **Token-based voting** for protocol parameters (details TBD)
-- 🎯 **Community governance token distribution** 
-- 🎯 **Fee revenue distribution** to governance participants
+- 🎯 **Community governance token distribution** (no expectation of profit; subject to compliance and governance approval)
+- 🎯 **Fee revenue distribution** to governance participants (if enabled by governance; no rights implied)
 - 🎯 **Emergency controls** managed by community multisig
 - 🎯 **Upgradable governance** similar to Timelock Upgrade Controller
 
@@ -207,7 +209,7 @@ cd html && python3 -m http.server 8000
 - **Owner Controls**: Pool creators can pause their own pools
 
 #### **Economic Security**
-- **Anti-Fragmentation**: One pool per token pair maximum
+- **Canonical Pools**: One canonical pool per normalized ratio; duplicates are merged
 - **Rent Protection**: All accounts maintain Solana rent exemption
 - **PDA Validation**: Complete program-derived address verification
 - **Input Sanitization**: Comprehensive parameter validation
@@ -215,16 +217,7 @@ cd html && python3 -m http.server 8000
 ### **🏛️ Governance Transition Strategy**
 
 #### **Current Authority Structure**
-```rust
-// System upgrade authority (temporary)
-PROGRAM_AUTHORITY: "4aeVqtWhrUh6wpX8acNj2hpWXKEQwxjA3PYb2sHhNyCn"
-
-// All operations require this authority:
-- Treasury fee withdrawals
-- System pause/unpause  
-- Pool fee rate changes
-- Emergency controls
-```
+Authorities are configurable and subject to governance; specific keys are not listed in this document.
 
 #### **Governance Protocol Integration Plan**
 1. **Deploy Governance Contract**: Community voting, proposal systems
