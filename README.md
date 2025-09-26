@@ -60,6 +60,23 @@ Enterprise-grade trading infrastructure with guaranteed rates:
 
 ---
 
+## 🛡️ **Security & Decentralized Governance**
+
+**✅ LIVE ON MAINNET** with **Squad Multisig Control** - No single person can control the protocol!
+
+- **🔒 Program ID**: `quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD` ([View on Explorer](https://explorer.solana.com/address/quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD))
+- **🏛️ Upgrade Authority**: Squad Multisig `i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi`
+- **⚡ Emergency Controls**: Independent hardware wallet (pause only)
+- **👥 Governance Interface**: [Manage Program via Squad](https://app.squads.so/squads/i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi/developer/programs/quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD)
+
+**🔐 Why This Matters:**
+- ✅ **Decentralized Control**: Multiple signatures required for any program upgrades
+- ✅ **Transparent Governance**: All proposals visible in Squad interface
+- ✅ **Community Protection**: No single entity can rug pull or make unilateral changes
+- ✅ **Battle-Tested Security**: Squad is a proven multisig solution on Solana
+
+---
+
 ## 🏗️ **Architecture & Smart Contract Design**
 
 ### **🔐 Intelligent Pool Management**
@@ -199,7 +216,7 @@ cd html && python3 -m http.server 8000
 
 #### **System-Wide Controls**
 - **Emergency Pause**: Instant protocol freeze for critical issues
-- **Upgrade Authority**: Controlled by governance (future) or system authority (current)  
+- **Upgrade Authority**: ✅ **Squad Multisig** (decentralized governance active)  
 - **Treasury Protection**: All fee revenues flow to governance-controlled PDAs
 
 #### **Pool-Level Security**  
@@ -216,8 +233,19 @@ cd html && python3 -m http.server 8000
 
 ### **🏛️ Governance Transition Strategy**
 
-#### **Current Authority Structure**
-Authorities are configurable and subject to governance; specific keys are not listed in this document.
+#### **✅ Current Authority Structure (MainNet Deployed)**
+**Program is LIVE on MainNet with decentralized governance:**
+
+- **Program ID**: `quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD`
+- **Upgrade Authority**: **Squad Multisig** `i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi`
+- **Admin Authority**: Hardware Wallet (emergency pause only)
+- **Squad Management**: [View Program in Squad Interface](https://app.squads.so/squads/i8g7KyNHCv6MT8yD6R1TuPAap2VgUAm6r6uohc9vhMi/developer/programs/quXSYkeZ8ByTCtYY1J1uxQmE36UZ3LmNGgE3CYMFixD)
+
+**🛡️ Security Benefits:**
+- ✅ **No Single Point of Failure**: Upgrade authority controlled by multisig
+- ✅ **Transparent Governance**: All upgrade proposals visible in Squad interface  
+- ✅ **Community Protection**: Multiple signatures required for any program changes
+- ✅ **Emergency Controls**: Independent admin authority for critical situations
 
 #### **Governance Protocol Integration Plan**
 1. **Deploy Governance Contract**: Community voting, proposal systems
